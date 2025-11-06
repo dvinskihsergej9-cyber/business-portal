@@ -1,0 +1,664 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Бухгалтерия - Business Portal</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        
+        body {
+            font-family: 'Segoe UI', system-ui, -apple-system, sans-serif;
+            background: linear-gradient(135deg, #f8fafc 0%, #e2e8f0 100%);
+            min-height: 100vh;
+            color: #1a202c;
+        }
+
+        .header {
+            background: white;
+            border-bottom: 1px solid #e2e8f0;
+            padding: 16px 0;
+            position: sticky;
+            top: 0;
+            z-index: 100;
+            box-shadow: 0 2px 10px rgba(0, 0, 0, 0.08);
+        }
+
+        .header-content {
+            max-width: 1400px;
+            margin: 0 auto;
+            padding: 0 24px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        .back-button {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            background: #667eea;
+            color: white;
+            border: none;
+            padding: 10px 20px;
+            border-radius: 8px;
+            cursor: pointer;
+            font-size: 14px;
+            transition: all 0.3s ease;
+        }
+
+        .back-button:hover {
+            background: #5a6fd8;
+            transform: translateX(-2px);
+        }
+
+        .department-info {
+            display: flex;
+            align-items: center;
+            gap: 16px;
+        }
+
+        .department-icon {
+            font-size: 2rem;
+            background: linear-gradient(135deg, #667eea, #764ba2);
+            padding: 12px;
+            border-radius: 12px;
+            color: white;
+        }
+
+        .department-text h1 {
+            font-size: 1.5rem;
+            font-weight: 700;
+            color: #2d3748;
+        }
+
+        .department-text p {
+            color: #718096;
+            font-size: 0.9rem;
+        }
+
+        .main-container {
+            max-width: 1400px;
+            margin: 0 auto;
+            padding: 40px 24px;
+        }
+
+        /* Дашборд */
+        .dashboard-stats {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+            gap: 20px;
+            margin-bottom: 32px;
+        }
+
+        .stat-card {
+            background: white;
+            padding: 24px;
+            border-radius: 12px;
+            box-shadow: 0 4px 20px rgba(0, 0, 0, 0.08);
+            text-align: center;
+            border-left: 4px solid #667eea;
+        }
+
+        .stat-icon {
+            font-size: 2rem;
+            margin-bottom: 12px;
+        }
+
+        .stat-number {
+            font-size: 2rem;
+            font-weight: 700;
+            color: #2d3748;
+            margin-bottom: 4px;
+        }
+
+        .stat-label {
+            color: #718096;
+            font-size: 0.9rem;
+        }
+
+        /* Основной контент */
+        .content-grid {
+            display: grid;
+            grid-template-columns: 300px 1fr;
+            gap: 24px;
+        }
+
+        /* Боковая панель */
+        .sidebar {
+            background: white;
+            border-radius: 16px;
+            padding: 24px;
+            box-shadow: 0 4px 20px rgba(0, 0, 0, 0.08);
+            height: fit-content;
+        }
+
+        .service-category {
+            margin-bottom: 24px;
+        }
+
+        .category-title {
+            font-size: 0.9rem;
+            font-weight: 600;
+            color: #4a5568;
+            margin-bottom: 12px;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+        }
+
+        .service-item {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            padding: 12px 16px;
+            border-radius: 8px;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            margin-bottom: 4px;
+        }
+
+        .service-item:hover {
+            background: #f7fafc;
+        }
+
+        .service-item.active {
+            background: #667eea;
+            color: white;
+        }
+
+        .service-icon {
+            font-size: 1.2rem;
+            width: 24px;
+            text-align: center;
+        }
+
+        /* Чат с AI-помощником */
+        .ai-assistant {
+            background: white;
+            border-radius: 16px;
+            box-shadow: 0 4px 20px rgba(0, 0, 0, 0.08);
+            overflow: hidden;
+            display: flex;
+            flex-direction: column;
+            height: 600px;
+        }
+
+        .chat-header {
+            padding: 24px;
+            border-bottom: 1px solid #e2e8f0;
+            background: #f8fafc;
+        }
+
+        .chat-header h2 {
+            font-size: 1.25rem;
+            font-weight: 600;
+            color: #2d3748;
+            margin-bottom: 4px;
+        }
+
+        .chat-header p {
+            color: #718096;
+            font-size: 0.9rem;
+        }
+
+        .chat-messages {
+            flex: 1;
+            padding: 24px;
+            overflow-y: auto;
+            display: flex;
+            flex-direction: column;
+            gap: 16px;
+        }
+
+        .message {
+            max-width: 80%;
+            padding: 16px 20px;
+            border-radius: 16px;
+            line-height: 1.5;
+            position: relative;
+            animation: messageAppear 0.3s ease-out;
+        }
+
+        @keyframes messageAppear {
+            from {
+                opacity: 0;
+                transform: translateY(10px);
+            }
+            to {
+                opacity: 1;
+                transform: translateY(0);
+            }
+        }
+
+        .bot-message {
+            background: #f7fafc;
+            border: 1px solid #e2e8f0;
+            align-self: flex-start;
+            border-bottom-left-radius: 4px;
+        }
+
+        .user-message {
+            background: linear-gradient(135deg, #667eea, #764ba2);
+            color: white;
+            align-self: flex-end;
+            border-bottom-right-radius: 4px;
+        }
+
+        .message-time {
+            font-size: 0.75rem;
+            opacity: 0.6;
+            margin-top: 8px;
+            text-align: right;
+        }
+
+        /* Быстрые вопросы */
+        .quick-questions {
+            padding: 20px 24px;
+            border-top: 1px solid #e2e8f0;
+            background: #f8fafc;
+        }
+
+        .quick-questions-title {
+            font-size: 0.9rem;
+            font-weight: 600;
+            color: #4a5568;
+            margin-bottom: 12px;
+        }
+
+        .question-buttons {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 8px;
+        }
+
+        .question-btn {
+            background: white;
+            border: 1px solid #e2e8f0;
+            padding: 10px 16px;
+            border-radius: 20px;
+            cursor: pointer;
+            font-size: 0.85rem;
+            transition: all 0.3s ease;
+            color: #4a5568;
+        }
+
+        .question-btn:hover {
+            border-color: #667eea;
+            color: #667eea;
+            transform: translateY(-1px);
+        }
+
+        /* Поле ввода */
+        .chat-input-container {
+            padding: 20px 24px;
+            border-top: 1px solid #e2e8f0;
+        }
+
+        .chat-input-wrapper {
+            display: flex;
+            gap: 12px;
+            align-items: end;
+        }
+
+        .chat-input {
+            flex: 1;
+            background: #f7fafc;
+            border: 1px solid #e2e8f0;
+            border-radius: 20px;
+            padding: 14px 20px;
+            color: #1a202c;
+            font-size: 14px;
+            resize: none;
+            min-height: 50px;
+            max-height: 120px;
+            font-family: inherit;
+        }
+
+        .chat-input:focus {
+            outline: none;
+            border-color: #667eea;
+            background: white;
+        }
+
+        .send-button {
+            background: linear-gradient(135deg, #667eea, #764ba2);
+            border: none;
+            color: white;
+            padding: 14px 20px;
+            border-radius: 50%;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            width: 50px;
+            height: 50px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+
+        .send-button:hover {
+            transform: scale(1.05);
+            box-shadow: 0 4px 20px rgba(102, 126, 234, 0.3);
+        }
+
+        /* Калькуляторы */
+        .calculators-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+            gap: 20px;
+            margin-top: 24px;
+        }
+
+        .calculator-card {
+            background: white;
+            border-radius: 12px;
+            padding: 24px;
+            box-shadow: 0 4px 20px rgba(0, 0, 0, 0.08);
+            text-align: center;
+        }
+
+        .calculator-icon {
+            font-size: 2.5rem;
+            margin-bottom: 16px;
+        }
+
+        .calculator-title {
+            font-weight: 600;
+            margin-bottom: 8px;
+            color: #2d3748;
+        }
+
+        .calculator-description {
+            color: #718096;
+            font-size: 0.9rem;
+            margin-bottom: 16px;
+        }
+
+        .calc-btn {
+            background: #667eea;
+            color: white;
+            border: none;
+            padding: 10px 20px;
+            border-radius: 8px;
+            cursor: pointer;
+            transition: all 0.3s ease;
+        }
+
+        .calc-btn:hover {
+            background: #5a6fd8;
+            transform: translateY(-1px);
+        }
+
+        /* Адаптивность */
+        @media (max-width: 1024px) {
+            .content-grid {
+                grid-template-columns: 1fr;
+            }
+        }
+    </style>
+</head>
+<body>
+    <header class="header">
+        <div class="header-content">
+            <button class="back-button" onclick="goBack()">
+                ← Назад
+            </button>
+            
+            <div class="department-info">
+                <div class="department-icon">📊</div>
+                <div class="department-text">
+                    <h1>Бухгалтерия и финансы</h1>
+                    <p>AI-помощник по налогам и отчетности</p>
+                </div>
+            </div>
+        </div>
+    </header>
+
+    <div class="main-container">
+        <!-- Дашборд -->
+        <div class="dashboard-stats">
+            <div class="stat-card">
+                <div class="stat-icon">💰</div>
+                <div class="stat-number">8</div>
+                <div class="stat-label">Налоговых вычетов</div>
+            </div>
+            <div class="stat-card">
+                <div class="stat-icon">📋</div>
+                <div class="stat-number">12</div>
+                <div class="stat-label">Отчетов в месяц</div>
+            </div>
+            <div class="stat-card">
+                <div class="stat-icon">⏰</div>
+                <div class="stat-number">3</div>
+                <div class="stat-label">Следующие сроки</div>
+            </div>
+            <div class="stat-card">
+                <div class="stat-icon">🎯</div>
+                <div class="stat-number">257k₽</div>
+                <div class="stat-label">Экономия за год</div>
+            </div>
+        </div>
+
+        <!-- Основной контент -->
+        <div class="content-grid">
+            <!-- Боковая панель -->
+            <div class="sidebar">
+                <div class="service-category">
+                    <div class="category-title">Налоговые вычеты</div>
+                    <div class="service-item active" onclick="selectService('НДФЛ')">
+                        <div class="service-icon">🏠</div>
+                        <div>Имущественный вычет</div>
+                    </div>
+                    <div class="service-item" onclick="selectService('Социальный')">
+                        <div class="service-icon">🎓</div>
+                        <div>Социальный вычет</div>
+                    </div>
+                    <div class="service-item" onclick="selectService('Инвестиционный')">
+                        <div class="service-icon">📈</div>
+                        <div>Инвестиционный вычет</div>
+                    </div>
+                    <div class="service-item" onclick="selectService('Профессиональный')">
+                        <div class="service-icon">💼</div>
+                        <div>Профессиональный вычет</div>
+                    </div>
+                </div>
+
+                <div class="service-category">
+                    <div class="category-title">Отчетность</div>
+                    <div class="service-item" onclick="selectService('НДС')">
+                        <div class="service-icon">📊</div>
+                        <div>Декларация по НДС</div>
+                    </div>
+                    <div class="service-item" onclick="selectService('Прибыль')">
+                        <div class="service-icon">📈</div>
+                        <div>Налог на прибыль</div>
+                    </div>
+                    <div class="service-item" onclick="selectService('УСН')">
+                        <div class="service-icon">⚡</div>
+                        <div>Упрощенная система</div>
+                    </div>
+                    <div class="service-item" onclick="selectService('Страховые')">
+                        <div class="service-icon">🛡️</div>
+                        <div>Страховые взносы</div>
+                    </div>
+                </div>
+
+                <div class="service-category">
+                    <div class="category-title">Калькуляторы</div>
+                    <div class="service-item" onclick="openCalculator('НДФЛ')">
+                        <div class="service-icon">🧮</div>
+                        <div>Калькулятор НДФЛ</div>
+                    </div>
+                    <div class="service-item" onclick="openCalculator('УСН')">
+                        <div class="service-icon">📱</div>
+                        <div>Калькулятор УСН</div>
+                    </div>
+                    <div class="service-item" onclick="openCalculator('Вычеты')">
+                        <div class="service-icon">💰</div>
+                        <div>Калькулятор вычетов</div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- AI-помощник -->
+            <div class="ai-assistant">
+                <div class="chat-header">
+                    <h2>AI-помощник по налогам</h2>
+                    <p>На основе @iloveipbot - консультации по налоговым вычетам и льготам</p>
+                </div>
+
+                <div class="chat-messages" id="chatMessages">
+                    <div class="message bot-message">
+                        Здравствуйте! Я ваш AI-помощник по бухгалтерским вопросам и налоговым вычетам. 
+                        Чем могу помочь?
+                        <div class="message-time">только что</div>
+                    </div>
+                </div>
+
+                <div class="quick-questions">
+                    <div class="quick-questions-title">Частые вопросы:</div>
+                    <div class="question-buttons">
+                        <button class="question-btn" onclick="askQuestion('Какие вычеты по НДФЛ мне положены?')">Вычеты по НДФЛ</button>
+                        <button class="question-btn" onclick="askQuestion('Как получить имущественный вычет?')">Имущественный вычет</button>
+                        <button class="question-btn" onclick="askQuestion('Сроки сдачи отчетности')">Сроки отчетности</button>
+                        <button class="question-btn" onclick="askQuestion('Льготы для ИП')">Льготы для ИП</button>
+                    </div>
+                </div>
+
+                <div class="chat-input-container">
+                    <div class="chat-input-wrapper">
+                        <textarea 
+                            class="chat-input" 
+                            id="userInput" 
+                            placeholder="Задайте вопрос о налогах, вычетах или отчетности..."
+                            rows="1"
+                        ></textarea>
+                        <button class="send-button" onclick="sendMessage()">
+                            ↑
+                        </button>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Калькуляторы -->
+        <div class="calculators-grid">
+            <div class="calculator-card">
+                <div class="calculator-icon">🧮</div>
+                <div class="calculator-title">Калькулятор НДФЛ</div>
+                <div class="calculator-description">Расчет налога на доходы физических лиц</div>
+                <button class="calc-btn" onclick="openCalculator('НДФЛ')">Открыть</button>
+            </div>
+            <div class="calculator-card">
+                <div class="calculator-icon">📊</div>
+                <div class="calculator-title">Калькулятор УСН</div>
+                <div class="calculator-description">Расчет налога при упрощенной системе</div>
+                <button class="calc-btn" onclick="openCalculator('УСН')">Открыть</button>
+            </div>
+            <div class="calculator-card">
+                <div class="calculator-icon">💰</div>
+                <div class="calculator-title">Калькулятор вычетов</div>
+                <div class="calculator-description">Сколько можно вернуть из налогов</div>
+                <button class="calc-btn" onclick="openCalculator('Вычеты')">Открыть</button>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        function goBack() {
+            window.location.href = 'index.html';
+        }
+
+        function selectService(service) {
+            // Сбрасываем активный класс
+            document.querySelectorAll('.service-item').forEach(item => {
+                item.classList.remove('active');
+            });
+            // Активируем выбранный
+            event.currentTarget.classList.add('active');
+            
+            // Задаем вопрос AI-помощнику
+            askQuestion(`Расскажи о ${service} вычете`);
+        }
+
+        function askQuestion(question) {
+            addMessage(question, 'user');
+            
+            // Имитация ответа AI-помощника
+            setTimeout(() => {
+                const responses = {
+                    'Какие вычеты по НДФЛ мне положены?': 'По НДФЛ доступны: имущественный (при покупке жилья), социальный (лечение, обучение), инвестиционный и профессиональный вычеты. Максимальный размер имущественного вычета - 260 тыс. руб.',
+                    'Как получить имущественный вычет?': 'Имущественный вычет можно получить через работодателя (ежемесячно без уплаты НДФЛ) или через налоговую в конце года. Нужны документы: 3-НДФЛ, справка 2-НДФЛ, документы на покупку жилья.',
+                    'Сроки сдачи отчетности': 'Основные сроки: 25 число - авансы по налогам, 28 марта - декларация 3-НДФЛ, 30 апреля - годовая отчетность для ООО, 2 мая - РСВ.',
+                    'Льготы для ИП': 'ИП на УСН 6%: налог можно уменьшить на страховые взносы. ИП на патенте: льготные тарифы. Также есть налоговые каникулы для впервые зарегистрированных ИП.'
+                };
+                
+                const response = responses[question] || 
+                    `По вопросу "${question}" рекомендую обратиться к @iloveipbot в Telegram для получения детальной консультации с учетом вашей конкретной ситуации.`;
+                
+                addMessage(response, 'bot');
+            }, 1000);
+        }
+
+        function sendMessage() {
+            const input = document.getElementById('userInput');
+            const text = input.value.trim();
+            
+            if (text) {
+                addMessage(text, 'user');
+                input.value = '';
+                input.style.height = 'auto';
+                
+                // Имитация "думающего" AI
+                setTimeout(() => {
+                    addMessage("Это интересный вопрос! Для точного ответа с учетом вашей ситуации рекомендую обратиться к @iloveipbot в Telegram. Там AI-помощник специализируется на налоговых вычетах и может дать персонализированную консультацию.", 'bot');
+                }, 1500);
+            }
+        }
+
+        function addMessage(text, sender) {
+            const chatMessages = document.getElementById('chatMessages');
+            const messageDiv = document.createElement('div');
+            messageDiv.className = `message ${sender}-message`;
+            
+            const time = new Date().toLocaleTimeString('ru-RU', { 
+                hour: '2-digit', 
+                minute: '2-digit' 
+            });
+            
+            messageDiv.innerHTML = `
+                ${text}
+                <div class="message-time">${time}</div>
+            `;
+            
+            chatMessages.appendChild(messageDiv);
+            chatMessages.scrollTop = chatMessages.scrollHeight;
+        }
+
+        function openCalculator(type) {
+            alert(`Открывается калькулятор: ${type}\n\nВ реальной системе здесь будет интерактивный калькулятор для точных расчетов.`);
+        }
+
+        // Обработчики событий
+        document.getElementById('userInput').addEventListener('keydown', function(e) {
+            if (e.key === 'Enter' && !e.shiftKey) {
+                e.preventDefault();
+                sendMessage();
+            }
+        });
+
+        document.getElementById('userInput').addEventListener('input', function() {
+            this.style.height = 'auto';
+            this.style.height = Math.min(this.scrollHeight, 120) + 'px';
+        });
+
+        // Первое приветственное сообщение
+        setTimeout(() => {
+            addMessage("💡 Совет: Вы можете задавать вопросы о налоговых вычетах, сроках отчетности, льготах для бизнеса. Я помогу разобраться в сложных налоговых вопросах!", 'bot');
+        }, 2000);
+    </script>
+</body>
+</html>
