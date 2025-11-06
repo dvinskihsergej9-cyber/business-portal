@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Business Portal - Ваш виртуальный офис</title>
+    <title>Business Portal</title>
     <style>
         * {
             margin: 0;
@@ -12,19 +12,32 @@
         }
         
         body {
-            font-family: 'Segoe UI', system-ui, -apple-system, sans-serif;
-            background: linear-gradient(135deg, #f8fafc 0%, #e2e8f0 100%);
-            min-height: 100vh;
-            color: #1a202c;
-            overflow-x: hidden;
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            background: #fafafa;
+            color: #2c3e50;
+            line-height: 1.5;
+            font-weight: 400;
         }
 
-        /* Светлый хедер */
+        :root {
+            --primary: #2c5aa0;
+            --primary-light: #e8eef7;
+            --secondary: #5d6d7e;
+            --accent: #27ae60;
+            --border: #e1e8ed;
+            --background: #fafafa;
+            --card-bg: #ffffff;
+            --text-main: #2c3e50;
+            --text-light: #7f8c8d;
+            --warning: #e74c3c;
+            --warning-light: #fdedec;
+        }
+
+        /* Хедер главной страницы */
         .header {
-            background: rgba(255, 255, 255, 0.9);
-            backdrop-filter: blur(20px);
-            border-bottom: 1px solid rgba(0, 0, 0, 0.1);
-            padding: 20px 0;
+            background: var(--card-bg);
+            border-bottom: 1px solid var(--border);
+            padding: 1.5rem 0;
             position: sticky;
             top: 0;
             z-index: 100;
@@ -33,7 +46,7 @@
         .header-content {
             max-width: 1200px;
             margin: 0 auto;
-            padding: 0 24px;
+            padding: 0 1.5rem;
             display: flex;
             justify-content: space-between;
             align-items: center;
@@ -42,257 +55,237 @@
         .logo {
             display: flex;
             align-items: center;
-            gap: 16px;
+            gap: 0.75rem;
         }
 
         .logo-icon {
-            font-size: 2.5rem;
-            background: linear-gradient(135deg, #667eea, #764ba2);
-            border-radius: 16px;
-            padding: 12px;
+            width: 40px;
+            height: 40px;
+            background: var(--primary);
+            border-radius: 10px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
             color: white;
+            font-weight: 600;
+            font-size: 1.1rem;
         }
 
         .logo-text {
-            font-size: 1.8rem;
-            font-weight: 700;
-            background: linear-gradient(135deg, #667eea, #764ba2);
-            -webkit-background-clip: text;
-            -webkit-text-fill-color: transparent;
-        }
-
-        .user-menu {
-            display: flex;
-            align-items: center;
-            gap: 20px;
-        }
-
-        .notification-bell {
-            background: rgba(102, 126, 234, 0.1);
-            border: 1px solid rgba(102, 126, 234, 0.2);
-            padding: 12px;
-            border-radius: 12px;
-            cursor: pointer;
-            transition: all 0.3s ease;
-            color: #667eea;
-        }
-
-        .notification-bell:hover {
-            background: rgba(102, 126, 234, 0.15);
-            transform: scale(1.05);
-        }
-
-        .user-profile {
-            display: flex;
-            align-items: center;
-            gap: 12px;
-            background: rgba(102, 126, 234, 0.1);
-            padding: 10px 20px;
-            border-radius: 25px;
-            cursor: pointer;
-            transition: all 0.3s ease;
-            border: 1px solid rgba(102, 126, 234, 0.2);
-        }
-
-        .user-profile:hover {
-            background: rgba(102, 126, 234, 0.15);
-        }
-
-        .user-avatar {
-            width: 40px;
-            height: 40px;
-            background: linear-gradient(135deg, #667eea, #764ba2);
-            border-radius: 50%;
-            display: flex;
-            align-items: center;
-            justify-content: center;
+            font-size: 1.5rem;
             font-weight: 600;
-            color: white;
+            color: var(--text-main);
         }
 
-        /* Герой секция */
-        .hero {
-            text-align: center;
-            padding: 80px 24px 60px;
-            position: relative;
-        }
-
-        .hero::before {
-            content: '';
-            position: absolute;
-            top: 0;
-            left: 0;
-            right: 0;
-            bottom: 0;
-            background: radial-gradient(circle at center, rgba(102, 126, 234, 0.05) 0%, transparent 70%);
-            pointer-events: none;
-        }
-
-        .hero h1 {
-            font-size: 3.5rem;
-            font-weight: 800;
-            margin-bottom: 16px;
-            background: linear-gradient(135deg, #2d3748, #667eea);
-            -webkit-background-clip: text;
-            -webkit-text-fill-color: transparent;
-            line-height: 1.1;
-        }
-
-        .hero p {
-            font-size: 1.3rem;
-            color: #4a5568;
-            max-width: 600px;
-            margin: 0 auto 40px;
-            line-height: 1.6;
-        }
-
-        .stats {
+        .user-info {
             display: flex;
-            justify-content: center;
-            gap: 40px;
-            margin-top: 40px;
+            align-items: center;
+            gap: 1rem;
         }
 
-        .stat-item {
+        .user-name {
+            font-weight: 500;
+        }
+
+        .btn {
+            padding: 0.75rem 1.25rem;
+            border: 1px solid var(--border);
+            border-radius: 8px;
+            background: var(--card-bg);
+            cursor: pointer;
+            font-size: 0.9rem;
+            font-weight: 500;
+            transition: all 0.2s ease;
+            color: var(--text-main);
+            text-decoration: none;
+            display: inline-block;
+        }
+
+        .btn:hover {
+            border-color: var(--primary);
+        }
+
+        /* Основной контент */
+        .main-container {
+            max-width: 1200px;
+            margin: 0 auto;
+            padding: 2rem 1.5rem;
+        }
+
+        /* Приветствие */
+        .welcome-section {
+            background: var(--card-bg);
+            border: 1px solid var(--border);
+            border-radius: 12px;
+            padding: 2rem;
+            margin-bottom: 2rem;
             text-align: center;
         }
 
-        .stat-number {
-            font-size: 2.5rem;
-            font-weight: 700;
-            background: linear-gradient(135deg, #667eea, #764ba2);
-            -webkit-background-clip: text;
-            -webkit-text-fill-color: transparent;
+        .welcome-title {
+            font-size: 1.75rem;
+            font-weight: 300;
+            margin-bottom: 0.5rem;
+            color: var(--text-main);
         }
 
-        .stat-label {
-            font-size: 0.9rem;
-            color: #718096;
-            margin-top: 4px;
+        .welcome-subtitle {
+            color: var(--text-light);
+            font-size: 1.1rem;
+            margin-bottom: 1.5rem;
         }
 
         /* Сетка отделов */
-        .departments-section {
-            max-width: 1200px;
-            margin: 0 auto;
-            padding: 40px 24px;
-        }
-
-        .section-title {
-            font-size: 2rem;
-            font-weight: 700;
-            margin-bottom: 40px;
-            text-align: center;
-            color: #2d3748;
-        }
-
         .departments-grid {
             display: grid;
-            grid-template-columns: repeat(auto-fit, minmax(350px, 1fr));
-            gap: 24px;
+            grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+            gap: 1.5rem;
+            margin-bottom: 2rem;
         }
 
         .department-card {
-            background: white;
-            backdrop-filter: blur(20px);
-            border: 1px solid #e2e8f0;
-            border-radius: 20px;
-            padding: 32px;
+            background: var(--card-bg);
+            border: 1px solid var(--border);
+            border-radius: 12px;
+            padding: 1.5rem;
             cursor: pointer;
-            transition: all 0.4s ease;
-            position: relative;
-            overflow: hidden;
-            box-shadow: 0 4px 20px rgba(0, 0, 0, 0.08);
-        }
-
-        .department-card::before {
-            content: '';
-            position: absolute;
-            top: 0;
-            left: -100%;
-            width: 100%;
-            height: 100%;
-            background: linear-gradient(90deg, transparent, rgba(102, 126, 234, 0.05), transparent);
-            transition: left 0.6s ease;
-        }
-
-        .department-card:hover::before {
-            left: 100%;
+            transition: all 0.2s ease;
+            text-decoration: none;
+            color: inherit;
         }
 
         .department-card:hover {
-            transform: translateY(-8px);
-            border-color: #667eea;
-            box-shadow: 0 20px 40px rgba(102, 126, 234, 0.15);
+            border-color: var(--primary);
+            transform: translateY(-2px);
+            box-shadow: 0 4px 12px rgba(0,0,0,0.1);
         }
 
         .department-header {
             display: flex;
             align-items: center;
-            gap: 16px;
-            margin-bottom: 16px;
+            gap: 1rem;
+            margin-bottom: 1rem;
         }
 
         .department-icon {
-            font-size: 3rem;
-            width: 80px;
-            height: 80px;
+            width: 60px;
+            height: 60px;
+            background: var(--primary-light);
+            border-radius: 12px;
             display: flex;
             align-items: center;
             justify-content: center;
-            background: rgba(102, 126, 234, 0.1);
-            border-radius: 16px;
-            color: #667eea;
-        }
-
-        .department-title {
             font-size: 1.5rem;
+            color: var(--primary);
+        }
+
+        .department-info {
+            flex: 1;
+        }
+
+        .department-name {
+            font-size: 1.25rem;
             font-weight: 600;
-            color: #2d3748;
+            margin-bottom: 0.25rem;
         }
 
-        .department-description {
-            color: #718096;
-            line-height: 1.6;
-            margin-bottom: 20px;
+        .department-desc {
+            color: var(--text-light);
+            font-size: 0.9rem;
         }
 
-        .department-features {
+        .department-stats {
             display: flex;
-            flex-wrap: wrap;
-            gap: 8px;
-            margin-top: 16px;
+            gap: 1rem;
+            margin-top: 1rem;
         }
 
-        .feature-tag {
-            background: rgba(102, 126, 234, 0.1);
-            color: #667eea;
-            padding: 6px 12px;
-            border-radius: 12px;
+        .stat {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            flex: 1;
+        }
+
+        .stat-number {
+            font-size: 1.5rem;
+            font-weight: 300;
+            color: var(--primary);
+        }
+
+        .stat-label {
             font-size: 0.8rem;
-            border: 1px solid rgba(102, 126, 234, 0.2);
+            color: var(--text-light);
+            margin-top: 0.25rem;
         }
 
-        /* Футер */
-        .footer {
-            background: white;
-            border-top: 1px solid #e2e8f0;
-            padding: 40px 24px;
-            margin-top: 80px;
-            text-align: center;
+        /* Быстрый доступ */
+        .quick-access {
+            background: var(--card-bg);
+            border: 1px solid var(--border);
+            border-radius: 12px;
+            padding: 1.5rem;
         }
 
-        .footer-content {
-            max-width: 1200px;
-            margin: 0 auto;
-            color: #718096;
+        .section-header {
+            display: flex;
+            justify-content: between;
+            align-items: center;
+            margin-bottom: 1.5rem;
+        }
+
+        .section-title {
+            font-size: 1.25rem;
+            font-weight: 600;
+            color: var(--text-main);
+        }
+
+        .quick-actions {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            gap: 1rem;
+        }
+
+        .action-item {
+            display: flex;
+            align-items: center;
+            gap: 0.75rem;
+            padding: 1rem;
+            border: 1px solid var(--border);
+            border-radius: 8px;
+            cursor: pointer;
+            transition: all 0.2s ease;
+        }
+
+        .action-item:hover {
+            border-color: var(--primary);
+            background: var(--primary-light);
+        }
+
+        .action-icon {
+            width: 40px;
+            height: 40px;
+            background: var(--primary-light);
+            border-radius: 8px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            color: var(--primary);
+        }
+
+        .action-text {
+            font-weight: 500;
         }
 
         /* Анимации */
-        @keyframes fadeInUp {
+        .main-container {
+            animation: fadeIn 0.4s ease-out;
+        }
+
+        @keyframes fadeIn {
             from {
                 opacity: 0;
-                transform: translateY(30px);
+                transform: translateY(10px);
             }
             to {
                 opacity: 1;
@@ -300,222 +293,218 @@
             }
         }
 
-        .department-card {
-            animation: fadeInUp 0.6s ease-out;
-        }
-
-        .department-card:nth-child(1) { animation-delay: 0.1s; }
-        .department-card:nth-child(2) { animation-delay: 0.2s; }
-        .department-card:nth-child(3) { animation-delay: 0.3s; }
-        .department-card:nth-child(4) { animation-delay: 0.4s; }
-        .department-card:nth-child(5) { animation-delay: 0.5s; }
-        .department-card:nth-child(6) { animation-delay: 0.6s; }
-
         /* Адаптивность */
         @media (max-width: 768px) {
-            .hero h1 {
-                font-size: 2.5rem;
-            }
-            
             .departments-grid {
                 grid-template-columns: 1fr;
             }
             
-            .stats {
-                flex-direction: column;
-                gap: 20px;
+            .quick-actions {
+                grid-template-columns: 1fr;
             }
             
             .header-content {
-                flex-direction: column;
-                gap: 16px;
+                padding: 0 1rem;
+            }
+            
+            .main-container {
+                padding: 1.5rem 1rem;
             }
         }
     </style>
 </head>
 <body>
-    <!-- Хедер -->
     <header class="header">
         <div class="header-content">
             <div class="logo">
-                <div class="logo-icon">🏢</div>
+                <div class="logo-icon">BP</div>
                 <div class="logo-text">Business Portal</div>
             </div>
             
-            <div class="user-menu">
-                <div class="notification-bell">🔔</div>
-                <div class="user-profile">
-                    <div class="user-avatar">АД</div>
-                    <div>Алексей Д.</div>
-                </div>
+            <div class="user-info">
+                <div class="user-name">Алексей Петров</div>
+                <a href="#" class="btn">Выйти</a>
             </div>
         </div>
     </header>
 
-    <!-- Герой секция -->
-    <section class="hero">
-        <h1>Ваш виртуальный офис</h1>
-        <p>Все бизнес-процессы в одном современном портале. Автоматизация, аналитика и AI-помощники для вашего роста</p>
-        
-        <div class="stats">
-            <div class="stat-item">
-                <div class="stat-number">6</div>
-                <div class="stat-label">отделов</div>
-            </div>
-            <div class="stat-item">
-                <div class="stat-number">24/7</div>
-                <div class="stat-label">доступность</div>
-            </div>
-            <div class="stat-item">
-                <div class="stat-number">AI</div>
-                <div class="stat-label">помощники</div>
+    <div class="main-container">
+        <!-- Приветствие -->
+        <div class="welcome-section">
+            <h1 class="welcome-title">Добро пожаловать в Business Portal</h1>
+            <p class="welcome-subtitle">Все инструменты для управления бизнесом в одном месте</p>
+            <div style="display: flex; gap: 1rem; justify-content: center; margin-top: 1.5rem;">
+                <a href="#departments" class="btn" style="background: var(--primary); color: white; border-color: var(--primary);">Начать работу</a>
+                <a href="#" class="btn">О системе</a>
             </div>
         </div>
-    </section>
 
-    <!-- Сетка отделов -->
-    <section class="departments-section">
-        <h2 class="section-title">Бизнес-отделы</h2>
-        
-        <div class="departments-grid">
-            <!-- Юрист -->
-            <div class="department-card" onclick="openDepartment('lawyer')">
-                <div class="department-header">
-                    <div class="department-icon">⚖️</div>
-                    <div class="department-title">Юридический отдел</div>
-                </div>
-                <p class="department-description">
-                    AI-помощник по правовым вопросам, составление договоров, консультации по законодательству
-                </p>
-                <div class="department-features">
-                    <span class="feature-tag">Договоры</span>
-                    <span class="feature-tag">Налоги</span>
-                    <span class="feature-tag">Споры</span>
-                    <span class="feature-tag">AI-консультант</span>
-                </div>
+        <!-- Отделы компании -->
+        <div id="departments">
+            <div class="section-header">
+                <div class="section-title">Отделы компании</div>
             </div>
-
+            
+            <div class="departments-grid">
                 <!-- Бухгалтерия -->
-    <div class="department-card" onclick="openDepartment('accounting')">
-        <div class="department-header">
-            <div class="department-icon">📊</div>
-            <div class="department-title">Бухгалтерия</div>
+                <a href="accounting.html" class="department-card">
+                    <div class="department-header">
+                        <div class="department-icon">💰</div>
+                        <div class="department-info">
+                            <div class="department-name">Бухгалтерия</div>
+                            <div class="department-desc">Финансы, налоги, отчетность</div>
+                        </div>
+                    </div>
+                    <div class="department-stats">
+                        <div class="stat">
+                            <div class="stat-number">3</div>
+                            <div class="stat-label">Срочных отчета</div>
+                        </div>
+                        <div class="stat">
+                            <div class="stat-number">1.8M</div>
+                            <div class="stat-label">Баланс</div>
+                        </div>
+                        <div class="stat">
+                            <div class="stat-number">12</div>
+                            <div class="stat-label">Документов</div>
+                        </div>
+                    </div>
+                </a>
+
+                <!-- Склад -->
+                <a href="warehouse.html" class="department-card">
+                    <div class="department-header">
+                        <div class="department-icon">📦</div>
+                        <div class="department-info">
+                            <div class="department-name">Склад и логистика</div>
+                            <div class="department-desc">Товары, поставки, инвентаризация</div>
+                        </div>
+                    </div>
+                    <div class="department-stats">
+                        <div class="stat">
+                            <div class="stat-number">1,247</div>
+                            <div class="stat-label">Товаров</div>
+                        </div>
+                        <div class="stat">
+                            <div class="stat-number">3</div>
+                            <div class="stat-label">Поставки</div>
+                        </div>
+                        <div class="stat">
+                            <div class="stat-number">94%</div>
+                            <div class="stat-label">Доступность</div>
+                        </div>
+                    </div>
+                </a>
+
+                <!-- Юридический отдел -->
+                <a href="lawyer.html" class="department-card">
+                    <div class="department-header">
+                        <div class="department-icon">⚖️</div>
+                        <div class="department-info">
+                            <div class="department-name">Юридический отдел</div>
+                            <div class="department-desc">Договоры, суды, нормативные акты</div>
+                        </div>
+                    </div>
+                    <div class="department-stats">
+                        <div class="stat">
+                            <div class="stat-number">5</div>
+                            <div class="stat-label">Активных дел</div>
+                        </div>
+                        <div class="stat">
+                            <div class="stat-number">23</div>
+                            <div class="stat-label">Договоров</div>
+                        </div>
+                        <div class="stat">
+                            <div class="stat-number">2</div>
+                            <div class="stat-label">Исков</div>
+                        </div>
+                    </div>
+                </a>
+
+                <!-- Охрана труда -->
+                <a href="safety.html" class="department-card">
+                    <div class="department-header">
+                        <div class="department-icon">🛡️</div>
+                        <div class="department-info">
+                            <div class="department-name">Охрана труда</div>
+                            <div class="department-desc">Безопасность, инструктажи, проверки</div>
+                        </div>
+                    </div>
+                    <div class="department-stats">
+                        <div class="stat">
+                            <div class="stat-number">147</div>
+                            <div class="stat-label">Сотрудников</div>
+                        </div>
+                        <div class="stat">
+                            <div class="stat-number">3</div>
+                            <div class="stat-label">Проверки</div>
+                        </div>
+                        <div class="stat">
+                            <div class="stat-number">98%</div>
+                            <div class="stat-label">Обучены</div>
+                        </div>
+                    </div>
+                </a>
+            </div>
         </div>
-        <p class="department-description">
-            AI-помощник по налогам, налоговые вычеты, отчетность и финансовые консультации
-        </p>
-        <div class="department-features">
-            <span class="feature-tag">Налоги</span>
-            <span class="feature-tag">Вычеты</span>
-            <span class="feature-tag">Отчетность</span>
-            <span class="feature-tag">AI-консультант</span>
+
+        <!-- Быстрый доступ -->
+        <div class="quick-access">
+            <div class="section-header">
+                <div class="section-title">Быстрый доступ</div>
+            </div>
+            <div class="quick-actions">
+                <div class="action-item" onclick="openQuickAction('documents')">
+                    <div class="action-icon">📄</div>
+                    <div class="action-text">Мои документы</div>
+                </div>
+                <div class="action-item" onclick="openQuickAction('tasks')">
+                    <div class="action-icon">✅</div>
+                    <div class="action-text">Задачи и поручения</div>
+                </div>
+                <div class="action-item" onclick="openQuickAction('calendar')">
+                    <div class="action-icon">📅</div>
+                    <div class="action-text">Календарь встреч</div>
+                </div>
+                <div class="action-item" onclick="openQuickAction('reports')">
+                    <div class="action-icon">📊</div>
+                    <div class="action-text">Отчеты и аналитика</div>
+                </div>
+                <div class="action-item" onclick="openQuickAction('messages')">
+                    <div class="action-icon">💬</div>
+                    <div class="action-text">Сообщения</div>
+                </div>
+                <div class="action-item" onclick="openQuickAction('settings')">
+                    <div class="action-icon">⚙️</div>
+                    <div class="action-text">Настройки</div>
+                </div>
+            </div>
         </div>
     </div>
 
-            <!-- Кадры -->
-            <div class="department-card" onclick="openDepartment('hr')">
-                <div class="department-header">
-                    <div class="department-icon">👥</div>
-                    <div class="department-title">Отдел кадров</div>
-                </div>
-                <p class="department-description">
-                    Управление персоналом, отпуска, документооборот, найм и адаптация сотрудников
-                </p>
-                <div class="department-features">
-                    <span class="feature-tag">Сотрудники</span>
-                    <span class="feature-tag">Отпуска</span>
-                    <span class="feature-tag">Документы</span>
-                    <span class="feature-tag">Найм</span>
-                </div>
-            </div>
-
-            <!-- Охрана труда -->
-            <div class="department-card" onclick="openDepartment('safety')">
-                <div class="department-header">
-                    <div class="department-icon">⚠️</div>
-                    <div class="department-title">Охрана труда</div>
-                </div>
-                <p class="department-description">
-                    Инструктажи, нормативы, безопасность на производстве и соблюдение стандартов
-                </p>
-                <div class="department-features">
-                    <span class="feature-tag">Инструктажи</span>
-                    <span class="feature-tag">Безопасность</span>
-                    <span class="feature-tag">Нормативы</span>
-                    <span class="feature-tag">Аудит</span>
-                </div>
-            </div>
-
-            <!-- Склад -->
-            <div class="department-card" onclick="openDepartment('warehouse')">
-                <div class="department-header">
-                    <div class="department-icon">📦</div>
-                    <div class="department-title">Склад</div>
-                </div>
-                <p class="department-description">
-                    Автоматизация складских процессов, учет товаров, логистика и управление запасами
-                </p>
-                <div class="department-features">
-                    <span class="feature-tag">Учет</span>
-                    <span class="feature-tag">Логистика</span>
-                    <span class="feature-tag">Автоматизация</span>
-                    <span class="feature-tag">Аналитика</span>
-                </div>
-            </div>
-
-            <!-- Документооборот -->
-            <div class="department-card" onclick="openDepartment('documents')">
-                <div class="department-header">
-                    <div class="department-icon">📋</div>
-                    <div class="department-title">Документооборот</div>
-                </div>
-                <p class="department-description">
-                    Электронный документооборот, создание, хранение и управление бизнес-документами
-                </p>
-                <div class="department-features">
-                    <span class="feature-tag">ЭДО</span>
-                    <span class="feature-tag">Архив</span>
-                    <span class="feature-tag">Шаблоны</span>
-                    <span class="feature-tag">Поиск</span>
-                </div>
-            </div>
-        </div>
-    </section>
-
-    <!-- Футер -->
-    <footer class="footer">
-        <div class="footer-content">
-            <p>Business Portal © 2024. Все права защищены.</p>
-            <p>Ваш современный виртуальный офис для эффективного бизнеса</p>
-        </div>
-    </footer>
-
     <script>
-        function openDepartment(department) {
-    if (department === 'lawyer') {
-        window.location.href = 'lawyer.html';
-    } else if (department === 'warehouse') {
-        window.location.href = 'warehouse.html';
-    } else if (department === 'accounting') {
-        window.location.href = 'accounting.html';
-    } else {
-        const departmentNames = {
-            'hr': 'Отдел кадров', 
-            'safety': 'Охрана труда',
-            'documents': 'Документооборот'
-        };
-        
-        const name = departmentNames[department] || department;
-        alert(`Отдел "${name}" находится в разработке 🚧\nСкоро будет доступен!`);
-    }
-}
-
+        // Плавное появление
         document.addEventListener('DOMContentLoaded', function() {
-            const cards = document.querySelectorAll('.department-card');
-            cards.forEach((card, index) => {
-                card.style.animationDelay = `${0.1 + index * 0.1}s`;
-            });
+            document.body.style.opacity = '0';
+            setTimeout(() => {
+                document.body.style.opacity = '1';
+            }, 50);
         });
+
+        // Функции быстрого доступа
+        function openQuickAction(action) {
+            const actions = {
+                'documents': 'Открыты мои документы',
+                'tasks': 'Открыты задачи и поручения',
+                'calendar': 'Открыт календарь встреч',
+                'reports': 'Открыты отчеты и аналитика',
+                'messages': 'Открыты сообщения',
+                'settings': 'Открыты настройки'
+            };
+            alert(actions[action]);
+        }
+
+        // Убрал блокировку ссылок - теперь все отделы будут открываться
     </script>
 </body>
 </html>

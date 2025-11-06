@@ -4,7 +4,26 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Склад - Business Portal</title>
-    <style>
+    <style>        /* Анимации страницы */
+        body {
+            opacity: 1;
+            transition: opacity 0.4s ease;
+        }
+        
+        .main-container {
+            animation: fadeInUp 0.6s ease-out;
+        }
+        
+        @keyframes fadeInUp {
+            from {
+                opacity: 0;
+                transform: translateY(20px);
+            }
+            to {
+                opacity: 1;
+                transform: translateY(0);
+            }
+        }
         * {
             margin: 0;
             padding: 0;
@@ -583,6 +602,23 @@
 
         // Авто-обновление каждые 30 секунд
         setInterval(updateStats, 30000);
+            // Анимация появления при загрузке
+        document.addEventListener('DOMContentLoaded', function() {
+            document.body.style.opacity = '0';
+            
+            setTimeout(() => {
+                document.body.style.opacity = '1';
+            }, 100);
+        });
+
+        // Анимация возврата
+        function goBack() {
+            document.body.style.opacity = '0';
+            
+            setTimeout(() => {
+                window.location.href = 'index.html';
+            }, 400);
+        }
     </script>
 </body>
 </html>

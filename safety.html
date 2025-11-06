@@ -1,0 +1,1436 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Охрана труда - Business Portal</title>
+    <style>
+        /* Модальные окна */
+        .modal {
+            display: none;
+            position: fixed;
+            z-index: 1000;
+            left: 0;
+            top: 0;
+            width: 100%;
+            height: 100%;
+            background-color: rgba(0,0,0,0.5);
+        }
+
+        .modal-content {
+            background-color: white;
+            margin: 5% auto;
+            padding: 2rem;
+            border-radius: 12px;
+            width: 90%;
+            max-width: 600px;
+            position: relative;
+            max-height: 90vh;
+            overflow-y: auto;
+        }
+
+        .close-modal {
+            position: absolute;
+            right: 1rem;
+            top: 1rem;
+            font-size: 1.5rem;
+            cursor: pointer;
+            background: none;
+            border: none;
+            color: #718096;
+        }
+
+        .form-group {
+            margin-bottom: 1rem;
+        }
+
+        .form-label {
+            display: block;
+            margin-bottom: 0.5rem;
+            font-weight: 600;
+        }
+
+        .form-input, .form-select, .form-textarea {
+            width: 100%;
+            padding: 0.75rem;
+            border: 1px solid #e2e8f0;
+            border-radius: 6px;
+            font-size: 0.9rem;
+        }
+
+        .form-textarea {
+            height: 120px;
+            resize: vertical;
+        }
+
+        .form-actions {
+            display: flex;
+            gap: 1rem;
+            margin-top: 1.5rem;
+        }
+
+        .btn-primary {
+            background: #2b6cb0;
+            color: white;
+            border: none;
+            padding: 0.75rem 1.5rem;
+            border-radius: 6px;
+            cursor: pointer;
+            flex: 1;
+        }
+
+        .btn-secondary {
+            background: #e2e8f0;
+            color: #4a5568;
+            border: none;
+            padding: 0.75rem 1.5rem;
+            border-radius: 6px;
+            cursor: pointer;
+            flex: 1;
+        }
+        
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        
+        body {
+            font-family: 'Segoe UI', system-ui, -apple-system, sans-serif;
+            background: #f8fafc;
+            min-height: 100vh;
+            color: #1a202c;
+        }
+
+        /* Хедер */
+        .header {
+            background: white;
+            border-bottom: 1px solid #e2e8f0;
+            padding: 1rem 0;
+            position: sticky;
+            top: 0;
+            z-index: 100;
+            box-shadow: 0 2px 10px rgba(0, 0, 0, 0.08);
+        }
+
+        .header-content {
+            max-width: 1200px;
+            margin: 0 auto;
+            padding: 0 2rem;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        .back-button {
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+            background: #2b6cb0;
+            color: white;
+            border: none;
+            padding: 0.75rem 1.5rem;
+            border-radius: 8px;
+            cursor: pointer;
+            font-size: 0.9rem;
+            transition: all 0.3s ease;
+        }
+
+        .back-button:hover {
+            background: #2c5282;
+            transform: translateX(-2px);
+        }
+
+        .department-info {
+            display: flex;
+            align-items: center;
+            gap: 1rem;
+        }
+
+        .department-text h1 {
+            font-size: 1.5rem;
+            font-weight: 700;
+            color: #2d3748;
+        }
+
+        .department-text p {
+            color: #718096;
+            font-size: 0.9rem;
+        }
+
+        /* Основной контент */
+        .main-container {
+            max-width: 1200px;
+            margin: 0 auto;
+            padding: 3rem 2rem;
+        }
+
+        /* Сетка разделов */
+        .sections-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(350px, 1fr));
+            gap: 2rem;
+            margin-bottom: 3rem;
+        }
+
+        .section-card {
+            background: white;
+            border: 1px solid #e2e8f0;
+            border-radius: 12px;
+            padding: 2rem;
+            transition: all 0.3s ease;
+            position: relative;
+        }
+
+        .section-card:hover {
+            transform: translateY(-5px);
+            box-shadow: 0 20px 40px rgba(0, 0, 0, 0.1);
+            border-color: #2b6cb0;
+        }
+
+        .section-icon {
+            font-size: 1.5rem;
+            margin-bottom: 0.5rem;
+        }
+
+        .section-title {
+            font-size: 1.25rem;
+            font-weight: 600;
+            margin-bottom: 1rem;
+            color: #2d3748;
+        }
+
+        .section-description {
+            color: #718096;
+            margin-bottom: 1.5rem;
+            line-height: 1.6;
+        }
+
+        .documents-list {
+            display: flex;
+            flex-direction: column;
+            gap: 0.75rem;
+        }
+
+        .document-item {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 1rem;
+            background: #f7fafc;
+            border-radius: 8px;
+            border: 1px solid #e2e8f0;
+            transition: all 0.3s ease;
+        }
+
+        .document-item:hover {
+            background: #edf2f7;
+        }
+
+        .document-info {
+            flex: 1;
+        }
+
+        .document-name {
+            font-weight: 500;
+            margin-bottom: 0.25rem;
+        }
+
+        .document-size {
+            font-size: 0.875rem;
+            color: #718096;
+        }
+
+        .download-btn {
+            background: #2b6cb0;
+            color: white;
+            border: none;
+            padding: 0.5rem 1rem;
+            border-radius: 6px;
+            cursor: pointer;
+            font-size: 0.875rem;
+            transition: background 0.3s ease;
+        }
+
+        .download-btn:hover {
+            background: #2c5282;
+        }
+
+        /* Инструктажи */
+        .instructions-section {
+            background: white;
+            border: 1px solid #e2e8f0;
+            border-radius: 12px;
+            padding: 2rem;
+            margin-bottom: 3rem;
+        }
+
+        .instructions-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 2rem;
+        }
+
+        .instructions-title {
+            font-size: 1.5rem;
+            font-weight: 600;
+            color: #2d3748;
+        }
+
+        .new-instruction-btn {
+            background: #38a169;
+            color: white;
+            border: none;
+            padding: 0.75rem 1.5rem;
+            border-radius: 8px;
+            cursor: pointer;
+            font-size: 0.9rem;
+            transition: background 0.3s ease;
+        }
+
+        .new-instruction-btn:hover {
+            background: #2f855a;
+        }
+
+        .instructions-table {
+            width: 100%;
+            border-collapse: collapse;
+        }
+
+        .instructions-table th {
+            text-align: left;
+            padding: 1rem;
+            border-bottom: 2px solid #e2e8f0;
+            color: #718096;
+            font-weight: 600;
+        }
+
+        .instructions-table td {
+            padding: 1rem;
+            border-bottom: 1px solid #f7fafc;
+        }
+
+        .employee-info {
+            display: flex;
+            align-items: center;
+            gap: 0.75rem;
+        }
+
+        .employee-avatar {
+            width: 2rem;
+            height: 2rem;
+            background: #2b6cb0;
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            color: white;
+            font-weight: 600;
+            font-size: 0.75rem;
+        }
+
+        .status-badge {
+            padding: 0.25rem 0.75rem;
+            border-radius: 20px;
+            font-size: 0.75rem;
+            font-weight: 600;
+        }
+
+        .status-completed {
+            background: #c6f6d5;
+            color: #22543d;
+        }
+
+        .status-pending {
+            background: #feebc8;
+            color: #744210;
+        }
+
+        .status-overdue {
+            background: #fed7d7;
+            color: #742a2a;
+        }
+
+        .action-buttons {
+            display: flex;
+            gap: 0.5rem;
+        }
+
+        .action-btn {
+            background: none;
+            border: 1px solid #e2e8f0;
+            padding: 0.5rem 1rem;
+            border-radius: 6px;
+            cursor: pointer;
+            font-size: 0.875rem;
+            transition: all 0.3s ease;
+        }
+
+        .action-btn:hover {
+            background: #f7fafc;
+            border-color: #cbd5e0;
+        }
+
+        .remind-btn {
+            background: #f6e05e;
+            color: #744210;
+            border: 1px solid #f6e05e;
+        }
+
+        .remind-btn:hover {
+            background: #ecc94b;
+            border-color: #ecc94b;
+        }
+
+        /* Уведомления */
+        .notification {
+            position: fixed;
+            top: 20px;
+            right: 20px;
+            background: white;
+            border-left: 4px solid #38a169;
+            padding: 1rem 1.5rem;
+            border-radius: 8px;
+            box-shadow: 0 10px 25px rgba(0,0,0,0.1);
+            z-index: 1001;
+            display: flex;
+            align-items: center;
+            gap: 1rem;
+            transform: translateX(400px);
+            transition: transform 0.3s ease;
+            max-width: 400px;
+        }
+
+        .notification.show {
+            transform: translateX(0);
+        }
+
+        .notification-icon {
+            width: 24px;
+            height: 24px;
+            background: #38a169;
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            color: white;
+            font-weight: bold;
+        }
+
+        .notification-content {
+            flex: 1;
+        }
+
+        .notification-title {
+            font-weight: 600;
+            margin-bottom: 0.25rem;
+        }
+
+        .notification-message {
+            color: #718096;
+            font-size: 0.9rem;
+        }
+
+        .notification-close {
+            background: none;
+            border: none;
+            font-size: 1.2rem;
+            cursor: pointer;
+            color: #718096;
+        }
+
+        /* Документ превью */
+        .document-preview {
+            background: white;
+            padding: 2rem;
+            border-radius: 8px;
+            margin-bottom: 1rem;
+            border: 1px solid #e2e8f0;
+        }
+
+        .document-header {
+            text-align: center;
+            margin-bottom: 2rem;
+            padding-bottom: 1rem;
+            border-bottom: 2px solid #e2e8f0;
+        }
+
+        .document-title {
+            font-size: 1.5rem;
+            font-weight: 700;
+            color: #2d3748;
+            margin-bottom: 0.5rem;
+        }
+
+        .document-content {
+            line-height: 1.6;
+            margin-bottom: 2rem;
+        }
+
+        .document-section {
+            margin-bottom: 1.5rem;
+        }
+
+        .document-section-title {
+            font-weight: 600;
+            margin-bottom: 0.5rem;
+            color: #2d3748;
+        }
+
+        .signature-area {
+            margin-top: 3rem;
+            padding-top: 1rem;
+            border-top: 1px solid #e2e8f0;
+        }
+
+        .signature-line {
+            display: flex;
+            justify-content: space-between;
+            margin-bottom: 1rem;
+        }
+
+        /* Анимации страницы */
+        body {
+            opacity: 1;
+            transition: opacity 0.4s ease;
+        }
+        
+        .main-container {
+            animation: fadeInUp 0.6s ease-out;
+        }
+        
+        @keyframes fadeInUp {
+            from {
+                opacity: 0;
+                transform: translateY(20px);
+            }
+            to {
+                opacity: 1;
+                transform: translateY(0);
+            }
+        }
+
+        /* Адаптивность */
+        @media (max-width: 768px) {
+            .sections-grid {
+                grid-template-columns: 1fr;
+            }
+            
+            .instructions-header {
+                flex-direction: column;
+                gap: 1rem;
+                align-items: flex-start;
+            }
+            
+            .form-actions {
+                flex-direction: column;
+            }
+            
+            .instructions-table {
+                display: block;
+                overflow-x: auto;
+            }
+            
+            .action-buttons {
+                flex-direction: column;
+            }
+        }
+    </style>
+</head>
+<body>
+    <header class="header">
+        <div class="header-content">
+            <button class="back-button" onclick="goBack()">
+                ← Назад
+            </button>
+            
+            <div class="department-info">
+                <div class="department-text">
+                    <h1>Охрана труда</h1>
+                    <p>Инструктажи, документы и безопасность</p>
+                </div>
+            </div>
+        </div>
+    </header>
+
+    <div class="main-container">
+        <!-- Документы и инструкции -->
+        <div class="sections-grid">
+            <!-- Нормативные документы -->
+            <div class="section-card">
+                <div class="section-icon">📋</div>
+                <h3 class="section-title">Нормативные документы</h3>
+                <p class="section-description">
+                    Официальные документы по охране труда и технике безопасности
+                </p>
+                <div class="documents-list">
+                    <div class="document-item">
+                        <div class="document-info">
+                            <div class="document-name">Инструкция по охране труда</div>
+                            <div class="document-size">Общие требования</div>
+                        </div>
+                        <button class="download-btn" onclick="showDocument('instruction')">Просмотр</button>
+                    </div>
+                    <div class="document-item">
+                        <div class="document-info">
+                            <div class="document-name">Положение о СИЗ</div>
+                            <div class="document-size">Нормы выдачи средств защиты</div>
+                        </div>
+                        <button class="download-btn" onclick="showDocument('sizRegulation')">Просмотр</button>
+                    </div>
+                    <div class="document-item">
+                        <div class="document-info">
+                            <div class="document-name">Журнал инструктажей</div>
+                            <div class="document-size">Форма для ведения учета</div>
+                        </div>
+                        <button class="download-btn" onclick="downloadTemplate('instructionJournal')">Скачать</button>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Виды инструктажей -->
+            <div class="section-card">
+                <div class="section-icon">🎓</div>
+                <h3 class="section-title">Виды инструктажей</h3>
+                <p class="section-description">
+                    Периодичность и порядок проведения инструктажей по охране труда
+                </p>
+                <div class="documents-list">
+                    <div class="document-item">
+                        <div class="document-info">
+                            <div class="document-name">Вводный инструктаж</div>
+                            <div class="document-size">При приеме на работу</div>
+                        </div>
+                        <button class="download-btn" onclick="showInstructionProgram('introductory')">Программа</button>
+                    </div>
+                    <div class="document-item">
+                        <div class="document-info">
+                            <div class="document-name">Первичный инструктаж</div>
+                            <div class="document-size">На рабочем месте</div>
+                        </div>
+                        <button class="download-btn" onclick="showInstructionProgram('primary')">Программа</button>
+                    </div>
+                    <div class="document-item">
+                        <div class="document-info">
+                            <div class="document-name">Повторный инструктаж</div>
+                            <div class="document-size">Каждые 6 месяцев</div>
+                        </div>
+                        <button class="download-btn" onclick="showInstructionProgram('repeated')">Программа</button>
+                    </div>
+                </div>
+            </div>
+
+            <!-- СИЗ -->
+            <div class="section-card">
+                <div class="section-icon">🎽</div>
+                <h3 class="section-title">Средства индивидуальной защиты</h3>
+                <p class="section-description">
+                    Учет и выдача СИЗ сотрудникам
+                </p>
+                <div class="documents-list">
+                    <div class="document-item">
+                        <div class="document-info">
+                            <div class="document-name">Нормы выдачи СИЗ</div>
+                            <div class="document-size">Категории и сроки использования</div>
+                        </div>
+                        <button class="download-btn" onclick="showDocument('sizNorms')">Открыть</button>
+                    </div>
+                    <div class="document-item">
+                        <div class="document-info">
+                            <div class="document-name">Заявка на СИЗ</div>
+                            <div class="document-size">Форма для заказа средств защиты</div>
+                        </div>
+                        <button class="download-btn" onclick="showSIZRequest()">Заполнить</button>
+                    </div>
+                    <div class="document-item">
+                        <div class="document-info">
+                            <div class="document-name">Журнал выдачи СИЗ</div>
+                            <div class="document-size">Учет выданных средств</div>
+                        </div>
+                        <button class="download-btn" onclick="downloadTemplate('sizJournal')">Скачать</button>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Медицинские осмотры -->
+            <div class="section-card">
+                <div class="section-icon">🏥</div>
+                <h3 class="section-title">Медицинские осмотры</h3>
+                <p class="section-description">
+                    Плановые и внеплановые медосмотры
+                </p>
+                <div class="documents-list">
+                    <div class="document-item">
+                        <div class="document-info">
+                            <div class="document-name">График медосмотров</div>
+                            <div class="document-size">2024 год</div>
+                        </div>
+                        <button class="download-btn" onclick="showDocument('medicalSchedule')">Просмотр</button>
+                    </div>
+                    <div class="document-item">
+                        <div class="document-info">
+                            <div class="document-name">Направление на осмотр</div>
+                            <div class="document-size">Форма 001-ГС/у</div>
+                        </div>
+                        <button class="download-btn" onclick="showMedicalDirection()">Заполнить</button>
+                    </div>
+                    <div class="document-item">
+                        <div class="document-info">
+                            <div class="document-name">Список сотрудников</div>
+                            <div class="document-size">На предстоящий осмотр</div>
+                        </div>
+                        <button class="download-btn" onclick="showEmployeeList()">Сформировать</button>
+                    </div>
+                </div>
+            </div>
+
+            <!-- СОУТ -->
+            <div class="section-card">
+                <div class="section-icon">📊</div>
+                <h3 class="section-title">СОУТ</h3>
+                <p class="section-description">
+                    Специальная оценка условий труда
+                </p>
+                <div class="documents-list">
+                    <div class="document-item">
+                        <div class="document-info">
+                            <div class="document-name">Карты СОУТ</div>
+                            <div class="document-size">По рабочим местам</div>
+                        </div>
+                        <button class="download-btn" onclick="showSoutCards()">Открыть</button>
+                    </div>
+                    <div class="document-item">
+                        <div class="document-info">
+                            <div class="document-name">Сводная ведомость</div>
+                            <div class="document-size">Результаты оценки</div>
+                        </div>
+                        <button class="download-btn" onclick="showDocument('soutSummary')">Просмотр</button>
+                    </div>
+                    <div class="document-item">
+                        <div class="document-info">
+                            <div class="document-name">Перечень мероприятий</div>
+                            <div class="document-size">По улучшению условий</div>
+                        </div>
+                        <button class="download-btn" onclick="showImprovementPlan()">План</button>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Происшествия -->
+            <div class="section-card">
+                <div class="section-icon">⚠️</div>
+                <h3 class="section-title">Учет происшествий</h3>
+                <p class="section-description">
+                    Регистрация и расследование несчастных случаев
+                </p>
+                <div class="documents-list">
+                    <div class="document-item">
+                        <div class="document-info">
+                            <div class="document-name">Акт о несчастном случае</div>
+                            <div class="document-size">Форма Н-1</div>
+                        </div>
+                        <button class="download-btn" onclick="showAccidentForm()">Заполнить</button>
+                    </div>
+                    <div class="document-item">
+                        <div class="document-info">
+                            <div class="document-name">Журнал учета</div>
+                            <div class="document-size">Происшествий и инцидентов</div>
+                        </div>
+                        <button class="download-btn" onclick="downloadTemplate('incidentJournal')">Скачать</button>
+                    </div>
+                    <div class="document-item">
+                        <div class="document-info">
+                            <div class="document-name">Статистика травматизма</div>
+                            <div class="document-size">2024 год</div>
+                        </div>
+                        <button class="download-btn" onclick="showStatistics()">Анализ</button>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Обучение -->
+            <div class="section-card">
+                <div class="section-icon">📚</div>
+                <h3 class="section-title">Обучение</h3>
+                <p class="section-description">
+                    Программы обучения и аттестации
+                </p>
+                <div class="documents-list">
+                    <div class="document-item">
+                        <div class="document-info">
+                            <div class="document-name">Программы обучения</div>
+                            <div class="document-size">По профессиям</div>
+                        </div>
+                        <button class="download-btn" onclick="showTrainingPrograms()">Каталог</button>
+                    </div>
+                    <div class="document-item">
+                        <div class="document-info">
+                            <div class="document-name">График аттестации</div>
+                            <div class="document-size">На 2024 год</div>
+                        </div>
+                        <button class="download-btn" onclick="showDocument('attestationSchedule')">Просмотр</button>
+                    </div>
+                    <div class="document-item">
+                        <div class="document-info">
+                            <div class="document-name">Заявка на обучение</div>
+                            <div class="document-size">Форма для подачи заявки</div>
+                        </div>
+                        <button class="download-btn" onclick="showTrainingRequest()">Подать</button>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Пожарная безопасность -->
+            <div class="section-card">
+                <div class="section-icon">🔥</div>
+                <h3 class="section-title">Пожарная безопасность</h3>
+                <p class="section-description">
+                    Инструкции и мероприятия по пожарной безопасности
+                </p>
+                <div class="documents-list">
+                    <div class="document-item">
+                        <div class="document-info">
+                            <div class="document-name">Инструкция по ПБ</div>
+                            <div class="document-size">Общие требования</div>
+                        </div>
+                        <button class="download-btn" onclick="showDocument('fireSafety')">Просмотр</button>
+                    </div>
+                    <div class="document-item">
+                        <div class="document-info">
+                            <div class="document-name">План эвакуации</div>
+                            <div class="document-size">По этажам</div>
+                        </div>
+                        <button class="download-btn" onclick="showEvacuationPlan()">Открыть</button>
+                    </div>
+                    <div class="document-item">
+                        <div class="document-info">
+                            <div class="document-name">Журнал инструктажей ПБ</div>
+                            <div class="document-size">Учет проведения</div>
+                        </div>
+                        <button class="download-btn" onclick="downloadTemplate('fireInstructionJournal')">Скачать</button>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Учет инструктажей -->
+        <section class="instructions-section">
+            <div class="instructions-header">
+                <h2 class="instructions-title">Учет инструктажей сотрудников</h2>
+                <div style="display: flex; gap: 1rem;">
+                    <button class="new-instruction-btn" onclick="showAddEmployee()">
+                        + Добавить сотрудника
+                    </button>
+                    <button class="new-instruction-btn" onclick="addNewInstruction()">
+                        + Новый инструктаж
+                    </button>
+                </div>
+            </div>
+
+            <table class="instructions-table">
+                <thead>
+                    <tr>
+                        <th>Сотрудник</th>
+                        <th>Вид инструктажа</th>
+                        <th>Дата проведения</th>
+                        <th>Следующий срок</th>
+                        <th>Статус</th>
+                        <th>Действия</th>
+                    </tr>
+                </thead>
+                <tbody id="instructionsTableBody">
+                    <!-- Данные будут загружаться динамически через JavaScript -->
+                </tbody>
+            </table>
+        </section>
+
+        <!-- Статистика -->
+        <section class="instructions-section">
+            <div class="instructions-header">
+                <h2 class="instructions-title">📈 Статистика и отчетность</h2>
+            </div>
+            <div class="sections-grid">
+                <div class="section-card">
+                    <h3 class="section-title">Отчеты по форме 7-травматизм</h3>
+                    <p class="section-description">Ежемесячная отчетность по производственному травматизму</p>
+                    <div class="documents-list">
+                        <div class="document-item">
+                            <div class="document-info">
+                                <div class="document-name">Отчет за январь 2024</div>
+                                <div class="document-size">PDF, 1.2 MB</div>
+                            </div>
+                            <button class="download-btn" onclick="generateReport('january')">Сформировать</button>
+                        </div>
+                        <div class="document-item">
+                            <div class="document-info">
+                                <div class="document-name">Отчет за февраль 2024</div>
+                                <div class="document-size">PDF, 1.3 MB</div>
+                            </div>
+                            <button class="download-btn" onclick="generateReport('february')">Сформировать</button>
+                        </div>
+                    </div>
+                </div>
+                <div class="section-card">
+                    <h3 class="section-title">Аналитические отчеты</h3>
+                    <p class="section-description">Анализ показателей охраны труда</p>
+                    <div class="documents-list">
+                        <div class="document-item">
+                            <div class="document-info">
+                                <div class="document-name">Квартальный отчет Q1</div>
+                                <div class="document-size">PDF, 2.1 MB</div>
+                            </div>
+                            <button class="download-btn" onclick="generateReport('q1')">Сформировать</button>
+                        </div>
+                        <div class="document-item">
+                            <div class="document-info">
+                                <div class="document-name">Анализ травматизма</div>
+                                <div class="document-size">2023-2024 сравнение</div>
+                            </div>
+                            <button class="download-btn" onclick="showStatisticsAnalysis()">Сформировать</button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </section>
+    </div>
+
+    <!-- Модальные окна -->
+    <div id="addEmployeeModal" class="modal">
+        <div class="modal-content">
+            <button class="close-modal" onclick="closeModal('addEmployeeModal')">×</button>
+            <h2 style="margin-bottom: 1.5rem;">Добавить сотрудника</h2>
+            
+            <div class="form-group">
+                <label class="form-label">ФИО сотрудника</label>
+                <input type="text" id="employeeName" class="form-input" placeholder="Иванов Иван Иванович">
+            </div>
+            
+            <div class="form-group">
+                <label class="form-label">Должность</label>
+                <input type="text" id="employeePosition" class="form-input" placeholder="Менеджер">
+            </div>
+            
+            <div class="form-group">
+                <label class="form-label">Дата приема</label>
+                <input type="date" id="employeeHireDate" class="form-input">
+            </div>
+            
+            <div class="form-group">
+                <label class="form-label">Email для уведомлений</label>
+                <input type="email" id="employeeEmail" class="form-input" placeholder="employee@company.com">
+            </div>
+            
+            <div class="form-actions">
+                <button class="btn-secondary" onclick="closeModal('addEmployeeModal')">Отмена</button>
+                <button class="btn-primary" onclick="saveEmployee()">Сохранить</button>
+            </div>
+        </div>
+    </div>
+
+    <div id="addInstructionModal" class="modal">
+        <div class="modal-content">
+            <button class="close-modal" onclick="closeModal('addInstructionModal')">×</button>
+            <h2 style="margin-bottom: 1.5rem;">Новый инструктаж</h2>
+            
+            <div class="form-group">
+                <label class="form-label">Сотрудник</label>
+                <select id="instructionEmployee" class="form-select">
+                    <option value="">Выберите сотрудника</option>
+                </select>
+            </div>
+            
+            <div class="form-group">
+                <label class="form-label">Вид инструктажа</label>
+                <select id="instructionType" class="form-select">
+                    <option value="Вводный инструктаж">Вводный инструктаж</option>
+                    <option value="Первичный инструктаж">Первичный инструктаж</option>
+                    <option value="Повторный инструктаж">Повторный инструктаж</option>
+                    <option value="Внеплановый инструктаж">Внеплановый инструктаж</option>
+                    <option value="Целевой инструктаж">Целевой инструктаж</option>
+                </select>
+            </div>
+            
+            <div class="form-group">
+                <label class="form-label">Дата проведения</label>
+                <input type="date" id="instructionDate" class="form-input">
+            </div>
+            
+            <div class="form-group">
+                <label class="form-label">Следующий срок</label>
+                <input type="date" id="instructionNextDate" class="form-input">
+            </div>
+            
+            <div class="form-actions">
+                <button class="btn-secondary" onclick="closeModal('addInstructionModal')">Отмена</button>
+                <button class="btn-primary" onclick="saveInstruction()">Сохранить</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Модальное окно для документов -->
+    <div id="documentModal" class="modal">
+        <div class="modal-content">
+            <button class="close-modal" onclick="closeModal('documentModal')">×</button>
+            <div id="documentContent">
+                <!-- Содержимое документа будет загружено динамически -->
+            </div>
+        </div>
+    </div>
+
+    <!-- Модальное окно для форм -->
+    <div id="formModal" class="modal">
+        <div class="modal-content">
+            <button class="close-modal" onclick="closeModal('formModal')">×</button>
+            <div id="formContent">
+                <!-- Содержимое формы будет загружено динамически -->
+            </div>
+        </div>
+    </div>
+
+    <!-- Уведомление -->
+    <div id="notification" class="notification">
+        <div class="notification-icon">✓</div>
+        <div class="notification-content">
+            <div class="notification-title" id="notificationTitle">Уведомление отправлено</div>
+            <div class="notification-message" id="notificationMessage"></div>
+        </div>
+        <button class="notification-close" onclick="hideNotification()">×</button>
+    </div>
+
+    <script>
+        // База данных сотрудников и инструктажей
+        let employees = JSON.parse(localStorage.getItem('safety_employees')) || [];
+        let instructions = JSON.parse(localStorage.getItem('safety_instructions')) || [];
+
+        // Инициализация демо-данных, если нет сохраненных
+        if (employees.length === 0) {
+            employees = [
+                { id: '1', name: 'Иван К.', position: 'Менеджер', hireDate: '2024-01-15', email: 'ivan@company.com' },
+                { id: '2', name: 'Мария П.', position: 'Аналитик', hireDate: '2024-02-20', email: 'maria@company.com' },
+                { id: '3', name: 'Алексей Д.', position: 'Разработчик', hireDate: '2024-03-10', email: 'alexey@company.com' },
+                { id: '4', name: 'Ольга С.', position: 'Дизайнер', hireDate: '2024-04-05', email: 'olga@company.com' }
+            ];
+            localStorage.setItem('safety_employees', JSON.stringify(employees));
+        }
+
+        if (instructions.length === 0) {
+            instructions = [
+                { id: '1', employeeId: '1', type: 'Повторный инструктаж', date: '2024-12-15', nextDate: '2025-06-15' },
+                { id: '2', employeeId: '2', type: 'Вводный инструктаж', date: '2024-12-20', nextDate: '2025-12-20' },
+                { id: '3', employeeId: '3', type: 'Повторный инструктаж', date: '2024-11-10', nextDate: '2025-05-10' },
+                { id: '4', employeeId: '4', type: 'Внеплановый инструктаж', date: '2024-12-05', nextDate: '2025-03-05' }
+            ];
+            localStorage.setItem('safety_instructions', JSON.stringify(instructions));
+        }
+
+        // Анимация появления при загрузке
+        document.addEventListener('DOMContentLoaded', function() {
+            document.body.style.opacity = '0';
+            
+            setTimeout(() => {
+                document.body.style.opacity = '1';
+                loadEmployees();
+                loadInstructions();
+            }, 100);
+        });
+
+        // Анимация возврата
+        function goBack() {
+            document.body.style.opacity = '0';
+            
+            setTimeout(() => {
+                window.location.href = 'index.html';
+            }, 400);
+        }
+
+        // Загрузка сотрудников в выпадающий список
+        function loadEmployees() {
+            const select = document.getElementById('instructionEmployee');
+            select.innerHTML = '<option value="">Выберите сотрудника</option>';
+            
+            employees.forEach(employee => {
+                const option = document.createElement('option');
+                option.value = employee.id;
+                option.textContent = `${employee.name} (${employee.position})`;
+                select.appendChild(option);
+            });
+        }
+
+        // Загрузка инструктажей в таблицу
+        function loadInstructions() {
+            const tbody = document.getElementById('instructionsTableBody');
+            tbody.innerHTML = '';
+            
+            if (instructions.length === 0) {
+                tbody.innerHTML = `
+                    <tr>
+                        <td colspan="6" style="text-align: center; padding: 2rem; color: #718096;">
+                            Нет данных об инструктажах. Добавьте первый инструктаж.
+                        </td>
+                    </tr>
+                `;
+                return;
+            }
+            
+            instructions.forEach(instruction => {
+                const employee = employees.find(emp => emp.id === instruction.employeeId);
+                if (!employee) return;
+                
+                const status = getInstructionStatus(instruction.nextDate);
+                const row = document.createElement('tr');
+                
+                row.innerHTML = `
+                    <td>
+                        <div class="employee-info">
+                            <div class="employee-avatar">${getInitials(employee.name)}</div>
+                            <div>${employee.name}</div>
+                        </div>
+                    </td>
+                    <td>${instruction.type}</td>
+                    <td>${formatDate(instruction.date)}</td>
+                    <td>${formatDate(instruction.nextDate)}</td>
+                    <td><span class="status-badge ${status.class}">${status.text}</span></td>
+                    <td>
+                        <div class="action-buttons">
+                            <button class="action-btn remind-btn" onclick="sendReminder('${instruction.id}')">Напомнить</button>
+                            <button class="action-btn" onclick="editInstruction('${instruction.id}')">Изменить</button>
+                        </div>
+                    </td>
+                `;
+                
+                tbody.appendChild(row);
+            });
+        }
+
+        // Вспомогательные функции
+        function getInitials(name) {
+            return name.split(' ').map(word => word[0]).join('').toUpperCase();
+        }
+
+        function formatDate(dateString) {
+            return new Date(dateString).toLocaleDateString('ru-RU');
+        }
+
+        function getInstructionStatus(nextDate) {
+            const today = new Date();
+            const next = new Date(nextDate);
+            const diffTime = next - today;
+            const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+            
+            if (diffDays < 0) return { class: 'status-overdue', text: 'Просрочен' };
+            if (diffDays <= 30) return { class: 'status-pending', text: 'Скоро' };
+            return { class: 'status-completed', text: 'Активен' };
+        }
+
+        // Модальные окна
+        function showModal(modalId) {
+            document.getElementById(modalId).style.display = 'block';
+        }
+
+        function closeModal(modalId) {
+            document.getElementById(modalId).style.display = 'none';
+        }
+
+        function addNewInstruction() {
+            showModal('addInstructionModal');
+        }
+
+        function showAddEmployee() {
+            showModal('addEmployeeModal');
+        }
+
+        // Сохранение сотрудника
+        function saveEmployee() {
+            const name = document.getElementById('employeeName').value;
+            const position = document.getElementById('employeePosition').value;
+            const hireDate = document.getElementById('employeeHireDate').value;
+            const email = document.getElementById('employeeEmail').value;
+            
+            if (!name || !position || !hireDate) {
+                alert('Заполните обязательные поля!');
+                return;
+            }
+            
+            const employee = {
+                id: Date.now().toString(),
+                name: name,
+                position: position,
+                hireDate: hireDate,
+                email: email || ''
+            };
+            
+            employees.push(employee);
+            localStorage.setItem('safety_employees', JSON.stringify(employees));
+            
+            loadEmployees();
+            closeModal('addEmployeeModal');
+            showNotification('Сотрудник добавлен', `${name} успешно добавлен в систему`);
+        }
+
+        // Сохранение инструктажа
+        function saveInstruction() {
+            const employeeId = document.getElementById('instructionEmployee').value;
+            const type = document.getElementById('instructionType').value;
+            const date = document.getElementById('instructionDate').value;
+            const nextDate = document.getElementById('instructionNextDate').value;
+            
+            if (!employeeId || !type || !date || !nextDate) {
+                alert('Заполните все поля!');
+                return;
+            }
+            
+            const instruction = {
+                id: Date.now().toString(),
+                employeeId: employeeId,
+                type: type,
+                date: date,
+                nextDate: nextDate
+            };
+            
+            instructions.push(instruction);
+            localStorage.setItem('safety_instructions', JSON.stringify(instructions));
+            
+            loadInstructions();
+            closeModal('addInstructionModal');
+            showNotification('Инструктаж добавлен', 'Новый инструктаж успешно создан');
+        }
+
+        // Напоминание сотруднику
+        function sendReminder(instructionId) {
+            const instruction = instructions.find(inst => inst.id === instructionId);
+            const employee = employees.find(emp => emp.id === instruction.employeeId);
+            
+            if (employee.email) {
+                console.log(`Отправка email на ${employee.email}: Напоминание о инструктаже`);
+                showNotification('Уведомление отправлено', `Сотруднику ${employee.name} отправлено напоминание на email`);
+            } else {
+                console.log(`У сотрудника ${employee.name} нет email. Отправка через мессенджер/систему уведомлений`);
+                showNotification('Напоминание создано', `Сотрудник ${employee.name} получит уведомление в системе`);
+            }
+            
+            const reminder = {
+                id: Date.now().toString(),
+                instructionId: instructionId,
+                employeeId: employee.id,
+                date: new Date().toISOString(),
+                type: 'reminder'
+            };
+            
+            let reminders = JSON.parse(localStorage.getItem('safety_reminders')) || [];
+            reminders.push(reminder);
+            localStorage.setItem('safety_reminders', JSON.stringify(reminders));
+        }
+
+        // Система уведомлений
+        function showNotification(title, message) {
+            const notification = document.getElementById('notification');
+            document.getElementById('notificationTitle').textContent = title;
+            document.getElementById('notificationMessage').textContent = message;
+            
+            notification.classList.add('show');
+            
+            setTimeout(() => {
+                hideNotification();
+            }, 5000);
+        }
+
+        function hideNotification() {
+            const notification = document.getElementById('notification');
+            notification.classList.remove('show');
+        }
+
+        // Редактирование инструктажа
+        function editInstruction(instructionId) {
+            showNotification('Редактирование', 'Функция редактирования инструктажа в разработке');
+        }
+
+        // Функции для работы с документами
+        function showDocument(docType) {
+            const content = document.getElementById('documentContent');
+            let html = '';
+            
+            switch(docType) {
+                case 'instruction':
+                    html = `
+                        <div class="document-preview">
+                            <div class="document-header">
+                                <div class="document-title">ИНСТРУКЦИЯ по охране труда</div>
+                                <div>Утверждена: 15.01.2024</div>
+                            </div>
+                            <div class="document-content">
+                                <div class="document-section">
+                                    <div class="document-section-title">1. Общие требования охраны труда</div>
+                                    <p>1.1. Настоящая инструкция распространяется на всех работников организации.</p>
+                                    <p>1.2. К работе допускаются лица, прошедшие медицинский осмотр и вводный инструктаж.</p>
+                                </div>
+                                <div class="document-section">
+                                    <div class="document-section-title">2. Требования охраны труда перед началом работы</div>
+                                    <p>2.1. Проверить исправность оборудования и инструмента.</p>
+                                    <p>2.2. Убедиться в наличии средств индивидуальной защиты.</p>
+                                </div>
+                                <div class="signature-area">
+                                    <div class="signature-line">
+                                        <div>Разработал:</div>
+                                        <div>_________________ /Петров А.И./</div>
+                                    </div>
+                                    <div class="signature-line">
+                                        <div>Утвердил:</div>
+                                        <div>_________________ /Сидоров В.П./</div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="form-actions">
+                            <button class="btn-primary" onclick="downloadDocument('instruction.pdf')">Скачать PDF</button>
+                            <button class="btn-secondary" onclick="closeModal('documentModal')">Закрыть</button>
+                        </div>
+                    `;
+                    break;
+                    
+                case 'sizRegulation':
+                    html = `
+                        <div class="document-preview">
+                            <div class="document-header">
+                                <div class="document-title">ПОЛОЖЕНИЕ о выдаче средств индивидуальной защиты</div>
+                                <div>Утверждено: 20.01.2024</div>
+                            </div>
+                            <div class="document-content">
+                                <div class="document-section">
+                                    <div class="document-section-title">1. Общие положения</div>
+                                    <p>1.1. Настоящее Положение определяет порядок обеспечения работников СИЗ.</p>
+                                    <p>1.2. Нормы выдачи СИЗ устанавливаются в соответствии с Типовыми нормами.</p>
+                                </div>
+                                <div class="document-section">
+                                    <div class="document-section-title">2. Нормы выдачи СИЗ</div>
+                                    <p><strong>Офисные работники:</strong></p>
+                                    <ul>
+                                        <li>Халат хлопчатобумажный - 1 шт. на 2 года</li>
+                                        <li>Перчатки диэлектрические - 1 пара до износа</li>
+                                    </ul>
+                                    <p><strong>Производственный персонал:</strong></p>
+                                    <ul>
+                                        <li>Костюм хлопчатобумажный - 1 шт. на 1 год</li>
+                                        <li>Ботинки кожаные - 1 пара на 1 год</li>
+                                        <li>Каска защитная - 1 шт. на 2 года</li>
+                                    </ul>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="form-actions">
+                            <button class="btn-primary" onclick="downloadDocument('siz_regulation.pdf')">Скачать PDF</button>
+                            <button class="btn-secondary" onclick="closeModal('documentModal')">Закрыть</button>
+                        </div>
+                    `;
+                    break;
+                    
+                // Добавьте другие case для разных типов документов
+            }
+            
+            content.innerHTML = html;
+            showModal('documentModal');
+        }
+
+        function showSIZRequest() {
+            const content = document.getElementById('formContent');
+            content.innerHTML = `
+                <h2 style="margin-bottom: 1.5rem;">Заявка на СИЗ</h2>
+                <div class="form-group">
+                    <label class="form-label">Сотрудник</label>
+                    <select class="form-select" id="sizEmployee">
+                        <option value="">Выберите сотрудника</option>
+                        ${employees.map(emp => `<option value="${emp.id}">${emp.name} (${emp.position})</option>`).join('')}
+                    </select>
+                </div>
+                <div class="form-group">
+                    <label class="form-label">Наименование СИЗ</label>
+                    <input type="text" class="form-input" id="sizName" placeholder="Например: Каска защитная">
+                </div>
+                <div class="form-group">
+                    <label class="form-label">Количество</label>
+                    <input type="number" class="form-input" id="sizQuantity" value="1" min="1">
+                </div>
+                <div class="form-group">
+                    <label class="form-label">Причина выдачи</label>
+                    <select class="-form-select" id="sizReason">
+                        <option value="planned">Плановая выдача</option>
+                        <option value="replacement">Замена испорченного</option>
+                        <option value="new">В связи с новым рабочим местом</option>
+                    </select>
+                </div>
+                <div class="form-group">
+                    <label class="form-label">Комментарий</label>
+                    <textarea class="form-textarea" id="sizComment" placeholder="Дополнительная информация"></textarea>
+                </div>
+                <div class="form-actions">
+                    <button class="btn-secondary" onclick="closeModal('formModal')">Отмена</button>
+                    <button class="btn-primary" onclick="submitSIZRequest()">Отправить заявку</button>
+                </div>
+            `;
+            showModal('formModal');
+        }
+
+        function submitSIZRequest() {
+            const employeeId = document.getElementById('sizEmployee').value;
+            const sizName = document.getElementById('sizName').value;
+            const quantity = document.getElementById('sizQuantity').value;
+            
+            if (!employeeId || !sizName) {
+                alert('Заполните обязательные поля!');
+                return;
+            }
+            
+            const employee = employees.find(emp => emp.id === employeeId);
+            showNotification('Заявка отправлена', `Заявка на СИЗ для ${employee.name} успешно отправлена`);
+            closeModal('formModal');
+        }
+
+        function downloadTemplate(templateType) {
+            const templates = {
+                'instructionJournal': 'Журнал учета инструктажей.xlsx',
+                'sizJournal': 'Журнал выдачи СИЗ.xlsx',
+                'incidentJournal': 'Журнал учета происшествий.xlsx',
+                'fireInstructionJournal': 'Журнал инструктажей по ПБ.xlsx'
+            };
+            
+            const filename = templates[templateType] || 'document.xlsx';
+            showNotification('Скачивание', `Файл "${filename}" будет скачан`);
+            
+            // В реальном приложении здесь будет код для скачивания файла
+            setTimeout(() => {
+                showNotification('Успешно', `Файл "${filename}" успешно скачан`);
+            }, 1000);
+        }
+
+        function generateReport(period) {
+            const periods = {
+                'january': 'Январь 2024',
+                'february': 'Февраль 2024',
+                'q1': '1 квартал 2024'
+            };
+            
+            const periodName = periods[period] || period;
+            showNotification('Формирование отчета', `Отчет за ${periodName} формируется...`);
+            
+            setTimeout(() => {
+                showNotification('Отчет готов', `Отчет за ${periodName} успешно сформирован и доступен для скачивания`);
+            }, 2000);
+        }
+
+        // Добавьте остальные функции для других кнопок по аналогии
+
+        // Закрытие модалок по клику вне
+        window.onclick = function(event) {
+            if (event.target.classList.contains('modal')) {
+                event.target.style.display = 'none';
+            }
+        }
+
+        // Функция для скачивания документов
+        function downloadDocument(filename) {
+            showNotification('Скачивание', `Документ "${filename}" будет скачан`);
+            // В реальном приложении здесь будет код для скачивания файла
+        }
+    </script>
+</body>
+</html>
