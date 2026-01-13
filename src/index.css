@@ -1,0 +1,1188 @@
+:root {
+  --bg: #ffffff;
+  --bg-soft: #f3f4f6;
+  --card-bg: #ffffff;
+
+  --primary: #2563eb;
+  --primary-soft: #eff6ff;
+  --accent: #1d4ed8;
+
+  --text: #111827;
+  --muted: #6b7280;
+  --border: #e5e7eb;
+
+  --btn-bg: #4b5563;
+  --btn-bg-hover: #374151;
+  --danger: #dc2626;
+
+  --radius-sm: 6px;
+  --radius-md: 10px;
+}
+
+/* базовые сбросы */
+
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+}
+
+html,
+body,
+#root {
+  height: 100%;
+}
+
+body {
+  margin: 0;
+  font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI",
+    sans-serif;
+  color: var(--text);
+  background: #ffffff;
+}
+
+/* канвас с анимацией */
+
+.bg-network {
+  position: fixed;
+  inset: 0;
+  z-index: 0;
+  pointer-events: none;
+}
+
+/* всё приложение поверх анимации */
+
+.app-shell {
+  position: relative;
+  z-index: 1;
+}
+
+/* формы и кнопки */
+
+input,
+select,
+textarea,
+button {
+  font: inherit;
+}
+
+input,
+select,
+textarea {
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  padding: 6px 8px;
+  width: 100%;
+  background: #ffffff;
+}
+
+input:focus,
+select:focus,
+textarea:focus {
+  outline: none;
+  border-color: var(--primary);
+  box-shadow: 0 0 0 1px rgba(37, 99, 235, 0.15);
+}
+
+button {
+  border-radius: var(--radius-sm);
+  border: none;
+  padding: 8px 12px;
+  background: var(--btn-bg);
+  color: #ffffff;
+  cursor: pointer;
+  font-weight: 500;
+  transition: background 0.15s ease, transform 0.05s ease;
+}
+
+button:hover:not(:disabled) {
+  background: var(--btn-bg-hover);
+  transform: translateY(-1px);
+}
+
+button:disabled {
+  opacity: 0.6;
+  cursor: default;
+  transform: none;
+}
+
+/* ссылки */
+
+a {
+  color: var(--primary);
+  text-decoration: none;
+}
+
+a:hover {
+  text-decoration: underline;
+}
+
+/* карточки / контейнеры */
+
+.page {
+  max-width: 1200px;
+  margin: 0 auto;
+}
+
+.page-header {
+  margin-bottom: 20px;
+}
+
+.page-title {
+  font-size: 24px;
+  font-weight: 600;
+  margin: 0 0 4px;
+}
+
+.page-subtitle {
+  margin: 0;
+  font-size: 14px;
+  color: var(--muted);
+}
+
+.card {
+  background: var(--card-bg);
+  border-radius: var(--radius-md);
+  padding: 16px 18px;
+  box-shadow: 0 1px 3px rgba(15, 23, 42, 0.06);
+  border: 1px solid #e5e7eb;
+}
+
+.card + .card {
+  margin-top: 16px;
+}
+
+/* сетка */
+
+.grid-2 {
+  display: grid;
+  grid-template-columns: minmax(0, 2fr) minmax(0, 1.4fr);
+  gap: 16px;
+}
+
+@media (max-width: 900px) {
+  .grid-2 {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+
+/* табы */
+
+.tabs {
+  display: inline-flex;
+  border-radius: 999px;
+  background: var(--bg-soft);
+  padding: 3px;
+  margin-bottom: 12px;
+}
+
+.tabs__btn {
+  border-radius: 999px;
+  border: none;
+  padding: 6px 14px;
+  font-size: 14px;
+  background: transparent;
+  color: var(--muted);
+}
+
+.tabs__btn--active {
+  background: #ffffff;
+  color: var(--text);
+  box-shadow: 0 1px 2px rgba(15, 23, 42, 0.08);
+}
+
+/* бейджи статусов */
+
+.badge {
+  display: inline-flex;
+  align-items: center;
+  padding: 2px 8px;
+  border-radius: 999px;
+  font-size: 12px;
+  font-weight: 500;
+  border: 1px solid transparent;
+}
+
+.badge--pending {
+  background: #fef9c3;
+  color: #854d0e;
+  border-color: #facc15;
+}
+
+.badge--approved {
+  background: #dcfce7;
+  color: #166534;
+  border-color: #22c55e;
+}
+
+.badge--rejected {
+  background: #fee2e2;
+  color: #b91c1c;
+  border-color: #ef4444;
+}
+
+/* таблицы */
+
+table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 14px;
+}
+
+th,
+td {
+  padding: 8px 10px;
+  border-bottom: 1px solid var(--border);
+}
+
+th {
+  text-align: left;
+  background: #f9fafb;
+  font-weight: 500;
+}
+
+tr:last-child td {
+  border-bottom: none;
+}
+
+.sidebar-nav a:focus {
+  outline: none;
+}
+
+/* ====== Подразделы склада (карточки) ====== */
+
+.warehouse-subcards {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+  gap: 16px;
+  margin-bottom: 24px;
+}
+
+.warehouse-subcards__card {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+  padding: 16px 18px;
+  border-radius: 16px;
+  border: 1px solid #e5e7eb;
+  background: #ffffff;
+  cursor: pointer;
+  text-align: left;
+  transition:
+    box-shadow 0.15s ease,
+    transform 0.1s ease,
+    border-color 0.15s ease,
+    background 0.15s ease;
+}
+
+.warehouse-subcards__card:hover {
+  box-shadow: 0 10px 30px rgba(15, 23, 42, 0.08);
+  transform: translateY(-2px);
+  border-color: #d1d5db;
+}
+
+.warehouse-subcards__card--active {
+  border-color: #2563eb;
+  box-shadow: 0 10px 30px rgba(37, 99, 235, 0.12);
+  background: #eff6ff;
+}
+
+.warehouse-subcards__icon {
+  width: 40px;
+  height: 40px;
+  border-radius: 12px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 22px;
+  background: #eff6ff;
+  flex-shrink: 0;
+}
+
+.warehouse-subcards__text {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.warehouse-subcards__title {
+  font-weight: 600;
+  font-size: 15px;
+}
+
+.warehouse-subcards__desc {
+  font-size: 13px;
+  color: #6b7280;
+}
+
+/* маленький вариант табов (которые внутри склада) */
+
+.tabs--sm {
+  font-size: 13px;
+}
+
+.tabs--sm .tabs__btn {
+  padding: 4px 10px;
+  font-size: 13px;
+}
+
+/* ===== СКЛАД: КАРТОЧКИ-ПОДРАЗДЕЛЫ ===== */
+
+.warehouse-section {
+  margin-bottom: 20px;
+}
+
+.warehouse-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 12px;
+}
+
+@media (max-width: 900px) {
+  .warehouse-grid {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+
+.warehouse-card {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  padding: 12px 14px;
+  border-radius: 12px;
+  border: 1px solid var(--border);
+  background: #f9fafb;
+  cursor: pointer;
+  text-align: left;
+
+  /* переопределяем базовую кнопку */
+  color: var(--text);
+  font-weight: 500;
+
+  transition:
+    background 0.15s ease,
+    border-color 0.15s ease,
+    box-shadow 0.15s ease,
+    transform 0.08s ease;
+}
+
+.warehouse-card:hover {
+  background: #f3f4f6;
+  border-color: #d1d5db;
+  box-shadow: 0 2px 4px rgba(15, 23, 42, 0.06);
+  transform: translateY(-1px);
+}
+
+.warehouse-card--active {
+  background: #eff6ff;
+  border-color: var(--primary);
+  box-shadow: 0 0 0 1px rgba(37, 99, 235, 0.15);
+}
+
+.warehouse-card--active .warehouse-card__title,
+.warehouse-card--active .warehouse-card__subtitle {
+  color: #0f172a;
+}
+
+.warehouse-card__icon {
+  width: 40px;
+  height: 40px;
+  border-radius: 999px;
+  border: 1px solid #e5e7eb;
+  background: #ffffff;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+}
+
+.warehouse-card__icon-symbol {
+  font-size: 20px;
+}
+
+.warehouse-card__body {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.warehouse-card__title {
+  font-size: 14px;
+  font-weight: 600;
+}
+
+.warehouse-card__subtitle {
+  font-size: 12px;
+  color: var(--muted);
+}
+
+
+.alert {
+  padding: 10px 12px;
+  border-radius: 10px;
+  border: 1px solid transparent;
+  font-size: 13px;
+  background: #f1f5f9;
+  color: #0f172a;
+}
+
+.alert--danger,
+.alert--error {
+  background: rgba(248, 113, 113, 0.12);
+  color: #b91c1c;
+  border-color: rgba(248, 113, 113, 0.4);
+}
+
+.alert--success {
+  background: rgba(16, 185, 129, 0.12);
+  color: #047857;
+  border-color: rgba(16, 185, 129, 0.4);
+}
+
+
+.warehouse-locations {
+  display: grid;
+  gap: 16px;
+}
+
+.warehouse-locations__grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1.2fr) minmax(0, 1fr);
+  gap: 16px;
+}
+
+.warehouse-locations__grid--single {
+  grid-template-columns: minmax(0, 1fr);
+}
+
+.warehouse-locations__form {
+  display: grid;
+  gap: 10px;
+}
+
+.warehouse-locations__row {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.warehouse-locations__actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.warehouse-locations__meta {
+  font-size: 13px;
+  color: var(--muted);
+  display: grid;
+  gap: 4px;
+}
+
+.warehouse-locations__section {
+  display: grid;
+  gap: 12px;
+}
+
+.warehouse-locations__section + .warehouse-locations__section {
+  margin-top: 8px;
+}
+
+.warehouse-locations__section-title {
+  font-size: 13px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: var(--muted);
+  padding-left: 2px;
+}
+
+.warehouse-locations__list {
+  display: grid;
+  gap: 8px;
+}
+
+.warehouse-locations__list-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 8px 10px;
+  border-radius: 10px;
+  border: 1px solid #e5e7eb;
+  background: #f9fafb;
+}
+
+.warehouse-locations__list-title {
+  font-weight: 600;
+  font-size: 14px;
+}
+
+.warehouse-locations__list-meta {
+  font-size: 12px;
+  color: var(--muted);
+}
+
+.warehouse-locations__edit {
+  margin-top: 12px;
+  padding-top: 12px;
+  border-top: 1px dashed #e5e7eb;
+  display: grid;
+  gap: 10px;
+}
+
+.warehouse-locations__edit-title {
+  font-size: 12px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: var(--muted);
+}
+
+@media (max-width: 900px) {
+  .warehouse-locations__grid {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .warehouse-locations__row {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+
+/* ===== Склад: форма заявки в стиле 1С ===== */
+
+.card--1c {
+  padding: 0;
+  border-radius: 4px;
+  border-color: #d4d4d4;
+  box-shadow: none;
+  background: #fdfdfd;
+}
+
+.card1c__header {
+  background: #fff7cc; /* мягкий "1С-жёлтый" */
+  border-bottom: 1px solid #d4d4d4;
+  padding: 8px 12px;
+  font-size: 14px;
+  font-weight: 600;
+}
+
+.card1c__body {
+  padding: 12px 12px 14px;
+}
+
+/* Внутри формы — подписи слева, поля справа */
+.request-form-1c .form__group {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 8px;
+}
+
+.request-form-1c .form__label {
+  width: 170px;
+  margin-bottom: 0;
+  font-size: 13px;
+  color: var(--muted);
+}
+
+.request-form-1c .form__input,
+.request-form-1c .form__textarea,
+.request-form-1c select {
+  flex: 1;
+}
+
+.request-form-1c .form__textarea {
+  min-height: 80px;
+  resize: vertical;
+}
+
+.request-form-1c__actions {
+  margin-top: 10px;
+  padding-top: 8px;
+  border-top: 1px solid #e5e7eb;
+}
+
+.request-form-1c__actions .btn {
+  min-width: 170px;
+}
+
+/* ====== Форма "Новая заявка" в стиле 1С ====== */
+
+/* сама карточка слева */
+.card--1c {
+  padding: 0;                      /* убираем внутренние отступы card */
+  border-radius: 0;                /* прямые углы */
+  box-shadow: none;                /* без тени */
+  border-color: #d4d4d4;           /* более серая рамка */
+  background: #fdfdfd;
+}
+
+/* жёлтая шапка как в 1С */
+.card1c__header {
+  background: #fff3bf;             /* мягкий жёлтый */
+  border-bottom: 1px solid #e0e0e0;
+  padding: 6px 10px;
+  font-size: 13px;
+  font-weight: 600;
+}
+
+/* тело формы */
+.card1c__body {
+  padding: 8px 10px 10px;
+  font-size: 13px;
+}
+
+/* делаем подпись слева, поле справа (как в 1С) */
+.request-form-1c .form__group {
+  display: flex;
+  align-items: flex-start;
+  margin-bottom: 4px;
+}
+
+.request-form-1c .form__label {
+  width: 170px;                    /* ширина колонки с подписями */
+  padding: 4px 8px 0 0;
+  white-space: nowrap;
+  color: #333;
+  font-size: 13px;
+}
+
+.request-form-1c .form__input,
+.request-form-1c .form__textarea {
+  font-size: 13px;
+  border-radius: 0;
+  border: 1px solid #b8b8b8;
+  padding: 3px 5px;
+  background-color: #ffffff;
+  box-shadow: none;
+}
+
+.request-form-1c .form__textarea {
+  min-height: 60px;
+  resize: vertical;
+}
+
+/* при фокусе — лёгкое подсветивание, как в десктоп-формах */
+.request-form-1c .form__input:focus,
+.request-form-1c .form__textarea:focus {
+  outline: none;
+  border-color: #808080;
+  box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.05);
+}
+
+/* низ формы с кнопкой */
+.request-form-1c__actions {
+  margin-top: 8px;
+  padding-top: 6px;
+  border-top: 1px solid #e0e0e0;
+  display: flex;
+  justify-content: flex-start;
+}
+
+/* кнопка в стиле 1С — только внутри этой формы */
+.request-form-1c__actions .btn {
+  background: #ffd552;
+  border: 1px solid #c29b26;
+  color: #000;
+  font-size: 13px;
+  padding: 4px 16px;
+  border-radius: 0;
+  box-shadow: inset 0 1px 0 #fff9d7;
+}
+
+.request-form-1c__actions .btn:hover:not(:disabled) {
+  background: #ffcc3a;
+}
+
+.request-form-1c__actions .btn:disabled {
+  opacity: 0.7;
+  cursor: default;
+}
+
+/* Убираем стрелки у всех number-полей по всему порталу */
+input[type="number"]::-webkit-inner-spin-button,
+input[type="number"]::-webkit-outer-spin-button {
+  -webkit-appearance: none;
+  margin: 0;
+}
+
+input[type="number"] {
+  -moz-appearance: textfield; /* Firefox */
+}
+
+/* Широкая модалка под заказ поставщику */
+.modal--wide {
+  max-width: 1100px;
+  width: 100%;
+}
+
+/* Верхний блок (шапка заказа) */
+.po-header-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 2fr) minmax(260px, 1fr);
+  gap: 16px;
+  margin-bottom: 16px;
+}
+
+.po-header-grid__row {
+  display: flex;
+  align-items: center;
+  margin-bottom: 8px;
+}
+
+.po-header-grid__row--comment {
+  align-items: flex-start;
+}
+
+.po-header-grid__label {
+  width: 140px;
+  font-size: 13px;
+  color: #374151;
+}
+
+.po-header-grid__field {
+  flex: 1;
+}
+
+.po-header-grid__col--right {
+  align-self: flex-start;
+}
+
+.po-header-meta {
+  background: #f9fafb;
+  border-radius: 6px;
+  padding: 10px 12px;
+  font-size: 13px;
+}
+
+.po-header-meta__row {
+  display: flex;
+  justify-content: space-between;
+  margin-bottom: 4px;
+}
+
+.po-header-meta__row:last-child {
+  margin-bottom: 0;
+}
+
+.po-header-meta__label {
+  color: #6b7280;
+}
+
+.po-header-meta__value {
+  font-weight: 500;
+}
+
+.po-header-meta__value--status {
+  color: #0369a1;
+}
+
+/* Таблица строк заказа */
+.po-lines-table input,
+.po-lines-table select {
+  width: 100%;
+  box-sizing: border-box;
+}
+
+.form__input--sm,
+.form__select--sm {
+  padding: 3px 6px;
+  font-size: 13px;
+}
+
+.po-table-wrapper {
+  margin-top: 4px;
+}
+
+/* Подвал формы (итого + кнопки) */
+.po-footer {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 12px;
+  margin-top: 12px;
+}
+
+.po-footer__total {
+  display: flex;
+  align-items: baseline;
+  gap: 6px;
+  margin-left: auto;
+}
+
+/* Кнопка-иконка удаления строки */
+.btn.btn--icon {
+  padding: 0 6px;
+  line-height: 1;
+}
+
+/* ===== МОДАЛЬНЫЕ ОКНА (оверлей) ===== */
+
+.modal-backdrop {
+  position: fixed;
+  inset: 0; /* top:0; right:0; bottom:0; left:0 */
+  background: rgba(0, 0, 0, 0.35);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 1000;
+}
+
+.modal {
+  background: #ffffff;
+  border-radius: 6px;
+  box-shadow: 0 10px 30px rgba(15, 23, 42, 0.25);
+  border: 1px solid #d4d4d4;
+  max-height: 90vh;
+  overflow: auto;
+}
+
+/* широкие модалки (как заказ поставщику / закуп по заказу) */
+.modal--wide {
+  max-width: 1100px;
+  width: 100%;
+}
+
+/* необязательно, но чтобы внутри было красиво */
+.modal__header {
+  padding: 8px 12px;
+  border-bottom: 1px solid #e5e7eb;
+}
+
+.modal__body {
+  padding: 12px 12px 14px;
+}
+
+/* Блок "Были ли расхождения?" — строгий 1С-стиль */
+
+.po-receive-row {
+  display: flex;
+  align-items: flex-start;
+  margin: 6px 0 10px;
+  font-size: 13px;
+}
+
+.po-receive-label {
+  width: 200px;              /* колонка как в 1С */
+  padding: 4px 8px 0 0;
+  white-space: nowrap;
+  color: #333;
+}
+
+.po-receive-field {
+  display: flex;
+  gap: 16px;                 /* расстояние между "Нет" и "Да..." */
+  align-items: center;
+}
+
+.po-receive-radio {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 13px;
+}
+
+.po-receive-radio input[type="radio"] {
+  margin: 0;
+}
+
+
+/* ===== Portal TSD theme ===== */
+.portal-surface {
+  min-height: 100%;
+  padding: 20px 18px 120px;
+  background:
+    radial-gradient(circle at 12% 8%, rgba(14, 165, 233, 0.18), transparent 55%),
+    radial-gradient(circle at 85% 18%, rgba(59, 130, 246, 0.18), transparent 50%),
+    linear-gradient(180deg, #f8fafc 0%, #eef2ff 100%);
+  font-family: "Space Grotesk", "IBM Plex Sans", "Segoe UI", sans-serif;
+  color: #0f172a;
+}
+
+.portal-surface .page {
+  max-width: 1120px;
+  margin: 0 auto;
+  display: grid;
+  gap: 16px;
+}
+
+.portal-surface .page-header {
+  margin: 0;
+  padding: 16px 18px;
+  border-radius: 18px;
+  border: 1px solid rgba(15, 23, 42, 0.12);
+  background: rgba(255, 255, 255, 0.92);
+  box-shadow: 0 14px 30px rgba(15, 23, 42, 0.08);
+  animation: portal-rise 0.35s ease both;
+}
+
+.portal-surface .page-title {
+  font-size: 22px;
+  font-weight: 700;
+  margin: 0 0 6px;
+}
+
+.portal-surface .page-subtitle {
+  margin: 0;
+  font-size: 14px;
+  color: #64748b;
+}
+
+.portal-surface .card,
+.portal-surface .card--1c {
+  border-radius: 18px;
+  border: 1px solid rgba(15, 23, 42, 0.12);
+  background: #ffffff;
+  box-shadow: 0 12px 24px rgba(15, 23, 42, 0.08);
+  padding: 16px 18px;
+  animation: portal-rise 0.35s ease both;
+}
+
+.portal-surface .card + .card {
+  margin-top: 16px;
+}
+
+.portal-surface .card1c__header {
+  background: transparent;
+  border-bottom: 1px solid rgba(15, 23, 42, 0.08);
+  padding: 12px 16px;
+  font-weight: 700;
+  font-size: 14px;
+}
+
+.portal-surface .card1c__body {
+  padding: 14px 16px 16px;
+}
+
+.portal-surface input,
+.portal-surface select,
+.portal-surface textarea {
+  border-radius: 12px;
+  border: 1px solid rgba(15, 23, 42, 0.14);
+  padding: 12px 14px;
+  font-size: 15px;
+  background: #ffffff;
+}
+
+.portal-surface input[type="checkbox"],
+.portal-surface input[type="radio"] {
+  width: 16px;
+  height: 16px;
+  padding: 0;
+  border-radius: 4px;
+  box-shadow: none;
+  background: #ffffff;
+}
+
+.portal-surface input[type="checkbox"]:focus,
+.portal-surface input[type="radio"]:focus {
+  box-shadow: 0 0 0 2px rgba(14, 165, 233, 0.2);
+}
+
+.portal-surface input:focus,
+.portal-surface select:focus,
+.portal-surface textarea:focus {
+  border-color: #0ea5e9;
+  box-shadow: 0 0 0 2px rgba(14, 165, 233, 0.2);
+}
+
+.portal-surface button,
+.portal-surface .btn {
+  border-radius: 12px;
+  padding: 12px 16px;
+  font-weight: 600;
+  background: #0ea5e9;
+  color: #ffffff;
+  border: none;
+  box-shadow: 0 8px 18px rgba(14, 165, 233, 0.2);
+}
+
+.portal-surface button:hover:not(:disabled),
+.portal-surface .btn:hover:not(:disabled) {
+  background: #0284c7;
+}
+
+.portal-surface .btn--secondary {
+  background: #e2e8f0;
+  color: #0f172a;
+  box-shadow: none;
+}
+
+.portal-surface .btn--secondary:hover:not(:disabled) {
+  background: #cbd5f5;
+}
+
+.portal-surface .btn--ghost {
+  background: transparent;
+  color: #0f172a;
+  border: 1px solid rgba(15, 23, 42, 0.16);
+  box-shadow: none;
+}
+
+.portal-surface .tabs {
+  background: rgba(15, 23, 42, 0.08);
+  padding: 4px;
+  border-radius: 999px;
+}
+
+.portal-surface .tabs__btn {
+  font-weight: 600;
+  color: #64748b;
+}
+
+.portal-surface .tabs__btn--active {
+  background: #ffffff;
+  color: #0f172a;
+  box-shadow: 0 6px 14px rgba(15, 23, 42, 0.12);
+}
+
+.portal-surface table {
+  border-collapse: separate;
+  border-spacing: 0 8px;
+  font-size: 14px;
+}
+
+.portal-surface th {
+  background: transparent;
+  color: #64748b;
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  border-bottom: none;
+}
+
+.portal-surface td {
+  background: #ffffff;
+  border-top: 1px solid rgba(15, 23, 42, 0.08);
+  border-bottom: 1px solid rgba(15, 23, 42, 0.08);
+}
+
+.portal-surface tr td:first-child {
+  border-left: 1px solid rgba(15, 23, 42, 0.08);
+  border-radius: 12px 0 0 12px;
+}
+
+.portal-surface tr td:last-child {
+  border-right: 1px solid rgba(15, 23, 42, 0.08);
+  border-radius: 0 12px 12px 0;
+}
+
+.portal-surface .table-wrapper {
+  border-radius: 16px;
+  overflow: auto;
+  border: 1px solid rgba(15, 23, 42, 0.08);
+  background: rgba(255, 255, 255, 0.8);
+}
+
+.portal-surface .warehouse-card {
+  border-radius: 16px;
+  border: 1px solid rgba(15, 23, 42, 0.12);
+  background: rgba(255, 255, 255, 0.9);
+  box-shadow: 0 10px 24px rgba(15, 23, 42, 0.1);
+}
+
+.portal-surface .warehouse-card--active {
+  border-color: #0ea5e9;
+  background: #e0f2fe;
+  box-shadow: 0 10px 24px rgba(14, 165, 233, 0.18);
+}
+
+.portal-surface .badge {
+  font-weight: 600;
+  border-radius: 999px;
+}
+
+.portal-header {
+  background: rgba(248, 250, 252, 0.88);
+  border-bottom: 1px solid rgba(15, 23, 42, 0.08);
+  box-shadow: 0 8px 18px rgba(15, 23, 42, 0.08);
+  backdrop-filter: blur(10px);
+}
+
+@keyframes portal-rise {
+  from {
+    opacity: 0;
+    transform: translateY(8px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@media (max-width: 720px) {
+  .portal-surface {
+    padding: 16px 14px 100px;
+  }
+
+  .portal-surface .page-title {
+    font-size: 20px;
+  }
+
+  .portal-surface table {
+    font-size: 12px;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .portal-surface .card,
+  .portal-surface .page-header {
+    animation: none;
+  }
+}
+
+/* ===== Queue: fit to viewport ===== */
+.portal-surface .queue-section .table-wrapper {
+  max-height: clamp(240px, calc(100vh - 420px), 680px);
+  overflow-y: auto;
+}
+
+.portal-surface .queue-section .table-wrapper table {
+  margin-bottom: 0;
+}
+
+.portal-surface .queue-actions {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 8px 10px 12px;
+}
+
+.portal-surface .queue-actions__label {
+  font-size: 13px;
+  color: #475569;
+}
+
+.portal-surface .queue-actions__buttons {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.portal-surface .queue-row {
+  cursor: pointer;
+}
+
+.portal-surface .queue-row--active td {
+  background: #e0f2fe;
+  border-color: rgba(14, 165, 233, 0.3);
+}
+
+.portal-surface .table--queue {
+  table-layout: fixed;
+  width: 100%;
+}
+
+.portal-surface .table--queue th,
+.portal-surface .table--queue td {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.portal-surface .table--queue td:first-child,
+.portal-surface .table--queue th:first-child {
+  white-space: normal;
+}

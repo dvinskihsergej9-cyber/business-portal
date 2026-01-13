@@ -1,0 +1,674 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+// ============ ORG / TENANT ============
+model Organization {
+  id        Int      @id @default(autoincrement())
+  name      String
+  createdAt DateTime @default(now())
+
+  memberships   Membership[]
+  subscriptions Subscription[]
+  payments      Payment[]
+  orgProfiles   OrgProfile[]
+
+  employees            Employee[]
+  hrLeaveApplications  HrLeaveApplication[]
+  safetyInstructions   SafetyInstruction[]
+  safetyAssignments    SafetyAssignment[]
+  leaveRequests        LeaveRequest[]
+  paymentRequests      PaymentRequest[]
+  warehouseRequests    WarehouseRequest[]
+  warehouseRequestItems WarehouseRequestItem[]
+  warehouseTasks       WarehouseTask[]
+  purchaseOrders       PurchaseOrder[]
+  purchaseOrderItems   PurchaseOrderItem[]
+  items                Item[]
+  warehouseLocations   WarehouseLocation[]
+  warehousePlacements  WarehousePlacement[]
+  stockMovements       StockMovement[]
+  binAuditSessions     BinAuditSession[]
+  binAuditEvents       BinAuditEvent[]
+  stockDiscrepancies   StockDiscrepancy[]
+  receivingDiscrepancies ReceivingDiscrepancy[]
+  suppliers            Supplier[]
+  supplierTrucks       SupplierTruck[]
+  inviteTokens         InviteToken[]
+}
+
+model Membership {
+  id        Int      @id @default(autoincrement())
+  orgId     Int
+  userId    Int
+  role      String
+  createdAt DateTime @default(now())
+
+  org  Organization @relation(fields: [orgId], references: [id])
+  user User         @relation(fields: [userId], references: [id])
+
+  @@unique([orgId, userId])
+  @@unique([id, orgId])
+}
+
+model Subscription {
+  id        Int      @id @default(autoincrement())
+  orgId     Int
+  plan      String
+  status    String
+  paidUntil DateTime?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  org Organization @relation(fields: [orgId], references: [id])
+
+  @@unique([orgId])
+  @@unique([id, orgId])
+}
+
+model Payment {
+  id                 Int      @id @default(autoincrement())
+  orgId     Int
+  userId             Int?
+  provider           String
+  providerPaymentId  String
+  amount             Float
+  currency           String
+  status             String
+  metadata           Json?
+  createdAt          DateTime @default(now())
+
+  org  Organization @relation(fields: [orgId], references: [id])
+  user User?        @relation(fields: [userId], references: [id])
+
+  @@unique([provider, providerPaymentId])
+  @@unique([id, orgId])
+}
+
+// ============ USERS ============
+model User {
+  id        Int      @id @default(autoincrement())
+  email     String   @unique
+  password  String
+  passwordHash String?
+  name      String
+  role      String   @default("EMPLOYEE")
+  tokenVersion Int @default(0)
+  isActive  Boolean  @default(true)
+  emailVerifiedAt DateTime?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  memberships      Membership[]
+  payments         Payment[]
+  leaveRequests     LeaveRequest[]
+  paymentRequests   PaymentRequest[]
+  warehouseRequests WarehouseRequest[]
+  warehouseTasks    WarehouseTask[]
+  stockMovements    StockMovement[]
+  purchaseOrders    PurchaseOrder[]
+  binAuditSessions  BinAuditSession[]
+  discrepanciesClosed StockDiscrepancy[] @relation("DiscrepancyClosedBy")
+  receivingDiscrepanciesClosed ReceivingDiscrepancy[] @relation("ReceivingDiscrepancyClosedBy")
+  invitesCreated InviteToken[] @relation("InviteCreatedBy")
+  passwordResetTokens PasswordResetToken[]
+}
+
+
+
+model InviteToken {
+  id               Int      @id @default(autoincrement())
+  orgId     Int
+  email            String
+  tokenHash        String   @unique
+  role             String
+  expiresAt        DateTime
+  usedAt           DateTime?
+  createdByUserId  Int
+  createdBy        User     @relation("InviteCreatedBy", fields: [createdByUserId], references: [id])
+  createdAt        DateTime @default(now())
+
+  org Organization @relation(fields: [orgId], references: [id])
+
+  @@unique([id, orgId])
+}
+
+
+model PasswordResetToken {
+  id        Int      @id @default(autoincrement())
+  userId    Int
+  tokenHash String   @unique
+  expiresAt DateTime
+  usedAt    DateTime?
+  createdAt DateTime @default(now())
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+// ============ HR ============
+model Employee {
+  id                Int                  @id @default(autoincrement())
+  orgId     Int
+  fullName          String
+  position          String
+  department        String
+  telegramChatId    String?
+  status            String               @default("ACTIVE") // ACTIVE / FIRED
+  hiredAt           DateTime             @default(now())
+  createdAt         DateTime             @default(now())
+  updatedAt         DateTime             @updatedAt
+  birthDate         DateTime?
+  leaveRegionCategory LeaveRegionCategory @default(STANDARD)
+  annualLeaveDays   Int                  @default(28)
+  leaveOverrideDays Int?
+  leaveApplications HrLeaveApplication[]
+  safetyAssignments SafetyAssignment[]
+
+  org Organization @relation(fields: [orgId], references: [id])
+
+  @@unique([id, orgId])
+}
+
+model HrLeaveApplication {
+  id         Int      @id @default(autoincrement())
+  orgId     Int
+  employeeId Int
+  type       String   // PAID / UNPAID / TERMINATION
+  startDate  DateTime
+  endDate    DateTime
+  days       Int
+  status     String   @default("GENERATED")
+  reason     String?
+  docText    String?
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+  employee   Employee @relation(fields: [employeeId], references: [id])
+
+  org Organization @relation(fields: [orgId], references: [id])
+
+  @@unique([id, orgId])
+}
+
+model SafetyInstruction {
+  id          Int                 @id @default(autoincrement())
+  orgId     Int
+  title       String
+  description String?
+  role        String?
+  createdAt   DateTime            @default(now())
+  assignments SafetyAssignment[]
+
+  org Organization @relation(fields: [orgId], references: [id])
+
+  @@unique([id, orgId])
+}
+
+model SafetyAssignment {
+  id             Int               @id @default(autoincrement())
+  orgId     Int
+  employeeId     Int
+  instructionId  Int
+  status         String            @default("PENDING") // PENDING / COMPLETED
+  dueDate        DateTime?
+  completedAt    DateTime?
+  lastReminderAt DateTime?
+  createdAt      DateTime          @default(now())
+  updatedAt      DateTime          @updatedAt
+  employee       Employee          @relation(fields: [employeeId], references: [id])
+  instruction    SafetyInstruction @relation(fields: [instructionId], references: [id])
+
+  org Organization @relation(fields: [orgId], references: [id])
+
+  @@unique([id, orgId])
+}
+
+// ============ LEAVE ============
+model LeaveRequest {
+  id        Int      @id @default(autoincrement())
+  orgId     Int
+  user      User     @relation(fields: [userId], references: [id])
+  userId    Int
+  type      String
+  startDate DateTime
+  endDate   DateTime
+  status    String   @default("PENDING") // PENDING / APPROVED / REJECTED
+  comment   String?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  org Organization @relation(fields: [orgId], references: [id])
+
+  @@unique([id, orgId])
+}
+
+// ============ PAYMENTS ============
+model PaymentRequest {
+  id          Int       @id @default(autoincrement())
+  orgId     Int
+  user        User      @relation(fields: [userId], references: [id])
+  userId      Int
+  title       String
+  amount      Float
+  currency    String    @default("RUB")
+  expenseCode String?
+  dueDate     DateTime?
+  status      String    @default("NEW") // NEW / APPROVED / PAID / REJECTED
+  comment     String?
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+
+  org Organization @relation(fields: [orgId], references: [id])
+
+  @@unique([id, orgId])
+}
+
+// ============ WAREHOUSE REQUESTS ============
+model WarehouseRequest {
+  id        Int      @id @default(autoincrement())
+  orgId     Int
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  title       String
+  type        WarehouseRequestType
+  desiredDate DateTime?
+  comment     String?
+
+  status        WarehouseRequestStatus @default(NEW)
+  statusComment String?
+
+  createdById Int
+  createdBy   User @relation(fields: [createdById], references: [id])
+
+  items WarehouseRequestItem[]
+
+  relatedPaymentId Int?
+  relatedDocument  String?
+  targetEmployee   String?
+
+  org Organization @relation(fields: [orgId], references: [id])
+
+  @@unique([id, orgId])
+}
+
+model WarehouseRequestItem {
+  id        Int              @id @default(autoincrement())
+  orgId     Int
+  name      String
+  quantity  Float
+  unit      String?
+  requestId Int
+  request   WarehouseRequest @relation(fields: [requestId], references: [id])
+
+  org Organization @relation(fields: [orgId], references: [id])
+
+  @@unique([id, orgId])
+}
+
+model WarehouseTask {
+  id           Int      @id @default(autoincrement())
+  orgId     Int
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+  title        String
+  description  String?
+  dueDate      DateTime?
+  status       String   @default("NEW") // NEW / IN_PROGRESS / DONE / CANCELLED
+  executorName String?
+  executorChatId String?
+  assignerId   Int
+  assigner     User     @relation(fields: [assignerId], references: [id])
+  lastReminderAt DateTime?
+
+  org Organization @relation(fields: [orgId], references: [id])
+
+  @@unique([id, orgId])
+}
+
+enum WarehouseRequestType {
+  ISSUE
+  RETURN
+  INCOME
+}
+
+enum WarehouseRequestStatus {
+  NEW
+  IN_PROGRESS
+  DONE
+  REJECTED
+}
+
+// ============ PURCHASE ORDERS ============
+model PurchaseOrder {
+  id          Int                 @id @default(autoincrement())
+  orgId     Int
+  number      String?             @unique
+  date        DateTime            @default(now())
+  plannedDate DateTime?
+  status      PurchaseOrderStatus @default(DRAFT)
+
+  supplierId Int
+  supplier   Supplier @relation(fields: [supplierId], references: [id])
+
+  comment String?
+
+  items PurchaseOrderItem[]
+  discrepancies ReceivingDiscrepancy[]
+
+  createdById Int
+  createdBy   User @relation(fields: [createdById], references: [id])
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  org Organization @relation(fields: [orgId], references: [id])
+
+  @@unique([id, orgId])
+}
+
+model PurchaseOrderItem {
+  id      Int           @id @default(autoincrement())
+  orgId     Int
+  orderId Int
+  order   PurchaseOrder @relation(fields: [orderId], references: [id])
+
+  itemId Int
+  item   Item @relation(fields: [itemId], references: [id])
+
+  quantity Float
+  receivedQty Float @default(0)
+  price    Float
+
+  org Organization @relation(fields: [orgId], references: [id])
+
+  @@unique([id, orgId])
+}
+
+enum PurchaseOrderStatus {
+  DRAFT
+  SENT
+  PARTIAL
+  RECEIVED
+  CLOSED
+}
+
+// ============ STOCK ITEMS ============
+model Item {
+  id          Int      @id @default(autoincrement())
+  orgId     Int
+  name        String
+  sku         String?  @unique
+  barcode     String?  @unique
+  qrCode      String?  @unique
+  unit        String?
+  minStock    Float?
+  maxStock    Float?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+  defaultPrice Float?
+
+  movements          StockMovement[]
+  purchaseOrderItems PurchaseOrderItem[]
+  placements         WarehousePlacement[]
+  discrepancies      StockDiscrepancy[]
+  receivingDiscrepancies ReceivingDiscrepancy[]
+
+  org Organization @relation(fields: [orgId], references: [id])
+
+  @@unique([id, orgId])
+}
+
+model WarehouseLocation {
+  id        Int      @id @default(autoincrement())
+  orgId     Int
+  name      String
+  zone      String?
+  aisle     String?
+  rack      String?
+  level     String?
+  code      String?  @unique
+  qrCode    String?  @unique
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  placements WarehousePlacement[]
+  auditEvents BinAuditEvent[]
+  discrepancies StockDiscrepancy[]
+
+  org Organization @relation(fields: [orgId], references: [id])
+
+  @@unique([id, orgId])
+}
+
+model WarehousePlacement {
+  id         Int      @id @default(autoincrement())
+  orgId     Int
+  itemId     Int
+  locationId Int
+  qty        Int
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  item     Item              @relation(fields: [itemId], references: [id])
+  location WarehouseLocation @relation(fields: [locationId], references: [id])
+
+  @@unique([itemId, locationId])
+
+  org Organization @relation(fields: [orgId], references: [id])
+
+  @@unique([id, orgId])
+}
+
+model StockMovement {
+  id           Int               @id @default(autoincrement())
+  orgId     Int
+  opId         String?           @unique
+  type         StockMovementType
+  itemId       Int
+  item         Item              @relation(fields: [itemId], references: [id])
+  locationId   Int?
+  fromLocationId Int?
+  toLocationId Int?
+  quantity     Float
+  comment      String?
+  pricePerUnit Float?
+  refType      String?
+  refId        String?
+  createdAt    DateTime          @default(now())
+  createdById  Int?
+  createdBy    User?             @relation(fields: [createdById], references: [id])
+
+  org Organization @relation(fields: [orgId], references: [id])
+
+  @@unique([id, orgId])
+}
+
+model BinAuditSession {
+  id              Int                 @id @default(autoincrement())
+  orgId     Int
+  startedByUserId Int?
+  startedBy       User?               @relation(fields: [startedByUserId], references: [id])
+  startedAt       DateTime            @default(now())
+  finishedAt      DateTime?
+  status          BinAuditSessionStatus @default(ACTIVE)
+  events          BinAuditEvent[]
+  discrepancies   StockDiscrepancy[]
+
+  org Organization @relation(fields: [orgId], references: [id])
+
+  @@unique([id, orgId])
+}
+
+model BinAuditEvent {
+  id         Int            @id @default(autoincrement())
+  orgId     Int
+  sessionId  Int
+  session    BinAuditSession @relation(fields: [sessionId], references: [id])
+  locationId Int
+  location   WarehouseLocation @relation(fields: [locationId], references: [id])
+  checkedAt  DateTime       @default(now())
+  result     BinAuditResult
+  note       String?
+
+  org Organization @relation(fields: [orgId], references: [id])
+
+  @@unique([id, orgId])
+}
+
+model StockDiscrepancy {
+  id            Int                 @id @default(autoincrement())
+  orgId     Int
+  sessionId     Int?
+  session       BinAuditSession?    @relation(fields: [sessionId], references: [id])
+  locationId    Int
+  location      WarehouseLocation   @relation(fields: [locationId], references: [id])
+  itemId        Int
+  item          Item                @relation(fields: [itemId], references: [id])
+  expectedQty   Int
+  countedQty    Int
+  delta         Int
+  status        StockDiscrepancyStatus @default(OPEN)
+  createdAt     DateTime            @default(now())
+  closedAt      DateTime?
+  closedByUserId Int?
+  closedByUser  User?               @relation("DiscrepancyClosedBy", fields: [closedByUserId], references: [id])
+  closeNote     String?
+  movementOpId  String?
+
+  org Organization @relation(fields: [orgId], references: [id])
+
+  @@unique([id, orgId])
+}
+
+model ReceivingDiscrepancy {
+  id            Int      @id @default(autoincrement())
+  orgId     Int
+  purchaseOrderId Int
+  purchaseOrder PurchaseOrder @relation(fields: [purchaseOrderId], references: [id])
+  itemId        Int?
+  item          Item?    @relation(fields: [itemId], references: [id])
+  expectedQty   Int
+  receivedQty   Int
+  delta         Int
+  note          String?
+  status        ReceivingDiscrepancyStatus @default(OPEN)
+  createdAt     DateTime @default(now())
+  closedAt      DateTime?
+  closedByUserId Int?
+  closedByUser  User? @relation("ReceivingDiscrepancyClosedBy", fields: [closedByUserId], references: [id])
+  closeNote     String?
+  movementOpId  String?
+
+  org Organization @relation(fields: [orgId], references: [id])
+
+  @@unique([id, orgId])
+}
+
+model OrgProfile {
+  id            Int      @id @default(autoincrement())
+  orgId     Int
+  orgName       String
+  legalAddress  String
+  actualAddress String
+  inn           String
+  kpp           String
+  phone         String
+  updatedAt     DateTime @updatedAt
+
+  org Organization @relation(fields: [orgId], references: [id])
+
+  @@unique([orgId])
+  @@unique([id, orgId])
+}
+
+enum StockMovementType {
+  INCOME
+  ISSUE
+  ADJUSTMENT
+}
+
+enum BinAuditSessionStatus {
+  ACTIVE
+  FINISHED
+}
+
+enum BinAuditResult {
+  OK
+  DISCREPANCY
+}
+
+enum StockDiscrepancyStatus {
+  OPEN
+  CLOSED
+}
+
+enum ReceivingDiscrepancyStatus {
+  OPEN
+  CLOSED
+}
+
+enum LeaveRegionCategory {
+  STANDARD
+  FAR_NORTH
+  EQUIVALENT_NORTH
+  OTHER_NORTH_COEF
+  CUSTOM
+}
+
+// ============ SUPPLIERS ============
+model Supplier {
+  id        Int      @id @default(autoincrement())
+  orgId     Int
+  name      String
+  inn       String?
+  phone     String?
+  email     String?
+  comment   String?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  orders PurchaseOrder[]
+
+  org Organization @relation(fields: [orgId], references: [id])
+
+  @@unique([id, orgId])
+}
+
+model SupplierTruck {
+  id            Int                 @id @default(autoincrement())
+  orgId     Int
+  status        SupplierTruckStatus @default(IN_QUEUE)
+
+  arrivalAt     DateTime            @default(now())
+  unloadStartAt DateTime?
+  unloadEndAt   DateTime?
+
+  supplier      String?
+  orderNumber   String?
+  deliveryDate  DateTime?
+
+  vehicleBrand  String?
+  truckNumber   String?
+  driverName    String?
+  driverPhone   String?
+  gate          String?
+  cargo         String?
+  note          String?
+  directImport  Boolean             @default(false)
+
+  createdAt     DateTime            @default(now())
+
+  org Organization @relation(fields: [orgId], references: [id])
+
+  @@unique([id, orgId])
+}
+
+enum SupplierTruckStatus {
+  IN_QUEUE
+  UNLOADING
+  DONE
+}
