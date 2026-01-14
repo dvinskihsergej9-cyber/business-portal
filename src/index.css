@@ -1269,7 +1269,7 @@ input[type="number"] {
   }
 
   .layout-sidebar {
-    display: none;
+    display: none !important;
   }
 
   .layout-topbar {

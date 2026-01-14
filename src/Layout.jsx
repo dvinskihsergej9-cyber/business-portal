@@ -6,6 +6,7 @@ export default function Layout() {
   const { user, logout } = useAuth();
   const location = useLocation();
   const [drawerOpen, setDrawerOpen] = useState(false);
+  const [isMobile, setIsMobile] = useState(false);
 
   const menu = [
     {
@@ -99,27 +100,68 @@ export default function Layout() {
     setDrawerOpen(false);
   }, [location.pathname]);
 
+  useEffect(() => {
+    const media = window.matchMedia("(max-width: 768px)");
+    const handleChange = (event) => {
+      setIsMobile(event.matches);
+    };
+    setIsMobile(media.matches);
+    if (media.addEventListener) {
+      media.addEventListener("change", handleChange);
+    } else {
+      media.addListener(handleChange);
+    }
+    return () => {
+      if (media.removeEventListener) {
+        media.removeEventListener("change", handleChange);
+      } else {
+        media.removeListener(handleChange);
+      }
+    };
+  }, []);
+
+  const renderNavItems = () => (
+    <nav style={styles.nav} className="sidebar-nav">
+      {allowedMenu.map((item) => (
+        <NavLink
+          key={item.to}
+          to={item.to}
+          onClick={() => setDrawerOpen(false)}
+          style={({ isActive }) =>
+            isActive
+              ? { ...styles.navItem, ...styles.navItemActive }
+              : styles.navItem
+          }
+        >
+          <span>{item.label}</span>
+        </NavLink>
+      ))}
+    </nav>
+  );
+
   const handleLogout = () => {
     logout();
   };
 
   return (
     <div style={styles.root} className="layout-root">
-      <div className="layout-topbar">
-        <button
-          type="button"
-          className="layout-topbar__menu"
-          aria-label="Open navigation menu"
-          aria-expanded={drawerOpen}
-          aria-controls="mobile-drawer"
-          onClick={() => setDrawerOpen(true)}
-        >
-          {"\u2630"}
-        </button>
-        <div className="layout-topbar__title">{pageTitle}</div>
-      </div>
+      {isMobile && (
+        <div className="layout-topbar">
+          <button
+            type="button"
+            className="layout-topbar__menu"
+            aria-label="Open navigation menu"
+            aria-expanded={drawerOpen}
+            aria-controls="mobile-drawer"
+            onClick={() => setDrawerOpen(true)}
+          >
+            {"\u2630"}
+          </button>
+          <div className="layout-topbar__title">{pageTitle}</div>
+        </div>
+      )}
 
-      {drawerOpen && (
+      {isMobile && drawerOpen && (
         <button
           type="button"
           className="layout-overlay"
@@ -128,96 +170,69 @@ export default function Layout() {
         />
       )}
 
-      <aside
-        id="mobile-drawer"
-        className={`layout-drawer${drawerOpen ? " is-open" : ""}`}
-      >
-        <div style={styles.logoBlock} className="layout-drawer__logo">
-          <div style={styles.logoMark} />
-          <div>
-            <div style={styles.logoTitle}>Business Portal</div>
-            <div style={styles.logoSubtitle}>Internal company portal</div>
-          </div>
-        </div>
-
-        {user && (
-          <div style={styles.userCard}>
-            <div style={styles.userName}>{user.name}</div>
-            <div style={styles.userEmail}>{user.email}</div>
-            <div style={styles.userRole}>{user.role}</div>
-          </div>
-        )}
-
-        <nav style={styles.nav} className="sidebar-nav">
-          {allowedMenu.map((item) => (
-            <NavLink
-              key={item.to}
-              to={item.to}
-              onClick={() => setDrawerOpen(false)}
-              style={({ isActive }) =>
-                isActive
-                  ? { ...styles.navItem, ...styles.navItemActive }
-                  : styles.navItem
-              }
-            >
-              <span>{item.label}</span>
-            </NavLink>
-          ))}
-        </nav>
-
-        <button
-          style={styles.logoutBtn}
-          onClick={() => {
-            setDrawerOpen(false);
-            handleLogout();
-          }}
+      {isMobile && (
+        <aside
+          id="mobile-drawer"
+          className={`layout-drawer${drawerOpen ? " is-open" : ""}`}
         >
-          Logout
-        </button>
-      </aside>
-
-      {/* Сайдбар */}
-      <aside style={styles.sidebar} className="layout-sidebar">
-        {/* Лого / название */}
-        <div style={styles.logoBlock}>
-          <div style={styles.logoMark} />
-          <div>
-            <div style={styles.logoTitle}>Business Portal</div>
-            <div style={styles.logoSubtitle}>Внутренний сервис компании</div>
+          <div style={styles.logoBlock} className="layout-drawer__logo">
+            <div style={styles.logoMark} />
+            <div>
+              <div style={styles.logoTitle}>Business Portal</div>
+              <div style={styles.logoSubtitle}>Internal company portal</div>
+            </div>
           </div>
-        </div>
 
-        {/* Карточка пользователя */}
-        {user && (
-          <div style={styles.userCard}>
-            <div style={styles.userName}>{user.name}</div>
-            <div style={styles.userEmail}>{user.email}</div>
-            <div style={styles.userRole}>{user.role}</div>
-          </div>
-        )}
+          {user && (
+            <div style={styles.userCard}>
+              <div style={styles.userName}>{user.name}</div>
+              <div style={styles.userEmail}>{user.email}</div>
+              <div style={styles.userRole}>{user.role}</div>
+            </div>
+          )}
 
-        {/* Навигация */}
-        <nav style={styles.nav} className="sidebar-nav">
-          {allowedMenu.map((item) => (
-            <NavLink
-              key={item.to}
-              to={item.to}
-              style={({ isActive }) =>
-                isActive
-                  ? { ...styles.navItem, ...styles.navItemActive }
-                  : styles.navItem
-              }
-            >
-              <span>{item.label}</span>
-            </NavLink>
-          ))}
-        </nav>
+          {renderNavItems()}
 
-        {/* Кнопка выхода */}
-        <button style={styles.logoutBtn} onClick={handleLogout}>
-          Выйти
-        </button>
-      </aside>
+          <button
+            style={styles.logoutBtn}
+            onClick={() => {
+              setDrawerOpen(false);
+              handleLogout();
+            }}
+          >
+            Logout
+          </button>
+        </aside>
+      )}
+
+      {!isMobile && (
+        <>
+          <aside style={styles.sidebar} className="layout-sidebar">
+            <div style={styles.logoBlock}>
+              <div style={styles.logoMark} />
+              <div>
+                <div style={styles.logoTitle}>Business Portal</div>
+                <div style={styles.logoSubtitle}>Internal company portal</div>
+              </div>
+            </div>
+
+            {user && (
+              <div style={styles.userCard}>
+                <div style={styles.userName}>{user.name}</div>
+                <div style={styles.userEmail}>{user.email}</div>
+                <div style={styles.userRole}>{user.role}</div>
+              </div>
+            )}
+
+            {renderNavItems()}
+
+            <button style={styles.logoutBtn} onClick={handleLogout}>
+              Logout
+            </button>
+          </aside>
+        </>
+      )}
+
 
       {/* Правая часть: шапка + контент */}
       <div style={styles.main} className="layout-main">
