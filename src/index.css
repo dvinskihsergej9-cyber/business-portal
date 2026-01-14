@@ -57,6 +57,82 @@ body {
   z-index: 1;
 }
 
+.no-scroll {
+  overflow: hidden;
+}
+
+.layout-topbar {
+  display: none;
+  align-items: center;
+  gap: 12px;
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 56px;
+  padding: 0 14px;
+  background: rgba(255, 255, 255, 0.96);
+  border-bottom: 1px solid rgba(15, 23, 42, 0.1);
+  backdrop-filter: blur(8px);
+  z-index: 1000;
+}
+
+.layout-topbar__menu {
+  width: 44px;
+  height: 44px;
+  border-radius: 12px;
+  border: 1px solid rgba(15, 23, 42, 0.1);
+  background: #ffffff;
+  color: #0f172a;
+  font-size: 20px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
+}
+
+.layout-topbar__title {
+  font-size: 16px;
+  font-weight: 600;
+  color: #0f172a;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.layout-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 1100;
+  background: rgba(15, 23, 42, 0.45);
+  border: none;
+  padding: 0;
+}
+
+.layout-drawer {
+  position: fixed;
+  top: 0;
+  left: 0;
+  height: 100vh;
+  width: min(80vw, 320px);
+  background: #ffffff;
+  box-shadow: 12px 0 30px rgba(15, 23, 42, 0.18);
+  transform: translateX(-100%);
+  transition: transform 0.2s ease;
+  z-index: 1200;
+  padding: 20px 16px;
+  box-sizing: border-box;
+  overflow-y: auto;
+}
+
+.layout-drawer.is-open {
+  transform: translateX(0);
+}
+
+.layout-drawer__logo {
+  margin-bottom: 16px;
+}
+
 /* формы и кнопки */
 
 input,
@@ -1185,4 +1261,102 @@ input[type="number"] {
 .portal-surface .table--queue td:first-child,
 .portal-surface .table--queue th:first-child {
   white-space: normal;
+}
+
+@media (max-width: 768px) {
+  body {
+    overflow-x: hidden;
+  }
+
+  .layout-sidebar {
+    display: none;
+  }
+
+  .layout-topbar {
+    display: flex;
+  }
+
+  .layout-main {
+    width: 100%;
+    padding-top: 56px;
+  }
+
+  .layout-header {
+    top: 56px;
+  }
+
+  .portal-surface {
+    padding: 14px 12px 90px;
+  }
+
+  .portal-surface .page {
+    max-width: 100%;
+  }
+
+  .portal-surface .page-header {
+    padding: 12px 14px;
+  }
+
+  .portal-surface .card,
+  .portal-surface .card--1c {
+    padding: 12px 14px;
+  }
+
+  .portal-surface .card1c__header {
+    padding: 10px 12px;
+  }
+
+  .portal-surface .card1c__body {
+    padding: 10px 12px 12px;
+  }
+
+  .portal-surface .btn,
+  .portal-surface button {
+    min-height: 44px;
+  }
+
+  .portal-surface form .btn,
+  .portal-surface form button {
+    width: 100%;
+  }
+
+  .portal-surface .request-form-1c .form__group {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .portal-surface .request-form-1c .form__label {
+    width: 100%;
+    padding: 0;
+    white-space: normal;
+  }
+
+  .portal-surface .request-form-1c__actions {
+    flex-direction: column;
+    gap: 8px;
+  }
+
+  .portal-surface .request-form-1c__actions .btn {
+    width: 100%;
+  }
+
+  .grid-2,
+  .warehouse-subcards,
+  .warehouse-grid,
+  .warehouse-locations__grid,
+  .warehouse-locations__row,
+  .po-header-grid {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .portal-surface table {
+    display: block;
+    width: 100%;
+    overflow-x: auto;
+  }
+
+  .portal-surface .table-wrapper {
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+  }
 }

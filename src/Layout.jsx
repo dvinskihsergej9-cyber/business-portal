@@ -1,9 +1,11 @@
+import { useEffect, useMemo, useState } from "react";
 import { NavLink, Outlet, useLocation } from "react-router-dom";
 import { useAuth } from "./context/AuthContext";
 
 export default function Layout() {
   const { user, logout } = useAuth();
   const location = useLocation();
+  const [drawerOpen, setDrawerOpen] = useState(false);
 
   const menu = [
     {
@@ -58,14 +60,124 @@ export default function Layout() {
     ? menu.filter((item) => item.roles.includes(user.role))
     : [];
 
+  const pageTitle = useMemo(() => {
+    const match = allowedMenu.find((item) =>
+      location.pathname === "/"
+        ? item.to === "/dashboard"
+        : location.pathname.startsWith(item.to)
+    );
+    return match?.label || "Business Portal";
+  }, [allowedMenu, location.pathname]);
+
+  useEffect(() => {
+    if (!drawerOpen) return;
+    const handleKeyDown = (event) => {
+      if (event.key === "Escape") {
+        setDrawerOpen(false);
+      }
+    };
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
+  }, [drawerOpen]);
+
+  useEffect(() => {
+    document.body.classList.toggle("no-scroll", drawerOpen);
+    return () => document.body.classList.remove("no-scroll");
+  }, [drawerOpen]);
+
+  useEffect(() => {
+    const handleResize = () => {
+      if (window.innerWidth > 768 && drawerOpen) {
+        setDrawerOpen(false);
+      }
+    };
+    window.addEventListener("resize", handleResize);
+    return () => window.removeEventListener("resize", handleResize);
+  }, [drawerOpen]);
+
+  useEffect(() => {
+    setDrawerOpen(false);
+  }, [location.pathname]);
+
   const handleLogout = () => {
     logout();
   };
 
   return (
-    <div style={styles.root}>
+    <div style={styles.root} className="layout-root">
+      <div className="layout-topbar">
+        <button
+          type="button"
+          className="layout-topbar__menu"
+          aria-label="Open navigation menu"
+          aria-expanded={drawerOpen}
+          aria-controls="mobile-drawer"
+          onClick={() => setDrawerOpen(true)}
+        >
+          {"\u2630"}
+        </button>
+        <div className="layout-topbar__title">{pageTitle}</div>
+      </div>
+
+      {drawerOpen && (
+        <button
+          type="button"
+          className="layout-overlay"
+          aria-label="Close navigation menu"
+          onClick={() => setDrawerOpen(false)}
+        />
+      )}
+
+      <aside
+        id="mobile-drawer"
+        className={`layout-drawer${drawerOpen ? " is-open" : ""}`}
+      >
+        <div style={styles.logoBlock} className="layout-drawer__logo">
+          <div style={styles.logoMark} />
+          <div>
+            <div style={styles.logoTitle}>Business Portal</div>
+            <div style={styles.logoSubtitle}>Internal company portal</div>
+          </div>
+        </div>
+
+        {user && (
+          <div style={styles.userCard}>
+            <div style={styles.userName}>{user.name}</div>
+            <div style={styles.userEmail}>{user.email}</div>
+            <div style={styles.userRole}>{user.role}</div>
+          </div>
+        )}
+
+        <nav style={styles.nav} className="sidebar-nav">
+          {allowedMenu.map((item) => (
+            <NavLink
+              key={item.to}
+              to={item.to}
+              onClick={() => setDrawerOpen(false)}
+              style={({ isActive }) =>
+                isActive
+                  ? { ...styles.navItem, ...styles.navItemActive }
+                  : styles.navItem
+              }
+            >
+              <span>{item.label}</span>
+            </NavLink>
+          ))}
+        </nav>
+
+        <button
+          style={styles.logoutBtn}
+          onClick={() => {
+            setDrawerOpen(false);
+            handleLogout();
+          }}
+        >
+          Logout
+        </button>
+      </aside>
+
       {/* Сайдбар */}
-      <aside style={styles.sidebar}>
+      <aside style={styles.sidebar} className="layout-sidebar">
         {/* Лого / название */}
         <div style={styles.logoBlock}>
           <div style={styles.logoMark} />
@@ -108,8 +220,8 @@ export default function Layout() {
       </aside>
 
       {/* Правая часть: шапка + контент */}
-      <div style={styles.main}>
-        <header style={styles.header} className="portal-header">
+      <div style={styles.main} className="layout-main">
+        <header style={styles.header} className="portal-header layout-header">
           <div>
             <div style={styles.headerTitle}>
               {location.pathname === "/dashboard"
