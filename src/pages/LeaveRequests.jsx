@@ -282,14 +282,7 @@ export default function LeaveRequests() {
             Краткая статистика по вашим отпускам.
           </p>
 
-          <div
-            style={{
-              display: "grid",
-              gridTemplateColumns: "repeat(3, minmax(0, 1fr))",
-              gap: 10,
-              fontSize: 13,
-            }}
-          >
+          <div className="mobile-grid-3" style={{ fontSize: 13 }}>
             <div
               style={{
                 padding: 10,

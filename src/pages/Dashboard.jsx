@@ -210,7 +210,7 @@ export default function Dashboard() {
 
             <div style={{ display: "grid", gap: 14 }}>
               {portalFiltered.map((item) => (
-                <div key={item.id} style={{ display: "grid", gridTemplateColumns: "110px 1fr", gap: 14 }}>
+                <div key={item.id} className="portal-news-grid">
                   <div style={{ color: "#475569", fontWeight: 600, textAlign: "right", paddingTop: 8 }}>
                     {new Date(item.date).toLocaleDateString("ru-RU")}
                   </div>

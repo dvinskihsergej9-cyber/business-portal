@@ -243,7 +243,7 @@ export default function UserManagement() {
         <div style={{ fontWeight: 600, marginBottom: 8 }}>
           Пригласить пользователя
         </div>
-        <div style={{ display: "grid", gap: 8, gridTemplateColumns: "1fr 220px auto" }}>
+        <div className="mobile-grid-3" style={{ gap: 8 }}>
           <input
             type="email"
             placeholder="Email"

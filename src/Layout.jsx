@@ -179,7 +179,9 @@ export default function Layout() {
             <div style={styles.logoMark} />
             <div>
               <div style={styles.logoTitle}>Business Portal</div>
-              <div style={styles.logoSubtitle}>Internal company portal</div>
+              <div style={styles.logoSubtitle}>
+                {"\u0412\u043d\u0443\u0442\u0440\u0435\u043d\u043d\u0438\u0439 \u0441\u0435\u0440\u0432\u0438\u0441 \u043a\u043e\u043c\u043f\u0430\u043d\u0438\u0438"}
+              </div>
             </div>
           </div>
 
@@ -200,7 +202,7 @@ export default function Layout() {
               handleLogout();
             }}
           >
-            Logout
+            {"\u0412\u044b\u0439\u0442\u0438"}
           </button>
         </aside>
       )}
@@ -212,7 +214,9 @@ export default function Layout() {
               <div style={styles.logoMark} />
               <div>
                 <div style={styles.logoTitle}>Business Portal</div>
-                <div style={styles.logoSubtitle}>Internal company portal</div>
+                <div style={styles.logoSubtitle}>
+                  {"\u0412\u043d\u0443\u0442\u0440\u0435\u043d\u043d\u0438\u0439 \u0441\u0435\u0440\u0432\u0438\u0441 \u043a\u043e\u043c\u043f\u0430\u043d\u0438\u0438"}
+                </div>
               </div>
             </div>
 
@@ -227,7 +231,7 @@ export default function Layout() {
             {renderNavItems()}
 
             <button style={styles.logoutBtn} onClick={handleLogout}>
-              Logout
+              {"\u0412\u044b\u0439\u0442\u0438"}
             </button>
           </aside>
         </>

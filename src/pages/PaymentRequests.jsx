@@ -403,14 +403,7 @@ export default function PaymentRequests() {
             Сводка по вашим заявкам на оплату.
           </p>
 
-          <div
-            style={{
-              display: "grid",
-              gridTemplateColumns: "repeat(2, minmax(0, 1fr))",
-              gap: 10,
-              fontSize: 13,
-            }}
-          >
+          <div className="mobile-grid-2" style={{ fontSize: 13 }}>
             <StatCard
               label="Новые"
               count={myStats.NEW.count}
@@ -437,15 +430,7 @@ export default function PaymentRequests() {
 
       {/* список заявок с табами и фильтрами */}
       <div className="card" style={{ marginTop: 16 }}>
-        <div
-          style={{
-            display: "flex",
-            justifyContent: "space-between",
-            gap: 12,
-            marginBottom: 10,
-            alignItems: "center",
-          }}
-        >
+        <div className="mobile-actions" style={{ marginBottom: 10 }}>
           <div>
             <div className="tabs">
               <button
