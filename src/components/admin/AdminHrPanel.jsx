@@ -1,6 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
-
-const API = "http://localhost:3001/api";
+import { apiFetch } from "../../apiConfig";
 
 const LEAVE_CATEGORIES = [
   { value: "STANDARD", label: "Стандартная" },
@@ -79,7 +78,7 @@ export default function AdminHrPanel() {
     try {
       setLoading(true);
       setError("");
-      const res = await fetch(`${API}/admin/hr/employees`, {
+      const res = await apiFetch("/admin/hr/employees", {
         headers: authHeaders,
       });
       const data = await res.json();
@@ -167,8 +166,8 @@ export default function AdminHrPanel() {
             ? null
             : Number(form.leaveOverrideDays),
       };
-      const res = await fetch(
-        `${API}/admin/hr/employees/${editEmployee.id}`,
+      const res = await apiFetch(
+        `/admin/hr/employees/${editEmployee.id}`,
         {
           method: "PUT",
           headers: authHeaders,
@@ -197,8 +196,8 @@ export default function AdminHrPanel() {
     try {
       setDeleting(true);
       setError("");
-      const res = await fetch(
-        `${API}/admin/hr/employees/${deleteEmployee.id}`,
+      const res = await apiFetch(
+        `/admin/hr/employees/${deleteEmployee.id}`,
         {
           method: "DELETE",
           headers: authHeaders,

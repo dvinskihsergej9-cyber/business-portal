@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import { API_BASE } from "../../apiConfig";
+import { apiFetch } from "../../apiConfig";
 import Scanner from "./Scanner";
 import Stepper from "./Stepper";
 import TsdHeader from "./TsdHeader";
@@ -171,7 +171,7 @@ export default function ReceivingByPo({ authHeaders, makeOpId, onBack }) {
   const reloadOpenPos = async () => {
     try {
       setState((prev) => ({ ...prev, loading: true, error: "" }));
-      const res = await fetch(`${API_BASE}/warehouse/receiving/open-pos`, {
+      const res = await apiFetch("/warehouse/receiving/open-pos", {
         headers: authHeaders,
       });
       const data = await res.json();
@@ -269,8 +269,8 @@ export default function ReceivingByPo({ authHeaders, makeOpId, onBack }) {
   };
 
   const resolveScan = async (code) => {
-    const res = await fetch(
-      `${API_BASE}/warehouse/scan/resolve?code=${encodeURIComponent(code)}`,
+    const res = await apiFetch(
+      `/warehouse/scan/resolve?code=${encodeURIComponent(code)}`,
       { headers: authHeaders }
     );
     const data = await res.json();
@@ -341,8 +341,8 @@ export default function ReceivingByPo({ authHeaders, makeOpId, onBack }) {
 
 
   const openPrintAct = async (poId) => {
-    const printRes = await fetch(
-      `${API_BASE}/purchase-orders/${poId}/print-receive-act`,
+    const printRes = await apiFetch(
+      `/purchase-orders/${poId}/print-receive-act`,
       { headers: authHeaders }
     );
     if (printRes.status === 204) return;
@@ -365,7 +365,7 @@ export default function ReceivingByPo({ authHeaders, makeOpId, onBack }) {
   };
 
   const ensureOrgProfileAndPrint = async (poId) => {
-    const res = await fetch(`${API_BASE}/settings/org-profile`, {
+    const res = await apiFetch("/settings/org-profile", {
       headers: authHeaders,
     });
     if (res.status === 403) {
@@ -416,8 +416,8 @@ export default function ReceivingByPo({ authHeaders, makeOpId, onBack }) {
     try {
       setState((prev) => ({ ...prev, loading: true, error: "" }));
       const opId = makeOpId("POREC");
-      const res = await fetch(
-        `${API_BASE}/warehouse/receiving/${selectedPo.id}/confirm`,
+      const res = await apiFetch(
+        `/warehouse/receiving/${selectedPo.id}/confirm`,
         {
           method: "POST",
           headers: authHeaders,
@@ -887,7 +887,7 @@ export default function ReceivingByPo({ authHeaders, makeOpId, onBack }) {
                   try {
                     setOrgSaving(true);
                     setOrgFormError("");
-                    const res = await fetch(`${API_BASE}/settings/org-profile`, {
+                    const res = await apiFetch("/settings/org-profile", {
                       method: "PUT",
                       headers: authHeaders,
                       body: JSON.stringify(orgForm),

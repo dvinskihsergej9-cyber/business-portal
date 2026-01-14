@@ -1,7 +1,6 @@
 import { useEffect, useState } from "react";
 import { useAuth } from "../context/AuthContext";
-
-const API = "http://localhost:3001/api";
+import { apiFetch } from "../apiConfig";
 
 const ALL_ROLES = ["EMPLOYEE", "HR", "ACCOUNTING", "WAREHOUSE", "ADMIN"];
 
@@ -37,7 +36,7 @@ export default function UserManagement() {
     try {
       setLoading(true);
       setError("");
-      const res = await fetch(`${API}/users`, { headers });
+      const res = await apiFetch("/users", { headers });
       const data = await res.json();
       if (!res.ok) {
         throw new Error(
@@ -57,7 +56,7 @@ export default function UserManagement() {
     try {
       setInvitesLoading(true);
       setInvitesError("");
-      const res = await fetch(`${API}/admin/invites`, { headers });
+      const res = await apiFetch("/admin/invites", { headers });
       const data = await res.json();
       if (!res.ok) {
         throw new Error(data.message || "INVITES_LOAD_ERROR");
@@ -91,7 +90,7 @@ export default function UserManagement() {
     setError("");
 
     try {
-      const res = await fetch(`${API}/users/${id}/role`, {
+      const res = await apiFetch(`/users/${id}/role`, {
         method: "PUT",
         headers,
         body: JSON.stringify({ role: userToUpdate.role }),
@@ -135,7 +134,7 @@ export default function UserManagement() {
     setInviteStatus(null);
     setInviteSending(true);
     try {
-      const res = await fetch(`${API}/admin/invites`, {
+      const res = await apiFetch("/admin/invites", {
         method: "POST",
         headers,
         body: JSON.stringify({ email: inviteEmail, role: inviteRole }),
@@ -161,7 +160,7 @@ export default function UserManagement() {
     setInvitesError("");
     setInviteStatus(null);
     try {
-      const res = await fetch(`${API}/admin/invites/${id}/resend`, {
+      const res = await apiFetch(`/admin/invites/${id}/resend`, {
         method: "POST",
         headers,
       });

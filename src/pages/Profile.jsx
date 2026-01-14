@@ -1,7 +1,6 @@
 import { useState } from "react";
 import { useAuth } from "../context/AuthContext";
-
-const API = "http://localhost:3001/api";
+import { apiFetch } from "../apiConfig";
 
 export default function Profile() {
   const { user, updateProfile } = useAuth();
@@ -46,7 +45,7 @@ export default function Profile() {
     setError("");
     try {
       const token = localStorage.getItem("token");
-      const res = await fetch(`${API}/dev/make-me-admin`, {
+      const res = await apiFetch("/dev/make-me-admin", {
         method: "POST",
         headers: {
           Authorization: `Bearer ${token}`,

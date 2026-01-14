@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { useSearchParams, useNavigate } from "react-router-dom";
-import { API_BASE } from "../apiConfig";
+import { apiFetch } from "../apiConfig";
 
 export default function SubscribeReturn() {
   const [searchParams] = useSearchParams();
@@ -21,8 +21,8 @@ export default function SubscribeReturn() {
 
     try {
       const token = localStorage.getItem("token");
-      const res = await fetch(
-        `${API_BASE}/billing/yookassa/payment-status?paymentId=${encodeURIComponent(paymentId)}`,
+      const res = await apiFetch(
+        `/billing/yookassa/payment-status?paymentId=${encodeURIComponent(paymentId)}`,
         {
           headers: {
             Authorization: `Bearer ${token}`,

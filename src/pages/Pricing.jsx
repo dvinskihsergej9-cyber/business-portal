@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { API_BASE } from "../apiConfig";
+import { apiFetch } from "../apiConfig";
 import { useAuth } from "../context/AuthContext";
 
 const PLANS = [
@@ -30,7 +30,7 @@ export default function Pricing() {
       setLoading(true);
       setError("");
       const token = localStorage.getItem("token");
-      const res = await fetch(`${API_BASE}/billing/yookassa/create-payment`, {
+      const res = await apiFetch("/billing/yookassa/create-payment", {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
@@ -64,7 +64,7 @@ export default function Pricing() {
       setDevLoading(true);
       setError("");
       const token = localStorage.getItem("token");
-      const res = await fetch(`${API_BASE}/dev/activate-test-subscription`, {
+      const res = await apiFetch("/dev/activate-test-subscription", {
         method: "POST",
         headers: {
           Authorization: `Bearer ${token}`,

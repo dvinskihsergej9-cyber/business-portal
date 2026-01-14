@@ -1,6 +1,5 @@
 ﻿import { useEffect, useMemo, useState } from "react";
-
-const API = "http://localhost:3001/api";
+import { apiFetch } from "../apiConfig";
 
 const STATUS_LABELS = {
   ACTIVE: "В штате",
@@ -290,7 +289,7 @@ export default function HrPanel() {
     try {
       setLoading(true);
       setError("");
-      const res = await fetch(`${API}/hr/employees`, { headers: authHeaders });
+      const res = await apiFetch(`/hr/employees`, { headers: authHeaders });
       const data = await res.json();
       if (!res.ok) throw new Error(data.message || "Не удалось загрузить сотрудников");
       setEmployees(data);
@@ -307,9 +306,9 @@ export default function HrPanel() {
       setSafetyLoading(true);
       setSafetyError("");
       const [instrRes, assignRes, resRes] = await Promise.all([
-        fetch(`${API}/safety/instructions`, { headers: authHeaders }),
-        fetch(`${API}/safety/assignments`, { headers: authHeaders }),
-        fetch(`${API}/safety/resources`, { headers: authHeaders }),
+        apiFetch(`/safety/instructions`, { headers: authHeaders }),
+        apiFetch(`/safety/assignments`, { headers: authHeaders }),
+        apiFetch(`/safety/resources`, { headers: authHeaders }),
       ]);
       const instrData = await instrRes.json();
       const assignData = await assignRes.json();
@@ -393,7 +392,7 @@ export default function HrPanel() {
         status: "ACTIVE",
         hiredAt,
       };
-      const res = await fetch(`${API}/hr/employees`, {
+      const res = await apiFetch(`/hr/employees`, {
         method: "POST",
         headers: authHeaders,
         body: JSON.stringify(body),
@@ -458,7 +457,7 @@ export default function HrPanel() {
         throw new Error("Заполните все поля, включая Telegram ID.");
       }
 
-      const res = await fetch(`${API}/hr/employees/${id}`, {
+      const res = await apiFetch(`/hr/employees/${id}`, {
         method: "PUT",
         headers: authHeaders,
         body: JSON.stringify({
@@ -514,7 +513,7 @@ export default function HrPanel() {
       return;
     }
     try {
-      const res = await fetch(`${API}/hr/employees/${employeeId}/leave-balance`, {
+      const res = await apiFetch(`/hr/employees/${employeeId}/leave-balance`, {
         headers: authHeaders,
       });
       const data = await res.json();
@@ -542,7 +541,7 @@ export default function HrPanel() {
       if (leaveTab === "TERMINATION") {
         if (!terminationForm.employeeId) throw new Error("Выберите сотрудника");
 
-        const res = await fetch(`${API}/hr/leave-applications`, {
+        const res = await apiFetch(`/hr/leave-applications`, {
           method: "POST",
           headers: authHeaders,
           body: JSON.stringify({
@@ -563,7 +562,7 @@ export default function HrPanel() {
       } else {
         if (!leaveForm.employeeId) throw new Error("Выберите сотрудника");
 
-        const res = await fetch(`${API}/hr/leave-applications`, {
+        const res = await apiFetch(`/hr/leave-applications`, {
           method: "POST",
           headers: authHeaders,
           body: JSON.stringify({
@@ -593,7 +592,7 @@ export default function HrPanel() {
   const handleCompleteInstruction = async (assignmentId) => {
     try {
       setSafetyError("");
-      const res = await fetch(`${API}/safety/assignments/${assignmentId}/complete`, {
+      const res = await apiFetch(`/safety/assignments/${assignmentId}/complete`, {
         method: "PUT",
         headers: authHeaders,
       });
@@ -611,7 +610,7 @@ export default function HrPanel() {
   const handleRemindInstruction = async (assignment) => {
     try {
       setSafetyError("");
-      const res = await fetch(`${API}/safety/assignments/${assignment.id}/remind`, {
+      const res = await apiFetch(`/safety/assignments/${assignment.id}/remind`, {
         method: "POST",
         headers: authHeaders,
       });

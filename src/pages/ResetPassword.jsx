@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { useNavigate, useSearchParams } from "react-router-dom";
-import { API_BASE } from "../apiConfig";
+import { apiFetch } from "../apiConfig";
 
 const T = {
   title: "Смена пароля",
@@ -52,7 +52,7 @@ export default function ResetPassword() {
 
     try {
       setLoading(true);
-      const res = await fetch(`${API_BASE}/auth/reset-password`, {
+      const res = await apiFetch("/auth/reset-password", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ token, newPassword: form.password }),

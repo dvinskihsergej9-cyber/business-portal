@@ -1,7 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { useAuth } from "../context/AuthContext";
-
-const API = "http://localhost:3001/api";
+import { apiFetch } from "../apiConfig";
 
 const STATUS_LABELS = {
   PENDING: "На согласовании",
@@ -52,7 +51,7 @@ export default function LeaveRequests() {
       setLoading(true);
       setError("");
 
-      const myRes = await fetch(`${API}/leave-requests/my`, {
+      const myRes = await apiFetch("/leave-requests/my", {
         headers: authHeaders,
       });
       const myData = await myRes.json();
@@ -62,7 +61,7 @@ export default function LeaveRequests() {
       setMyRequests(myData);
 
       if (isHrOrAdmin) {
-        const allRes = await fetch(`${API}/leave-requests`, {
+        const allRes = await apiFetch("/leave-requests", {
           headers: { Authorization: authHeaders.Authorization },
         });
         const allData = await allRes.json();
@@ -94,7 +93,7 @@ export default function LeaveRequests() {
     setError("");
 
     try {
-      const res = await fetch(`${API}/leave-requests`, {
+      const res = await apiFetch("/leave-requests", {
         method: "POST",
         headers: authHeaders,
         body: JSON.stringify(form),
@@ -135,7 +134,7 @@ export default function LeaveRequests() {
     setError("");
 
     try {
-      const res = await fetch(`${API}/leave-requests/${id}/status`, {
+      const res = await apiFetch(`/leave-requests/${id}/status`, {
         method: "PUT",
         headers: authHeaders,
         body: JSON.stringify({ status: req.status }),

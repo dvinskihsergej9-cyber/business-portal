@@ -1,6 +1,5 @@
 import { useEffect, useState } from "react";
-
-const API = "http://localhost:3001/api";
+import { apiFetch } from "../apiConfig";
 
 /**
  * Печатная форма инвентаризации (акт ревизионной проверки)
@@ -185,7 +184,7 @@ export default function StockAuditTab() {
         setLoading(true);
         setError("");
 
-        const res = await fetch(`${API}/inventory/stock`, {
+        const res = await apiFetch("/inventory/stock", {
           headers: authHeaders,
         });
 

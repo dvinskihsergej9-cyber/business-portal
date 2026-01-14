@@ -1,7 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { useAuth } from "../context/AuthContext";
-
-const API = "http://localhost:3001/api";
+import { apiFetch } from "../apiConfig";
 
 const STATUS_LABELS = {
   NEW: "Новая",
@@ -62,7 +61,7 @@ export default function PaymentRequests() {
       setError("");
 
       // мои заявки
-      const myRes = await fetch(`${API}/payment-requests/my`, {
+      const myRes = await apiFetch("/payment-requests/my", {
         headers: authHeaders,
       });
       const myData = await myRes.json();
@@ -73,7 +72,7 @@ export default function PaymentRequests() {
 
       // все заявки (для бухгалтера / админа)
       if (isAccounting) {
-        const allRes = await fetch(`${API}/payment-requests`, {
+        const allRes = await apiFetch("/payment-requests", {
           headers: { Authorization: authHeaders.Authorization },
         });
         const allData = await allRes.json();
@@ -115,7 +114,7 @@ export default function PaymentRequests() {
         comment: form.comment,
       };
 
-      const res = await fetch(`${API}/payment-requests`, {
+      const res = await apiFetch("/payment-requests", {
         method: "POST",
         headers: authHeaders,
         body: JSON.stringify(body),
@@ -163,7 +162,7 @@ export default function PaymentRequests() {
     setError("");
 
     try {
-      const res = await fetch(`${API}/payment-requests/${id}/status`, {
+      const res = await apiFetch(`/payment-requests/${id}/status`, {
         method: "PUT",
         headers: authHeaders,
         body: JSON.stringify({

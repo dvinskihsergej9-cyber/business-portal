@@ -1,6 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
-
-const API = "http://localhost:3001/api";
+import { apiFetch } from "../../apiConfig";
 
 const REQUEST_STATUS_OPTIONS = [
   { value: "NEW", label: "Новая" },
@@ -72,9 +71,9 @@ export default function AdminWarehousePanel() {
       setLoading(true);
       setError("");
       const [itemsRes, locationsRes, requestsRes] = await Promise.all([
-        fetch(`${API}/admin/warehouse/items`, { headers: authHeaders }),
-        fetch(`${API}/admin/warehouse/locations`, { headers: authHeaders }),
-        fetch(`${API}/admin/warehouse/requests`, { headers: authHeaders }),
+        apiFetch("/admin/warehouse/items", { headers: authHeaders }),
+        apiFetch("/admin/warehouse/locations", { headers: authHeaders }),
+        apiFetch("/admin/warehouse/requests", { headers: authHeaders }),
       ]);
       const itemsData = await itemsRes.json();
       const locationsData = await locationsRes.json();
@@ -155,8 +154,8 @@ export default function AdminWarehousePanel() {
     try {
       setSaving(true);
       setError("");
-      const res = await fetch(
-        `${API}/admin/warehouse/items/${editItem.id}`,
+      const res = await apiFetch(
+        `/admin/warehouse/items/${editItem.id}`,
         {
           method: "PUT",
           headers: authHeaders,
@@ -187,8 +186,8 @@ export default function AdminWarehousePanel() {
     try {
       setSaving(true);
       setError("");
-      const res = await fetch(
-        `${API}/admin/warehouse/locations/${editLocation.id}`,
+      const res = await apiFetch(
+        `/admin/warehouse/locations/${editLocation.id}`,
         {
           method: "PUT",
           headers: authHeaders,
@@ -227,8 +226,8 @@ export default function AdminWarehousePanel() {
           ? new Date(requestForm.desiredDate).toISOString()
           : null,
       };
-      const res = await fetch(
-        `${API}/admin/warehouse/requests/${editRequest.id}`,
+      const res = await apiFetch(
+        `/admin/warehouse/requests/${editRequest.id}`,
         {
           method: "PUT",
           headers: authHeaders,
@@ -259,8 +258,8 @@ export default function AdminWarehousePanel() {
     try {
       setDeleting(true);
       setError("");
-      const res = await fetch(
-        `${API}/admin/warehouse/items/${deleteItem.id}`,
+      const res = await apiFetch(
+        `/admin/warehouse/items/${deleteItem.id}`,
         {
           method: "DELETE",
           headers: authHeaders,
@@ -290,8 +289,8 @@ export default function AdminWarehousePanel() {
     try {
       setDeleting(true);
       setError("");
-      const res = await fetch(
-        `${API}/admin/warehouse/locations/${deleteLocation.id}`,
+      const res = await apiFetch(
+        `/admin/warehouse/locations/${deleteLocation.id}`,
         {
           method: "DELETE",
           headers: authHeaders,

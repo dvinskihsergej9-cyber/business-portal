@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { API_BASE } from "../apiConfig";
+import { apiFetch } from "../apiConfig";
 import { useAuth } from "../context/AuthContext";
 
 export default function Billing() {
@@ -16,7 +16,7 @@ export default function Billing() {
       setStatus("loading");
       setError("");
       const token = localStorage.getItem("token");
-      const res = await fetch(`${API_BASE}/me`, {
+      const res = await apiFetch("/me", {
         headers: { Authorization: `Bearer ${token}` },
       });
       const payload = await res.json();
@@ -46,7 +46,7 @@ export default function Billing() {
       setDevLoading(true);
       setError("");
       const token = localStorage.getItem("token");
-      const res = await fetch(`${API_BASE}/dev/activate-test-subscription`, {
+      const res = await apiFetch("/dev/activate-test-subscription", {
         method: "POST",
         headers: { Authorization: `Bearer ${token}` },
       });

@@ -38,6 +38,19 @@ Optional (email):
 - `MAIL_PASS`
 - `MAIL_FROM`
 
+## Deploy env
+Vercel (frontend):
+- `VITE_API_BASE=https://business-portal-8nba.onrender.com`
+
+Render (API):
+- `DATABASE_URL`
+- `JWT_SECRET`
+- `FRONTEND_URL=https://business-portal-weld.vercel.app`
+- `APP_URL=https://business-portal-weld.vercel.app`
+- `YOOKASSA_SHOP_ID`
+- `YOOKASSA_SECRET_KEY`
+- `MAIL_*` (optional)
+
 ## Staging/Prod checklist
 1) Set all required env variables.
 2) Run Prisma migrations:

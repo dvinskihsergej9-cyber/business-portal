@@ -1,5 +1,5 @@
 ﻿import { useEffect, useMemo, useState } from "react";
-import { API_BASE } from "../apiConfig";
+import { apiFetch } from "../apiConfig";
 import TsdHome from "../components/tsd/TsdHome";
 import TsdHeader from "../components/tsd/TsdHeader";
 import Stepper from "../components/tsd/Stepper";
@@ -198,8 +198,8 @@ export default function MobileTsd() {
     if (binState.sessionId) return;
     const startSession = async () => {
       try {
-        const res = await fetch(
-          `${API_BASE}/warehouse/bin-audit/session/start`,
+        const res = await apiFetch(
+          "/warehouse/bin-audit/session/start",
           { method: "POST", headers: authHeaders }
         );
         const data = await res.json();
@@ -220,8 +220,8 @@ export default function MobileTsd() {
       try {
         setLabelsState((prev) => ({ ...prev, loading: true, error: "" }));
         const [locationsRes, itemsRes] = await Promise.all([
-          fetch(`${API_BASE}/warehouse/locations`, { headers: authHeaders }),
-          fetch(`${API_BASE}/inventory/items`, { headers: authHeaders }),
+          apiFetch("/warehouse/locations", { headers: authHeaders }),
+          apiFetch("/inventory/items", { headers: authHeaders }),
         ]);
         const locationsData = await locationsRes.json();
         const itemsData = await itemsRes.json();
@@ -249,8 +249,8 @@ export default function MobileTsd() {
   }, [mode, authHeaders]);
 
   const resolveScan = async (code) => {
-    const res = await fetch(
-      `${API_BASE}/warehouse/scan/resolve?code=${encodeURIComponent(code)}`,
+    const res = await apiFetch(
+      `/warehouse/scan/resolve?code=${encodeURIComponent(code)}`,
       { headers: authHeaders }
     );
     const data = await res.json();
@@ -316,7 +316,7 @@ export default function MobileTsd() {
     try {
       setCountState((prev) => ({ ...prev, loading: true, error: "" }));
       const opId = makeOpId("COUNT");
-      const res = await fetch(`${API_BASE}/warehouse/inventory/count`, {
+      const res = await apiFetch("/warehouse/inventory/count", {
         method: "POST",
         headers: authHeaders,
         body: JSON.stringify({
@@ -411,7 +411,7 @@ export default function MobileTsd() {
     try {
       setReceivingState((prev) => ({ ...prev, loading: true, error: "" }));
       const opId = makeOpId("RECEIVE");
-      const res = await fetch(`${API_BASE}/warehouse/receiving`, {
+      const res = await apiFetch("/warehouse/receiving", {
         method: "POST",
         headers: authHeaders,
         body: JSON.stringify({
@@ -455,8 +455,8 @@ export default function MobileTsd() {
       if (data.type !== "location") {
         throw new Error("Это не ячейка.");
       }
-      const res = await fetch(
-        `${API_BASE}/warehouse/bin-audit/location/${data.entity.id}/expected`,
+      const res = await apiFetch(
+        `/warehouse/bin-audit/location/${data.entity.id}/expected`,
         { headers: authHeaders }
       );
       const stockData = await res.json();
@@ -562,7 +562,7 @@ export default function MobileTsd() {
     try {
       setMoveState((prev) => ({ ...prev, loading: true, error: "" }));
       const opId = makeOpId("MOVE");
-      const res = await fetch(`${API_BASE}/warehouse/move`, {
+      const res = await apiFetch("/warehouse/move", {
         method: "POST",
         headers: authHeaders,
         body: JSON.stringify({
@@ -602,8 +602,8 @@ export default function MobileTsd() {
     }
     try {
       setBinState((prev) => ({ ...prev, loading: true, error: "" }));
-      const res = await fetch(
-        `${API_BASE}/warehouse/bin-audit/location/${binState.location.id}/confirm-ok`,
+      const res = await apiFetch(
+        `/warehouse/bin-audit/location/${binState.location.id}/confirm-ok`,
         {
           method: "POST",
           headers: authHeaders,
@@ -653,8 +653,8 @@ export default function MobileTsd() {
       );
     try {
       setBinState((prev) => ({ ...prev, loading: true, error: "" }));
-      const res = await fetch(
-        `${API_BASE}/warehouse/bin-audit/location/${binState.location.id}/report-discrepancy`,
+      const res = await apiFetch(
+        `/warehouse/bin-audit/location/${binState.location.id}/report-discrepancy`,
         {
           method: "POST",
           headers: authHeaders,
@@ -695,8 +695,8 @@ export default function MobileTsd() {
       return;
     }
     try {
-      const res = await fetch(
-        `${API_BASE}/warehouse/bin-audit/session/${binState.sessionId}/finish`,
+      const res = await apiFetch(
+        `/warehouse/bin-audit/session/${binState.sessionId}/finish`,
         {
           method: "POST",
           headers: authHeaders,
@@ -787,7 +787,7 @@ export default function MobileTsd() {
     try {
       setPutawayState((prev) => ({ ...prev, loading: true, error: "" }));
       const opId = makeOpId("PUTAWAY");
-      const res = await fetch(`${API_BASE}/warehouse/putaway`, {
+      const res = await apiFetch("/warehouse/putaway", {
         method: "POST",
         headers: authHeaders,
         body: JSON.stringify({
@@ -892,7 +892,7 @@ export default function MobileTsd() {
     try {
       setReplenState((prev) => ({ ...prev, loading: true, error: "" }));
       const opId = makeOpId("REPLENISH");
-      const res = await fetch(`${API_BASE}/warehouse/replen/execute`, {
+      const res = await apiFetch("/warehouse/replen/execute", {
         method: "POST",
         headers: authHeaders,
         body: JSON.stringify({
@@ -975,7 +975,7 @@ export default function MobileTsd() {
     try {
       setPickState((prev) => ({ ...prev, loading: true, error: "" }));
       const opId = makeOpId("PICK");
-      const res = await fetch(`${API_BASE}/warehouse/pick`, {
+      const res = await apiFetch("/warehouse/pick", {
         method: "POST",
         headers: authHeaders,
         body: JSON.stringify({
@@ -1032,7 +1032,7 @@ export default function MobileTsd() {
           }));
           return;
         }
-        const res = await fetch(`${API_BASE}/warehouse/print/labels`, {
+        const res = await apiFetch("/warehouse/print/labels", {
           method: "POST",
           headers: authHeaders,
           body: JSON.stringify({
@@ -1065,7 +1065,7 @@ export default function MobileTsd() {
           }));
           return;
         }
-        const res = await fetch(`${API_BASE}/warehouse/print/labels`, {
+        const res = await apiFetch("/warehouse/print/labels", {
           method: "POST",
           headers: authHeaders,
           body: JSON.stringify({

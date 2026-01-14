@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
-import { API_BASE } from "../apiConfig";
+import { apiFetch } from "../apiConfig";
 import { useAuth } from "../context/AuthContext";
 
 const statusLabel = (value) => (value === "CLOSED" ? "Архив" : "Открытые");
@@ -26,8 +26,8 @@ export default function StockDiscrepanciesTab() {
     try {
       setLoading(true);
       setError("");
-      const res = await fetch(
-        `${API_BASE}/warehouse/discrepancies?status=${status.toLowerCase()}`,
+      const res = await apiFetch(
+        `/warehouse/discrepancies?status=${status.toLowerCase()}`,
         { headers: authHeaders }
       );
       const data = await res.json();
@@ -51,8 +51,8 @@ export default function StockDiscrepanciesTab() {
     if (!closeTarget) return;
     try {
       setClosing(true);
-      const res = await fetch(
-        `${API_BASE}/warehouse/discrepancies/${closeTarget.id}/close`,
+      const res = await apiFetch(
+        `/warehouse/discrepancies/${closeTarget.id}/close`,
         {
           method: "PUT",
           headers: authHeaders,

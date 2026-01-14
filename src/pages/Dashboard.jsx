@@ -1,7 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import portalNews from "../data/portalNews";
-
-const API = "http://localhost:3001/api";
+import { apiFetch } from "../apiConfig";
 
 const CATEGORY_LABELS = {
   business: "Бизнес",
@@ -50,7 +49,7 @@ export default function Dashboard() {
     try {
       setLoading(true);
       setError("");
-      const res = await fetch(`${API}/news?category=${activeCategory}&limit=20`, { headers });
+      const res = await apiFetch(`/news?category=${activeCategory}&limit=20`, { headers });
       const contentType = res.headers.get("content-type") || "";
       let data;
       if (contentType.includes("application/json")) {

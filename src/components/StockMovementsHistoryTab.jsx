@@ -1,6 +1,5 @@
 import { useEffect, useState } from "react";
-
-const API = "http://localhost:3001/api";
+import { apiFetch } from "../apiConfig";
 
 const MOVEMENT_TYPE_LABELS = {
   INCOME: "Приход",
@@ -27,7 +26,7 @@ export default function StockMovementsHistoryTab() {
         setLoading(true);
         setError("");
 
-        const res = await fetch(`${API}/inventory/movements?limit=200`, {
+        const res = await apiFetch("/inventory/movements?limit=200", {
           headers: authHeaders,
         });
 

@@ -177,12 +177,12 @@ function createToken(user) {
 async function auth(req, res, next) {
   const header = req.headers["authorization"];
   if (!header) {
-    return res.status(401).json({ message: "РќРµС‚ С‚РѕРєРµРЅР° Р°РІС‚РѕСЂРёР·Р°С†РёРё" });
+    return res.status(401).json({ message: "Authorization token missing" });
   }
 
   const [type, token] = header.split(" ");
   if (type !== "Bearer" || !token) {
-    return res.status(401).json({ message: "РќРµРІРµСЂРЅС‹Р№ С„РѕСЂРјР°С‚ С‚РѕРєРµРЅР°" });
+    return res.status(401).json({ message: "Invalid authorization header" });
   }
 
   try {
@@ -207,7 +207,7 @@ async function auth(req, res, next) {
     next();
   } catch (err) {
     console.error("auth error:", err);
-    return res.status(401).json({ message: "РќРµРґРµР№СЃС‚РІРёС‚РµР»СЊРЅС‹Р№ С‚РѕРєРµРЅ" });
+    return res.status(401).json({ message: "Invalid or expired token" });
   }
 }
 

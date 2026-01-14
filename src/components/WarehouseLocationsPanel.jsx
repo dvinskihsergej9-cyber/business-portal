@@ -1,6 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
-
-const API = "http://localhost:3001/api";
+import { apiFetch } from "../apiConfig";
 
 export default function WarehouseLocationsPanel() {
   const [locations, setLocations] = useState([]);
@@ -49,7 +48,7 @@ export default function WarehouseLocationsPanel() {
     try {
       setLoading(true);
       setError("");
-      const res = await fetch(`${API}/warehouse/locations`, {
+      const res = await apiFetch("/warehouse/locations", {
         headers: authHeaders,
       });
       const data = await res.json();
@@ -68,7 +67,7 @@ export default function WarehouseLocationsPanel() {
     try {
       setItemsLoading(true);
       setError("");
-      const res = await fetch(`${API}/inventory/items`, {
+      const res = await apiFetch("/inventory/items", {
         headers: authHeaders,
       });
       const data = await res.json();
@@ -104,7 +103,7 @@ export default function WarehouseLocationsPanel() {
       setCreateLoading(true);
       setError("");
       setMessage("");
-      const res = await fetch(`${API}/warehouse/locations`, {
+      const res = await apiFetch("/warehouse/locations", {
         method: "POST",
         headers: authHeaders,
         body: JSON.stringify({
@@ -131,7 +130,7 @@ export default function WarehouseLocationsPanel() {
   };
 
   const ensureLocationQr = async (locationId) => {
-    const res = await fetch(`${API}/warehouse/locations/${locationId}/qr`, {
+    const res = await apiFetch(`/warehouse/locations/${locationId}/qr`, {
       method: "POST",
       headers: authHeaders,
       body: JSON.stringify({}),
@@ -155,7 +154,7 @@ export default function WarehouseLocationsPanel() {
       setMessage("");
       const locationId = Number(selectedId);
       await ensureLocationQr(locationId);
-      const res = await fetch(`${API}/warehouse/print/labels`, {
+      const res = await apiFetch("/warehouse/print/labels", {
         method: "POST",
         headers: authHeaders,
         body: JSON.stringify({
@@ -202,7 +201,7 @@ export default function WarehouseLocationsPanel() {
       setEditLoading(true);
       setError("");
       setMessage("");
-      const res = await fetch(`${API}/warehouse/locations/${selectedId}`, {
+      const res = await apiFetch(`/warehouse/locations/${selectedId}`, {
         method: "PUT",
         headers: authHeaders,
         body: JSON.stringify({
@@ -246,7 +245,7 @@ export default function WarehouseLocationsPanel() {
       setDeleteLoading(true);
       setError("");
       setMessage("");
-      const res = await fetch(`${API}/warehouse/locations/${selectedId}`, {
+      const res = await apiFetch(`/warehouse/locations/${selectedId}`, {
         method: "DELETE",
         headers: authHeaders,
       });
@@ -279,7 +278,7 @@ export default function WarehouseLocationsPanel() {
       setQrResetLoading(true);
       setError("");
       setMessage("");
-      const res = await fetch(`${API}/warehouse/locations/${selectedId}/qr`, {
+      const res = await apiFetch(`/warehouse/locations/${selectedId}/qr`, {
         method: "POST",
         headers: authHeaders,
         body: JSON.stringify({ force: true }),
@@ -323,7 +322,7 @@ export default function WarehouseLocationsPanel() {
       setActionLoading(true);
       setError("");
       setMessage("");
-      const res = await fetch(`${API}/warehouse/print/labels`, {
+      const res = await apiFetch("/warehouse/print/labels", {
         method: "POST",
         headers: authHeaders,
         body: JSON.stringify({

@@ -10,8 +10,7 @@ import StockDiscrepanciesTab from "../components/StockDiscrepanciesTab";
 import SupplierTrucksQueueTab from "../components/SupplierTrucksQueueTab";
 import MobileTsdTab from "../components/MobileTsdTab";
 import WarehouseLocationsPanel from "../components/WarehouseLocationsPanel";
-
-const API = "http://localhost:3001/api";
+import { apiFetch } from "../apiConfig";
 
 const TYPE_LABELS = {
   ISSUE: "Выдача расходных материалов (РМ)",
@@ -163,7 +162,7 @@ export default function Warehouse() {
       setError("");
       setPostMessage("");
 
-      const myRes = await fetch(`${API}/warehouse/requests/my`, {
+      const myRes = await apiFetch("/warehouse/requests/my", {
         headers: authHeaders,
       });
       const myData = await myRes.json();
@@ -173,7 +172,7 @@ export default function Warehouse() {
       setMyList(myData);
 
       if (isWarehouseManager) {
-        const allRes = await fetch(`${API}/warehouse/requests`, {
+        const allRes = await apiFetch("/warehouse/requests", {
           headers: { Authorization: authHeaders.Authorization },
         });
         const allData = await allRes.json();
@@ -200,7 +199,7 @@ export default function Warehouse() {
       setTasksLoading(true);
       setTaskError("");
 
-      const myRes = await fetch(`${API}/warehouse/tasks/my`, {
+      const myRes = await apiFetch("/warehouse/tasks/my", {
         headers: authHeaders,
       });
       const myData = await myRes.json();
@@ -210,7 +209,7 @@ export default function Warehouse() {
       setTaskMyList(myData);
 
       if (isWarehouseManager) {
-        const allRes = await fetch(`${API}/warehouse/tasks`, {
+        const allRes = await apiFetch("/warehouse/tasks", {
           headers: { Authorization: authHeaders.Authorization },
         });
         const allData = await allRes.json();
@@ -236,10 +235,10 @@ export default function Warehouse() {
       setInventoryError("");
 
       const [itemsRes, stockRes] = await Promise.all([
-        fetch(`${API}/inventory/items`, {
+        apiFetch("/inventory/items", {
           headers: { Authorization: authHeaders.Authorization },
         }),
-        fetch(`${API}/inventory/stock`, {
+        apiFetch("/inventory/stock", {
           headers: { Authorization: authHeaders.Authorization },
         }),
       ]);
@@ -269,7 +268,7 @@ export default function Warehouse() {
       setSuppliersLoading(true);
       setSuppliersError("");
 
-      const res = await fetch(`${API}/suppliers`, {
+      const res = await apiFetch("/suppliers", {
         headers: { Authorization: authHeaders.Authorization },
       });
       const data = await res.json();
@@ -292,7 +291,7 @@ export default function Warehouse() {
       setPurchaseOrdersLoading(true);
       setPurchaseOrdersError("");
 
-      const res = await fetch(`${API}/purchase-orders`, {
+      const res = await apiFetch("/purchase-orders", {
         headers: { Authorization: authHeaders.Authorization },
       });
       const data = await res.json();
@@ -323,7 +322,7 @@ export default function Warehouse() {
   useEffect(() => {
     const loadItemsForSuggestions = async () => {
       try {
-        const res = await fetch(`${API}/inventory/items`, {
+        const res = await apiFetch("/inventory/items", {
           headers: { Authorization: authHeaders.Authorization },
         });
         const data = await res.json();
@@ -404,7 +403,7 @@ export default function Warehouse() {
         ],
       };
 
-      const res = await fetch(`${API}/warehouse/requests`, {
+      const res = await apiFetch("/warehouse/requests", {
         method: "POST",
         headers: authHeaders,
         body: JSON.stringify(body),
@@ -448,7 +447,7 @@ export default function Warehouse() {
     setPostMessage("");
 
     try {
-      const res = await fetch(`${API}/warehouse/requests/${id}/status`, {
+      const res = await apiFetch(`/warehouse/requests/${id}/status`, {
         method: "PUT",
         headers: authHeaders,
         body: JSON.stringify({
@@ -535,7 +534,7 @@ export default function Warehouse() {
         executorChatId: taskForm.executorChatId?.trim() || null,
       };
 
-      const res = await fetch(`${API}/warehouse/tasks`, {
+      const res = await apiFetch("/warehouse/tasks", {
         method: "POST",
         headers: authHeaders,
         body: JSON.stringify(body),
@@ -577,7 +576,7 @@ export default function Warehouse() {
     setTaskError("");
 
     try {
-      const res = await fetch(`${API}/warehouse/tasks/${id}/status`, {
+      const res = await apiFetch(`/warehouse/tasks/${id}/status`, {
         method: "PUT",
         headers: authHeaders,
         body: JSON.stringify({ status: task.status }),
@@ -690,7 +689,7 @@ export default function Warehouse() {
         defaultPrice: priceVal,
       };
 
-      const res = await fetch(`${API}/inventory/items`, {
+      const res = await apiFetch("/inventory/items", {
         method: "POST",
         headers: authHeaders,
         body: JSON.stringify(body),
@@ -744,7 +743,7 @@ export default function Warehouse() {
           : 0;
       }
 
-      const res = await fetch(`${API}/inventory/movements`, {
+      const res = await apiFetch("/inventory/movements", {
         method: "POST",
         headers: authHeaders,
         body: JSON.stringify(body),
@@ -806,7 +805,7 @@ export default function Warehouse() {
 
     try {
       setInventoryError("");
-      const res = await fetch(`${API}/inventory/items/${itemId}`, {
+      const res = await apiFetch(`/inventory/items/${itemId}`, {
         method: "DELETE",
         headers: {
           Authorization: authHeaders.Authorization,
@@ -835,7 +834,7 @@ export default function Warehouse() {
     try {
       setInventoryError("");
 
-      const res = await fetch(`${API}/inventory/low-stock-order-file`, {
+      const res = await apiFetch("/inventory/low-stock-order-file", {
         headers: { Authorization: authHeaders.Authorization },
       });
 
@@ -914,7 +913,7 @@ export default function Warehouse() {
         comment: supplierForm.comment || null,
       };
 
-      const res = await fetch(`${API}/suppliers`, {
+      const res = await apiFetch("/suppliers", {
         method: "POST",
         headers: authHeaders,
         body: JSON.stringify(body),
@@ -986,7 +985,7 @@ export default function Warehouse() {
     try {
       setPurchaseOrdersError("");
 
-      const res = await fetch(`${API}/purchase-orders/${orderId}/status`, {
+      const res = await apiFetch(`/purchase-orders/${orderId}/status`, {
         method: "PUT",
         headers: authHeaders,
         body: JSON.stringify({ status: "RECEIVED" }),

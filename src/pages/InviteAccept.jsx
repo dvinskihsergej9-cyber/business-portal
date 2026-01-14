@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { useNavigate, useSearchParams } from "react-router-dom";
-import { API_BASE } from "../apiConfig";
+import { apiFetch } from "../apiConfig";
 
 const T = {
   title: "Завершение регистрации",
@@ -86,8 +86,8 @@ export default function InviteAccept() {
       try {
         setInfoLoading(true);
         setInfoError("");
-        const res = await fetch(
-          `${API_BASE}/auth/invite-info?token=${encodeURIComponent(token)}`
+        const res = await apiFetch(
+          `/auth/invite-info?token=${encodeURIComponent(token)}`
         );
         const data = await res.json();
         if (!res.ok) {
@@ -114,7 +114,7 @@ export default function InviteAccept() {
 
     try {
       setSubmitLoading(true);
-      const res = await fetch(`${API_BASE}/auth/accept-invite`, {
+      const res = await apiFetch("/auth/accept-invite", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({

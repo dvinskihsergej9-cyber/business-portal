@@ -1,10 +1,11 @@
 import axios from "axios";
+import { API_BASE } from "../apiConfig";
 
 const api = axios.create({
-  baseURL: "http://localhost:3001/api",
+  baseURL: API_BASE,
 });
 
-// Автоматически вставляет токен в каждый запрос
+// Add auth token to all requests when available.
 api.interceptors.request.use((config) => {
   const token = localStorage.getItem("token");
   if (token) config.headers.Authorization = `Bearer ${token}`;

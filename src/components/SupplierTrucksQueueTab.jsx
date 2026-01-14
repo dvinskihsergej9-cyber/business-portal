@@ -3,10 +3,7 @@
 
 
 import { useEffect, useState } from "react";
-
-
-
-const API = "http://localhost:3001/api";
+import { apiFetch } from "../apiConfig";
 
 
 
@@ -171,17 +168,17 @@ export default function SupplierTrucksQueueTab() {
 
       const queryString = params.toString();
 
-      const url =
+      const path =
 
         queryString.length > 0
 
-          ? `${API}/supplier-trucks?${queryString}`
+          ? `/supplier-trucks?${queryString}`
 
-          : `${API}/supplier-trucks`;
+          : "/supplier-trucks";
 
 
 
-      const res = await fetch(url, {
+      const res = await apiFetch(path, {
 
         headers: { Authorization: authHeaders.Authorization },
 
@@ -241,7 +238,7 @@ export default function SupplierTrucksQueueTab() {
 
 
 
-      const res = await fetch(`${API}/suppliers`, {
+      const res = await apiFetch("/suppliers", {
 
         headers: { Authorization: authHeaders.Authorization },
 
@@ -309,7 +306,7 @@ export default function SupplierTrucksQueueTab() {
 
 
 
-      const res = await fetch(`${API}/purchase-orders`, {
+      const res = await apiFetch("/purchase-orders", {
 
         headers: { Authorization: authHeaders.Authorization },
 
@@ -471,7 +468,7 @@ export default function SupplierTrucksQueueTab() {
 
 
 
-      const res = await fetch(`${API}/supplier-trucks`, {
+      const res = await apiFetch("/supplier-trucks", {
 
         method: "POST",
 
@@ -565,7 +562,7 @@ export default function SupplierTrucksQueueTab() {
 
 
 
-      const res = await fetch(`${API}/supplier-trucks/${id}/status`, {
+      const res = await apiFetch(`/supplier-trucks/${id}/status`, {
 
         method: "PUT",
 

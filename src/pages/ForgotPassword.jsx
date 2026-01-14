@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { API_BASE } from "../apiConfig";
+import { apiFetch } from "../apiConfig";
 
 const T = {
   title: "Восстановление пароля",
@@ -28,7 +28,7 @@ export default function ForgotPassword() {
 
     try {
       setLoading(true);
-      await fetch(`${API_BASE}/auth/forgot-password`, {
+      await apiFetch("/auth/forgot-password", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ email }),
