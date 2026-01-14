@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import { apiFetch } from "../apiConfig";
+import ResponsiveDataView from "./ResponsiveDataView";
 
 /**
  * Печатная форма инвентаризации (акт ревизионной проверки)
@@ -311,157 +312,104 @@ export default function StockAuditTab() {
               : "По вашему запросу ничего не найдено."}
           </p>
         ) : (
-          <div className="table-wrapper">
-            <table
-              style={{
-                width: "100%",
-                borderCollapse: "collapse",
-                fontSize: 13,
-              }}
-            >
-              <thead>
-                <tr>
-                  <th
+          <ResponsiveDataView
+            rows={visibleItems}
+            columns={[
+              { key: "name", label: "Item" },
+              { key: "sku", label: "SKU" },
+              { key: "unit", label: "Unit" },
+              {
+                key: "currentStock",
+                label: "Stock",
+                render: (row) => (
+                  <span
                     style={{
-                      border: "1px solid #d4d4d4",
-                      padding: "4px 6px",
-                      width: 30,
+                      color: row.currentStock <= 0 ? "#b91c1c" : undefined,
+                      fontWeight: row.currentStock <= 0 ? 600 : 400,
                     }}
                   >
-                    №
-                  </th>
-                  <th
-                    style={{
-                      border: "1px solid #d4d4d4",
-                      padding: "4px 6px",
-                    }}
-                  >
-                    Наименование
-                  </th>
-                  <th
-                    style={{
-                      border: "1px solid #d4d4d4",
-                      padding: "4px 6px",
-                      width: 80,
-                    }}
-                  >
-                    SKU
-                  </th>
-                  <th
-                    style={{
-                      border: "1px solid #d4d4d4",
-                      padding: "4px 6px",
-                      width: 50,
-                    }}
-                  >
-                    Ед.
-                  </th>
-                  <th
-                    style={{
-                      border: "1px solid #d4d4d4",
-                      padding: "4px 6px",
-                      width: 70,
-                    }}
-                  >
-                    Остаток
-                  </th>
-                  <th
-                    style={{
-                      border: "1px solid #d4d4d4",
-                      padding: "4px 6px",
-                      width: 70,
-                    }}
-                  >
-                    Мин.
-                  </th>
-                  <th
-                    style={{
-                      border: "1px solid #d4d4d4",
-                      padding: "4px 6px",
-                      width: 70,
-                    }}
-                  >
-                    Макс.
-                  </th>
-                </tr>
-              </thead>
-              <tbody>
-                {visibleItems.map((it, index) => (
-                  <tr key={it.id}>
-                    <td
-                      style={{
-                        border: "1px solid #e0e0e0",
-                        padding: "3px 4px",
-                        textAlign: "center",
-                      }}
-                    >
-                      {index + 1}
-                    </td>
-                    <td
-                      style={{
-                        border: "1px solid #e0e0e0",
-                        padding: "3px 4px",
-                        textAlign: "left",
-                        whiteSpace: "nowrap",
-                        overflow: "hidden",
-                        textOverflow: "ellipsis",
-                      }}
-                      title={it.name}
-                    >
-                      {it.name}
-                    </td>
-                    <td
-                      style={{
-                        border: "1px solid #e0e0e0",
-                        padding: "3px 4px",
-                        textAlign: "center",
-                      }}
-                    >
-                      {it.sku}
-                    </td>
-                    <td
-                      style={{
-                        border: "1px solid #e0e0e0",
-                        padding: "3px 4px",
-                        textAlign: "center",
-                      }}
-                    >
-                      {it.unit}
-                    </td>
-                    <td
-                      style={{
-                        border: "1px solid #e0e0e0",
-                        padding: "3px 4px",
-                        textAlign: "right",
-                        color: it.currentStock <= 0 ? "#b91c1c" : undefined,
-                        fontWeight: it.currentStock <= 0 ? 600 : 400,
-                      }}
-                    >
-                      {it.currentStock}
-                    </td>
-                    <td
-                      style={{
-                        border: "1px solid #e0e0e0",
-                        padding: "3px 4px",
-                        textAlign: "right",
-                      }}
-                    >
-                      {it.minStock ?? "-"}
-                    </td>
-                    <td
-                      style={{
-                        border: "1px solid #e0e0e0",
-                        padding: "3px 4px",
-                        textAlign: "right",
-                      }}
-                    >
-                      {it.maxStock ?? "-"}
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
+                    {row.currentStock}
+                  </span>
+                ),
+              },
+              { key: "minStock", label: "Min" },
+              { key: "maxStock", label: "Max" },
+            ]}
+            renderRowDesktop={(it, index) => (
+              <tr key={it.id}>
+                <td
+                  style={{
+                    border: "1px solid #e0e0e0",
+                    padding: "3px 4px",
+                    textAlign: "center",
+                  }}
+                >
+                  {index + 1}
+                </td>
+                <td
+                  style={{
+                    border: "1px solid #e0e0e0",
+                    padding: "3px 4px",
+                    textAlign: "left",
+                    whiteSpace: "nowrap",
+                    overflow: "hidden",
+                    textOverflow: "ellipsis",
+                  }}
+                  title={it.name}
+                >
+                  {it.name}
+                </td>
+                <td
+                  style={{
+                    border: "1px solid #e0e0e0",
+                    padding: "3px 4px",
+                    textAlign: "center",
+                  }}
+                >
+                  {it.sku}
+                </td>
+                <td
+                  style={{
+                    border: "1px solid #e0e0e0",
+                    padding: "3px 4px",
+                    textAlign: "center",
+                  }}
+                >
+                  {it.unit}
+                </td>
+                <td
+                  style={{
+                    border: "1px solid #e0e0e0",
+                    padding: "3px 4px",
+                    textAlign: "right",
+                    color: it.currentStock <= 0 ? "#b91c1c" : undefined,
+                    fontWeight: it.currentStock <= 0 ? 600 : 400,
+                  }}
+                >
+                  {it.currentStock}
+                </td>
+                <td
+                  style={{
+                    border: "1px solid #e0e0e0",
+                    padding: "3px 4px",
+                    textAlign: "right",
+                  }}
+                >
+                  {it.minStock ?? "-"}
+                </td>
+                <td
+                  style={{
+                    border: "1px solid #e0e0e0",
+                    padding: "3px 4px",
+                    textAlign: "right",
+                  }}
+                >
+                  {it.maxStock ?? "-"}
+                </td>
+              </tr>
+            )}
+          />
+
         )}
       </div>
     </div>

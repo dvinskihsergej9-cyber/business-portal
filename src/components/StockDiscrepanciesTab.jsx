@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { apiFetch } from "../apiConfig";
+import ResponsiveDataView from "./ResponsiveDataView";
 import { useAuth } from "../context/AuthContext";
 
 const statusLabel = (value) => (value === "CLOSED" ? "Архив" : "Открытые");
@@ -105,55 +106,68 @@ export default function StockDiscrepanciesTab() {
       ) : items.length === 0 ? (
         <div style={{ padding: 16 }}>Нет расхождений.</div>
       ) : (
-        <div style={{ overflowX: "auto", marginTop: 16 }}>
-          <table style={{ width: "100%", borderCollapse: "collapse" }}>
-            <thead>
-              <tr>
-                <th style={thStyle}>Дата</th>
-                <th style={thStyle}>Ячейка</th>
-                <th style={thStyle}>Товар</th>
-                <th style={thStyle}>Было</th>
-                <th style={thStyle}>Факт</th>
-                <th style={thStyle}>Δ</th>
-                <th style={thStyle}>Сессия</th>
-                <th style={thStyle}></th>
-              </tr>
-            </thead>
-            <tbody>
-              {items.map((row) => (
-                <tr key={row.id}>
-                  <td style={tdStyle}>
-                    {row.createdAt
-                      ? new Date(row.createdAt).toLocaleString("ru-RU")
-                      : "-"}
-                  </td>
-                  <td style={tdStyle}>
-                    {row.location?.code || row.location?.name || "-"}
-                  </td>
-                  <td style={tdStyle}>
-                    {row.item?.name || "-"}
-                    {row.item?.sku ? ` (${row.item.sku})` : ""}
-                  </td>
-                  <td style={tdStyle}>{row.expectedQty}</td>
-                  <td style={tdStyle}>{row.countedQty}</td>
-                  <td style={tdStyle}>{row.delta}</td>
-                  <td style={tdStyle}>{row.sessionId || "-"}</td>
-                  <td style={tdStyle}>
-                    {status === "OPEN" && user?.role === "ADMIN" && (
-                      <button
-                        type="button"
-                        className="btn btn--secondary"
-                        onClick={() => setCloseTarget(row)}
-                      >
-                        Закрыть
-                      </button>
-                    )}
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
+        <ResponsiveDataView
+          rows={items}
+          columns={[
+            {
+              key: "createdAt",
+              label: "Date",
+              render: (row) =>
+                row.createdAt
+                  ? new Date(row.createdAt).toLocaleString("ru-RU")
+                  : "-",
+            },
+            {
+              key: "location",
+              label: "Location",
+              render: (row) => row.location?.code || row.location?.name || "-",
+            },
+            {
+              key: "item",
+              label: "Item",
+              render: (row) =>
+                `${row.item?.name || "-"}${row.item?.sku ? ` (${row.item.sku})` : ""}`,
+            },
+            { key: "expectedQty", label: "Expected" },
+            { key: "countedQty", label: "Counted" },
+            { key: "delta", label: "Delta" },
+            { key: "sessionId", label: "Session" },
+            { key: "actions", label: "" },
+          ]}
+          renderRowDesktop={(row) => (
+            <tr key={row.id}>
+              <td style={tdStyle}>
+                {row.createdAt
+                  ? new Date(row.createdAt).toLocaleString("ru-RU")
+                  : "-"}
+              </td>
+              <td style={tdStyle}>
+                {row.location?.code || row.location?.name || "-"}
+              </td>
+              <td style={tdStyle}>
+                {row.item?.name || "-"}
+                {row.item?.sku ? ` (${row.item.sku})` : ""}
+              </td>
+              <td style={tdStyle}>{row.expectedQty}</td>
+              <td style={tdStyle}>{row.countedQty}</td>
+              <td style={tdStyle}>{row.delta}</td>
+              <td style={tdStyle}>{row.sessionId || "-"}</td>
+              <td style={tdStyle}>
+                {status === "OPEN" && user?.role === "ADMIN" && (
+                  <button
+                    type="button"
+                    className="btn btn--secondary"
+                    onClick={() => setCloseTarget(row)}
+                  >
+                    ???????
+                  </button>
+                )}
+              </td>
+            </tr>
+          )}
+          tableClassName=""
+          wrapperClassName=""
+        />
       )}
 
       {closeTarget && (

@@ -1,12 +1,13 @@
 import { useEffect, useMemo, useState } from "react";
 import { NavLink, Outlet, useLocation } from "react-router-dom";
 import { useAuth } from "./context/AuthContext";
+import useIsMobile from "./hooks/useIsMobile";
 
 export default function Layout() {
   const { user, logout } = useAuth();
   const location = useLocation();
   const [drawerOpen, setDrawerOpen] = useState(false);
-  const [isMobile, setIsMobile] = useState(false);
+  const isMobile = useIsMobile();
 
   const menu = [
     {
@@ -99,26 +100,6 @@ export default function Layout() {
   useEffect(() => {
     setDrawerOpen(false);
   }, [location.pathname]);
-
-  useEffect(() => {
-    const media = window.matchMedia("(max-width: 768px)");
-    const handleChange = (event) => {
-      setIsMobile(event.matches);
-    };
-    setIsMobile(media.matches);
-    if (media.addEventListener) {
-      media.addEventListener("change", handleChange);
-    } else {
-      media.addListener(handleChange);
-    }
-    return () => {
-      if (media.removeEventListener) {
-        media.removeEventListener("change", handleChange);
-      } else {
-        media.removeListener(handleChange);
-      }
-    };
-  }, []);
 
   const renderNavItems = () => (
     <nav style={styles.nav} className="sidebar-nav">
