@@ -10,6 +10,7 @@ import StockDiscrepanciesTab from "../components/StockDiscrepanciesTab";
 import SupplierTrucksQueueTab from "../components/SupplierTrucksQueueTab";
 import MobileTsdTab from "../components/MobileTsdTab";
 import WarehouseLocationsPanel from "../components/WarehouseLocationsPanel";
+import ResponsiveDataView from "../components/ResponsiveDataView";
 import { apiFetch } from "../apiConfig";
 
 const TYPE_LABELS = {
@@ -481,6 +482,22 @@ export default function Warehouse() {
 
   const statusLabel = (status) => {
     return STATUS_LABELS[status] || status;
+  };
+
+  const getRequestMeta = (req) => {
+    const createdBy = req.createdBy || req.author;
+    const totalQty =
+      Array.isArray(req.items) && req.items.length
+        ? req.items.reduce((sum, it) => sum + (Number(it.quantity) || 0), 0)
+        : req.quantity != null
+        ? req.quantity
+        : null;
+    const requestComment = req.comment ?? req.description;
+    const title =
+      req.title ||
+      (Array.isArray(req.items) && req.items[0] && req.items[0].name) ||
+      "-";
+    return { createdBy, totalQty, requestComment, title };
   };
 
   // какой список показывать
@@ -1305,83 +1322,107 @@ export default function Warehouse() {
                 ) : filteredRequests.length === 0 ? (
                   <p className="text-muted">Заявок не найдено.</p>
                 ) : (
-                  <div className="table-wrapper">
-                    <table className="table">
-                      <thead>
-                        <tr>
-                          <th style={{ width: 40 }}>№</th>
-                          <th style={{ width: 170 }}>Дата</th>
-                          <th style={{ width: 110 }}>Статус</th>
-                          <th style={{ width: 200 }}>Автор</th>
-                          <th>Товар / заявка</th>
-                          <th style={{ width: 70 }}>Кол-во</th>
-                          <th style={{ width: 220 }}>Комментарий</th>
+                  <ResponsiveDataView
+                    rows={filteredRequests}
+                    columns={[
+                      {
+                        key: "createdAt",
+                        label: "Date",
+                        render: (row) =>
+                          row.createdAt
+                            ? new Date(row.createdAt).toLocaleString("ru-RU", {
+                                day: "2-digit",
+                                month: "2-digit",
+                                year: "numeric",
+                                hour: "2-digit",
+                                minute: "2-digit",
+                              })
+                            : "-",
+                      },
+                      {
+                        key: "status",
+                        label: "Status",
+                        render: (row) => (
+                          <span className={statusBadgeClass(row.status)}>
+                            {statusLabel(row.status)}
+                          </span>
+                        ),
+                      },
+                      {
+                        key: "author",
+                        label: "Author",
+                        render: (row) => {
+                          const { createdBy } = getRequestMeta(row);
+                          return createdBy
+                            ? createdBy.name || createdBy.email || "-"
+                            : "-";
+                        },
+                      },
+                      {
+                        key: "title",
+                        label: "Item / request",
+                        render: (row) => getRequestMeta(row).title,
+                      },
+                      {
+                        key: "quantity",
+                        label: "Qty",
+                        render: (row) => {
+                          const { totalQty } = getRequestMeta(row);
+                          return totalQty ?? "-";
+                        },
+                      },
+                      {
+                        key: "comment",
+                        label: "Comment",
+                        render: (row) => {
+                          const { requestComment } = getRequestMeta(row);
+                          return requestComment || "-";
+                        },
+                      },
+                    ]}
+                    renderRowDesktop={(req, index) => {
+                      const {
+                        createdBy,
+                        totalQty,
+                        requestComment,
+                        title,
+                      } = getRequestMeta(req);
+
+                      return (
+                        <tr key={req.id}>
+                          <td>{index + 1}</td>
+                          <td>
+                            {req.createdAt
+                              ? new Date(req.createdAt).toLocaleString("ru-RU", {
+                                  day: "2-digit",
+                                  month: "2-digit",
+                                  year: "numeric",
+                                  hour: "2-digit",
+                                  minute: "2-digit",
+                                })
+                              : "-"}
+                          </td>
+                          <td>
+                            <span className={statusBadgeClass(req.status)}>
+                              {statusLabel(req.status)}
+                            </span>
+                          </td>
+                          <td>
+                            {createdBy
+                              ? `${createdBy.name || ""}${
+                                  createdBy.email ? ` (${createdBy.email})` : ""
+                                }`
+                              : "-"}
+                          </td>
+                          <td>{title}</td>
+                          <td>{totalQty ?? "-"}</td>
+                          <td>{requestComment || "-"}</td>
                         </tr>
-                      </thead>
-                      <tbody>
-                        {filteredRequests.map((req, index) => {
-                          // автор (новые заявки: createdBy, старые: author)
-                          const createdBy = req.createdBy || req.author;
+                      );
+                    }}
+                    getSheetTitle={(row) => getRequestMeta(row).title || "Details"}
+                  />
 
-                          // общее количество по позициям заявки
-                          const totalQty =
-                            Array.isArray(req.items) && req.items.length
-                              ? req.items.reduce(
-                                  (sum, it) =>
-                                    sum + (Number(it.quantity) || 0),
-                                  0
-                                )
-                              : req.quantity != null
-                              ? req.quantity
-                              : null;
-
-                          // комментарий пользователя
-                          const requestComment =
-                            req.comment ?? req.description;
-
-                          // заголовок/товар
-                          const title =
-                            req.title ||
-                            (Array.isArray(req.items) &&
-                              req.items[0] &&
-                              req.items[0].name) ||
-                            "-";
-
-                          return (
-                            <tr key={req.id}>
-                              <td>{index + 1}</td>
-                              <td>
-                                {req.createdAt
-                                  ? new Date(
-                                      req.createdAt
-                                    ).toLocaleString("ru-RU", {
-                                      day: "2-digit",
-                                      month: "2-digit",
-                                      year: "numeric",
-                                      hour: "2-digit",
-                                      minute: "2-digit",
-                                    })
-                                  : "-"}
-                              </td>
-                              <td>{statusLabel(req.status)}</td>
-                              <td>
-                                {createdBy?.name ||
-                                  createdBy?.email ||
-                                  "-"}
-                              </td>
-                              <td>{title}</td>
-                              <td style={{ textAlign: "right" }}>
-                                {totalQty != null && totalQty !== 0
-                                  ? totalQty
-                                  : "-"}
-                              </td>
-                              <td>{requestComment || "-"}</td>
-                            </tr>
-                          );
-                        })}
-                      </tbody>
-                    </table>
-                  </div>
                 )}
               </div>
             </div>
@@ -1530,8 +1571,8 @@ export default function Warehouse() {
               <div className="card1c__body">
                 {/* Фильтры сверху, в стиле Истории движений */}
                 <div
+                  className="stack-mobile"
                   style={{
-                    display: "flex",
                     gap: 16,
                     alignItems: "flex-end",
                     marginBottom: 12,
@@ -1585,115 +1626,175 @@ export default function Warehouse() {
                 ) : filteredTasks.length === 0 ? (
                   <p className="text-muted">Задач не найдено.</p>
                 ) : (
-                  <div className="table-wrapper">
-                    <table className="table">
-                      <thead>
-                        <tr>
-                          <th style={{ width: 40 }}>№</th>
-                          <th style={{ width: 170 }}>Дата</th>
-                          <th style={{ width: 110 }}>Статус</th>
-                          <th style={{ width: 170 }}>Срок</th>
-                          <th>Задача</th>
-                          <th style={{ width: 180 }}>Исполнитель</th>
-                          <th style={{ width: 200 }}>Автор</th>
-                          <th style={{ width: 260 }}>Описание</th>
-                          {isWarehouseManager && (
-  <th style={{ width: 190 }}>Действия</th>
-)}
-                        </tr>
-                      </thead>
-                      <tbody>
-                        {filteredTasks.map((t, index) => {
-                          const overdue = isTaskOverdue(t);
+                  <ResponsiveDataView
+                    rows={filteredTasks}
+                    columns={[
+                      {
+                        key: "createdAt",
+                        label: "Created",
+                        render: (row) =>
+                          row.createdAt
+                            ? new Date(row.createdAt).toLocaleString("ru-RU", {
+                                day: "2-digit",
+                                month: "2-digit",
+                                year: "numeric",
+                                hour: "2-digit",
+                                minute: "2-digit",
+                              })
+                            : "-",
+                      },
+                      {
+                        key: "status",
+                        label: "Status",
+                        render: (row) => (
+                          <span className={taskStatusBadgeClass(row.status)}>
+                            {TASK_STATUS_LABELS[row.status] || row.status}
+                          </span>
+                        ),
+                      },
+                      {
+                        key: "dueDate",
+                        label: "Due",
+                        render: (row) => {
+                          const overdue = isTaskOverdue(row);
                           return (
-                            <tr key={t.id}>
-                              <td>{index + 1}</td>
-                              <td>
-                                {t.createdAt
-                                  ? new Date(
-                                      t.createdAt
-                                    ).toLocaleString("ru-RU", {
-                                      day: "2-digit",
-                                      month: "2-digit",
-                                      year: "numeric",
-                                      hour: "2-digit",
-                                      minute: "2-digit",
-                                    })
-                                  : "-"}
-                              </td>
-                              <td>
+                            <>
+                              {row.dueDate
+                                ? new Date(row.dueDate).toLocaleString("ru-RU", {
+                                    day: "2-digit",
+                                    month: "2-digit",
+                                    year: "numeric",
+                                    hour: "2-digit",
+                                    minute: "2-digit",
+                                  })
+                                : "-"}
+                              {overdue && (
                                 <span
-                                  className={taskStatusBadgeClass(t.status)}
+                                  style={{
+                                    color: "red",
+                                    marginLeft: 4,
+                                    fontSize: "0.85em",
+                                  }}
                                 >
-                                  {TASK_STATUS_LABELS[t.status] || t.status}
+                                  (overdue)
                                 </span>
-                              </td>
-                              <td>
-                                {t.dueDate
-                                  ? new Date(
-                                      t.dueDate
-                                    ).toLocaleString("ru-RU", {
-                                      day: "2-digit",
-                                      month: "2-digit",
-                                      year: "numeric",
-                                      hour: "2-digit",
-                                      minute: "2-digit",
-                                    })
-                                  : "-"}
-                                {overdue && (
-                                  <span
-                                    style={{
-                                      color: "red",
-                                      marginLeft: 4,
-                                      fontSize: "0.85em",
-                                    }}
-                                  >
-                                    (просрочено)
-                                  </span>
-                                )}
-                              </td>
-                              <td>{t.title}</td>
-                              <td>
-                                {t.executorName || t.executorChatId
-                                  ? `${t.executorName || ""}${
-                                      t.executorChatId
-                                        ? ` (TG: ${t.executorChatId})`
-                                        : ""
-                                    }`
-                                  : "-"}
-                              </td>
-                              <td>
-                                {t.assigner?.name ||
-                                  t.assigner?.email ||
-                                  "-"}
-                              </td>
-                              <td>{t.description || "-"}</td>
-                              {isWarehouseManager && (
-  <td>
-    <select
-      className="form__select form__select--sm"
-      style={{ minWidth: 170 }}
-      value={t.status}
-      onChange={(e) =>
-        handleTaskStatusChangeLocal(t.id, e.target.value)
-      }
-      onBlur={() => handleTaskStatusSave(t.id)}
-      disabled={taskStatusSavingId === t.id}
-    >
-      {TASK_STATUS_OPTIONS.map((o) => (
-        <option key={o.value} value={o.value}>
-          {o.label}
-        </option>
-      ))}
-    </select>
-  </td>
-)}
-                            </tr>
+                              )}
+                            </>
                           );
-                        })}
-                      </tbody>
-                    </table>
-                  </div>
+                        },
+                      },
+                      { key: "title", label: "Task" },
+                      {
+                        key: "executor",
+                        label: "Executor",
+                        render: (row) =>
+                          row.executorName || row.executorChatId
+                            ? `${row.executorName || ""}${
+                                row.executorChatId
+                                  ? ` (TG: ${row.executorChatId})`
+                                  : ""
+                              }`
+                            : "-",
+                      },
+                      {
+                        key: "author",
+                        label: "Author",
+                        render: (row) =>
+                          row.assigner?.name || row.assigner?.email || "-",
+                      },
+                      {
+                        key: "description",
+                        label: "Description",
+                        render: (row) => row.description || "-",
+                      },
+                      ...(isWarehouseManager
+                        ? [{ key: "actions", label: "" }]
+                        : []),
+                    ]}
+                    renderRowDesktop={(t, index) => {
+                      const overdue = isTaskOverdue(t);
+                      return (
+                        <tr key={t.id}>
+                          <td>{index + 1}</td>
+                          <td>
+                            {t.createdAt
+                              ? new Date(t.createdAt).toLocaleString("ru-RU", {
+                                  day: "2-digit",
+                                  month: "2-digit",
+                                  year: "numeric",
+                                  hour: "2-digit",
+                                  minute: "2-digit",
+                                })
+                              : "-"}
+                          </td>
+                          <td>
+                            <span className={taskStatusBadgeClass(t.status)}>
+                              {TASK_STATUS_LABELS[t.status] || t.status}
+                            </span>
+                          </td>
+                          <td>
+                            {t.dueDate
+                              ? new Date(t.dueDate).toLocaleString("ru-RU", {
+                                  day: "2-digit",
+                                  month: "2-digit",
+                                  year: "numeric",
+                                  hour: "2-digit",
+                                  minute: "2-digit",
+                                })
+                              : "-"}
+                            {overdue && (
+                              <span
+                                style={{
+                                  color: "red",
+                                  marginLeft: 4,
+                                  fontSize: "0.85em",
+                                }}
+                              >
+                                (??????????)
+                              </span>
+                            )}
+                          </td>
+                          <td>{t.title}</td>
+                          <td>
+                            {t.executorName || t.executorChatId
+                              ? `${t.executorName || ""}${
+                                  t.executorChatId
+                                    ? ` (TG: ${t.executorChatId})`
+                                    : ""
+                                }`
+                              : "-"}
+                          </td>
+                          <td>{t.assigner?.name || t.assigner?.email || "-"}</td>
+                          <td>{t.description || "-"}</td>
+                          {isWarehouseManager && (
+                            <td>
+                              <select
+                                className="form__select form__select--sm"
+                                style={{ minWidth: 170 }}
+                                value={t.status}
+                                onChange={(e) =>
+                                  handleTaskStatusChangeLocal(
+                                    t.id,
+                                    e.target.value
+                                  )
+                                }
+                                onBlur={() => handleTaskStatusSave(t.id)}
+                                disabled={taskStatusSavingId === t.id}
+                              >
+                                {TASK_STATUS_OPTIONS.map((o) => (
+                                  <option key={o.value} value={o.value}>
+                                    {o.label}
+                                  </option>
+                                ))}
+                              </select>
+                            </td>
+                          )}
+                        </tr>
+                      );
+                    }}
+                    getSheetTitle={(row) => row?.title || "Details"}
+                  />
+
                 )}
               </div>
             </div>
@@ -2176,30 +2277,25 @@ export default function Warehouse() {
                   ) : suppliers.length === 0 ? (
                     <p className="text-muted">Поставщиков пока нет.</p>
                   ) : (
-                    <div className="table-wrapper">
-                      <table className="table">
-                        <thead>
-                          <tr>
-                            <th>ID</th>
-                            <th>Название</th>
-                            <th>ИНН</th>
-                            <th>Телефон</th>
-                            <th>Email</th>
-                          </tr>
-                        </thead>
-                        <tbody>
-                          {suppliers.map((s) => (
-                            <tr key={s.id}>
-                              <td>{s.id}</td>
-                              <td>{s.name}</td>
-                              <td>{s.inn || "-"}</td>
-                              <td>{s.phone || "-"}</td>
-                              <td>{s.email || "-"}</td>
-                            </tr>
-                          ))}
-                        </tbody>
-                      </table>
-                    </div>
+                    <ResponsiveDataView
+                      rows={suppliers}
+                      columns={[
+                        { key: "id", label: "ID" },
+                        { key: "name", label: "Name" },
+                        { key: "inn", label: "INN" },
+                        { key: "phone", label: "Phone" },
+                        { key: "email", label: "Email" },
+                      ]}
+                      renderRowDesktop={(s) => (
+                        <tr key={s.id}>
+                          <td>{s.id}</td>
+                          <td>{s.name}</td>
+                          <td>{s.inn || "-"}</td>
+                          <td>{s.phone || "-"}</td>
+                          <td>{s.email || "-"}</td>
+                        </tr>
+                      )}
+                    />
                   )}
                 </div>
               </div>
@@ -2248,77 +2344,91 @@ export default function Warehouse() {
                   ) : sortedPurchaseOrders.length === 0 ? (
                     <p className="text-muted">Заказов пока нет.</p>
                   ) : (
-                    <div className="table-wrapper">
-                      <table className="table">
-                        <thead>
-                          <tr>
-                            <th>ID</th>
-                            <th>Время</th>
-                            <th>Поставщик</th>
-                            <th>Статус</th>
-                            <th></th>
-                          </tr>
-                        </thead>
-                        <tbody>
-                          {sortedPurchaseOrders.map((po) => {
-                            const dateObj = po.createdAt
-                              ? new Date(po.createdAt)
-                              : null;
-
-                            const dateStr = dateObj
-                              ? dateObj.toLocaleDateString("ru-RU", {
+                    <ResponsiveDataView
+                      rows={sortedPurchaseOrders}
+                      columns={[
+                        { key: "id", label: "ID" },
+                        {
+                          key: "createdAt",
+                          label: "Time",
+                          render: (row) =>
+                            row.createdAt
+                              ? new Date(row.createdAt).toLocaleString("ru-RU", {
                                   day: "2-digit",
                                   month: "2-digit",
                                   year: "numeric",
-                                })
-                              : "Без даты";
-
-                            const timeStr = dateObj
-                              ? dateObj.toLocaleTimeString("ru-RU", {
                                   hour: "2-digit",
                                   minute: "2-digit",
                                 })
-                              : "-";
+                              : "No date",
+                        },
+                        {
+                          key: "supplier",
+                          label: "Supplier",
+                          render: (row) => row.supplier?.name || "-",
+                        },
+                        {
+                          key: "status",
+                          label: "Status",
+                          render: (row) =>
+                            PO_STATUS_LABELS[row.status] || row.status,
+                        },
+                        { key: "actions", label: "" },
+                      ]}
+                      renderRowDesktop={(po) => {
+                        const dateObj = po.createdAt
+                          ? new Date(po.createdAt)
+                          : null;
 
-                            const showDateRow =
-                              dateStr !== lastPurchaseOrderDate;
-                            if (showDateRow) {
-                              lastPurchaseOrderDate = dateStr;
-                            }
+                        const dateStr = dateObj
+                          ? dateObj.toLocaleDateString("ru-RU", {
+                              day: "2-digit",
+                              month: "2-digit",
+                              year: "numeric",
+                            })
+                          : "No date";
 
-                            return (
-                              <Fragment key={po.id}>
-                                {showDateRow && (
-                                  <tr className="table-section-row">
-                                    <td
-                                      colSpan={5}
-                                      style={{
-                                        backgroundColor: "#f3f4f6",
-                                        fontWeight: 600,
-                                        paddingTop: 6,
-                                        paddingBottom: 6,
-                                      }}
-                                    >
-                                      {dateStr}
-                                    </td>
-                                  </tr>
-                                )}
+                        const timeStr = dateObj
+                          ? dateObj.toLocaleTimeString("ru-RU", {
+                              hour: "2-digit",
+                              minute: "2-digit",
+                            })
+                          : "-";
 
-                                <tr>
-                                  <td>{po.id}</td>
-                                  <td>{timeStr}</td>
-                                  <td>{po.supplier?.name || "-"}</td>
-                                  <td>
-                                    {PO_STATUS_LABELS[po.status] || po.status}
-                                  </td>
-                                  <td></td>
-                                </tr>
-                              </Fragment>
-                            );
-                          })}
-                        </tbody>
-                      </table>
-                    </div>
+                        const showDateRow = dateStr !== lastPurchaseOrderDate;
+                        if (showDateRow) {
+                          lastPurchaseOrderDate = dateStr;
+                        }
+
+                        return (
+                          <Fragment key={po.id}>
+                            {showDateRow && (
+                              <tr className="table-section-row">
+                                <td
+                                  colSpan={5}
+                                  style={{
+                                    backgroundColor: "#f3f4f6",
+                                    fontWeight: 600,
+                                    paddingTop: 6,
+                                    paddingBottom: 6,
+                                  }}
+                                >
+                                  {dateStr}
+                                </td>
+                              </tr>
+                            )}
+
+                            <tr>
+                              <td>{po.id}</td>
+                              <td>{timeStr}</td>
+                              <td>{po.supplier?.name || "-"}</td>
+                              <td>{PO_STATUS_LABELS[po.status] || po.status}</td>
+                              <td></td>
+                            </tr>
+                          </Fragment>
+                        );
+                      }}
+                    />
                   )}
                 </div>
               </div>

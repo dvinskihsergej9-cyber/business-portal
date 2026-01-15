@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { apiFetch } from "../../apiConfig";
+import ResponsiveDataView from "../ResponsiveDataView";
 
 const LEAVE_CATEGORIES = [
   { value: "STANDARD", label: "Стандартная" },
@@ -285,55 +286,50 @@ export default function AdminHrPanel() {
 
       {!loading && (
         <div className="admin-table-wrapper">
-          <table className="admin-table">
-            <thead>
-              <tr>
-                <th>Сотрудник</th>
-                <th>Должность</th>
-                <th>Подразделение</th>
-                <th>Статус</th>
-                <th>Отпуск</th>
-                <th></th>
+          <ResponsiveDataView
+            rows={employees}
+            columns={[
+              { key: "fullName", label: "Employee" },
+              { key: "position", label: "Position" },
+              { key: "department", label: "Department" },
+              { key: "status", label: "Status" },
+              {
+                key: "annualLeaveDays",
+                label: "Leave days",
+                render: (row) => `${row.annualLeaveDays ?? "-"} d`,
+              },
+              { key: "actions", label: "" },
+            ]}
+            renderRowDesktop={(emp) => (
+              <tr key={emp.id}>
+                <td>
+                  <div className="admin-table__title">{emp.fullName}</div>
+                  <div className="admin-table__meta">ID: {emp.id}</div>
+                </td>
+                <td>{emp.position}</td>
+                <td>{emp.department}</td>
+                <td>{emp.status}</td>
+                <td>{emp.annualLeaveDays ?? "-"} d</td>
+                <td className="admin-table__actions">
+                  <button
+                    type="button"
+                    className="admin-btn admin-btn--secondary"
+                    onClick={() => openEditModal(emp)}
+                  >
+                    Edit
+                  </button>
+                  <button
+                    type="button"
+                    className="admin-btn admin-btn--danger"
+                    onClick={() => openDeleteModal(emp)}
+                  >
+                    Delete
+                  </button>
+                </td>
               </tr>
-            </thead>
-            <tbody>
-              {filtered.map((emp) => (
-                <tr key={emp.id}>
-                  <td>
-                    <div className="admin-table__title">{emp.fullName}</div>
-                    <div className="admin-table__meta">ID: {emp.id}</div>
-                  </td>
-                  <td>{emp.position}</td>
-                  <td>{emp.department}</td>
-                  <td>{emp.status}</td>
-                  <td>{emp.annualLeaveDays ?? "-"} дн.</td>
-                  <td className="admin-table__actions">
-                    <button
-                      type="button"
-                      className="admin-btn admin-btn--secondary"
-                      onClick={() => setEditEmployee(emp)}
-                    >
-                      Редактировать
-                    </button>
-                    <button
-                      type="button"
-                      className="admin-btn admin-btn--danger"
-                      onClick={() => setDeleteEmployee(emp)}
-                    >
-                      Удалить
-                    </button>
-                  </td>
-                </tr>
-              ))}
-              {!filtered.length && (
-                <tr>
-                  <td colSpan="6" className="admin-muted">
-                    Нет данных по сотрудникам.
-                  </td>
-                </tr>
-              )}
-            </tbody>
-          </table>
+            )}
+          />
+
         </div>
       )}
 

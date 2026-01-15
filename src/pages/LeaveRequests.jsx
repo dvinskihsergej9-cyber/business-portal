@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { useAuth } from "../context/AuthContext";
 import { apiFetch } from "../apiConfig";
+import ResponsiveDataView from "../components/ResponsiveDataView";
 
 const STATUS_LABELS = {
   PENDING: "На согласовании",
@@ -205,7 +206,7 @@ export default function LeaveRequests() {
           </h2>
 
           <form onSubmit={handleCreate}>
-            <div style={{ display: "flex", gap: 8, marginBottom: 8 }}>
+            <div className="stack-mobile" style={{ marginBottom: 8 }}>
               <div style={{ flex: 1 }}>
                 <label style={{ fontSize: 13 }}>
                   Дата начала
@@ -282,14 +283,7 @@ export default function LeaveRequests() {
             Краткая статистика по вашим отпускам.
           </p>
 
-          <div
-            style={{
-              display: "grid",
-              gridTemplateColumns: "repeat(3, minmax(0, 1fr))",
-              gap: 10,
-              fontSize: 13,
-            }}
-          >
+          <div className="mobile-grid-3" style={{ fontSize: 13 }}>
             <div
               style={{
                 padding: 10,
@@ -342,8 +336,8 @@ export default function LeaveRequests() {
       {/* список заявок */}
       <div className="card" style={{ marginTop: 16 }}>
         <div
+          className="stack-mobile"
           style={{
-            display: "flex",
             justifyContent: "space-between",
             alignItems: "flex-end",
             marginBottom: 8,
@@ -397,64 +391,80 @@ export default function LeaveRequests() {
             Заявок пока нет. Создайте первую заявку на отпуск.
           </p>
         ) : (
-          <div style={{ overflowX: "auto" }}>
-            <table>
-              <thead>
-                <tr>
-                  {tab === "all" && <th>Сотрудник</th>}
-                  <th>Период</th>
-                  <th>Тип отпуска</th>
-                  <th>Создано</th>
-                  <th>Статус</th>
-                  {isHrOrAdmin && tab === "all" && <th></th>}
-                </tr>
-              </thead>
-              <tbody>
-                {currentList.map((r) => (
-                  <tr key={r.id}>
-                    {tab === "all" && (
-                      <td>
-                        {r.user
-                          ? `${r.user.name || ""} (${r.user.email})`
-                          : "-"}
-                      </td>
-                    )}
-                    <td>
-                      {formatDate(r.startDate)} — {formatDate(r.endDate)}
-                    </td>
-                    <td>{TYPE_LABELS[r.type] || r.type}</td>
-                    <td>{formatDateTime(r.createdAt)}</td>
-                    <td>{renderStatusBadge(r.status)}</td>
-                    {isHrOrAdmin && tab === "all" && (
-                      <td style={{ whiteSpace: "nowrap" }}>
-                        <select
-                          value={r.status}
-                          onChange={(e) =>
-                            handleStatusChangeLocal(r.id, e.target.value)
-                          }
-                          style={{ width: 170, marginRight: 6 }}
-                          disabled={statusSavingId === r.id}
-                        >
-                          {STATUS_OPTIONS.map((opt) => (
-                            <option key={opt.value} value={opt.value}>
-                              {opt.label}
-                            </option>
-                          ))}
-                        </select>
-                        <button
-                          type="button"
-                          onClick={() => handleStatusSave(r.id)}
-                          disabled={statusSavingId === r.id}
-                        >
-                          {statusSavingId === r.id ? "Сохраняю..." : "Сохранить"}
-                        </button>
-                      </td>
-                    )}
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
+          <ResponsiveDataView
+            rows={currentList}
+            columns={[
+              ...(tab === "all"
+                ? [{ key: "user", label: "User" }]
+                : []),
+              {
+                key: "period",
+                label: "Period",
+                render: (row) => `${formatDate(row.startDate)} - ${formatDate(row.endDate)}`,
+              },
+              {
+                key: "type",
+                label: "Type",
+                render: (row) => TYPE_LABELS[row.type] || row.type,
+              },
+              {
+                key: "createdAt",
+                label: "Created",
+                render: (row) => formatDateTime(row.createdAt),
+              },
+              {
+                key: "status",
+                label: "Status",
+                render: (row) => renderStatusBadge(row.status),
+              },
+              ...(isHrOrAdmin && tab === "all"
+                ? [{ key: "actions", label: "" }]
+                : []),
+            ]}
+            renderRowDesktop={(r) => (
+              <tr key={r.id}>
+                {tab === "all" && (
+                  <td>
+                    {r.user ? `${r.user.name || ""} (${r.user.email})` : "-"}
+                  </td>
+                )}
+                <td>
+                  {formatDate(r.startDate)} - {formatDate(r.endDate)}
+                </td>
+                <td>{TYPE_LABELS[r.type] || r.type}</td>
+                <td>{formatDateTime(r.createdAt)}</td>
+                <td>{renderStatusBadge(r.status)}</td>
+                {isHrOrAdmin && tab === "all" && (
+                  <td style={{ whiteSpace: "nowrap" }}>
+                    <select
+                      value={r.status}
+                      onChange={(e) =>
+                        handleStatusChangeLocal(r.id, e.target.value)
+                      }
+                      style={{ width: 170, marginRight: 6 }}
+                      disabled={statusSavingId === r.id}
+                    >
+                      {STATUS_OPTIONS.map((opt) => (
+                        <option key={opt.value} value={opt.value}>
+                          {opt.label}
+                        </option>
+                      ))}
+                    </select>
+                    <button
+                      type="button"
+                      onClick={() => handleStatusSave(r.id)}
+                      disabled={statusSavingId === r.id}
+                    >
+                      {statusSavingId === r.id ? "Saving..." : "Save"}
+                    </button>
+                  </td>
+                )}
+              </tr>
+            )}
+            getSheetTitle={(row) =>
+              row ? TYPE_LABELS[row.type] || row.type : "Details"
+            }
+          />
         )}
       </div>
     </div>

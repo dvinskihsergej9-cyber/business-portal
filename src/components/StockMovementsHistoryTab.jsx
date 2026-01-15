@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import { apiFetch } from "../apiConfig";
+import ResponsiveDataView from "./ResponsiveDataView";
 
 const MOVEMENT_TYPE_LABELS = {
   INCOME: "Приход",
@@ -124,192 +125,139 @@ export default function StockMovementsHistoryTab() {
         ) : !visibleRows.length ? (
           <p className="text-muted">Движений не найдено.</p>
         ) : (
-          <div className="table-wrapper">
-            <table
-              style={{
-                width: "100%",
-                borderCollapse: "collapse",
-                fontSize: 13,
-              }}
-            >
-              <thead>
-                <tr>
-                  <th
-                    style={{
-                      border: "1px solid #d4d4d4",
-                      padding: "4px 6px",
-                      width: 30,
-                    }}
-                  >
-                    №
-                  </th>
-                  <th
-                    style={{
-                      border: "1px solid #d4d4d4",
-                      padding: "4px 6px",
-                      width: 130,
-                    }}
-                  >
-                    Дата
-                  </th>
-                  <th
-                    style={{
-                      border: "1px solid #d4d4d4",
-                      padding: "4px 6px",
-                      width: 70,
-                    }}
-                  >
-                    Тип
-                  </th>
-                  <th
-                    style={{
-                      border: "1px solid #d4d4d4",
-                      padding: "4px 6px",
-                    }}
-                  >
-                    Товар
-                  </th>
-                  <th
-                    style={{
-                      border: "1px solid #d4d4d4",
-                      padding: "4px 6px",
-                      width: 60,
-                    }}
-                  >
-                    Кол-во
-                  </th>
-                  <th
-                    style={{
-                      border: "1px solid #d4d4d4",
-                      padding: "4px 6px",
-                      width: 50,
-                    }}
-                  >
-                    Ед.
-                  </th>
-                  <th
-                    style={{
-                      border: "1px solid #d4d4d4",
-                      padding: "4px 6px",
-                      width: 70,
-                    }}
-                  >
-                    Цена
-                  </th>
-                  <th
-                    style={{
-                      border: "1px solid #d4d4d4",
-                      padding: "4px 6px",
-                      width: 140,
-                    }}
-                  >
-                    Автор
-                  </th>
-                  <th
-                    style={{
-                      border: "1px solid #d4d4d4",
-                      padding: "4px 6px",
-                    }}
-                  >
-                    Комментарий
-                  </th>
-                </tr>
-              </thead>
-              <tbody>
-                {visibleRows.map((m, index) => (
-                  <tr key={m.id}>
-                    <td
-                      style={{
-                        border: "1px solid #e0e0e0",
-                        padding: "3px 4px",
-                        textAlign: "center",
-                      }}
-                    >
-                      {index + 1}
-                    </td>
-                    <td
-                      style={{
-                        border: "1px solid #e0e0e0",
-                        padding: "3px 4px",
-                        whiteSpace: "nowrap",
-                      }}
-                    >
-                      {new Date(m.createdAt).toLocaleString("ru-RU", {
-                        day: "2-digit",
-                        month: "2-digit",
-                        year: "numeric",
-                        hour: "2-digit",
-                        minute: "2-digit",
-                        second: "2-digit",
-                      })}
-                    </td>
-                    <td
-                      style={{
-                        border: "1px solid #e0e0e0",
-                        padding: "3px 4px",
-                        textAlign: "center",
-                      }}
-                    >
-                      {MOVEMENT_TYPE_LABELS[m.type] || m.type}
-                    </td>
-                    <td
-                      style={{
-                        border: "1px solid #e0e0e0",
-                        padding: "3px 4px",
-                        textAlign: "left",
-                      }}
-                    >
-                      {m.item?.name || "-"}
-                    </td>
-                    <td
-                      style={{
-                        border: "1px solid #e0e0e0",
-                        padding: "3px 4px",
-                        textAlign: "right",
-                      }}
-                    >
-                      {m.quantity}
-                    </td>
-                    <td
-                      style={{
-                        border: "1px solid #e0e0e0",
-                        padding: "3px 4px",
-                        textAlign: "center",
-                      }}
-                    >
-                      {m.item?.unit || ""}
-                    </td>
-                    <td
-                      style={{
-                        border: "1px solid #e0e0e0",
-                        padding: "3px 4px",
-                        textAlign: "right",
-                      }}
-                    >
-                      {m.pricePerUnit || "-"}
-                    </td>
-                    <td
-  style={{
-    border: "1px solid #e0e0e0",
-    padding: "3px 4px",
-    whiteSpace: "nowrap",
-  }}
->
-  {m.createdBy?.name || m.createdBy?.email || "-"}
-</td>
-                    <td
-                      style={{
-                        border: "1px solid #e0e0e0",
-                        padding: "3px 4px",
-                      }}
-                    >
-                      {m.comment}
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
+          <ResponsiveDataView
+            rows={visibleRows}
+            columns={[
+              {
+                key: "createdAt",
+                label: "Date",
+                render: (row) =>
+                  new Date(row.createdAt).toLocaleString("ru-RU", {
+                    day: "2-digit",
+                    month: "2-digit",
+                    year: "numeric",
+                    hour: "2-digit",
+                    minute: "2-digit",
+                    second: "2-digit",
+                  }),
+              },
+              {
+                key: "type",
+                label: "Type",
+                render: (row) => MOVEMENT_TYPE_LABELS[row.type] || row.type,
+              },
+              {
+                key: "item",
+                label: "Item",
+                render: (row) => row.item?.name || "-",
+              },
+              { key: "quantity", label: "Qty" },
+              {
+                key: "unit",
+                label: "Unit",
+                render: (row) => row.item?.unit || "",
+              },
+              { key: "pricePerUnit", label: "Price" },
+              {
+                key: "author",
+                label: "Author",
+                render: (row) => row.createdBy?.name || row.createdBy?.email || "-",
+              },
+              { key: "comment", label: "Comment" },
+            ]}
+            renderRowDesktop={(m, index) => (
+              <tr key={m.id}>
+                <td
+                  style={{
+                    border: "1px solid #e0e0e0",
+                    padding: "3px 4px",
+                    textAlign: "center",
+                  }}
+                >
+                  {index + 1}
+                </td>
+                <td
+                  style={{
+                    border: "1px solid #e0e0e0",
+                    padding: "3px 4px",
+                    whiteSpace: "nowrap",
+                  }}
+                >
+                  {new Date(m.createdAt).toLocaleString("ru-RU", {
+                    day: "2-digit",
+                    month: "2-digit",
+                    year: "numeric",
+                    hour: "2-digit",
+                    minute: "2-digit",
+                    second: "2-digit",
+                  })}
+                </td>
+                <td
+                  style={{
+                    border: "1px solid #e0e0e0",
+                    padding: "3px 4px",
+                    textAlign: "center",
+                  }}
+                >
+                  {MOVEMENT_TYPE_LABELS[m.type] || m.type}
+                </td>
+                <td
+                  style={{
+                    border: "1px solid #e0e0e0",
+                    padding: "3px 4px",
+                    textAlign: "left",
+                  }}
+                >
+                  {m.item?.name || "-"}
+                </td>
+                <td
+                  style={{
+                    border: "1px solid #e0e0e0",
+                    padding: "3px 4px",
+                    textAlign: "right",
+                  }}
+                >
+                  {m.quantity}
+                </td>
+                <td
+                  style={{
+                    border: "1px solid #e0e0e0",
+                    padding: "3px 4px",
+                    textAlign: "center",
+                  }}
+                >
+                  {m.item?.unit || ""}
+                </td>
+                <td
+                  style={{
+                    border: "1px solid #e0e0e0",
+                    padding: "3px 4px",
+                    textAlign: "right",
+                  }}
+                >
+                  {m.pricePerUnit || "-"}
+                </td>
+                <td
+                  style={{
+                    border: "1px solid #e0e0e0",
+                    padding: "3px 4px",
+                    whiteSpace: "nowrap",
+                  }}
+                >
+                  {m.createdBy?.name || m.createdBy?.email || "-"}
+                </td>
+                <td
+                  style={{
+                    border: "1px solid #e0e0e0",
+                    padding: "3px 4px",
+                  }}
+                >
+                  {m.comment}
+                </td>
+              </tr>
+            )}
+          />
+
         )}
       </div>
     </div>

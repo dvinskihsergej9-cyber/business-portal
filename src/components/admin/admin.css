@@ -276,3 +276,40 @@
     grid-template-columns: minmax(0, 1fr);
   }
 }
+
+@media (max-width: 768px) {
+  .admin-console {
+    padding: 14px;
+  }
+
+  .admin-console__header {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 8px;
+  }
+
+  .admin-console__tabs {
+    overflow-x: auto;
+    white-space: nowrap;
+    -webkit-overflow-scrolling: touch;
+  }
+
+  .admin-console__tab {
+    flex: 0 0 auto;
+  }
+
+  .admin-btn {
+    width: 100%;
+    min-height: 44px;
+  }
+
+  .admin-table__actions {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .admin-modal__actions {
+    flex-direction: column;
+    align-items: stretch;
+  }
+}

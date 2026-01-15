@@ -3,6 +3,8 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { BrowserMultiFormatReader } from "@zxing/browser";
 import { apiFetch } from "../apiConfig";
+import ResponsiveDataView from "./ResponsiveDataView";
+import MobileCard from "./mobile/MobileCard";
 
 /**
  * Окно акта возврата/расхождений (мобильная версия с кнопкой "Отправить")
@@ -784,54 +786,93 @@ export default function MobileReceiveByOrder({ authToken, onBack }) {
             </div>
 
             {/* таблица строк заказа */}
-            <div className="table-wrapper">
-              <table className="table">
-                <thead>
-                  <tr>
-                    <th style={{ width: 40 }}>№</th>
-                    <th>Товар</th>
-                    <th style={{ width: 80 }}>Заказано</th>
-                    <th style={{ width: 80 }}>Принято</th>
-                    <th style={{ width: 80 }}>Разн.</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {rows.map((row, idx) => {
-                    const ordered = Number(row.orderedQty) || 0;
-                    const received = Number(row.receivedQty) || 0;
-                    const diff = received - ordered;
+            <ResponsiveDataView
+              rows={rows}
+              columns={[
+                { key: "index", label: "#" },
+                { key: "name", label: "Item" },
+                { key: "orderedQty", label: "Ordered" },
+                { key: "receivedQty", label: "Received" },
+                { key: "diff", label: "Diff" },
+              ]}
+              renderRowDesktop={(row, idx) => {
+                const ordered = Number(row.orderedQty) || 0;
+                const received = Number(row.receivedQty) || 0;
+                const diff = received - ordered;
 
-                    return (
-                      <tr key={row.orderItemId}>
-                        <td>{row.index}</td>
-                        <td>{row.name}</td>
-                        <td>{ordered}</td>
-                        <td>
-                          <input
-                            type="number"
-                            className="form__input form__input--sm"
-                            value={row.receivedQty}
-                            onChange={(e) =>
-                              handleChangeReceived(idx, e.target.value)
-                            }
-                            min="0"
-                          />
-                        </td>
-                        <td
+                return (
+                  <tr key={row.orderItemId}>
+                    <td>{row.index}</td>
+                    <td>{row.name}</td>
+                    <td>{ordered}</td>
+                    <td>
+                      <input
+                        type="number"
+                        className="form__input form__input--sm"
+                        value={row.receivedQty}
+                        onChange={(e) =>
+                          handleChangeReceived(idx, e.target.value)
+                        }
+                        min="0"
+                      />
+                    </td>
+                    <td
+                      style={{
+                        color:
+                          diff < 0 ? "#b91c1c" : diff > 0 ? "#92400e" : "",
+                        fontWeight: diff != 0 ? 600 : 400,
+                      }}
+                    >
+                      {diff == 0 ? "0" : diff}
+                    </td>
+                  </tr>
+                );
+              }}
+              renderCardMobile={({ row, index }) => {
+                const ordered = Number(row.orderedQty) || 0;
+                const received = Number(row.receivedQty) || 0;
+                const diff = received - ordered;
+
+                return (
+                  <MobileCard>
+                    <div className="mobile-card__title">{row.name}</div>
+                    <div className="mobile-card__fields">
+                      <div className="mobile-field">
+                        <div className="mobile-field__label">Ordered</div>
+                        <div className="mobile-field__value">{ordered}</div>
+                      </div>
+                      <label style={{ display: "grid", gap: 6 }}>
+                        Received
+                        <input
+                          type="number"
+                          className="form__input form__input--sm"
+                          value={row.receivedQty}
+                          onChange={(e) =>
+                            handleChangeReceived(index, e.target.value)
+                          }
+                          min="0"
+                        />
+                      </label>
+                      <div className="mobile-field">
+                        <div className="mobile-field__label">Diff</div>
+                        <div
+                          className="mobile-field__value"
                           style={{
                             color:
                               diff < 0 ? "#b91c1c" : diff > 0 ? "#92400e" : "",
-                            fontWeight: diff !== 0 ? 600 : 400,
+                            fontWeight: diff != 0 ? 600 : 400,
                           }}
                         >
-                          {diff === 0 ? "0" : diff}
-                        </td>
-                      </tr>
-                    );
-                  })}
-                </tbody>
-              </table>
-            </div>
+                          {diff == 0 ? "0" : diff}
+                        </div>
+                      </div>
+                    </div>
+                  </MobileCard>
+                );
+              }}
+              wrapperClassName="table-wrapper"
+            />
+
 
             <div
               style={{

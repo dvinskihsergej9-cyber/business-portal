@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { apiFetch } from "../../apiConfig";
+import ResponsiveDataView from "../ResponsiveDataView";
 
 const REQUEST_STATUS_OPTIONS = [
   { value: "NEW", label: "Новая" },
@@ -369,150 +370,127 @@ export default function AdminWarehousePanel() {
 
       {!loading && activeTab === "items" && (
         <div className="admin-table-wrapper">
-          <table className="admin-table">
-            <thead>
-              <tr>
-                <th>Товар</th>
-                <th>SKU</th>
-                <th>Штрихкод</th>
-                <th>Ед.</th>
-                <th></th>
+          <ResponsiveDataView
+            rows={items}
+            columns={[
+              { key: "name", label: "Item" },
+              { key: "sku", label: "SKU" },
+              { key: "barcode", label: "Barcode" },
+              { key: "unit", label: "Unit" },
+              { key: "actions", label: "" },
+            ]}
+            renderRowDesktop={(item) => (
+              <tr key={item.id}>
+                <td>
+                  <div className="admin-table__title">{item.name}</div>
+                  <div className="admin-table__meta">ID: {item.id}</div>
+                </td>
+                <td>{item.sku || "-"}</td>
+                <td>{item.barcode || "-"}</td>
+                <td>{item.unit || "-"}</td>
+                <td className="admin-table__actions">
+                  <button
+                    type="button"
+                    className="admin-btn admin-btn--secondary"
+                    onClick={() => setEditItem(item)}
+                  >
+                    Edit
+                  </button>
+                  <button
+                    type="button"
+                    className="admin-btn admin-btn--danger"
+                    onClick={() => setDeleteItem(item)}
+                  >
+                    Delete
+                  </button>
+                </td>
               </tr>
-            </thead>
-            <tbody>
-              {items.map((item) => (
-                <tr key={item.id}>
-                  <td>
-                    <div className="admin-table__title">{item.name}</div>
-                    <div className="admin-table__meta">ID: {item.id}</div>
-                  </td>
-                  <td>{item.sku || "-"}</td>
-                  <td>{item.barcode || "-"}</td>
-                  <td>{item.unit || "-"}</td>
-                  <td className="admin-table__actions">
-                    <button
-                      type="button"
-                      className="admin-btn admin-btn--secondary"
-                      onClick={() => setEditItem(item)}
-                    >
-                      Редактировать
-                    </button>
-                    <button
-                      type="button"
-                      className="admin-btn admin-btn--danger"
-                      onClick={() => setDeleteItem(item)}
-                    >
-                      Удалить
-                    </button>
-                  </td>
-                </tr>
-              ))}
-              {!items.length && (
-                <tr>
-                  <td colSpan="5" className="admin-muted">
-                    Нет товаров.
-                  </td>
-                </tr>
-              )}
-            </tbody>
-          </table>
+            )}
+          />
+
         </div>
       )}
 
       {!loading && activeTab === "locations" && (
         <div className="admin-table-wrapper">
-          <table className="admin-table">
-            <thead>
-              <tr>
-                <th>Ячейка</th>
-                <th>Код</th>
-                <th>Зона</th>
-                <th>Ряд</th>
-                <th></th>
+          <ResponsiveDataView
+            rows={locations}
+            columns={[
+              { key: "name", label: "Location" },
+              { key: "code", label: "Code" },
+              { key: "zone", label: "Zone" },
+              { key: "aisle", label: "Aisle" },
+              { key: "actions", label: "" },
+            ]}
+            renderRowDesktop={(loc) => (
+              <tr key={loc.id}>
+                <td>
+                  <div className="admin-table__title">{loc.name}</div>
+                  <div className="admin-table__meta">ID: {loc.id}</div>
+                </td>
+                <td>{loc.code || "-"}</td>
+                <td>{loc.zone || "-"}</td>
+                <td>{loc.aisle || "-"}</td>
+                <td className="admin-table__actions">
+                  <button
+                    type="button"
+                    className="admin-btn admin-btn--secondary"
+                    onClick={() => setEditLocation(loc)}
+                  >
+                    Edit
+                  </button>
+                  <button
+                    type="button"
+                    className="admin-btn admin-btn--danger"
+                    onClick={() => setDeleteLocation(loc)}
+                  >
+                    Delete
+                  </button>
+                </td>
               </tr>
-            </thead>
-            <tbody>
-              {locations.map((loc) => (
-                <tr key={loc.id}>
-                  <td>
-                    <div className="admin-table__title">{loc.name}</div>
-                    <div className="admin-table__meta">ID: {loc.id}</div>
-                  </td>
-                  <td>{loc.code || "-"}</td>
-                  <td>{loc.zone || "-"}</td>
-                  <td>{loc.aisle || "-"}</td>
-                  <td className="admin-table__actions">
-                    <button
-                      type="button"
-                      className="admin-btn admin-btn--secondary"
-                      onClick={() => setEditLocation(loc)}
-                    >
-                      Редактировать
-                    </button>
-                    <button
-                      type="button"
-                      className="admin-btn admin-btn--danger"
-                      onClick={() => setDeleteLocation(loc)}
-                    >
-                      Удалить
-                    </button>
-                  </td>
-                </tr>
-              ))}
-              {!locations.length && (
-                <tr>
-                  <td colSpan="5" className="admin-muted">
-                    Нет ячеек.
-                  </td>
-                </tr>
-              )}
-            </tbody>
-          </table>
+            )}
+          />
+
         </div>
       )}
 
       {!loading && activeTab === "requests" && (
         <div className="admin-table-wrapper">
-          <table className="admin-table">
-            <thead>
-              <tr>
-                <th>Заявка</th>
-                <th>Тип</th>
-                <th>Статус</th>
-                <th>Автор</th>
-                <th></th>
+          <ResponsiveDataView
+            rows={requests}
+            columns={[
+              { key: "title", label: "Request" },
+              { key: "type", label: "Type" },
+              { key: "status", label: "Status" },
+              {
+                key: "createdBy",
+                label: "Created by",
+                render: (row) => row.createdBy?.name || "-",
+              },
+              { key: "actions", label: "" },
+            ]}
+            renderRowDesktop={(req) => (
+              <tr key={req.id}>
+                <td>
+                  <div className="admin-table__title">{req.title}</div>
+                  <div className="admin-table__meta">ID: {req.id}</div>
+                </td>
+                <td>{req.type}</td>
+                <td>{req.status}</td>
+                <td>{req.createdBy?.name || "-"}</td>
+                <td className="admin-table__actions">
+                  <button
+                    type="button"
+                    className="admin-btn admin-btn--secondary"
+                    onClick={() => setEditRequest(req)}
+                  >
+                    Edit
+                  </button>
+                </td>
               </tr>
-            </thead>
-            <tbody>
-              {requests.map((req) => (
-                <tr key={req.id}>
-                  <td>
-                    <div className="admin-table__title">{req.title}</div>
-                    <div className="admin-table__meta">ID: {req.id}</div>
-                  </td>
-                  <td>{req.type}</td>
-                  <td>{req.status}</td>
-                  <td>{req.createdBy?.name || "-"}</td>
-                  <td className="admin-table__actions">
-                    <button
-                      type="button"
-                      className="admin-btn admin-btn--secondary"
-                      onClick={() => setEditRequest(req)}
-                    >
-                      Открыть
-                    </button>
-                  </td>
-                </tr>
-              ))}
-              {!requests.length && (
-                <tr>
-                  <td colSpan="5" className="admin-muted">
-                    Нет заявок.
-                  </td>
-                </tr>
-              )}
-            </tbody>
-          </table>
+            )}
+          />
+
         </div>
       )}
 

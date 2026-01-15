@@ -4,6 +4,8 @@
 
 import { useEffect, useState } from "react";
 import { apiFetch } from "../apiConfig";
+import ResponsiveDataView from "./ResponsiveDataView";
+import useIsMobile from "../hooks/useIsMobile";
 
 
 
@@ -45,6 +47,7 @@ const SUBTABS = {
 
 export default function SupplierTrucksQueueTab() {
 
+  const isMobile = useIsMobile();
   const token = localStorage.getItem("token");
 
   const authHeaders = {
@@ -748,7 +751,7 @@ export default function SupplierTrucksQueueTab() {
 
                       color: "#6b7280",
 
-                      whiteSpace: "nowrap",
+                      whiteSpace: isMobile ? "normal" : "nowrap",
 
                     }}
 
@@ -848,7 +851,7 @@ export default function SupplierTrucksQueueTab() {
 
                       color: "#6b7280",
 
-                      maxWidth: 420,
+                      maxWidth: isMobile ? "100%" : 420,
 
                     }}
 
@@ -1268,225 +1271,145 @@ export default function SupplierTrucksQueueTab() {
 
                 </div>
 
-                <table className="table table--queue">
+                <ResponsiveDataView
+                  rows={items}
+                  columns={[
+                    {
+                      key: "status",
+                      label: "Status",
+                      render: (row) => STATUS_LABELS[row.status] || row.status,
+                    },
+                    {
+                      key: "arrivalAt",
+                      label: "Arrival",
+                      render: (row) =>
+                        row.arrivalAt
+                          ? new Date(row.arrivalAt).toLocaleString("ru-RU")
+                          : "-",
+                    },
+                    {
+                      key: "unloadStartAt",
+                      label: "Unload start",
+                      render: (row) =>
+                        row.unloadStartAt
+                          ? new Date(row.unloadStartAt).toLocaleString("ru-RU")
+                          : "-",
+                    },
+                    {
+                      key: "unloadEndAt",
+                      label: "Unload end",
+                      render: (row) =>
+                        row.unloadEndAt
+                          ? new Date(row.unloadEndAt).toLocaleString("ru-RU")
+                          : "-",
+                    },
+                    { key: "supplier", label: "Supplier" },
+                    { key: "orderNumber", label: "Order" },
+                    {
+                      key: "deliveryDate",
+                      label: "Delivery date",
+                      render: (row) =>
+                        row.deliveryDate
+                          ? new Date(row.deliveryDate).toLocaleDateString(
+                              "ru-RU"
+                            )
+                          : "-",
+                    },
+                    { key: "gate", label: "Gate" },
+                    { key: "vehicleBrand", label: "Vehicle" },
+                    { key: "truckNumber", label: "Truck" },
+                    { key: "driverName", label: "Driver" },
+                    { key: "driverPhone", label: "Phone" },
+                    { key: "cargo", label: "Cargo" },
+                  ]}
+                  renderRowDesktop={(t) => (
+                    <tr
+                      key={t.id}
+                      className={
+                        selectedTruckId === t.id
+                          ? "queue-row queue-row--active"
+                          : "queue-row"
+                      }
+                      onClick={() => setSelectedTruckId(t.id)}
+                    >
+                      <td
+                        style={{ whiteSpace: "nowrap", fontSize: 13 }}
+                        title={
+                          t.status === "DONE"
+                            ? "Completed"
+                            : STATUS_LABELS[t.status] || t.status
+                        }
+                      >
+                        {STATUS_LABELS[t.status] || t.status}
+                      </td>
+                      <td
+                        title={
+                          t.arrivalAt
+                            ? new Date(t.arrivalAt).toLocaleString("ru-RU")
+                            : "-"
+                        }
+                      >
+                        {t.arrivalAt
+                          ? new Date(t.arrivalAt).toLocaleString("ru-RU")
+                          : "-"}
+                      </td>
+                      <td
+                        title={
+                          t.unloadStartAt
+                            ? new Date(t.unloadStartAt).toLocaleString("ru-RU")
+                            : "-"
+                        }
+                      >
+                        {t.unloadStartAt
+                          ? new Date(t.unloadStartAt).toLocaleString("ru-RU")
+                          : "-"}
+                      </td>
+                      <td
+                        title={
+                          t.unloadEndAt
+                            ? new Date(t.unloadEndAt).toLocaleString("ru-RU")
+                            : "-"
+                        }
+                      >
+                        {t.unloadEndAt
+                          ? new Date(t.unloadEndAt).toLocaleString("ru-RU")
+                          : "-"}
+                      </td>
+                      <td title={t.supplier || "-"}>{t.supplier || "-"}</td>
+                      <td title={t.orderNumber || "-"}>
+                        {t.orderNumber || "-"}
+                      </td>
+                      <td
+                        title={
+                          t.deliveryDate
+                            ? new Date(t.deliveryDate).toLocaleDateString(
+                                "ru-RU"
+                              )
+                            : "-"
+                        }
+                      >
+                        {t.deliveryDate
+                          ? new Date(t.deliveryDate).toLocaleDateString("ru-RU")
+                          : "-"}
+                      </td>
+                      <td title={t.gate || "-"}>{t.gate || "-"}</td>
+                      <td title={t.vehicleBrand || "-"}>
+                        {t.vehicleBrand || "-"}
+                      </td>
+                      <td title={t.truckNumber || "-"}>
+                        {t.truckNumber || "-"}
+                      </td>
+                      <td title={t.driverName || "-"}>
+                        {t.driverName || "-"}
+                      </td>
+                      <td title={t.driverPhone || "-"}>
+                        {t.driverPhone || "-"}
+                      </td>
+                      <td title={t.cargo || "-"}>{t.cargo || "-"}</td>
+                    </tr>
+                  )}
+                />
 
-                    <thead>
-
-                      <tr>
-
-
-                        <th style={{ width: 100 }}>Статус</th>
-
-                        <th style={{ width: 140 }}>Прибытие</th>
-
-                        <th style={{ width: 140 }}>Заезд на разгрузку</th>
-
-                        <th style={{ width: 140 }}>Выезд</th>
-
-                        <th>Поставщик</th>
-
-                        <th style={{ width: 110 }}>№ заказа</th>
-
-                        <th style={{ width: 110 }}>Дата дост.</th>
-
-                        <th style={{ width: 70 }}>Ворота</th>
-
-                        <th>Марка</th>
-
-                        <th style={{ width: 110 }}>Номер авто</th>
-
-                        <th>Водитель</th>
-
-                        <th style={{ width: 120 }}>Телефон</th>
-
-                        <th>Товар</th>
-
-                        <th>Примечание</th>
-
-                      </tr>
-
-                    </thead>
-
-                    <tbody>
-
-                      {items.map((t) => (
-
-                        <tr
-
-                          key={t.id}
-
-                          className={
-
-                            selectedTruckId === t.id
-
-                              ? "queue-row queue-row--active"
-
-                              : "queue-row"
-
-                          }
-
-                          onClick={() => setSelectedTruckId(t.id)}
-
-                        >
-
-
-                          <td
-
-                            style={{ whiteSpace: "nowrap", fontSize: 13 }}
-
-                            title={
-
-                              t.status === "DONE"
-
-                                ? "Разгружен / выехал"
-
-                                : STATUS_LABELS[t.status] || t.status
-
-                            }
-
-                          >
-
-                            {STATUS_LABELS[t.status] || t.status}
-
-                          </td>
-
-                          <td
-
-                            title={
-
-                              t.arrivalAt
-
-                                ? new Date(t.arrivalAt).toLocaleString("ru-RU")
-
-                                : "-"
-
-                            }
-
-                          >
-
-                            {t.arrivalAt
-
-                              ? new Date(t.arrivalAt).toLocaleString("ru-RU")
-
-                              : "-"}
-
-                          </td>
-
-                          <td
-
-                            title={
-
-                              t.unloadStartAt
-
-                                ? new Date(t.unloadStartAt).toLocaleString(
-
-                                    "ru-RU"
-
-                                  )
-
-                                : "-"
-
-                            }
-
-                          >
-
-                            {t.unloadStartAt
-
-                              ? new Date(
-
-                                  t.unloadStartAt
-
-                                ).toLocaleString("ru-RU")
-
-                              : "-"}
-
-                          </td>
-
-                          <td
-
-                            title={
-
-                              t.unloadEndAt
-
-                                ? new Date(t.unloadEndAt).toLocaleString(
-
-                                    "ru-RU"
-
-                                  )
-
-                                : "-"
-
-                            }
-
-                          >
-
-                            {t.unloadEndAt
-
-                              ? new Date(t.unloadEndAt).toLocaleString(
-
-                                  "ru-RU"
-
-                                )
-
-                              : "-"}
-
-                          </td>
-
-                          <td title={t.supplier || "-"}>{t.supplier || "-"}</td>
-
-                          <td title={t.orderNumber || "-"}>{t.orderNumber || "-"}</td>
-
-                          <td
-
-                            title={
-
-                              t.deliveryDate
-
-                                ? new Date(t.deliveryDate).toLocaleDateString(
-
-                                    "ru-RU"
-
-                                  )
-
-                                : "-"
-
-                            }
-
-                          >
-
-                            {t.deliveryDate
-
-                              ? new Date(
-
-                                  t.deliveryDate
-
-                                ).toLocaleDateString("ru-RU")
-
-                              : "-"}
-
-                          </td>
-
-                          <td title={t.gate || "-"}>{t.gate || "-"}</td>
-
-                          <td title={t.vehicleBrand || "-"}>{t.vehicleBrand || "-"}</td>
-
-                          <td title={t.truckNumber || "-"}>{t.truckNumber || "-"}</td>
-
-                          <td title={t.driverName || "-"}>{t.driverName || "-"}</td>
-
-                          <td title={t.driverPhone || "-"}>{t.driverPhone || "-"}</td>
-
-                          <td title={t.cargo || "-"}>{t.cargo || "-"}</td>
-
-                          <td title={t.note || "-"}>{t.note || "-"}</td>
-
-                        </tr>
-
-                      ))}
-
-                    </tbody>
-
-                  </table>
 
                 </div>
 

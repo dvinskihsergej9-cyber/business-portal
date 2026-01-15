@@ -1,5 +1,6 @@
 ﻿import { useEffect, useMemo, useState } from "react";
 import { apiFetch } from "../apiConfig";
+import ResponsiveDataView from "../components/ResponsiveDataView";
 
 const STATUS_LABELS = {
   ACTIVE: "В штате",
@@ -791,7 +792,7 @@ export default function HrPanel() {
           {employeeTab === "list" && (
             <>
               <div className="card" style={{ marginTop: 8 }}>
-                <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 8 }}>
+                <div className="stack-mobile" style={{ alignItems: "center", gap: 10, marginBottom: 8 }}>
                   <h3 style={{ margin: 0, fontSize: 16 }}>Фильтры и поиск</h3>
                   <button
                     type="button"
@@ -803,7 +804,7 @@ export default function HrPanel() {
                   </button>
                 </div>
 
-                <div style={{ display: "flex", gap: 10,  }}>
+                <div className="stack-mobile" style={{ gap: 10,  }}>
                   <div style={{ flex: "1 1 220px" }}>
                     <input
                       placeholder="Поиск по ФИО, отделу, должности"
@@ -831,145 +832,224 @@ export default function HrPanel() {
                   ) : filteredEmployees.length === 0 ? (
                     <p className="text-muted">Сотрудников нет или не найдено по фильтру.</p>
                   ) : (
-                    <div className="table-wrapper">
-                      <table className="table">
-                        <thead>
-                          <tr>
-                            <th style={{ width: 70 }}>ID</th>
-                            <th>ФИО</th>
-                            <th>Должность</th>
-                            <th>Подразделение</th>
-                            <th style={{ width: 140 }}>Telegram ID</th>
-                            <th>Статус</th>
-                            <th>Принят</th>
-                            <th>ДР</th>
-                            <th style={{ width: 180 }}>Действия</th>
-                          </tr>
-                        </thead>
-                        <tbody>
-                          {filteredEmployees.map((emp) => (
-                            <tr key={emp.id}>
-                              <td>{emp.id}</td>
-                              <td>
-                                {editEmployeeId === emp.id ? (
-                                  <input
-                                    className="form__input form__input--sm"
-                                    value={editForm.fullName}
-                                    onChange={(e) => setEditForm((prev) => ({ ...prev, fullName: e.target.value }))}
-                                  />
-                                ) : (
-                                  emp.fullName
-                                )}
-                              </td>
-                              <td>
-                                {editEmployeeId === emp.id ? (
-                                  <input
-                                    className="form__input form__input--sm"
-                                    value={editForm.position}
-                                    onChange={(e) => setEditForm((prev) => ({ ...prev, position: e.target.value }))}
-                                  />
-                                ) : (
-                                  emp.position || "-"
-                                )}
-                              </td>
-                              <td>
-                                {editEmployeeId === emp.id ? (
-                                  <input
-                                    className="form__input form__input--sm"
-                                    value={editForm.department}
-                                    onChange={(e) => setEditForm((prev) => ({ ...prev, department: e.target.value }))}
-                                  />
-                                ) : (
-                                  emp.department || "-"
-                                )}
-                              </td>
-                              <td>
-                                {editEmployeeId === emp.id ? (
-                                  <input
-                                    className="form__input form__input--sm"
-                                    value={editForm.telegramChatId}
-                                    onChange={(e) =>
-                                      setEditForm((prev) => ({ ...prev, telegramChatId: e.target.value }))
-                                    }
-                                  />
-                                ) : (
-                                  emp.telegramChatId || "-"
-                                )}
-                              </td>
-                              <td>
-                                <span
-                                  style={{
-                                    display: "inline-block",
-                                    padding: "2px 8px",
-                                    borderRadius: 999,
-                                    fontSize: 12,
-                                    background: statusPills[emp.status]?.background || "#e5e7eb",
-                                    color: statusPills[emp.status]?.color || "#374151",
-                                    border: `1px solid ${statusPills[emp.status]?.border || "#d1d5db"}`,
-                                  }}
+                    <ResponsiveDataView
+                      rows={filteredEmployees}
+                      columns={[
+                        { key: "id", label: "ID" },
+                        { key: "fullName", label: "Name" },
+                        { key: "position", label: "Position" },
+                        { key: "department", label: "Department" },
+                        { key: "telegramChatId", label: "Telegram ID" },
+                        {
+                          key: "status",
+                          label: "Status",
+                          render: (row) => (
+                            <span
+                              style={{
+                                display: "inline-block",
+                                padding: "2px 8px",
+                                borderRadius: 999,
+                                fontSize: 12,
+                                background:
+                                  statusPills[row.status]?.background ||
+                                  "#e5e7eb",
+                                color: statusPills[row.status]?.color || "#374151",
+                                border: `1px solid ${
+                                  statusPills[row.status]?.border || "#d1d5db"
+                                }`,
+                              }}
+                            >
+                              {STATUS_LABELS[row.status] || row.status}
+                            </span>
+                          ),
+                        },
+                        {
+                          key: "hiredAt",
+                          label: "Hired",
+                          render: (row) => formatDate(row.hiredAt),
+                        },
+                        {
+                          key: "birthDate",
+                          label: "Birthday",
+                          render: (row) => formatDate(row.birthDate),
+                        },
+                        { key: "actions", label: "" },
+                      ]}
+                      renderRowDesktop={(emp) => (
+                        <tr key={emp.id}>
+                          <td>{emp.id}</td>
+                          <td>
+                            {editEmployeeId === emp.id ? (
+                              <input
+                                className="form__input form__input--sm"
+                                value={editForm.fullName}
+                                onChange={(e) =>
+                                  setEditForm((prev) => ({
+                                    ...prev,
+                                    fullName: e.target.value,
+                                  }))
+                                }
+                              />
+                            ) : (
+                              emp.fullName
+                            )}
+                          </td>
+                          <td>
+                            {editEmployeeId === emp.id ? (
+                              <input
+                                className="form__input form__input--sm"
+                                value={editForm.position}
+                                onChange={(e) =>
+                                  setEditForm((prev) => ({
+                                    ...prev,
+                                    position: e.target.value,
+                                  }))
+                                }
+                              />
+                            ) : (
+                              emp.position || "-"
+                            )}
+                          </td>
+                          <td>
+                            {editEmployeeId === emp.id ? (
+                              <input
+                                className="form__input form__input--sm"
+                                value={editForm.department}
+                                onChange={(e) =>
+                                  setEditForm((prev) => ({
+                                    ...prev,
+                                    department: e.target.value,
+                                  }))
+                                }
+                              />
+                            ) : (
+                              emp.department || "-"
+                            )}
+                          </td>
+                          <td>
+                            {editEmployeeId === emp.id ? (
+                              <input
+                                className="form__input form__input--sm"
+                                value={editForm.telegramChatId}
+                                onChange={(e) =>
+                                  setEditForm((prev) => ({
+                                    ...prev,
+                                    telegramChatId: e.target.value,
+                                  }))
+                                }
+                              />
+                            ) : (
+                              emp.telegramChatId || "-"
+                            )}
+                          </td>
+                          <td>
+                            {editEmployeeId === emp.id ? (
+                              <select
+                                className="form__select form__select--sm"
+                                value={editForm.status}
+                                onChange={(e) =>
+                                  setEditForm((prev) => ({
+                                    ...prev,
+                                    status: e.target.value,
+                                  }))
+                                }
+                              >
+                                <option value="ACTIVE">? ?????</option>
+                                <option value="FIRED">??????</option>
+                              </select>
+                            ) : (
+                              <span
+                                style={{
+                                  display: "inline-block",
+                                  padding: "2px 8px",
+                                  borderRadius: 999,
+                                  fontSize: 12,
+                                  background:
+                                    statusPills[emp.status]?.background ||
+                                    "#e5e7eb",
+                                  color:
+                                    statusPills[emp.status]?.color || "#374151",
+                                  border: `1px solid ${
+                                    statusPills[emp.status]?.border || "#d1d5db"
+                                  }`,
+                                }}
+                              >
+                                {STATUS_LABELS[emp.status] || emp.status}
+                              </span>
+                            )}
+                          </td>
+                          <td>
+                            {editEmployeeId === emp.id ? (
+                              <input
+                                type="date"
+                                className="form__input form__input--sm"
+                                value={editForm.hiredAt}
+                                onChange={(e) =>
+                                  setEditForm((prev) => ({
+                                    ...prev,
+                                    hiredAt: e.target.value,
+                                  }))
+                                }
+                              />
+                            ) : (
+                              formatDate(emp.hiredAt)
+                            )}
+                          </td>
+                          <td>
+                            {editEmployeeId === emp.id ? (
+                              <input
+                                type="date"
+                                className="form__input form__input--sm"
+                                value={editForm.birthDate}
+                                onChange={(e) =>
+                                  setEditForm((prev) => ({
+                                    ...prev,
+                                    birthDate: e.target.value,
+                                  }))
+                                }
+                              />
+                            ) : (
+                              formatDate(emp.birthDate)
+                            )}
+                          </td>
+                          <td>
+                            {editEmployeeId === emp.id ? (
+                              <div style={{ display: "flex", gap: 6 }}>
+                                <button
+                                  className="btn btn--primary btn--sm"
+                                  onClick={() => handleSaveEdit(emp.id)}
+                                  disabled={savingId === emp.id}
                                 >
-                                  {STATUS_LABELS[emp.status] || emp.status}
-                                </span>
-                              </td>
-                              <td>
-                                {editEmployeeId === emp.id ? (
-                                  <input
-                                    type="date"
-                                    className="form__input form__input--sm"
-                                    value={editForm.hiredAt}
-                                    onChange={(e) => setEditForm((prev) => ({ ...prev, hiredAt: e.target.value }))}
-                                  />
-                                ) : (
-                                  formatDate(emp.hiredAt)
-                                )}
-                              </td>
-                              <td>
-                                {editEmployeeId === emp.id ? (
-                                  <input
-                                    type="date"
-                                    className="form__input form__input--sm"
-                                    value={editForm.birthDate}
-                                    onChange={(e) => setEditForm((prev) => ({ ...prev, birthDate: e.target.value }))}
-                                  />
-                                ) : (
-                                  formatDate(emp.birthDate)
-                                )}
-                              </td>
-                              <td>
-                                {editEmployeeId === emp.id ? (
-                                  <div style={{ display: "flex", gap: 8 }}>
-                                    <button
-                                      type="button"
-                                      className="btn btn--primary btn--sm"
-                                      onClick={() => handleEditSave(emp.id)}
-                                      disabled={editSaving}
-                                    >
-                                      Сохранить
-                                    </button>
-                                    <button
-                                      type="button"
-                                      className="btn btn--secondary btn--sm"
-                                      onClick={handleEditCancel}
-                                      disabled={editSaving}
-                                    >
-                                      Отмена
-                                    </button>
-                                  </div>
-                                ) : (
-                                  <button
-                                    type="button"
-                                    className="btn btn--secondary btn--sm"
-                                    onClick={() => handleEditStart(emp)}
-                                  >
-                                    Редактировать
-                                  </button>
-                                )}
-                              </td>
-                            </tr>
-                          ))}
-                        </tbody>
-                      </table>
-                    </div>
+                                  {savingId === emp.id ? "??????????..." : "?????????"}
+                                </button>
+                                <button
+                                  className="btn btn--ghost btn--sm"
+                                  onClick={cancelEdit}
+                                >
+                                  ??????
+                                </button>
+                              </div>
+                            ) : (
+                              <div style={{ display: "flex", gap: 6 }}>
+                                <button
+                                  className="btn btn--secondary btn--sm"
+                                  onClick={() => startEdit(emp)}
+                                >
+                                  ???????
+                                </button>
+                                <button
+                                  className="btn btn--danger btn--sm"
+                                  onClick={() => handleDeleteEmployee(emp.id)}
+                                  disabled={deletingId === emp.id}
+                                >
+                                  {deletingId === emp.id ? "????????..." : "???????"}
+                                </button>
+                              </div>
+                            )}
+                          </td>
+                        </tr>
+                      )}
+                    />
                   )}
                 </div>
               </div>
@@ -1057,7 +1137,7 @@ export default function HrPanel() {
                                   borderBottom: "1px solid #e5e7eb",
                                 }}
                               >
-                                <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                                <div className="stack-mobile" style={{ alignItems: "center", gap: 8 }}>
                                   <span style={{ fontWeight: 600, flex: 1 }}>{r.title}</span>
                                   {r.file ? (
                                     <a className="btn btn--secondary btn--sm" href={r.file} download>
@@ -1084,7 +1164,7 @@ export default function HrPanel() {
                                   borderBottom: "1px solid #e5e7eb",
                                 }}
                               >
-                                <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                                <div className="stack-mobile" style={{ alignItems: "center", gap: 8 }}>
                                   <span style={{ fontWeight: 600, flex: 1 }}>{r.title}</span>
                                   {r.file ? (
                                     <a className="btn btn--secondary btn--sm" href={r.file} download>
@@ -1115,71 +1195,101 @@ export default function HrPanel() {
                   ) : safetyAssignments.length === 0 ? (
                     <p className="text-muted">Нет назначений</p>
                   ) : (
-                    <div className="table-wrapper">
-                      <table className="table">
-                        <thead>
-                          <tr>
-                            <th>Сотр.</th>
-                            <th>Инструктаж</th>
-                            <th>Статус</th>
-                            <th>След. дата</th>
-                            <th></th>
-                          </tr>
-                        </thead>
-                        <tbody>
-                          {safetyAssignments.map((a) => {
-                            const overdue = a.status === "PENDING";
-                            const canRemind = overdue && a.employee?.telegramChatId;
+                    <ResponsiveDataView
+                      rows={safetyAssignments}
+                      columns={[
+                        { key: "employee", label: "Employee", render: (row) => row.employee?.fullName || row.employeeId },
+                        { key: "instruction", label: "Instruction", render: (row) => row.instruction?.title },
+                        {
+                          key: "status",
+                          label: "Status",
+                          render: (row) => {
+                            const overdue = row.status === "PENDING";
                             return (
-                              <tr key={a.id}>
-                                <td>{a.employee?.fullName || a.employeeId}</td>
-                                <td>{a.instruction?.title}</td>
-                                <td>
-                                  <span
-                                    style={{
-                                      display: "inline-block",
-                                      padding: "2px 8px",
-                                      borderRadius: 999,
-                                      fontSize: 12,
-                                      background: overdue ? "#fee2e2" : "#dcfce7",
-                                      color: overdue ? "#991b1b" : "#166534",
-                                      border: `1px solid ${overdue ? "#fca5a5" : "#86efac"}`,
-                                    }}
-                                  >
-                                    {overdue ? "Требуется" : "Пройден"}
-                                  </span>
-                                </td>
-                                <td>{formatDate(a.nextDue)}</td>
-                                <td style={{ width: 190 }}>
-                                  {overdue && (
-                                    <div style={{ display: "flex", gap: 6 }}>
-                                      {canRemind ? (
-                                        <button
-                                          type="button"
-                                          className="btn btn--ghost btn--sm"
-                                          onClick={() => handleRemindInstruction(a)}
-                                        >
-                                          Напомнить
-                                        </button>
-                                      ) : (
-                                        <span style={{ fontSize: 12, color: "#9ca3af" }}>Нет Telegram ID</span>
-                                      )}
-                                      <button
-                                        type="button"
-                                        className="btn btn--secondary btn--sm"
-                                        onClick={() => handleCompleteInstruction(a.id)}
-                                      >
-                                        Закрыть
-                                      </button>
-                                    </div>
-                                  )}
-                                </td>
-                              </tr>
+                              <span
+                                style={{
+                                  display: "inline-block",
+                                  padding: "2px 8px",
+                                  borderRadius: 999,
+                                  fontSize: 12,
+                                  background: overdue ? "#fee2e2" : "#dcfce7",
+                                  color: overdue ? "#991b1b" : "#166534",
+                                  border: `1px solid ${
+                                    overdue ? "#fca5a5" : "#86efac"
+                                  }`,
+                                }}
+                              >
+                                {overdue ? "?????????" : "???????"}
+                              </span>
                             );
-                          })}
-                        </tbody>
-                      </table>
-                    </div>
+                          },
+                        },
+                        {
+                          key: "nextDue",
+                          label: "Next date",
+                          render: (row) => formatDate(row.nextDue),
+                        },
+                        { key: "actions", label: "" },
+                      ]}
+                      renderRowDesktop={(a) => {
+                        const overdue = a.status === "PENDING";
+                        const canRemind = overdue && a.employee?.telegramChatId;
+                        return (
+                          <tr key={a.id}>
+                            <td>{a.employee?.fullName || a.employeeId}</td>
+                            <td>{a.instruction?.title}</td>
+                            <td>
+                              <span
+                                style={{
+                                  display: "inline-block",
+                                  padding: "2px 8px",
+                                  borderRadius: 999,
+                                  fontSize: 12,
+                                  background: overdue ? "#fee2e2" : "#dcfce7",
+                                  color: overdue ? "#991b1b" : "#166534",
+                                  border: `1px solid ${
+                                    overdue ? "#fca5a5" : "#86efac"
+                                  }`,
+                                }}
+                              >
+                                {overdue ? "?????????" : "???????"}
+                              </span>
+                            </td>
+                            <td>{formatDate(a.nextDue)}</td>
+                            <td style={{ width: 190 }}>
+                              {overdue && (
+                                <div style={{ display: "flex", gap: 6 }}>
+                                  {canRemind ? (
+                                    <button
+                                      type="button"
+                                      className="btn btn--ghost btn--sm"
+                                      onClick={() => handleSafetyRemind(a)}
+                                    >
+                                      ????????? ? TG
+                                    </button>
+                                  ) : (
+                                    <button
+                                      type="button"
+                                      className="btn btn--ghost btn--sm"
+                                      onClick={() => handleSafetyReminderLink(a)}
+                                    >
+                                      ??????
+                                    </button>
+                                  )}
+                                  <button
+                                    type="button"
+                                    className="btn btn--primary btn--sm"
+                                    onClick={() => handleSafetyConfirm(a)}
+                                  >
+                                    ???????????
+                                  </button>
+                                </div>
+                              )}
+                            </td>
+                          </tr>
+                        );
+                      }}
+                    />
                   )}
                 </div>
               </div>
@@ -1231,30 +1341,30 @@ export default function HrPanel() {
                   <div style={{ marginBottom: 10, fontWeight: 600 }}>
                     Прогресс: {employmentProgressCount}/{EMPLOYMENT_STEPS.length}
                   </div>
-                  <div className="table-wrapper">
-                    <table className="table">
-                      <thead>
-                        <tr>
-                          <th style={{ width: 60 }}></th>
-                          <th>Этап</th>
-                        </tr>
-                      </thead>
-                      <tbody>
-                        {EMPLOYMENT_STEPS.map((step) => (
-                          <tr key={step.id}>
-                            <td>
-                              <input
-                                type="checkbox"
-                                checked={!!employmentProgress[step.id]}
-                                onChange={() => toggleEmploymentStep(step.id)}
-                              />
-                            </td>
-                            <td>{step.title}</td>
-                          </tr>
-                        ))}
-                      </tbody>
-                    </table>
-                  </div>
+                  <ResponsiveDataView
+                    rows={EMPLOYMENT_STEPS}
+                    columns={[
+                      {
+                        key: "checked",
+                        label: "Done",
+                        render: (row) => (employmentProgress[row.id] ? "Yes" : "No"),
+                      },
+                      { key: "title", label: "Step" },
+                    ]}
+                    renderRowDesktop={(step) => (
+                      <tr key={step.id}>
+                        <td>
+                          <input
+                            type="checkbox"
+                            checked={!!employmentProgress[step.id]}
+                            onChange={() => toggleEmploymentStep(step.id)}
+                          />
+                        </td>
+                        <td>{step.title}</td>
+                      </tr>
+                    )}
+                  />
+
                 </div>
               </div>
             )}
@@ -1265,7 +1375,7 @@ export default function HrPanel() {
                   Документы и требования при приеме
                 </div>
                 <div className="card__body" style={{ paddingTop: 10 }}>
-                  <div style={{ display: "flex", gap: 10, marginBottom: 10 }}>
+                  <div className="stack-mobile" style={{ gap: 10, marginBottom: 10 }}>
                     <label style={{ fontWeight: 600 }}>Профиль:</label>
                     <div className="tabs tabs--sm" style={{ marginBottom: 0 }}>
                       <button
@@ -1348,37 +1458,55 @@ export default function HrPanel() {
                   Шаблоны (скачать/распечатать)
                 </div>
                 <div className="card__body" style={{ paddingTop: 8 }}>
-                  <div className="table-wrapper">
-                    <table className="table table--bordered" style={{ tableLayout: "fixed", borderCollapse: "collapse" }}>
-                      <thead>
-                        <tr>
-                          <th style={{ width: "35%" }}>Название</th>
-                          <th style={{ width: "45%" }}>Описание</th>
-                          <th style={{ width: "20%" }}>Действия</th>
-                        </tr>
-                      </thead>
-                      <tbody>
-                        {EMPLOYMENT_TEMPLATES.map((tpl, idx) => (
-                          <tr key={tpl.id}>
-                            <td style={{ verticalAlign: "middle", paddingTop: 12, paddingBottom: 12 }}>{tpl.title}</td>
-                            <td style={{ fontSize: 13, color: "#6b7280", verticalAlign: "middle", paddingTop: 12, paddingBottom: 12 }}>
-                              {tpl.desc}
-                            </td>
-                            <td style={{ textAlign: "center", verticalAlign: "middle", padding: 12 }}>
-                              <a
-                                href={tpl.file}
-                                download
-                                className="btn btn--primary btn--sm"
-                                style={{ minWidth: 100, textAlign: "center" }}
-                              >
-                                Скачать
-                              </a>
-                            </td>
-                          </tr>
-                        ))}
-                      </tbody>
-                    </table>
-                  </div>
+                  <ResponsiveDataView
+                    rows={EMPLOYMENT_TEMPLATES}
+                    columns={[
+                      { key: "title", label: "Name" },
+                      { key: "desc", label: "Description" },
+                      { key: "actions", label: "Actions" },
+                    ]}
+                    renderRowDesktop={(tpl) => (
+                      <tr key={tpl.id}>
+                        <td
+                          style={{
+                            verticalAlign: "middle",
+                            paddingTop: 12,
+                            paddingBottom: 12,
+                          }}
+                        >
+                          {tpl.title}
+                        </td>
+                        <td
+                          style={{
+                            fontSize: 13,
+                            color: "#6b7280",
+                            verticalAlign: "middle",
+                            paddingTop: 12,
+                            paddingBottom: 12,
+                          }}
+                        >
+                          {tpl.desc}
+                        </td>
+                        <td
+                          style={{
+                            textAlign: "center",
+                            verticalAlign: "middle",
+                            padding: 12,
+                          }}
+                        >
+                          <a
+                            href={tpl.file}
+                            download
+                            className="btn btn--primary btn--sm"
+                            style={{ minWidth: 100, textAlign: "center" }}
+                          >
+                            ???????
+                          </a>
+                        </td>
+                      </tr>
+                    )}
+                  />
+
                 </div>
               </div>
             )}
@@ -1502,7 +1630,7 @@ export default function HrPanel() {
 
                 <div className="form__group">
                   <label className="form__label">Даты</label>
-                  <div style={{ display: "flex", gap: 8, width: "100%" }}>
+                  <div className="stack-mobile" style={{ gap: 8, width: "100%" }}>
                     <input
                       type="date"
                       value={leaveForm.startDate}
@@ -1528,8 +1656,8 @@ export default function HrPanel() {
 
                 {leaveTab === "PAID" && (
                   <div
+                    className="stack-mobile"
                     style={{
-                      display: "flex",
                       gap: 12,
                       alignItems: "center",
                       marginTop: 8,
@@ -1551,7 +1679,7 @@ export default function HrPanel() {
 
             {leavePreview && (
               <div className="card" style={{ marginTop: 12 }}>
-                <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 8 }}>
+                <div className="stack-mobile" style={{ alignItems: "center", gap: 10, marginBottom: 8 }}>
                   <strong>Сформированный текст</strong>
                   <button
                     type="button"
@@ -1581,35 +1709,33 @@ export default function HrPanel() {
         <div className="card card--1c" style={{ marginTop: 12 }}>
           <div className="card1c__header">Табели и шаблоны</div>
           <div className="card1c__body">
-            <div className="table-wrapper">
-              <table className="table">
-                <thead>
-                  <tr>
-                    <th>Название файла</th>
-                    <th>Описание</th>
-                    <th style={{ width: 140 }}>Скачать</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {TEMPLATES.map((tpl) => (
-                    <tr key={tpl.id}>
-                      <td>{tpl.name}</td>
-                      <td style={{ fontSize: 13, color: "#6b7280" }}>{tpl.description}</td>
-                      <td>
-                        <a
-                          href={tpl.file}
-                          download
-                          className="btn btn--primary btn--sm"
-                          style={{ width: "100%", textAlign: "center" }}
-                        >
-                          Скачать
-                        </a>
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
+            <ResponsiveDataView
+              rows={TEMPLATES}
+              columns={[
+                { key: "name", label: "Name" },
+                { key: "description", label: "Description" },
+                { key: "actions", label: "Download" },
+              ]}
+              renderRowDesktop={(tpl) => (
+                <tr key={tpl.id}>
+                  <td>{tpl.name}</td>
+                  <td style={{ fontSize: 13, color: "#6b7280" }}>
+                    {tpl.description}
+                  </td>
+                  <td>
+                    <a
+                      href={tpl.file}
+                      download
+                      className="btn btn--primary btn--sm"
+                      style={{ width: "100%", textAlign: "center" }}
+                    >
+                      ???????
+                    </a>
+                  </td>
+                </tr>
+              )}
+            />
+
           </div>
         </div>
       )}
@@ -1670,7 +1796,7 @@ export default function HrPanel() {
                     <ul style={{ margin: 0, paddingLeft: 18 }}>
                       {HIRE_DOCS.map((doc) => (
                         <li key={doc.name} style={{ marginBottom: 8 }}>
-                          <div style={{ display: "flex", alignItems: "center", gap: 8,  }}>
+                          <div className="stack-mobile" style={{ alignItems: "center", gap: 8,  }}>
                             <span>{doc.name}</span>
                             {doc.file ? (
                               <a className="btn btn--secondary btn--sm" href={doc.file} download>

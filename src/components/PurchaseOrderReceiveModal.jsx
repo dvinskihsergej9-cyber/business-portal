@@ -2,6 +2,9 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { apiFetch } from "../apiConfig";
+import ResponsiveDataView from "./ResponsiveDataView";
+import MobileActions from "./mobile/MobileActions";
+import MobileCard from "./mobile/MobileCard";
 
 /**
  * Открыть окно с печатной формой акта возврата/расхождений
@@ -598,42 +601,75 @@ export default function PurchaseOrderReceiveModal({ onClose }) {
                   Нет заказов поставщику, ожидающих приёмку.
                 </p>
               ) : (
-                <div className="table-wrapper">
-                  <table className="table">
-                    <thead>
-                      <tr>
-                        <th>Номер</th>
-                        <th>Поставщик</th>
-                        <th>Дата</th>
-                        <th>Статус</th>
-                        <th />
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {orders.map((o) => (
-                        <tr key={o.id}>
-                          <td>{o.number}</td>
-                          <td>{o.supplier?.name || "-"}</td>
-                          <td>
-                            {o.date
-                              ? new Date(o.date).toLocaleString("ru-RU")
-                              : "-"}
-                          </td>
-                          <td>{o.status}</td>
-                          <td>
-                            <button
-                              type="button"
-                              className="btn btn--secondary btn--sm"
-                              onClick={() => handleSelectOrder(o.id)}
-                            >
-                              Выбрать
-                            </button>
-                          </td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                </div>
+                <ResponsiveDataView
+                  rows={orders}
+                  columns={[
+                    { key: "number", label: "Number" },
+                    {
+                      key: "supplier",
+                      label: "Supplier",
+                      render: (row) => row.supplier?.name || "-",
+                    },
+                    {
+                      key: "date",
+                      label: "Date",
+                      render: (row) =>
+                        row.date ? new Date(row.date).toLocaleString("ru-RU") : "-",
+                    },
+                    { key: "status", label: "Status" },
+                    { key: "actions", label: "" },
+                  ]}
+                  renderRowDesktop={(o) => (
+                    <tr key={o.id}>
+                      <td>{o.number}</td>
+                      <td>{o.supplier?.name || "-"}</td>
+                      <td>
+                        {o.date ? new Date(o.date).toLocaleString("ru-RU") : "-"}
+                      </td>
+                      <td>{o.status}</td>
+                      <td>
+                        <button
+                          type="button"
+                          className="btn btn--secondary btn--sm"
+                          onClick={() => handleSelectOrder(o.id)}
+                        >
+                          ???????
+                        </button>
+                      </td>
+                    </tr>
+                  )}
+                  renderCardMobile={({ row }) => (
+                    <MobileCard>
+                      <div className="mobile-card__header">
+                        <span>{row.status}</span>
+                        <span>
+                          {row.date
+                            ? new Date(row.date).toLocaleString("ru-RU")
+                            : "-"}
+                        </span>
+                      </div>
+                      <div className="mobile-card__title">{row.number}</div>
+                      <div className="mobile-card__fields">
+                        <div className="mobile-field">
+                          <div className="mobile-field__label">Supplier</div>
+                          <div className="mobile-field__value">
+                            {row.supplier?.name || "-"}
+                          </div>
+                        </div>
+                      </div>
+                      <MobileActions>
+                        <button
+                          type="button"
+                          className="btn btn--secondary"
+                          onClick={() => handleSelectOrder(row.id)}
+                        >
+                          Select
+                        </button>
+                      </MobileActions>
+                    </MobileCard>
+                  )}
+                />
+
               )}
             </>
           )}
@@ -689,55 +725,99 @@ export default function PurchaseOrderReceiveModal({ onClose }) {
                 </div>
               </div>
 
-              <div className="table-wrapper">
-                <table className="table">
-                  <thead>
-                    <tr>
-                      <th>№</th>
-                      <th>Номенклатура</th>
-                      <th>Заказано</th>
-                      <th>Получено</th>
-                      <th>Ед.</th>
-                      <th>Цена</th>
-                      <th>Сумма</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {rows.map((row, idx) => {
-                      const ordered = Number(row.orderedQty) || 0;
-                      const received = Number(row.receivedQty) || 0;
-                      const price = Number(row.price) || 0;
-                      const sum = received * price;
+              <ResponsiveDataView
+                rows={rows}
+                columns={[
+                  { key: "index", label: "#" },
+                  { key: "name", label: "Item" },
+                  { key: "orderedQty", label: "Ordered" },
+                  { key: "receivedQty", label: "Received" },
+                  { key: "unit", label: "Unit" },
+                  { key: "price", label: "Price" },
+                  { key: "sum", label: "Sum" },
+                ]}
+                renderRowDesktop={(row, idx) => {
+                  const ordered = Number(row.orderedQty) || 0;
+                  const received = Number(row.receivedQty) || 0;
+                  const price = Number(row.price) || 0;
+                  const sum = received * price;
 
-                      return (
-                        <tr key={row.orderItemId}>
-                          <td>{row.index}</td>
-                          <td>{row.name}</td>
-                          <td>{ordered}</td>
-                          <td>
-                            <input
-                              type="number"
-                              className="form__input form__input--sm"
-                              value={row.receivedQty}
-                              onChange={(e) =>
-                                handleQtyChange(
-                                  idx,
-                                  hasDiff ? e.target.value : row.orderedQty
-                                )
-                              }
-                              disabled={!hasDiff}
-                              min="0"
-                            />
-                          </td>
-                          <td>{row.unit}</td>
-                          <td>{price.toFixed(2)}</td>
-                          <td>{sum ? sum.toFixed(2) : "-"}</td>
-                        </tr>
-                      );
-                    })}
-                  </tbody>
-                </table>
-              </div>
+                  return (
+                    <tr key={row.orderItemId}>
+                      <td>{row.index}</td>
+                      <td>{row.name}</td>
+                      <td>{ordered}</td>
+                      <td>
+                        <input
+                          type="number"
+                          className="form__input form__input--sm"
+                          value={row.receivedQty}
+                          onChange={(e) =>
+                            handleQtyChange(
+                              idx,
+                              hasDiff ? e.target.value : row.orderedQty
+                            )
+                          }
+                          disabled={!hasDiff}
+                          min="0"
+                        />
+                      </td>
+                      <td>{row.unit}</td>
+                      <td>{price.toFixed(2)}</td>
+                      <td>{sum ? sum.toFixed(2) : "-"}</td>
+                    </tr>
+                  );
+                }}
+                renderCardMobile={({ row, index }) => {
+                  const ordered = Number(row.orderedQty) || 0;
+                  const received = Number(row.receivedQty) || 0;
+                  const price = Number(row.price) || 0;
+                  const sum = received * price;
+
+                  return (
+                    <MobileCard>
+                      <div className="mobile-card__title">{row.name}</div>
+                      <div className="mobile-card__fields">
+                        <div className="mobile-field">
+                          <div className="mobile-field__label">Ordered</div>
+                          <div className="mobile-field__value">{ordered}</div>
+                        </div>
+                        <label style={{ display: "grid", gap: 6 }}>
+                          Received
+                          <input
+                            type="number"
+                            className="form__input form__input--sm"
+                            value={row.receivedQty}
+                            onChange={(e) =>
+                              handleQtyChange(
+                                index,
+                                hasDiff ? e.target.value : row.orderedQty
+                              )
+                            }
+                            disabled={!hasDiff}
+                            min="0"
+                          />
+                        </label>
+                        <div className="mobile-field">
+                          <div className="mobile-field__label">Unit</div>
+                          <div className="mobile-field__value">{row.unit}</div>
+                        </div>
+                        <div className="mobile-field">
+                          <div className="mobile-field__label">Price</div>
+                          <div className="mobile-field__value">
+                            {price.toFixed(2)}
+                          </div>
+                        </div>
+                        <div style={{ fontWeight: 600 }}>
+                          Sum: {sum ? sum.toFixed(2) : "-"}
+                        </div>
+                      </div>
+                    </MobileCard>
+                  );
+                }}
+                wrapperClassName="table-wrapper"
+              />
+
 
               <div className="po-footer">
                 <button
