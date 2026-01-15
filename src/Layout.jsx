@@ -1,12 +1,13 @@
 import { useEffect, useMemo, useState } from "react";
 import { NavLink, Outlet, useLocation } from "react-router-dom";
 import { useAuth } from "./context/AuthContext";
+import useIsMobile from "./hooks/useIsMobile";
 
 export default function Layout() {
   const { user, logout } = useAuth();
   const location = useLocation();
   const [drawerOpen, setDrawerOpen] = useState(false);
-  const [isMobile, setIsMobile] = useState(false);
+  const isMobile = useIsMobile();
 
   const menu = [
     {
@@ -100,26 +101,6 @@ export default function Layout() {
     setDrawerOpen(false);
   }, [location.pathname]);
 
-  useEffect(() => {
-    const media = window.matchMedia("(max-width: 768px)");
-    const handleChange = (event) => {
-      setIsMobile(event.matches);
-    };
-    setIsMobile(media.matches);
-    if (media.addEventListener) {
-      media.addEventListener("change", handleChange);
-    } else {
-      media.addListener(handleChange);
-    }
-    return () => {
-      if (media.removeEventListener) {
-        media.removeEventListener("change", handleChange);
-      } else {
-        media.removeListener(handleChange);
-      }
-    };
-  }, []);
-
   const renderNavItems = () => (
     <nav style={styles.nav} className="sidebar-nav">
       {allowedMenu.map((item) => (
@@ -179,7 +160,9 @@ export default function Layout() {
             <div style={styles.logoMark} />
             <div>
               <div style={styles.logoTitle}>Business Portal</div>
-              <div style={styles.logoSubtitle}>Internal company portal</div>
+              <div style={styles.logoSubtitle}>
+                {"\u0412\u043d\u0443\u0442\u0440\u0435\u043d\u043d\u0438\u0439 \u0441\u0435\u0440\u0432\u0438\u0441 \u043a\u043e\u043c\u043f\u0430\u043d\u0438\u0438"}
+              </div>
             </div>
           </div>
 
@@ -200,7 +183,7 @@ export default function Layout() {
               handleLogout();
             }}
           >
-            Logout
+            {"\u0412\u044b\u0439\u0442\u0438"}
           </button>
         </aside>
       )}
@@ -212,7 +195,9 @@ export default function Layout() {
               <div style={styles.logoMark} />
               <div>
                 <div style={styles.logoTitle}>Business Portal</div>
-                <div style={styles.logoSubtitle}>Internal company portal</div>
+                <div style={styles.logoSubtitle}>
+                  {"\u0412\u043d\u0443\u0442\u0440\u0435\u043d\u043d\u0438\u0439 \u0441\u0435\u0440\u0432\u0438\u0441 \u043a\u043e\u043c\u043f\u0430\u043d\u0438\u0438"}
+                </div>
               </div>
             </div>
 
@@ -227,7 +212,7 @@ export default function Layout() {
             {renderNavItems()}
 
             <button style={styles.logoutBtn} onClick={handleLogout}>
-              Logout
+              {"\u0412\u044b\u0439\u0442\u0438"}
             </button>
           </aside>
         </>

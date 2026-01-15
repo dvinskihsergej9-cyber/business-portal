@@ -1,5 +1,8 @@
 import { useMemo, useState } from "react";
 import { apiFetch } from "../apiConfig";
+import ResponsiveDataView from "./ResponsiveDataView";
+import MobileActions from "./mobile/MobileActions";
+import MobileCard from "./mobile/MobileCard";
 
 export default function PurchaseOrderModal({
   items = [], // [{ id, name, unit, orderQty, price }]
@@ -336,117 +339,196 @@ export default function PurchaseOrderModal({
             </div>
 
             {/* Таблица позиций */}
-            <div className="table-wrapper po-table-wrapper">
-              <table className="table po-lines-table">
-                <thead>
-                  <tr>
-                    <th style={{ width: 40 }}>№</th>
-                    <th>Номенклатура</th>
-                    <th style={{ width: 110 }}>Кол-во</th>
-                    <th style={{ width: 70 }}>Ед.</th>
-                    <th style={{ width: 130 }}>Цена</th>
-                    <th style={{ width: 130 }}>Сумма</th>
-                    <th style={{ width: 40 }} />
-                  </tr>
-                </thead>
-                <tbody>
-                  {rows.map((row, index) => {
-                    const qty = Number(row.quantity) || 0;
-                    const price = Number(
-                      String(row.price || "").replace(",", ".")
-                    );
-                    const lineTotal =
-                      !Number.isNaN(price) && price >= 0 ? qty * price : 0;
+            <ResponsiveDataView
+              rows={rows}
+              columns={[
+                { key: "index", label: "#" },
+                { key: "itemId", label: "Item" },
+                { key: "quantity", label: "Qty" },
+                { key: "unit", label: "Unit" },
+                { key: "price", label: "Price" },
+                { key: "total", label: "Total" },
+                { key: "actions", label: "" },
+              ]}
+              renderRowDesktop={(row, index) => {
+                const qty = Number(row.quantity) || 0;
+                const price = Number(String(row.price || "").replace(",", "."));
+                const lineTotal =
+                  !Number.isNaN(price) && price >= 0 ? qty * price : 0;
 
-                    return (
-                      <tr key={index}>
-                        <td>{index + 1}</td>
-                        <td>
-                          <select
-                            className="form__select form__select--sm"
-                            value={row.itemId || ""}
-                            onChange={(e) =>
-                              handleSelectItem(index, e.target.value)
-                            }
-                          >
-                            <option value="">-- выберите товар --</option>
-                            {items.map((it) => (
-                              <option key={it.id} value={it.id}>
-                                {it.name}
-                              </option>
-                            ))}
-                          </select>
-                        </td>
-                        <td>
-                          <input
-                            type="number"
-                            className="form__input form__input--sm"
-                            value={row.quantity}
-                            onChange={(e) =>
-                              handleRowChange(index, "quantity", e.target.value)
-                            }
-                            min="0"
-                            step="0.01"
-                            placeholder="0"
-                          />
-                        </td>
-                        <td>
-                          <input
-                            type="text"
-                            className="form__input form__input--sm"
-                            value={row.unit}
-                            onChange={(e) =>
-                              handleRowChange(index, "unit", e.target.value)
-                            }
-                          />
-                        </td>
-                        <td>
-                          <input
-                            type="number"
-                            className="form__input form__input--sm"
-                            value={row.price}
-                            onChange={(e) =>
-                              handleRowChange(index, "price", e.target.value)
-                            }
-                            min="0"
-                            step="0.01"
-                            placeholder="0.00"
-                          />
-                        </td>
-                        <td>
-                          {lineTotal > 0 ? lineTotal.toFixed(2) : "-"}
-                        </td>
-                        <td>
-                          <button
-                            type="button"
-                            className="btn btn--icon"
-                            onClick={() => handleRemoveRow(index)}
-                            title="Удалить строку"
-                          >
-                            ×
-                          </button>
-                        </td>
-                      </tr>
-                    );
-                  })}
-
-                  <tr>
-                    <td colSpan={7}>
+                return (
+                  <tr key={index}>
+                    <td>{index + 1}</td>
+                    <td>
+                      <select
+                        className="form__select form__select--sm"
+                        value={row.itemId || ""}
+                        onChange={(e) =>
+                          handleSelectItem(index, e.target.value)
+                        }
+                      >
+                        <option value="">-- Select item --</option>
+                        {items.map((it) => (
+                          <option key={it.id} value={it.id}>
+                            {it.name}
+                          </option>
+                        ))}
+                      </select>
+                    </td>
+                    <td>
+                      <input
+                        type="number"
+                        className="form__input form__input--sm"
+                        value={row.quantity}
+                        onChange={(e) =>
+                          handleRowChange(index, "quantity", e.target.value)
+                        }
+                        min="0"
+                        step="0.01"
+                        placeholder="0"
+                      />
+                    </td>
+                    <td>
+                      <input
+                        type="text"
+                        className="form__input form__input--sm"
+                        value={row.unit}
+                        onChange={(e) =>
+                          handleRowChange(index, "unit", e.target.value)
+                        }
+                      />
+                    </td>
+                    <td>
+                      <input
+                        type="text"
+                        className="form__input form__input--sm"
+                        value={row.price}
+                        onChange={(e) =>
+                          handleRowChange(index, "price", e.target.value)
+                        }
+                        placeholder="0"
+                      />
+                    </td>
+                    <td style={{ textAlign: "right" }}>
+                      {lineTotal.toLocaleString("ru-RU", {
+                        minimumFractionDigits: 0,
+                        maximumFractionDigits: 2,
+                      })}
+                    </td>
+                    <td>
                       <button
                         type="button"
-                        className="btn btn--secondary btn--sm"
-                        onClick={handleAddRow}
+                        className="btn btn--ghost btn--icon"
+                        onClick={() => handleRemoveRow(index)}
                       >
-                        + Добавить позицию
+                        x
                       </button>
                     </td>
                   </tr>
-                </tbody>
-              </table>
+                );
+              }}
+              renderCardMobile={({ row, index }) => {
+                const qty = Number(row.quantity) || 0;
+                const price = Number(String(row.price || "").replace(",", "."));
+                const lineTotal =
+                  !Number.isNaN(price) && price >= 0 ? qty * price : 0;
+                const selectedItem = items.find(
+                  (it) => String(it.id) === String(row.itemId)
+                );
+
+                return (
+                  <MobileCard>
+                    <div className="mobile-card__title">
+                      {selectedItem?.name || `Line ${index + 1}`}
+                    </div>
+                    <div className="mobile-card__fields">
+                      <label style={{ display: "grid", gap: 6 }}>
+                        Item
+                        <select
+                          className="form__select form__select--sm"
+                          value={row.itemId || ""}
+                          onChange={(e) =>
+                            handleSelectItem(index, e.target.value)
+                          }
+                        >
+                          <option value="">-- Select item --</option>
+                          {items.map((it) => (
+                            <option key={it.id} value={it.id}>
+                              {it.name}
+                            </option>
+                          ))}
+                        </select>
+                      </label>
+                      <label style={{ display: "grid", gap: 6 }}>
+                        Qty
+                        <input
+                          type="number"
+                          className="form__input form__input--sm"
+                          value={row.quantity}
+                          onChange={(e) =>
+                            handleRowChange(index, "quantity", e.target.value)
+                          }
+                          min="0"
+                          step="0.01"
+                          placeholder="0"
+                        />
+                      </label>
+                      <label style={{ display: "grid", gap: 6 }}>
+                        Unit
+                        <input
+                          type="text"
+                          className="form__input form__input--sm"
+                          value={row.unit}
+                          onChange={(e) =>
+                            handleRowChange(index, "unit", e.target.value)
+                          }
+                        />
+                      </label>
+                      <label style={{ display: "grid", gap: 6 }}>
+                        Price
+                        <input
+                          type="text"
+                          className="form__input form__input--sm"
+                          value={row.price}
+                          onChange={(e) =>
+                            handleRowChange(index, "price", e.target.value)
+                          }
+                          placeholder="0"
+                        />
+                      </label>
+                      <div style={{ fontSize: 14, fontWeight: 600 }}>
+                        Total: {lineTotal.toLocaleString("ru-RU", {
+                          minimumFractionDigits: 0,
+                          maximumFractionDigits: 2,
+                        })}
+                      </div>
+                    </div>
+                    <MobileActions>
+                      <button
+                        type="button"
+                        className="btn btn--ghost"
+                        onClick={() => handleRemoveRow(index)}
+                      >
+                        Remove
+                      </button>
+                    </MobileActions>
+                  </MobileCard>
+                );
+              }}
+              wrapperClassName="table-wrapper po-table-wrapper"
+            />
+
+            <div style={{ marginTop: 8 }}>
+              <button
+                type="button"
+                className="btn btn--secondary btn--sm"
+                onClick={handleAddRow}
+              >
+                + Add line
+              </button>
             </div>
 
-            {/* Низ формы: итого + кнопки */}
-            <div className="po-footer">
+<div className="po-footer">
               <button
                 type="button"
                 className="btn btn--ghost"

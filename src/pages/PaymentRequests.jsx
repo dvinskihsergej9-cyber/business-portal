@@ -1,6 +1,10 @@
 import { useEffect, useMemo, useState } from "react";
 import { useAuth } from "../context/AuthContext";
 import { apiFetch } from "../apiConfig";
+import ResponsiveDataView from "../components/ResponsiveDataView";
+import MobileCard from "../components/mobile/MobileCard";
+import MobileField from "../components/mobile/MobileField";
+import MobileActions from "../components/mobile/MobileActions";
 
 const STATUS_LABELS = {
   NEW: "Новая",
@@ -403,14 +407,7 @@ export default function PaymentRequests() {
             Сводка по вашим заявкам на оплату.
           </p>
 
-          <div
-            style={{
-              display: "grid",
-              gridTemplateColumns: "repeat(2, minmax(0, 1fr))",
-              gap: 10,
-              fontSize: 13,
-            }}
-          >
+          <div className="mobile-grid-2" style={{ fontSize: 13 }}>
             <StatCard
               label="Новые"
               count={myStats.NEW.count}
@@ -437,15 +434,7 @@ export default function PaymentRequests() {
 
       {/* список заявок с табами и фильтрами */}
       <div className="card" style={{ marginTop: 16 }}>
-        <div
-          style={{
-            display: "flex",
-            justifyContent: "space-between",
-            gap: 12,
-            marginBottom: 10,
-            alignItems: "center",
-          }}
-        >
+        <div className="mobile-actions" style={{ marginBottom: 10 }}>
           <div>
             <div className="tabs">
               <button
@@ -520,102 +509,218 @@ export default function PaymentRequests() {
             Заявок не найдено по текущим фильтрам.
           </p>
         ) : (
-          <div style={{ overflowX: "auto" }}>
-            <table>
-              <thead>
-                <tr>
-                  {tab === "all" && <th>Сотрудник</th>}
-                  <th>Создано</th>
-                  <th>Назначение</th>
-                  <th>Сумма</th>
-                  <th>Желаемая дата</th>
-                  <th>Статья</th>
-                  <th>Статус</th>
-                  {tab === "all" && <th>Комментарий</th>}
-                  {isAccounting && tab === "all" && <th></th>}
-                </tr>
-              </thead>
-              <tbody>
-                {filteredList.map((r) => (
-                  <tr key={r.id}>
-                    {tab === "all" && (
-                      <td>
-                        {r.user?.name || "-"}
-                        <br />
-                        <span
-                          style={{ fontSize: 12, color: "#6b7280" }}
-                        >
-                          {r.user?.email}
-                        </span>
-                      </td>
-                    )}
-                    <td>{formatDateTime(r.createdAt)}</td>
-                    <td>{r.purpose}</td>
-                    <td>
-                      {r.amount} {r.currency}
-                    </td>
-                    <td>{formatDate(r.desiredDate)}</td>
-                    <td>{r.expenseCode || "-"}</td>
-                    <td>
-                      <span className={statusBadgeClass(r.status)}>
-                        {STATUS_LABELS[r.status] || r.status}
-                      </span>
-                    </td>
-                    {tab === "all" && (
-                      <td>
-                        <div style={{ fontSize: 13 }}>
-                          {r.comment && (
-                            <div style={{ marginBottom: 4 }}>
-                              <span style={{ color: "#6b7280" }}>
-                                От сотрудника:
-                              </span>{" "}
-                              {r.comment}
-                            </div>
-                          )}
-                          {r.accountingComment && (
-                            <div>
-                              <span style={{ color: "#6b7280" }}>
-                                Бухгалтерия:
-                              </span>{" "}
-                              {r.accountingComment}
-                            </div>
-                          )}
-                          {!r.comment && !r.accountingComment && "-"}
+          <ResponsiveDataView
+            rows={filteredList}
+            columns={[
+              ...(tab === "all"
+                ? [
+                    {
+                      key: "user",
+                      label: "User",
+                    },
+                  ]
+                : []),
+              { key: "createdAt", label: "Created" },
+              { key: "purpose", label: "Purpose" },
+              { key: "amount", label: "Amount" },
+              { key: "desiredDate", label: "Desired date" },
+              { key: "expenseCode", label: "Expense code" },
+              { key: "status", label: "Status" },
+              ...(tab === "all"
+                ? [
+                    {
+                      key: "comments",
+                      label: "Comments",
+                    },
+                  ]
+                : []),
+              ...(isAccounting && tab === "all"
+                ? [{ key: "actions", label: "" }]
+                : []),
+            ]}
+            renderRowDesktop={(r) => (
+              <tr key={r.id}>
+                {tab === "all" && (
+                  <td>
+                    {r.user?.name || "-"}
+                    <br />
+                    <span style={{ fontSize: 12, color: "#6b7280" }}>
+                      {r.user?.email}
+                    </span>
+                  </td>
+                )}
+                <td>{formatDateTime(r.createdAt)}</td>
+                <td>{r.purpose}</td>
+                <td>
+                  {r.amount} {r.currency}
+                </td>
+                <td>{formatDate(r.desiredDate)}</td>
+                <td>{r.expenseCode || "-"}</td>
+                <td>
+                  <span className={statusBadgeClass(r.status)}>
+                    {STATUS_LABELS[r.status] || r.status}
+                  </span>
+                </td>
+                {tab === "all" && (
+                  <td>
+                    <div style={{ fontSize: 13 }}>
+                      {r.comment && (
+                        <div style={{ marginBottom: 4 }}>
+                          <span style={{ color: "#6b7280" }}>
+                            Comment:
+                          </span>{" "}
+                          {r.comment}
                         </div>
-                      </td>
-                    )}
-                    {isAccounting && tab === "all" && (
-                      <td style={{ whiteSpace: "nowrap" }}>
-                        <select
-                          value={r.status}
-                          onChange={(e) =>
-                            handleStatusChangeLocal(r.id, e.target.value)
-                          }
-                          style={{ width: 150, marginRight: 6 }}
-                          disabled={statusSavingId === r.id}
-                        >
-                          {STATUS_OPTIONS.map((opt) => (
-                            <option key={opt.value} value={opt.value}>
-                              {opt.label}
-                            </option>
-                          ))}
-                        </select>
-                        <button
-                          type="button"
-                          onClick={() => handleStatusSave(r.id)}
-                          disabled={statusSavingId === r.id}
-                        >
-                          {statusSavingId === r.id
-                            ? "Сохраняю..."
-                            : "Сохранить"}
-                        </button>
-                      </td>
-                    )}
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
+                      )}
+                      {r.accountingComment && (
+                        <div>
+                          <span style={{ color: "#6b7280" }}>
+                            Accounting:
+                          </span>{" "}
+                          {r.accountingComment}
+                        </div>
+                      )}
+                      {!r.comment && !r.accountingComment && "-"}
+                    </div>
+                  </td>
+                )}
+                {isAccounting && tab === "all" && (
+                  <td style={{ whiteSpace: "nowrap" }}>
+                    <select
+                      value={r.status}
+                      onChange={(e) =>
+                        handleStatusChangeLocal(r.id, e.target.value)
+                      }
+                      style={{ width: 150, marginRight: 6 }}
+                      disabled={statusSavingId === r.id}
+                    >
+                      {STATUS_OPTIONS.map((opt) => (
+                        <option key={opt.value} value={opt.value}>
+                          {opt.label}
+                        </option>
+                      ))}
+                    </select>
+                    <button
+                      type="button"
+                      onClick={() => handleStatusSave(r.id)}
+                      disabled={statusSavingId === r.id}
+                    >
+                      {statusSavingId === r.id
+                        ? "Saving..."
+                        : "Save"}
+                    </button>
+                  </td>
+                )}
+              </tr>
+            )}
+            renderCardMobile={({ row, open }) => (
+              <MobileCard onClick={open}>
+                <div className="mobile-card__header">
+                  <span className={statusBadgeClass(row.status)}>
+                    {STATUS_LABELS[row.status] || row.status}
+                  </span>
+                  <span>{formatDateTime(row.createdAt)}</span>
+                </div>
+                <div className="mobile-card__title">{row.purpose}</div>
+                <div className="mobile-card__fields">
+                  <MobileField
+                    label="Amount"
+                    value={`${row.amount} ${row.currency}`}
+                  />
+                  <MobileField
+                    label="Desired date"
+                    value={formatDate(row.desiredDate)}
+                  />
+                  {tab === "all" && (
+                    <MobileField
+                      label="User"
+                      value={row.user?.name || row.user?.email || "-"}
+                    />
+                  )}
+                </div>
+                <MobileActions>
+                  <button type="button" onClick={open}>
+                    Details
+                  </button>
+                </MobileActions>
+              </MobileCard>
+            )}
+            getSheetTitle={(row) => row?.purpose || "Details"}
+            renderSheetContent={(row) => (
+              <div className="mobile-sheet__fields">
+                {tab === "all" && (
+                  <MobileField
+                    label="User"
+                    value={
+                      row.user
+                        ? `${row.user.name || "-"} (${row.user.email || "-"})`
+                        : "-"
+                    }
+                  />
+                )}
+                <MobileField
+                  label="Created"
+                  value={formatDateTime(row.createdAt)}
+                />
+                <MobileField label="Purpose" value={row.purpose} />
+                <MobileField
+                  label="Amount"
+                  value={`${row.amount} ${row.currency}`}
+                />
+                <MobileField
+                  label="Desired date"
+                  value={formatDate(row.desiredDate)}
+                />
+                <MobileField
+                  label="Expense code"
+                  value={row.expenseCode || "-"}
+                />
+                <MobileField
+                  label="Status"
+                  value={STATUS_LABELS[row.status] || row.status}
+                />
+                <MobileField
+                  label="Comment"
+                  value={row.comment || "-"}
+                />
+                {tab === "all" && (
+                  <MobileField
+                    label="Accounting"
+                    value={row.accountingComment || "-"}
+                  />
+                )}
+                {isAccounting && tab === "all" && (
+                  <div style={{ display: "grid", gap: 8 }}>
+                    <label style={{ fontSize: 12, color: "#64748b" }}>
+                      Update status
+                    </label>
+                    <select
+                      value={row.status}
+                      onChange={(e) =>
+                        handleStatusChangeLocal(row.id, e.target.value)
+                      }
+                      disabled={statusSavingId === row.id}
+                    >
+                      {STATUS_OPTIONS.map((opt) => (
+                        <option key={opt.value} value={opt.value}>
+                          {opt.label}
+                        </option>
+                      ))}
+                    </select>
+                    <button
+                      type="button"
+                      onClick={() => handleStatusSave(row.id)}
+                      disabled={statusSavingId === row.id}
+                    >
+                      {statusSavingId === row.id
+                        ? "Saving..."
+                        : "Save"}
+                    </button>
+                  </div>
+                )}
+              </div>
+            )}
+          />
         )}
       </div>
     </div>

@@ -166,7 +166,16 @@ export default function Dashboard() {
           </div>
         </div>
 
-        <div style={{ display: "inline-flex", background: "#0f172a", borderRadius: 999, padding: 4, marginBottom: 16 }}>
+        <div
+          className="portal-news-tabs"
+          style={{
+            display: "inline-flex",
+            background: "#0f172a",
+            borderRadius: 999,
+            padding: 4,
+            marginBottom: 16,
+          }}
+        >
           {[
             { id: "portal", label: "Новости портала" },
             { id: "business", label: "Новости для бизнеса" },
@@ -192,7 +201,7 @@ export default function Dashboard() {
 
         {newsTab === "portal" && (
           <div>
-            <div style={{ display: "flex", gap: 12, flexWrap: "wrap", marginBottom: 14 }}>
+            <div className="portal-news-filters" style={{ display: "flex", gap: 12, flexWrap: "wrap", marginBottom: 14 }}>
               <input
                 placeholder="Поиск по обновлениям"
                 value={portalSearch}
@@ -210,7 +219,7 @@ export default function Dashboard() {
 
             <div style={{ display: "grid", gap: 14 }}>
               {portalFiltered.map((item) => (
-                <div key={item.id} style={{ display: "grid", gridTemplateColumns: "110px 1fr", gap: 14 }}>
+                <div key={item.id} className="portal-news-grid">
                   <div style={{ color: "#475569", fontWeight: 600, textAlign: "right", paddingTop: 8 }}>
                     {new Date(item.date).toLocaleDateString("ru-RU")}
                   </div>
@@ -266,7 +275,7 @@ export default function Dashboard() {
                       </ul>
                     )}
                     {item.links?.length ? (
-                      <div style={{ display: "flex", gap: 10, marginTop: 8, flexWrap: "wrap" }}>
+                      <div className="portal-news-links" style={{ display: "flex", gap: 10, marginTop: 8, flexWrap: "wrap" }}>
                         {item.links.map((link) => (
                           <a key={link.href} href={link.href} target="_blank" rel="noreferrer">
                             {link.label}
@@ -274,7 +283,7 @@ export default function Dashboard() {
                         ))}
                       </div>
                     ) : null}
-                    <div style={{ display: "flex", gap: 10, marginTop: 10 }}>
+                    <div className="portal-news-actions" style={{ display: "flex", gap: 10, marginTop: 10 }}>
                       <button
                         type="button"
                         className="btn btn--secondary btn--sm"
@@ -299,7 +308,7 @@ export default function Dashboard() {
 
         {newsTab === "business" && (
           <div>
-            <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 12 }}>
+            <div className="business-news-header" style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 12 }}>
               <div className="tabs tabs--sm">
                 {Object.entries(CATEGORY_LABELS).map(([key, label]) => (
                   <button
@@ -346,7 +355,7 @@ export default function Dashboard() {
                 {filteredNews.slice(0, 20).map((n) => (
                   <div key={n.id} className="card" style={{ margin: 0 }}>
                     <div className="card__body" style={{ padding: 12 }}>
-                      <div style={{ display: "flex", gap: 10, alignItems: "center", marginBottom: 6 }}>
+                      <div className="business-news-meta" style={{ display: "flex", gap: 10, alignItems: "center", marginBottom: 6 }}>
                         <span
                           style={{
                             display: "inline-block",

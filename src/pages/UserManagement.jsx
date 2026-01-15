@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { useAuth } from "../context/AuthContext";
 import { apiFetch } from "../apiConfig";
+import ResponsiveDataView from "../components/ResponsiveDataView";
 
 const ALL_ROLES = ["EMPLOYEE", "HR", "ACCOUNTING", "WAREHOUSE", "ADMIN"];
 
@@ -243,7 +244,7 @@ export default function UserManagement() {
         <div style={{ fontWeight: 600, marginBottom: 8 }}>
           Пригласить пользователя
         </div>
-        <div style={{ display: "grid", gap: 8, gridTemplateColumns: "1fr 220px auto" }}>
+        <div className="mobile-grid-3" style={{ gap: 8 }}>
           <input
             type="email"
             placeholder="Email"
@@ -326,51 +327,55 @@ export default function UserManagement() {
         ) : invites.length === 0 ? (
           <p>Приглашений пока нет.</p>
         ) : (
-          <table
-            style={{
-              width: "100%",
-              borderCollapse: "collapse",
-              background: "#fff",
-              borderRadius: 8,
-              overflow: "hidden",
-              boxShadow: "0 1px 3px rgba(0,0,0,0.1)",
-            }}
-          >
-            <thead>
-              <tr>
-                <th style={thStyle}>Email</th>
-                <th style={thStyle}>Роль</th>
-                <th style={thStyle}>Статус</th>
-                <th style={thStyle}>Создан</th>
-                <th style={thStyle}></th>
+          <ResponsiveDataView
+            rows={invites}
+            columns={[
+              { key: "email", label: "Email" },
+              {
+                key: "role",
+                label: "Role",
+                render: (row) => `${roleLabel(row.role)} (${row.role})`,
+              },
+              { key: "status", label: "Status" },
+              {
+                key: "createdAt",
+                label: "Created",
+                render: (row) =>
+                  row.createdAt
+                    ? new Date(row.createdAt).toLocaleString()
+                    : "-",
+              },
+              { key: "actions", label: "" },
+            ]}
+            renderRowDesktop={(inv) => (
+              <tr key={inv.id}>
+                <td style={tdStyle}>{inv.email}</td>
+                <td style={tdStyle}>
+                  {roleLabel(inv.role)} ({inv.role})
+                </td>
+                <td style={tdStyle}>{inv.status}</td>
+                <td style={tdStyle}>
+                  {inv.createdAt
+                    ? new Date(inv.createdAt).toLocaleString()
+                    : "-"}
+                </td>
+                <td style={tdStyle}>
+                  <button
+                    type="button"
+                    onClick={() => handleInviteResend(inv.id)}
+                    disabled={inviteResendId === inv.id}
+                  >
+                    {inviteResendId === inv.id
+                      ? "Sending..."
+                      : "Resend"}
+                  </button>
+                </td>
               </tr>
-            </thead>
-            <tbody>
-              {invites.map((inv) => (
-                <tr key={inv.id}>
-                  <td style={tdStyle}>{inv.email}</td>
-                  <td style={tdStyle}>
-                    {roleLabel(inv.role)} ({inv.role})
-                  </td>
-                  <td style={tdStyle}>{inv.status}</td>
-                  <td style={tdStyle}>
-                    {inv.createdAt
-                      ? new Date(inv.createdAt).toLocaleString()
-                      : "-"}
-                  </td>
-                  <td style={tdStyle}>
-                    <button
-                      type="button"
-                      onClick={() => handleInviteResend(inv.id)}
-                      disabled={inviteResendId === inv.id}
-                    >
-                      {inviteResendId === inv.id ? "Отправляем..." : "Повторить"}
-                    </button>
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
+            )}
+            tableClassName=""
+            wrapperClassName=""
+          />
+
         )}
       </div>
 
@@ -379,62 +384,61 @@ export default function UserManagement() {
       ) : users.length === 0 ? (
         <p>Пользователей пока нет.</p>
       ) : (
-        <table
-          style={{
-            width: "100%",
-            borderCollapse: "collapse",
-            marginTop: 16,
-            background: "#fff",
-            borderRadius: 8,
-            overflow: "hidden",
-            boxShadow: "0 1px 3px rgba(0,0,0,0.1)",
-          }}
-        >
-          <thead>
-            <tr>
-              <th style={thStyle}>ID</th>
-              <th style={thStyle}>Имя</th>
-              <th style={thStyle}>Email</th>
-              <th style={thStyle}>Роль</th>
-              <th style={thStyle}>Создан</th>
-              <th style={thStyle}></th>
+        <ResponsiveDataView
+          rows={users}
+          columns={[
+            { key: "id", label: "ID" },
+            { key: "name", label: "Name" },
+            { key: "email", label: "Email" },
+            {
+              key: "role",
+              label: "Role",
+              render: (row) => `${roleLabel(row.role)} (${row.role})`,
+            },
+            {
+              key: "createdAt",
+              label: "Created",
+              render: (row) =>
+                row.createdAt ? new Date(row.createdAt).toLocaleString() : "-",
+            },
+            { key: "actions", label: "" },
+          ]}
+          renderRowDesktop={(u) => (
+            <tr key={u.id}>
+              <td style={tdStyle}>{u.id}</td>
+              <td style={tdStyle}>{u.name}</td>
+              <td style={tdStyle}>{u.email}</td>
+              <td style={tdStyle}>
+                <select
+                  value={u.role}
+                  onChange={(e) => handleRoleChangeLocal(u.id, e.target.value)}
+                  style={{ padding: 4 }}
+                  disabled={savingId === u.id}
+                >
+                  {ALL_ROLES.map((r) => (
+                    <option key={r} value={r}>
+                      {roleLabel(r)} ({r})
+                    </option>
+                  ))}
+                </select>
+              </td>
+              <td style={tdStyle}>
+                {u.createdAt ? new Date(u.createdAt).toLocaleString() : "-"}
+              </td>
+              <td style={tdStyle}>
+                <button
+                  onClick={() => handleSaveRole(u.id)}
+                  disabled={savingId === u.id}
+                >
+                  {savingId === u.id ? "Saving..." : "Save"}
+                </button>
+              </td>
             </tr>
-          </thead>
-          <tbody>
-            {users.map((u) => (
-              <tr key={u.id}>
-                <td style={tdStyle}>{u.id}</td>
-                <td style={tdStyle}>{u.name}</td>
-                <td style={tdStyle}>{u.email}</td>
-                <td style={tdStyle}>
-                  <select
-                    value={u.role}
-                    onChange={(e) => handleRoleChangeLocal(u.id, e.target.value)}
-                    style={{ padding: 4 }}
-                    disabled={savingId === u.id}
-                  >
-                    {ALL_ROLES.map((r) => (
-                      <option key={r} value={r}>
-                        {roleLabel(r)} ({r})
-                      </option>
-                    ))}
-                  </select>
-                </td>
-                <td style={tdStyle}>
-                  {u.createdAt ? new Date(u.createdAt).toLocaleString() : "-"}
-                </td>
-                <td style={tdStyle}>
-                  <button
-                    onClick={() => handleSaveRole(u.id)}
-                    disabled={savingId === u.id}
-                  >
-                    {savingId === u.id ? "Сохраняем..." : "Сохранить"}
-                  </button>
-                </td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
+          )}
+          tableClassName=""
+          wrapperClassName=""
+        />
+
       )}
     </div>
   );

@@ -1,6 +1,7 @@
 import { useState, useRef } from "react";
 import { apiFetch } from "../apiConfig";
 import * as XLSX from "xlsx";
+import ResponsiveDataView from "./ResponsiveDataView";
 
 export default function ImportItemsModal({ onClose, onImportSuccess }) {
     const [step, setStep] = useState(1); // 1: Upload, 2: Preview, 3: Result
@@ -135,39 +136,52 @@ export default function ImportItemsModal({ onClose, onImportSuccess }) {
                             </div>
 
                             <div style={{ maxHeight: 400, overflow: "auto", border: "1px solid #eee" }}>
-                                <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 12 }}>
-                                    <thead style={{ position: "sticky", top: 0, background: "#f9f9f9" }}>
-                                        <tr>
-                                            <th style={{ padding: 8, borderBottom: "1px solid #ddd" }}>№</th>
-                                            <th style={{ padding: 8, borderBottom: "1px solid #ddd" }}>Статус</th>
-                                            <th style={{ padding: 8, borderBottom: "1px solid #ddd" }}>Название</th>
-                                            <th style={{ padding: 8, borderBottom: "1px solid #ddd" }}>SKU</th>
-                                            <th style={{ padding: 8, borderBottom: "1px solid #ddd" }}>Штрихкод</th>
-                                            <th style={{ padding: 8, borderBottom: "1px solid #ddd" }}>Ед.</th>
-                                            <th style={{ padding: 8, borderBottom: "1px solid #ddd" }}>Цена</th>
+                                <ResponsiveDataView
+                                    rows={items}
+                                    columns={[
+                                        { key: "row", label: "#" },
+                                        {
+                                            key: "status",
+                                            label: "Status",
+                                            render: (it) =>
+                                                it.isValid ? (
+                                                    <span style={{ color: "green" }}>OK</span>
+                                                ) : (
+                                                    <span style={{ color: "red" }}>
+                                                        {it.validationError}
+                                                    </span>
+                                                ),
+                                        },
+                                        { key: "name", label: "Name" },
+                                        { key: "sku", label: "SKU" },
+                                        { key: "barcode", label: "Barcode" },
+                                        { key: "unit", label: "Unit" },
+                                        { key: "defaultPrice", label: "Price" },
+                                    ]}
+                                    renderRowDesktop={(it) => (
+                                        <tr key={it.row} style={{ background: it.isValid ? "white" : "#fff0f0" }}>
+                                            <td style={{ padding: 6, borderBottom: "1px solid #eee" }}>{it.row}</td>
+                                            <td style={{ padding: 6, borderBottom: "1px solid #eee" }}>
+                                                {it.isValid ? (
+                                                    <span style={{ color: "green" }}>OK</span>
+                                                ) : (
+                                                    <span style={{ color: "red" }}>
+                                                        {it.validationError}
+                                                    </span>
+                                                )}
+                                            </td>
+                                            <td style={{ padding: 6, borderBottom: "1px solid #eee" }}>{it.name}</td>
+                                            <td style={{ padding: 6, borderBottom: "1px solid #eee" }}>{it.sku}</td>
+                                            <td style={{ padding: 6, borderBottom: "1px solid #eee" }}>{it.barcode}</td>
+                                            <td style={{ padding: 6, borderBottom: "1px solid #eee" }}>{it.unit}</td>
+                                            <td style={{ padding: 6, borderBottom: "1px solid #eee" }}>{it.defaultPrice}</td>
                                         </tr>
-                                    </thead>
-                                    <tbody>
-                                        {items.map((it) => (
-                                            <tr key={it.row} style={{ background: it.isValid ? "white" : "#fff0f0" }}>
-                                                <td style={{ padding: 6, borderBottom: "1px solid #eee" }}>{it.row}</td>
-                                                <td style={{ padding: 6, borderBottom: "1px solid #eee" }}>
-                                                    {it.isValid ? (
-                                                        <span style={{ color: "green" }}>OK</span>
-                                                    ) : (
-                                                        <span style={{ color: "red" }}>{it.validationError}</span>
-                                                    )}
-                                                </td>
-                                                <td style={{ padding: 6, borderBottom: "1px solid #eee" }}>{it.name}</td>
-                                                <td style={{ padding: 6, borderBottom: "1px solid #eee" }}>{it.sku}</td>
-                                                <td style={{ padding: 6, borderBottom: "1px solid #eee" }}>{it.barcode}</td>
-                                                <td style={{ padding: 6, borderBottom: "1px solid #eee" }}>{it.unit}</td>
-                                                <td style={{ padding: 6, borderBottom: "1px solid #eee" }}>{it.defaultPrice}</td>
-                                            </tr>
-                                        ))}
-                                    </tbody>
-                                </table>
+                                    )}
+                                    tableClassName=""
+                                    wrapperClassName=""
+                                />
                             </div>
+
 
                             <div style={{ marginTop: 20, display: "flex", justifyContent: "flex-end", gap: 10 }}>
                                 <button onClick={() => setStep(1)} className="btn">Назад</button>
