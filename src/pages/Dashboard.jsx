@@ -257,7 +257,9 @@ export default function Dashboard() {
                       )}
                     </div>
                     <div style={{ fontSize: 16, fontWeight: 700, marginTop: 6 }}>{item.title}</div>
-                    <div style={{ color: "#475569", marginTop: 6 }}>{item.summary}</div>
+                    <div className="news-text" style={{ color: "#475569", marginTop: 6 }}>
+                      {item.summary}
+                    </div>
                     {expandedIds.has(item.id) && (
                       <ul style={{ marginTop: 8, paddingLeft: 16, color: "#475569" }}>
                         {item.details.map((d) => (
@@ -374,7 +376,11 @@ export default function Dashboard() {
                         </a>
                       </div>
                       <div style={{ fontWeight: 600, marginBottom: 4 }}>{n.title}</div>
-                      {n.summary && <div style={{ color: "#4b5563", fontSize: 13 }}>{n.summary}</div>}
+                      {n.summary && (
+                        <div className="news-text" style={{ color: "#4b5563", fontSize: 13 }}>
+                          {n.summary}
+                        </div>
+                      )}
                     </div>
                   </div>
                 ))}

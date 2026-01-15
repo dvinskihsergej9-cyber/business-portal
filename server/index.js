@@ -981,7 +981,11 @@ function decodeHtmlEntities(value) {
 }
 
 function sanitizeText(value) {
-  return value.replace(/\uFFFD/g, "").replace(/\s+/g, " ").trim();
+  return value
+    .replace(/\u00A0/g, " ")
+    .replace(/\uFFFD/g, "")
+    .replace(/\s+/g, " ")
+    .trim();
 }
 
 function normalizeText(value) {
@@ -1078,15 +1082,28 @@ function parseRss(xml, source) {
   return items;
 }
 
+function normalizeCharset(raw) {
+  if (!raw) return null;
+  const value = String(raw).trim().toLowerCase();
+  if (!value) return null;
+  if (value === "utf8") return "utf-8";
+  if (["windows-1251", "win-1251", "cp1251"].includes(value)) {
+    return "windows-1251";
+  }
+  return value;
+}
+
 function detectCharset(contentType = "") {
   const match = /charset=([^;]+)/i.exec(contentType);
   if (!match) return null;
-  const raw = match[1].trim().toLowerCase();
-  if (raw === "utf8") return "utf-8";
-  if (raw === "windows-1251" || raw === "win-1251" || raw === "cp1251") {
-    return "windows-1251";
-  }
-  return raw;
+  return normalizeCharset(match[1]);
+}
+
+function detectCharsetFromXml(buffer) {
+  const head = buffer.toString("ascii", 0, 200);
+  const match = /encoding=[\"']([^\"']+)[\"']/i.exec(head);
+  if (!match) return null;
+  return normalizeCharset(match[1]);
 }
 
 function decodeRssBuffer(buffer, charset) {
@@ -1121,7 +1138,9 @@ async function fetchWithTimeout(url, timeoutMs) {
     });
     if (!res.ok) throw new Error(`Status ${res.status}`);
     const buffer = Buffer.from(await res.arrayBuffer());
-    const charset = detectCharset(res.headers.get("content-type") || "");
+    const headerCharset = detectCharset(res.headers.get("content-type") || "");
+    const xmlCharset = detectCharsetFromXml(buffer);
+    const charset = headerCharset || xmlCharset;
     return decodeRssBuffer(buffer, charset);
   } finally {
     clearTimeout(t);
@@ -1354,6 +1373,7 @@ app.get("/api/news", auth, async (req, res) => {
     if (["business", "tax", "hr"].includes(category)) {
       list = list.filter((item) => item.category === category);
     }
+    res.set("Content-Type", "application/json; charset=utf-8");
     res.json({ items: list.slice(0, limit) });
   } catch (err) {
     console.error("news endpoint error:", err);

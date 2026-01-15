@@ -1,5 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { apiFetch } from "../../apiConfig";
+import ResponsiveDataView from "../ResponsiveDataView";
+import useIsMobile from "../../hooks/useIsMobile";
 
 const LEAVE_CATEGORIES = [
   { value: "STANDARD", label: "Стандартная" },
@@ -48,6 +50,7 @@ export default function AdminHrPanel() {
   const [query, setQuery] = useState("");
   const [statusFilter, setStatusFilter] = useState("ALL");
   const [departmentFilter, setDepartmentFilter] = useState("ALL");
+  const isMobile = useIsMobile();
   const [editEmployee, setEditEmployee] = useState(null);
   const [deleteEmployee, setDeleteEmployee] = useState(null);
   const [saving, setSaving] = useState(false);
@@ -284,57 +287,110 @@ export default function AdminHrPanel() {
       {loading && <div className="admin-muted">Загрузка...</div>}
 
       {!loading && (
-        <div className="admin-table-wrapper">
-          <table className="admin-table">
-            <thead>
-              <tr>
-                <th>Сотрудник</th>
-                <th>Должность</th>
-                <th>Подразделение</th>
-                <th>Статус</th>
-                <th>Отпуск</th>
-                <th></th>
-              </tr>
-            </thead>
-            <tbody>
+        <ResponsiveDataView
+          isMobile={isMobile}
+          cards={
+            <div className="responsive-cards">
               {filtered.map((emp) => (
-                <tr key={emp.id}>
-                  <td>
-                    <div className="admin-table__title">{emp.fullName}</div>
-                    <div className="admin-table__meta">ID: {emp.id}</div>
-                  </td>
-                  <td>{emp.position}</td>
-                  <td>{emp.department}</td>
-                  <td>{emp.status}</td>
-                  <td>{emp.annualLeaveDays ?? "-"} дн.</td>
-                  <td className="admin-table__actions">
+                <div key={emp.id} className="responsive-card">
+                  <div className="responsive-card__title text-wrap">
+                    {emp.fullName}
+                  </div>
+                  <div className="responsive-card__meta">
+                    <span>ID: {emp.id}</span>
+                    <span>{emp.status}</span>
+                  </div>
+                  <div className="responsive-card__row">
+                    <span className="responsive-card__label">Position</span>
+                    <span className="text-wrap">{emp.position || "-"}</span>
+                  </div>
+                  <div className="responsive-card__row">
+                    <span className="responsive-card__label">Department</span>
+                    <span className="text-wrap">{emp.department || "-"}</span>
+                  </div>
+                  <div className="responsive-card__row">
+                    <span className="responsive-card__label">Leave</span>
+                    <span>{emp.annualLeaveDays ?? "-"} days</span>
+                  </div>
+                  <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
                     <button
                       type="button"
                       className="admin-btn admin-btn--secondary"
                       onClick={() => setEditEmployee(emp)}
                     >
-                      Редактировать
+                      Edit
                     </button>
                     <button
                       type="button"
                       className="admin-btn admin-btn--danger"
                       onClick={() => setDeleteEmployee(emp)}
                     >
-                      Удалить
+                      Delete
                     </button>
-                  </td>
-                </tr>
+                  </div>
+                </div>
               ))}
               {!filtered.length && (
-                <tr>
-                  <td colSpan="6" className="admin-muted">
-                    Нет данных по сотрудникам.
-                  </td>
-                </tr>
+                <div className="responsive-card">
+                  <div className="admin-muted">No employees found.</div>
+                </div>
               )}
-            </tbody>
-          </table>
-        </div>
+            </div>
+          }
+          table={
+            <div className="admin-table-wrapper">
+              <table className="admin-table">
+                <thead>
+                  <tr>
+                    <th>Employee</th>
+                    <th>Position</th>
+                    <th>Department</th>
+                    <th>Status</th>
+                    <th>Leave</th>
+                    <th></th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {filtered.map((emp) => (
+                    <tr key={emp.id}>
+                      <td>
+                        <div className="admin-table__title">{emp.fullName}</div>
+                        <div className="admin-table__meta">ID: {emp.id}</div>
+                      </td>
+                      <td>{emp.position}</td>
+                      <td>{emp.department}</td>
+                      <td>{emp.status}</td>
+                      <td>{emp.annualLeaveDays ?? "-"} days</td>
+                      <td className="admin-table__actions">
+                        <button
+                          type="button"
+                          className="admin-btn admin-btn--secondary"
+                          onClick={() => setEditEmployee(emp)}
+                        >
+                          Edit
+                        </button>
+                        <button
+                          type="button"
+                          className="admin-btn admin-btn--danger"
+                          onClick={() => setDeleteEmployee(emp)}
+                        >
+                          Delete
+                        </button>
+                      </td>
+                    </tr>
+                  ))}
+                  {!filtered.length && (
+                    <tr>
+                      <td colSpan="6" className="admin-muted">
+                        No employees found.
+                      </td>
+                    </tr>
+                  )}
+                </tbody>
+              </table>
+            </div>
+          }
+        />
       )}
 
       {editEmployee && (

@@ -65,9 +65,12 @@ svg {
   min-width: 0;
 }
 
-.portal-surface {
+.text-wrap,
+.card-text,
+.news-text,
+.portal-text {
   overflow-wrap: anywhere;
-  word-break: break-word;
+  word-break: normal;
 }
 
 /* канвас с анимацией */
@@ -332,22 +335,65 @@ table {
   width: 100%;
   border-collapse: collapse;
   font-size: 14px;
+  word-break: normal;
+  overflow-wrap: normal;
 }
 
 th,
 td {
   padding: 8px 10px;
   border-bottom: 1px solid var(--border);
+  word-break: normal;
+  overflow-wrap: normal;
 }
 
 th {
   text-align: left;
   background: #f9fafb;
   font-weight: 500;
+  white-space: nowrap;
 }
 
 tr:last-child td {
   border-bottom: none;
+}
+
+.responsive-cards {
+  display: grid;
+  gap: 12px;
+}
+
+.responsive-card {
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  padding: 12px 14px;
+  background: #ffffff;
+  display: grid;
+  gap: 8px;
+}
+
+.responsive-card__title {
+  font-weight: 600;
+  font-size: 15px;
+}
+
+.responsive-card__meta {
+  display: flex;
+  gap: 10px;
+  flex-wrap: wrap;
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.responsive-card__row {
+  display: grid;
+  grid-template-columns: minmax(90px, 0.9fr) minmax(0, 1.5fr);
+  gap: 8px;
+  font-size: 13px;
+}
+
+.responsive-card__label {
+  color: var(--muted);
 }
 
 .sidebar-nav a:focus {

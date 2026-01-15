@@ -1,5 +1,7 @@
 ﻿import { useEffect, useMemo, useState } from "react";
 import { apiFetch } from "../apiConfig";
+import ResponsiveDataView from "../components/ResponsiveDataView";
+import useIsMobile from "../hooks/useIsMobile";
 
 const STATUS_LABELS = {
   ACTIVE: "В штате",
@@ -208,6 +210,7 @@ function openPrintWindow(docText) {
 export default function HrPanel() {
   const [section, setSection] = useState("employees");
   const [employeeTab, setEmployeeTab] = useState("register");
+  const isMobile = useIsMobile();
   const [employees, setEmployees] = useState([]);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
@@ -831,26 +834,13 @@ export default function HrPanel() {
                   ) : filteredEmployees.length === 0 ? (
                     <p className="text-muted">Сотрудников нет или не найдено по фильтру.</p>
                   ) : (
-                    <div className="table-wrapper">
-                      <table className="table">
-                        <thead>
-                          <tr>
-                            <th style={{ width: 70 }}>ID</th>
-                            <th>ФИО</th>
-                            <th>Должность</th>
-                            <th>Подразделение</th>
-                            <th style={{ width: 140 }}>ID Telegram</th>
-                            <th>Статус</th>
-                            <th>Принят</th>
-                            <th>ДР</th>
-                            <th style={{ width: 180 }}>Действия</th>
-                          </tr>
-                        </thead>
-                        <tbody>
+                    <ResponsiveDataView
+                      isMobile={isMobile}
+                      cards={
+                        <div className="responsive-cards">
                           {filteredEmployees.map((emp) => (
-                            <tr key={emp.id}>
-                              <td>{emp.id}</td>
-                              <td>
+                            <div key={emp.id} className="responsive-card">
+                              <div className="responsive-card__title text-wrap">
                                 {editEmployeeId === emp.id ? (
                                   <input
                                     className="form__input form__input--sm"
@@ -860,84 +850,94 @@ export default function HrPanel() {
                                 ) : (
                                   emp.fullName
                                 )}
-                              </td>
-                              <td>
-                                {editEmployeeId === emp.id ? (
-                                  <input
-                                    className="form__input form__input--sm"
-                                    value={editForm.position}
-                                    onChange={(e) => setEditForm((prev) => ({ ...prev, position: e.target.value }))}
-                                  />
-                                ) : (
-                                  emp.position || "-"
-                                )}
-                              </td>
-                              <td>
-                                {editEmployeeId === emp.id ? (
-                                  <input
-                                    className="form__input form__input--sm"
-                                    value={editForm.department}
-                                    onChange={(e) => setEditForm((prev) => ({ ...prev, department: e.target.value }))}
-                                  />
-                                ) : (
-                                  emp.department || "-"
-                                )}
-                              </td>
-                              <td>
-                                {editEmployeeId === emp.id ? (
-                                  <input
-                                    className="form__input form__input--sm"
-                                    value={editForm.telegramChatId}
-                                    onChange={(e) =>
-                                      setEditForm((prev) => ({ ...prev, telegramChatId: e.target.value }))
-                                    }
-                                  />
-                                ) : (
-                                  emp.telegramChatId || "-"
-                                )}
-                              </td>
-                              <td>
-                                <span
-                                  style={{
-                                    display: "inline-block",
-                                    padding: "2px 8px",
-                                    borderRadius: 999,
-                                    fontSize: 12,
-                                    background: statusPills[emp.status]?.background || "#e5e7eb",
-                                    color: statusPills[emp.status]?.color || "#374151",
-                                    border: `1px solid ${statusPills[emp.status]?.border || "#d1d5db"}`,
-                                  }}
-                                >
-                                  {STATUS_LABELS[emp.status] || emp.status}
+                              </div>
+                              <div className="responsive-card__meta">
+                                <span>ID: {emp.id}</span>
+                                <span>{STATUS_LABELS[emp.status] || emp.status}</span>
+                              </div>
+                              <div className="responsive-card__row">
+                                <span className="responsive-card__label">Должность</span>
+                                <span className="text-wrap">
+                                  {editEmployeeId === emp.id ? (
+                                    <input
+                                      className="form__input form__input--sm"
+                                      value={editForm.position}
+                                      onChange={(e) =>
+                                        setEditForm((prev) => ({ ...prev, position: e.target.value }))
+                                      }
+                                    />
+                                  ) : (
+                                    emp.position || "-"
+                                  )}
                                 </span>
-                              </td>
-                              <td>
+                              </div>
+                              <div className="responsive-card__row">
+                                <span className="responsive-card__label">Подразделение</span>
+                                <span className="text-wrap">
+                                  {editEmployeeId === emp.id ? (
+                                    <input
+                                      className="form__input form__input--sm"
+                                      value={editForm.department}
+                                      onChange={(e) =>
+                                        setEditForm((prev) => ({ ...prev, department: e.target.value }))
+                                      }
+                                    />
+                                  ) : (
+                                    emp.department || "-"
+                                  )}
+                                </span>
+                              </div>
+                              <div className="responsive-card__row">
+                                <span className="responsive-card__label">ID Telegram</span>
+                                <span>
+                                  {editEmployeeId === emp.id ? (
+                                    <input
+                                      className="form__input form__input--sm"
+                                      value={editForm.telegramChatId}
+                                      onChange={(e) =>
+                                        setEditForm((prev) => ({ ...prev, telegramChatId: e.target.value }))
+                                      }
+                                    />
+                                  ) : (
+                                    emp.telegramChatId || "-"
+                                  )}
+                                </span>
+                              </div>
+                              <div className="responsive-card__row">
+                                <span className="responsive-card__label">Принят</span>
+                                <span>
+                                  {editEmployeeId === emp.id ? (
+                                    <input
+                                      type="date"
+                                      className="form__input form__input--sm"
+                                      value={editForm.hiredAt}
+                                      onChange={(e) => setEditForm((prev) => ({ ...prev, hiredAt: e.target.value }))}
+                                    />
+                                  ) : (
+                                    formatDate(emp.hiredAt)
+                                  )}
+                                </span>
+                              </div>
+                              <div className="responsive-card__row">
+                                <span className="responsive-card__label">ДР</span>
+                                <span>
+                                  {editEmployeeId === emp.id ? (
+                                    <input
+                                      type="date"
+                                      className="form__input form__input--sm"
+                                      value={editForm.birthDate}
+                                      onChange={(e) =>
+                                        setEditForm((prev) => ({ ...prev, birthDate: e.target.value }))
+                                      }
+                                    />
+                                  ) : (
+                                    formatDate(emp.birthDate)
+                                  )}
+                                </span>
+                              </div>
+                              <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
                                 {editEmployeeId === emp.id ? (
-                                  <input
-                                    type="date"
-                                    className="form__input form__input--sm"
-                                    value={editForm.hiredAt}
-                                    onChange={(e) => setEditForm((prev) => ({ ...prev, hiredAt: e.target.value }))}
-                                  />
-                                ) : (
-                                  formatDate(emp.hiredAt)
-                                )}
-                              </td>
-                              <td>
-                                {editEmployeeId === emp.id ? (
-                                  <input
-                                    type="date"
-                                    className="form__input form__input--sm"
-                                    value={editForm.birthDate}
-                                    onChange={(e) => setEditForm((prev) => ({ ...prev, birthDate: e.target.value }))}
-                                  />
-                                ) : (
-                                  formatDate(emp.birthDate)
-                                )}
-                              </td>
-                              <td>
-                                {editEmployeeId === emp.id ? (
-                                  <div style={{ display: "flex", gap: 8 }}>
+                                  <>
                                     <button
                                       type="button"
                                       className="btn btn--primary btn--sm"
@@ -954,7 +954,7 @@ export default function HrPanel() {
                                     >
                                       Отмена
                                     </button>
-                                  </div>
+                                  </>
                                 ) : (
                                   <button
                                     type="button"
@@ -964,12 +964,161 @@ export default function HrPanel() {
                                     Редактировать
                                   </button>
                                 )}
-                              </td>
-                            </tr>
+                              </div>
+                            </div>
                           ))}
-                        </tbody>
-                      </table>
-                    </div>
+                        </div>
+                      }
+                      table={
+                        <div className="table-wrapper">
+                          <table className="table">
+                            <thead>
+                              <tr>
+                                <th style={{ width: 70 }}>ID</th>
+                                <th>ФИО</th>
+                                <th>Должность</th>
+                                <th>Подразделение</th>
+                                <th style={{ width: 140 }}>ID Telegram</th>
+                                <th>Статус</th>
+                                <th>Принят</th>
+                                <th>ДР</th>
+                                <th style={{ width: 180 }}>Действия</th>
+                              </tr>
+                            </thead>
+                            <tbody>
+                              {filteredEmployees.map((emp) => (
+                                <tr key={emp.id}>
+                                  <td>{emp.id}</td>
+                                  <td>
+                                    {editEmployeeId === emp.id ? (
+                                      <input
+                                        className="form__input form__input--sm"
+                                        value={editForm.fullName}
+                                        onChange={(e) =>
+                                          setEditForm((prev) => ({ ...prev, fullName: e.target.value }))
+                                        }
+                                      />
+                                    ) : (
+                                      emp.fullName
+                                    )}
+                                  </td>
+                                  <td>
+                                    {editEmployeeId === emp.id ? (
+                                      <input
+                                        className="form__input form__input--sm"
+                                        value={editForm.position}
+                                        onChange={(e) =>
+                                          setEditForm((prev) => ({ ...prev, position: e.target.value }))
+                                        }
+                                      />
+                                    ) : (
+                                      emp.position || "-"
+                                    )}
+                                  </td>
+                                  <td>
+                                    {editEmployeeId === emp.id ? (
+                                      <input
+                                        className="form__input form__input--sm"
+                                        value={editForm.department}
+                                        onChange={(e) =>
+                                          setEditForm((prev) => ({ ...prev, department: e.target.value }))
+                                        }
+                                      />
+                                    ) : (
+                                      emp.department || "-"
+                                    )}
+                                  </td>
+                                  <td>
+                                    {editEmployeeId === emp.id ? (
+                                      <input
+                                        className="form__input form__input--sm"
+                                        value={editForm.telegramChatId}
+                                        onChange={(e) =>
+                                          setEditForm((prev) => ({ ...prev, telegramChatId: e.target.value }))
+                                        }
+                                      />
+                                    ) : (
+                                      emp.telegramChatId || "-"
+                                    )}
+                                  </td>
+                                  <td>
+                                    <span
+                                      style={{
+                                        display: "inline-block",
+                                        padding: "2px 8px",
+                                        borderRadius: 999,
+                                        fontSize: 12,
+                                        background: statusPills[emp.status]?.background || "#e5e7eb",
+                                        color: statusPills[emp.status]?.color || "#374151",
+                                        border: `1px solid ${statusPills[emp.status]?.border || "#d1d5db"}`,
+                                      }}
+                                    >
+                                      {STATUS_LABELS[emp.status] || emp.status}
+                                    </span>
+                                  </td>
+                                  <td>
+                                    {editEmployeeId === emp.id ? (
+                                      <input
+                                        type="date"
+                                        className="form__input form__input--sm"
+                                        value={editForm.hiredAt}
+                                        onChange={(e) => setEditForm((prev) => ({ ...prev, hiredAt: e.target.value }))}
+                                      />
+                                    ) : (
+                                      formatDate(emp.hiredAt)
+                                    )}
+                                  </td>
+                                  <td>
+                                    {editEmployeeId === emp.id ? (
+                                      <input
+                                        type="date"
+                                        className="form__input form__input--sm"
+                                        value={editForm.birthDate}
+                                        onChange={(e) =>
+                                          setEditForm((prev) => ({ ...prev, birthDate: e.target.value }))
+                                        }
+                                      />
+                                    ) : (
+                                      formatDate(emp.birthDate)
+                                    )}
+                                  </td>
+                                  <td>
+                                    {editEmployeeId === emp.id ? (
+                                      <div style={{ display: "flex", gap: 8 }}>
+                                        <button
+                                          type="button"
+                                          className="btn btn--primary btn--sm"
+                                          onClick={() => handleEditSave(emp.id)}
+                                          disabled={editSaving}
+                                        >
+                                          Сохранить
+                                        </button>
+                                        <button
+                                          type="button"
+                                          className="btn btn--secondary btn--sm"
+                                          onClick={handleEditCancel}
+                                          disabled={editSaving}
+                                        >
+                                          Отмена
+                                        </button>
+                                      </div>
+                                    ) : (
+                                      <button
+                                        type="button"
+                                        className="btn btn--secondary btn--sm"
+                                        onClick={() => handleEditStart(emp)}
+                                      >
+                                        Редактировать
+                                      </button>
+                                    )}
+                                  </td>
+                                </tr>
+                              ))}
+                            </tbody>
+                          </table>
+                        </div>
+                      }
+                    />
                   )}
                 </div>
               </div>
