@@ -206,7 +206,7 @@ export default function LeaveRequests() {
           </h2>
 
           <form onSubmit={handleCreate}>
-            <div style={{ display: "flex", gap: 8, marginBottom: 8 }}>
+            <div className="stack-mobile" style={{ marginBottom: 8 }}>
               <div style={{ flex: 1 }}>
                 <label style={{ fontSize: 13 }}>
                   Дата начала
@@ -336,8 +336,8 @@ export default function LeaveRequests() {
       {/* список заявок */}
       <div className="card" style={{ marginTop: 16 }}>
         <div
+          className="stack-mobile"
           style={{
-            display: "flex",
             justifyContent: "space-between",
             alignItems: "flex-end",
             marginBottom: 8,

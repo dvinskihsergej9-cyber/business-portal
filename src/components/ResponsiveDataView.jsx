@@ -6,8 +6,13 @@ import MobileCard from "./mobile/MobileCard";
 import MobileField from "./mobile/MobileField";
 
 export default function ResponsiveDataView({
-  rows = [],
+  rows,
+  data,
   columns = [],
+  rowKey,
+  primaryFields,
+  secondaryFields,
+  actions,
   renderRowDesktop,
   renderCardMobile,
   getSheetTitle,
@@ -18,6 +23,7 @@ export default function ResponsiveDataView({
 }) {
   const isMobile = useIsMobile();
   const [activeRow, setActiveRow] = useState(null);
+  const dataRows = data || rows || [];
 
   const safeColumns = useMemo(
     () => columns.filter((col) => col && col.key),
@@ -29,21 +35,65 @@ export default function ResponsiveDataView({
     [safeColumns]
   );
 
-  if (!rows.length) {
+  const columnMap = useMemo(() => {
+    const map = new Map();
+    safeColumns.forEach((col) => {
+      map.set(col.key, col);
+    });
+    return map;
+  }, [safeColumns]);
+
+  const getRowKey = (row, index) => {
+    if (typeof rowKey === "function") return rowKey(row, index);
+    if (typeof rowKey === "string" && row && row[rowKey] != null)
+      return row[rowKey];
+    return row?.id ?? index;
+  };
+
+  const resolveFields = (fields) => {
+    if (!fields || !fields.length) return [];
+    return fields
+      .map((field) => {
+        if (typeof field === "string") return columnMap.get(field);
+        if (field && field.key) return field;
+        return null;
+      })
+      .filter(Boolean);
+  };
+
+  if (!dataRows.length) {
     return <p className="text-muted">{emptyMessage}</p>;
   }
 
   const renderDefaultCard = ({ row, open }) => {
+    const resolvedPrimary = resolveFields(primaryFields);
+    const resolvedSecondary = resolveFields(secondaryFields);
     const [titleColumn, ...restColumns] = displayColumns;
-    const previewColumns = restColumns.slice(0, 3);
+    const previewColumns =
+      resolvedSecondary.length > 0
+        ? resolvedSecondary
+        : restColumns.slice(0, 3);
+    const headlineColumn =
+      resolvedPrimary.length > 0 ? resolvedPrimary[0] : titleColumn;
+    const subtitleColumns =
+      resolvedPrimary.length > 1 ? resolvedPrimary.slice(1, 3) : [];
 
     return (
       <MobileCard onClick={open}>
-        {titleColumn && (
+        {headlineColumn && (
           <div className="mobile-card__title">
-            {titleColumn.render
-              ? titleColumn.render(row)
-              : row[titleColumn.key] ?? "-"}
+            {headlineColumn.render
+              ? headlineColumn.render(row)
+              : row[headlineColumn.key] ?? "-"}
+          </div>
+        )}
+        {subtitleColumns.length > 0 && (
+          <div className="mobile-card__header">
+            {subtitleColumns.map((col) => (
+              <span key={col.key}>
+                {col.render ? col.render(row) : row[col.key] ?? "-"}
+              </span>
+            ))}
           </div>
         )}
         <div className="mobile-card__fields">
@@ -55,11 +105,16 @@ export default function ResponsiveDataView({
             />
           ))}
         </div>
-        <MobileActions>
-          <button type="button" onClick={open}>
-            Details
-          </button>
-        </MobileActions>
+        {(actions || open) && (
+          <MobileActions>
+            {typeof actions === "function" ? actions(row) : actions}
+            {open && (
+              <button type="button" onClick={open}>
+                Details
+              </button>
+            )}
+          </MobileActions>
+        )}
       </MobileCard>
     );
   };
@@ -69,7 +124,7 @@ export default function ResponsiveDataView({
     return (
       <>
         <div className="mobile-card-list">
-          {rows.map((row, index) =>
+          {dataRows.map((row, index) =>
             cardRenderer({
               row,
               index,
@@ -115,11 +170,11 @@ export default function ResponsiveDataView({
           </tr>
         </thead>
         <tbody>
-          {rows.map((row, index) =>
+          {dataRows.map((row, index) =>
             renderRowDesktop ? (
               renderRowDesktop(row, index)
             ) : (
-              <tr key={row.id || index}>
+              <tr key={getRowKey(row, index)}>
                 {safeColumns.map((col) => (
                   <td key={col.key}>
                     {col.render ? col.render(row) : row[col.key]}

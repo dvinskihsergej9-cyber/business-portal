@@ -5,6 +5,7 @@
 import { useEffect, useState } from "react";
 import { apiFetch } from "../apiConfig";
 import ResponsiveDataView from "./ResponsiveDataView";
+import useIsMobile from "../hooks/useIsMobile";
 
 
 
@@ -46,6 +47,7 @@ const SUBTABS = {
 
 export default function SupplierTrucksQueueTab() {
 
+  const isMobile = useIsMobile();
   const token = localStorage.getItem("token");
 
   const authHeaders = {
@@ -749,7 +751,7 @@ export default function SupplierTrucksQueueTab() {
 
                       color: "#6b7280",
 
-                      whiteSpace: "nowrap",
+                      whiteSpace: isMobile ? "normal" : "nowrap",
 
                     }}
 
@@ -849,7 +851,7 @@ export default function SupplierTrucksQueueTab() {
 
                       color: "#6b7280",
 
-                      maxWidth: 420,
+                      maxWidth: isMobile ? "100%" : 420,
 
                     }}
 

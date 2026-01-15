@@ -304,7 +304,7 @@ export default function PaymentRequests() {
               </label>
             </div>
 
-            <div style={{ display: "flex", gap: 8, marginBottom: 8 }}>
+            <div className="stack-mobile" style={{ marginBottom: 8 }}>
               <div style={{ flex: 1 }}>
                 <label style={{ fontSize: 13 }}>
                   Сумма
@@ -461,9 +461,8 @@ export default function PaymentRequests() {
           </div>
 
           <div
+            className="stack-mobile"
             style={{
-              display: "flex",
-              gap: 8,
               alignItems: "center",
               minWidth: 260,
             }}

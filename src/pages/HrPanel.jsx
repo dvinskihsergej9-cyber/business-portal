@@ -792,7 +792,7 @@ export default function HrPanel() {
           {employeeTab === "list" && (
             <>
               <div className="card" style={{ marginTop: 8 }}>
-                <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 8 }}>
+                <div className="stack-mobile" style={{ alignItems: "center", gap: 10, marginBottom: 8 }}>
                   <h3 style={{ margin: 0, fontSize: 16 }}>Фильтры и поиск</h3>
                   <button
                     type="button"
@@ -804,7 +804,7 @@ export default function HrPanel() {
                   </button>
                 </div>
 
-                <div style={{ display: "flex", gap: 10,  }}>
+                <div className="stack-mobile" style={{ gap: 10,  }}>
                   <div style={{ flex: "1 1 220px" }}>
                     <input
                       placeholder="Поиск по ФИО, отделу, должности"
@@ -1137,7 +1137,7 @@ export default function HrPanel() {
                                   borderBottom: "1px solid #e5e7eb",
                                 }}
                               >
-                                <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                                <div className="stack-mobile" style={{ alignItems: "center", gap: 8 }}>
                                   <span style={{ fontWeight: 600, flex: 1 }}>{r.title}</span>
                                   {r.file ? (
                                     <a className="btn btn--secondary btn--sm" href={r.file} download>
@@ -1164,7 +1164,7 @@ export default function HrPanel() {
                                   borderBottom: "1px solid #e5e7eb",
                                 }}
                               >
-                                <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                                <div className="stack-mobile" style={{ alignItems: "center", gap: 8 }}>
                                   <span style={{ fontWeight: 600, flex: 1 }}>{r.title}</span>
                                   {r.file ? (
                                     <a className="btn btn--secondary btn--sm" href={r.file} download>
@@ -1375,7 +1375,7 @@ export default function HrPanel() {
                   Документы и требования при приеме
                 </div>
                 <div className="card__body" style={{ paddingTop: 10 }}>
-                  <div style={{ display: "flex", gap: 10, marginBottom: 10 }}>
+                  <div className="stack-mobile" style={{ gap: 10, marginBottom: 10 }}>
                     <label style={{ fontWeight: 600 }}>Профиль:</label>
                     <div className="tabs tabs--sm" style={{ marginBottom: 0 }}>
                       <button
@@ -1630,7 +1630,7 @@ export default function HrPanel() {
 
                 <div className="form__group">
                   <label className="form__label">Даты</label>
-                  <div style={{ display: "flex", gap: 8, width: "100%" }}>
+                  <div className="stack-mobile" style={{ gap: 8, width: "100%" }}>
                     <input
                       type="date"
                       value={leaveForm.startDate}
@@ -1656,8 +1656,8 @@ export default function HrPanel() {
 
                 {leaveTab === "PAID" && (
                   <div
+                    className="stack-mobile"
                     style={{
-                      display: "flex",
                       gap: 12,
                       alignItems: "center",
                       marginTop: 8,
@@ -1679,7 +1679,7 @@ export default function HrPanel() {
 
             {leavePreview && (
               <div className="card" style={{ marginTop: 12 }}>
-                <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 8 }}>
+                <div className="stack-mobile" style={{ alignItems: "center", gap: 10, marginBottom: 8 }}>
                   <strong>Сформированный текст</strong>
                   <button
                     type="button"
@@ -1796,7 +1796,7 @@ export default function HrPanel() {
                     <ul style={{ margin: 0, paddingLeft: 18 }}>
                       {HIRE_DOCS.map((doc) => (
                         <li key={doc.name} style={{ marginBottom: 8 }}>
-                          <div style={{ display: "flex", alignItems: "center", gap: 8,  }}>
+                          <div className="stack-mobile" style={{ alignItems: "center", gap: 8,  }}>
                             <span>{doc.name}</span>
                             {doc.file ? (
                               <a className="btn btn--secondary btn--sm" href={doc.file} download>

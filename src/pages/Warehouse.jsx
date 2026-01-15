@@ -1571,8 +1571,8 @@ export default function Warehouse() {
               <div className="card1c__body">
                 {/* Фильтры сверху, в стиле Истории движений */}
                 <div
+                  className="stack-mobile"
                   style={{
-                    display: "flex",
                     gap: 16,
                     alignItems: "flex-end",
                     marginBottom: 12,

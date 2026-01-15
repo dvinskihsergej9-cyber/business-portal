@@ -35,6 +35,7 @@ import Legal from "./pages/Legal";
 import Warehouse from "./pages/Warehouse";
 import MobileTsd from "./pages/MobileTsd";
 import Support from "./pages/Support";
+import OverflowDebug from "./components/OverflowDebug";
 
 function AppRoutesWithBackground() {
   const location = useLocation();
@@ -168,6 +169,7 @@ export default function App() {
   return (
     <AuthProvider>
       <BrowserRouter>
+        {import.meta.env.DEV && <OverflowDebug />}
         <AppRoutesWithBackground />
       </BrowserRouter>
     </AuthProvider>
