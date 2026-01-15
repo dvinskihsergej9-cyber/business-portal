@@ -1050,22 +1050,6 @@ export default function HrPanel() {
                         </tr>
                       )}
                     />
-
-                                ) : (
-                                  <button
-                                    type="button"
-                                    className="btn btn--secondary btn--sm"
-                                    onClick={() => handleEditStart(emp)}
-                                  >
-                                    Редактировать
-                                  </button>
-                                )}
-                              </td>
-                            </tr>
-                          ))}
-                        </tbody>
-                      </table>
-                    </div>
                   )}
                 </div>
               </div>
@@ -1306,15 +1290,6 @@ export default function HrPanel() {
                         );
                       }}
                     />
-
-                                  )}
-                                </td>
-                              </tr>
-                            );
-                          })}
-                        </tbody>
-                      </table>
-                    </div>
                   )}
                 </div>
               </div>

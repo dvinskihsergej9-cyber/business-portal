@@ -19,7 +19,7 @@ export default function PurchaseOrderModal({
   const today = new Date();
 
   const [form, setForm] = useState({
-    supplierId: suppliers[0]x.id x String(suppliers[0].id) : "",
+    supplierId: suppliers[0]?.id ? String(suppliers[0].id) : "",
     plannedDate: "",
     comment: "",
   });
@@ -46,7 +46,7 @@ export default function PurchaseOrderModal({
     setRows((prev) =>
       prev.map((row, i) =>
         i === index
-          x {
+          ? {
               ...row,
               [field]: value,
             }
@@ -62,17 +62,17 @@ export default function PurchaseOrderModal({
     setRows((prev) =>
       prev.map((row, i) =>
         i === index
-          x {
+          ? {
               ...row,
               itemId,
-              name: srcx.name || "",
-              unit: srcx.unit || row.unit || "шт",
+              name: src?.name || "",
+              unit: src?.unit || row.unit || "шт",
               // если цена/количество пустые – подставим дефолты
-              quantity: row.quantity || srcx.orderQty || "",
+              quantity: row.quantity || src?.orderQty || "",
               price:
                 row.price !== "" && row.price != null
-                  x row.price
-                  : srcx.price || "",
+                  ? row.price
+                  : src?.price || "",
             }
           : row
       )
@@ -122,7 +122,7 @@ export default function PurchaseOrderModal({
         const itemId = Number(row.itemId);
         const quantity = Number(row.quantity);
         const price = Number(
-          String(row.price xx "")
+          String(row.price ?? "")
             .toString()
             .replace(",", ".")
         );
@@ -149,11 +149,11 @@ export default function PurchaseOrderModal({
           (it) => it.id === Number(row.itemId)
         );
 
-        const name = (row.name || baseItemx.name || "").trim();
-        const unit = (row.unit || baseItemx.unit || "шт").trim();
+        const name = (row.name || baseItem?.name || "").trim();
+        const unit = (row.unit || baseItem?.unit || "шт").trim();
         const quantity = Number(row.quantity);
         const price = Number(
-          String(row.price xx "")
+          String(row.price ?? "")
             .toString()
             .replace(",", ".")
         );
@@ -179,7 +179,7 @@ export default function PurchaseOrderModal({
         body: JSON.stringify({
           supplierId,
           plannedDate: form.plannedDate || null,
-          comment: form.commentx.trim() || null,
+          comment: form.comment?.trim() || null,
           items: dbItems,
         }),
       });
@@ -187,7 +187,7 @@ export default function PurchaseOrderModal({
       const createData = await createRes.json();
       if (!createRes.ok) {
         throw new Error(
-          createDatax.message || "Ошибка создания заказа поставщику"
+          createData?.message || "Ошибка создания заказа поставщику"
         );
       }
 
@@ -198,7 +198,7 @@ export default function PurchaseOrderModal({
         body: JSON.stringify({
           supplierId,
           plannedDate: form.plannedDate || null,
-          comment: form.commentx.trim() || null,
+          comment: form.comment?.trim() || null,
           items: excelItems,
         }),
       });
@@ -207,7 +207,7 @@ export default function PurchaseOrderModal({
         let message = "Ошибка при формировании Excel-заказа поставщику";
         try {
           const data = await excelRes.json();
-          if (datax.message) message = data.message;
+          if (data?.message) message = data.message;
         } catch (_) {
           // тело не JSON – оставляем дефолтное сообщение
         }
@@ -218,9 +218,9 @@ export default function PurchaseOrderModal({
       const url = window.URL.createObjectURL(blob);
 
       const supplier = suppliers.find((s) => s.id === supplierId);
-      const safeName = (supplierx.name || "supplier")
+      const safeName = (supplier?.name || "supplier")
         .toString()
-        .replace(/[\\/:*x"<>|]/g, "_")
+        .replace(/[\\/:*?"<>|]/g, "_")
         .slice(0, 40);
 
       const link = document.createElement("a");
@@ -354,7 +354,7 @@ export default function PurchaseOrderModal({
                 const qty = Number(row.quantity) || 0;
                 const price = Number(String(row.price || "").replace(",", "."));
                 const lineTotal =
-                  !Number.isNaN(price) && price >= 0 x qty * price : 0;
+                  !Number.isNaN(price) && price >= 0 ? qty * price : 0;
 
                 return (
                   <tr key={index}>
@@ -367,7 +367,7 @@ export default function PurchaseOrderModal({
                           handleSelectItem(index, e.target.value)
                         }
                       >
-                        <option value="">-- xxxxxxxx xxxxx --</option>
+                        <option value="">-- Select item --</option>
                         {items.map((it) => (
                           <option key={it.id} value={it.id}>
                             {it.name}
@@ -431,7 +431,7 @@ export default function PurchaseOrderModal({
                 const qty = Number(row.quantity) || 0;
                 const price = Number(String(row.price || "").replace(",", "."));
                 const lineTotal =
-                  !Number.isNaN(price) && price >= 0 x qty * price : 0;
+                  !Number.isNaN(price) && price >= 0 ? qty * price : 0;
                 const selectedItem = items.find(
                   (it) => String(it.id) === String(row.itemId)
                 );
@@ -439,7 +439,7 @@ export default function PurchaseOrderModal({
                 return (
                   <MobileCard>
                     <div className="mobile-card__title">
-                      {selectedItemx.name || `Line ${index + 1}`}
+                      {selectedItem?.name || `Line ${index + 1}`}
                     </div>
                     <div className="mobile-card__fields">
                       <label style={{ display: "grid", gap: 6 }}>
@@ -518,9 +518,17 @@ export default function PurchaseOrderModal({
               wrapperClassName="table-wrapper po-table-wrapper"
             />
 
+            <div style={{ marginTop: 8 }}>
+              <button
+                type="button"
+                className="btn btn--secondary btn--sm"
+                onClick={handleAddRow}
+              >
+                + Add line
+              </button>
+            </div>
 
-            {/* Низ формы: итого + кнопки */}
-            <div className="po-footer">
+<div className="po-footer">
               <button
                 type="button"
                 className="btn btn--ghost"
@@ -541,7 +549,7 @@ export default function PurchaseOrderModal({
                 disabled={saving}
               >
                 {saving
-                  x "Формирование файла..."
+                  ? "Формирование файла..."
                   : "Создать заказ по конкретному поставщику"}
               </button>
             </div>
