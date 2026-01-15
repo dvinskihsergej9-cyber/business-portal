@@ -4,15 +4,15 @@ import { apiFetch } from "../apiConfig";
 
 const CATEGORY_LABELS = {
   business: "Бизнес",
-  tax: "Налоги/НДС",
-  hr: "Трудоустройство",
+  tax: "Налоги/ФНС",
+  hr: "Кадры",
 };
 
 const PORTAL_TYPE_LABELS = {
   all: "Все",
-  feature: "Feature",
-  improvement: "Improvement",
-  fix: "Fix",
+  feature: "Функционал",
+  improvement: "Улучшение",
+  fix: "Исправление",
 };
 
 const PORTAL_TYPE_COLORS = {
@@ -245,7 +245,7 @@ export default function Dashboard() {
                           color: PORTAL_TYPE_COLORS[item.type],
                         }}
                       >
-                        {PORTAL_TYPE_LABELS[item.type] || "Update"}
+                        {PORTAL_TYPE_LABELS[item.type] || "Обновление"}
                       </span>
                       {item.tags.map((tag) => (
                         <span key={tag} style={{ fontSize: 12, color: "#475569" }}>

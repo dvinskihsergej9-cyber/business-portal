@@ -3,12 +3,12 @@ import { apiFetch } from "../apiConfig";
 
 const T = {
   title: "Восстановление пароля",
-  email: "Почта",
+  email: "Эл. почта",
   send: "Отправить",
   success:
     "Если аккаунт существует — мы отправили письмо. Если письма нет, проверьте Спам или подождите 1–2 минуты.",
   placeholder: "name@domain.ru",
-  errEmail: "Укажите email",
+  errEmail: "Укажите адрес эл. почты",
 };
 
 export default function ForgotPassword() {

@@ -5,7 +5,7 @@ import { apiFetch } from "../apiConfig";
 const T = {
   title: "Завершение регистрации",
   checking: "Проверяем приглашение...",
-  email: "Почта",
+  email: "Эл. почта",
   role: "Роль",
   fio: "ФИО",
   pass: "Пароль",
@@ -161,7 +161,7 @@ export default function InviteAccept() {
       {!infoLoading && inviteInfo && !done && (
         <form onSubmit={handleSubmit}>
           <div style={{ marginBottom: 12, color: "#6b7280", fontSize: 13 }}>
-            Почта: {inviteInfo.email} · Роль: {inviteInfo.role || "-"}
+            Эл. почта: {inviteInfo.email} · Роль: {inviteInfo.role || "-"}
           </div>
 
           <div style={{ marginBottom: 10 }}>

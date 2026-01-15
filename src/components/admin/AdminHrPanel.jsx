@@ -438,7 +438,7 @@ export default function AdminHrPanel() {
 
               <div className="admin-form__row">
                 <div>
-                  <label className="admin-label">Telegram chat ID</label>
+                  <label className="admin-label">ID чата Telegram</label>
                   <input
                     className="admin-input"
                     value={form.telegramChatId}

@@ -373,7 +373,7 @@ export default function AdminWarehousePanel() {
             <thead>
               <tr>
                 <th>Товар</th>
-                <th>SKU</th>
+                <th>Артикул</th>
                 <th>Штрихкод</th>
                 <th>Ед.</th>
                 <th></th>
@@ -550,7 +550,7 @@ export default function AdminWarehousePanel() {
                   />
                 </div>
                 <div>
-                  <label className="admin-label">SKU</label>
+                  <label className="admin-label">Артикул</label>
                   <input
                     className="admin-input"
                     value={itemForm.sku}

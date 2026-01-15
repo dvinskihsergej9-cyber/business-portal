@@ -380,7 +380,7 @@ export default function HrPanel() {
       const hiredAt = normalizeDateInput(form.hiredAt);
 
       if (!fullName || !birthDate || !position || !department || !telegramChatId || !hiredAt) {
-        throw new Error("Заполните все поля, включая Telegram ID.");
+        throw new Error("Заполните все поля, включая ID Telegram.");
       }
 
       const body = {
@@ -454,7 +454,7 @@ export default function HrPanel() {
       const hiredAt = normalizeDateInput(editForm.hiredAt);
 
       if (!fullName || !birthDate || !position || !department || !telegramChatId || !hiredAt) {
-        throw new Error("Заполните все поля, включая Telegram ID.");
+        throw new Error("Заполните все поля, включая ID Telegram.");
       }
 
       const res = await apiFetch(`/hr/employees/${id}`, {
@@ -752,12 +752,12 @@ export default function HrPanel() {
                       required
                       value={form.department}
                       onChange={(e) => setForm((prev) => ({ ...prev, department: e.target.value }))}
-                      placeholder="HR / Склад / Офис"
+                      placeholder="Кадры / Склад / Офис"
                     />
                   </div>
 
                   <div className="form__group">
-                    <label className="form__label">Telegram ID</label>
+                    <label className="form__label">ID Telegram</label>
                     <input
                       className="form__input"
                       required
@@ -839,7 +839,7 @@ export default function HrPanel() {
                             <th>ФИО</th>
                             <th>Должность</th>
                             <th>Подразделение</th>
-                            <th style={{ width: 140 }}>Telegram ID</th>
+                            <th style={{ width: 140 }}>ID Telegram</th>
                             <th>Статус</th>
                             <th>Принят</th>
                             <th>ДР</th>
@@ -1162,7 +1162,7 @@ export default function HrPanel() {
                                           Напомнить
                                         </button>
                                       ) : (
-                                        <span style={{ fontSize: 12, color: "#9ca3af" }}>Нет Telegram ID</span>
+                                        <span style={{ fontSize: 12, color: "#9ca3af" }}>Нет ID Telegram</span>
                                       )}
                                       <button
                                         type="button"

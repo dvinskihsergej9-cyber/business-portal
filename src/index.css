@@ -41,6 +41,35 @@ body {
   background: #ffffff;
 }
 
+html,
+body {
+  max-width: 100%;
+  overflow-x: hidden;
+}
+
+img,
+video,
+svg {
+  max-width: 100%;
+  height: auto;
+}
+
+.layout-main,
+.portal-surface,
+.portal-surface .page,
+.portal-surface .page-header,
+.portal-surface .card,
+.portal-surface .card--1c,
+.portal-surface .card1c__body {
+  max-width: 100%;
+  min-width: 0;
+}
+
+.portal-surface {
+  overflow-wrap: anywhere;
+  word-break: break-word;
+}
+
 /* канвас с анимацией */
 
 .bg-network {
@@ -1297,6 +1326,17 @@ input[type="number"] {
     padding: 12px 14px;
   }
 
+  .portal-surface .tabs {
+    width: 100%;
+    flex-wrap: wrap;
+    gap: 6px;
+  }
+
+  .portal-surface .tabs__btn {
+    flex: 1 1 120px;
+    text-align: center;
+  }
+
   .portal-surface .card,
   .portal-surface .card--1c {
     padding: 12px 14px;
@@ -1313,6 +1353,7 @@ input[type="number"] {
   .portal-surface .btn,
   .portal-surface button {
     min-height: 44px;
+    max-width: 100%;
   }
 
   .portal-surface form .btn,
@@ -1353,10 +1394,12 @@ input[type="number"] {
     display: block;
     width: 100%;
     overflow-x: auto;
+    max-width: 100%;
   }
 
   .portal-surface .table-wrapper {
     overflow-x: auto;
     -webkit-overflow-scrolling: touch;
+    max-width: 100%;
   }
 }

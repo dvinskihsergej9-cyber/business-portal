@@ -2136,7 +2136,7 @@ export default function Warehouse() {
                     </div>
 
                     <div className="form__group">
-                      <label className="form__label">Email</label>
+                      <label className="form__label">Эл. почта</label>
                       <input
                         className="form__input"
                         value={supplierForm.email}
@@ -2184,7 +2184,7 @@ export default function Warehouse() {
                             <th>Название</th>
                             <th>ИНН</th>
                             <th>Телефон</th>
-                            <th>Email</th>
+                            <th>Эл. почта</th>
                           </tr>
                         </thead>
                         <tbody>
