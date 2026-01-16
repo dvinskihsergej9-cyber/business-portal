@@ -1,12 +1,12 @@
-import { useState } from "react";
+﻿import { useState } from "react";
 import { apiFetch } from "../apiConfig";
 
 const T = {
   title: "Восстановление пароля",
-  email: "Эл. почта",
-  send: "Отправить",
+  email: "Email",
+  send: "Отправить ссылку",
   success:
-    "Если адрес есть в системе, вы получите письмо с инструкцией.",
+    "Если email существует в системе, мы отправим ссылку для сброса пароля.",
   placeholder: "name@domain.ru",
   errEmail: "Введите корректный email.",
 };

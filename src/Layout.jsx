@@ -172,7 +172,7 @@ export default function Layout() {
             aria-controls="mobile-drawer"
             onClick={() => setDrawerOpen(true)}
           >
-            {"\u2630"}
+            {"☰"}
           </button>
           <div className="layout-topbar__title">{pageTitle}</div>
         </div>

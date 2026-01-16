@@ -1,4 +1,4 @@
-import { useState } from "react";
+﻿import { useState } from "react";
 import { useNavigate, Link } from "react-router-dom";
 import { useAuth } from "../context/AuthContext";
 
@@ -55,7 +55,7 @@ export default function Login() {
         <div style={{ marginBottom: 8 }}>
           <input
             type="email"
-            placeholder="Эл. почта"
+            placeholder="Напр. name@company.com"
             value={email}
             onChange={(e) => setEmail(e.target.value)}
             onInvalid={emailInvalid}
@@ -97,7 +97,7 @@ export default function Login() {
         <Link to="/forgot-password">Забыли пароль?</Link>
       </p>
       <p style={{ marginTop: 8, color: "#6b7280", fontSize: 13 }}>
-        Если нет доступа, обратитесь к администратору.
+        Если у вас нет аккаунта, зарегистрируйтесь в системе.
       </p>
     </div>
   );

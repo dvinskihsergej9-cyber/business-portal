@@ -1063,6 +1063,24 @@ app.get("/api/safety/resources", auth, requireHr, async (req, res) => {
 });
 
 
+const decodeEscapedUnicode = (value) => {
+  if (typeof value !== "string") return value;
+  if (!value.includes("\\u")) return value;
+  return value.replace(/\\u([0-9a-fA-F]{4})/g, (_, hex) =>
+    String.fromCharCode(parseInt(hex, 16))
+  );
+};
+
+const normalizePortalNewsText = (value) =>
+  decodeEscapedUnicode(String(value || "").trim());
+
+const normalizePortalNewsTags = (value) => {
+  if (!Array.isArray(value)) return value;
+  return value
+    .map((tag) => decodeEscapedUnicode(String(tag).trim()))
+    .filter(Boolean);
+};
+
 app.get("/api/portal-news", auth, async (req, res) => {
   try {
     const roles = getRequestRoles(req);
@@ -1071,8 +1089,37 @@ app.get("/api/portal-news", auth, async (req, res) => {
       where: isAdmin ? {} : { published: true },
       orderBy: { createdAt: "desc" },
     });
-    res.set("Content-Type", "application/json; charset=utf-8");
-    res.json({ items });
+    const normalized = items.map((item) => ({
+      ...item,
+      title: decodeEscapedUnicode(item.title),
+      body: decodeEscapedUnicode(item.body),
+      tags: normalizePortalNewsTags(item.tags),
+    }));
+    const updates = normalized
+      .map((item, index) => {
+        const original = items[index];
+        if (
+          item.title === original.title &&
+          item.body === original.body &&
+          JSON.stringify(item.tags ?? null) === JSON.stringify(original.tags ?? null)
+        ) {
+          return null;
+        }
+        return prisma.portalNews.update({
+          where: { id: item.id },
+          data: {
+            title: item.title,
+            body: item.body,
+            tags: item.tags,
+          },
+        });
+      })
+      .filter(Boolean);
+
+    if (updates.length) {
+      await Promise.allSettled(updates);
+    }
+    res.json({ items: normalized });
   } catch (err) {
     console.error("portal news list error:", err);
     res.status(500).json({ items: [], message: "Failed to load portal news" });
@@ -1081,8 +1128,8 @@ app.get("/api/portal-news", auth, async (req, res) => {
 
 app.post("/api/portal-news", auth, requireAdmin, async (req, res) => {
   try {
-    const title = String(req.body?.title || "").trim();
-    const body = String(req.body?.body || "").trim();
+    const title = normalizePortalNewsText(req.body?.title);
+    const body = normalizePortalNewsText(req.body?.body);
     const published = req.body?.published !== false;
     const rawTags = req.body?.tags;
     const tags = Array.isArray(rawTags)
@@ -1093,6 +1140,7 @@ app.post("/api/portal-news", auth, requireAdmin, async (req, res) => {
           .map((t) => t.trim())
           .filter(Boolean)
       : [];
+    const normalizedTags = normalizePortalNewsTags(tags);
 
     if (!title || !body) {
       return res.status(400).json({ message: "Title and body are required" });
@@ -1102,11 +1150,10 @@ app.post("/api/portal-news", auth, requireAdmin, async (req, res) => {
       data: {
         title,
         body,
-        tags,
+        tags: normalizedTags,
         published,
       },
     });
-    res.set("Content-Type", "application/json; charset=utf-8");
     res.status(201).json(created);
   } catch (err) {
     console.error("portal news create error:", err);
@@ -1121,8 +1168,8 @@ app.put("/api/portal-news/:id", auth, requireAdmin, async (req, res) => {
       return res.status(400).json({ message: "Invalid id" });
     }
 
-    const title = String(req.body?.title || "").trim();
-    const body = String(req.body?.body || "").trim();
+    const title = normalizePortalNewsText(req.body?.title);
+    const body = normalizePortalNewsText(req.body?.body);
     const published = req.body?.published !== false;
     const rawTags = req.body?.tags;
     const tags = Array.isArray(rawTags)
@@ -1133,6 +1180,7 @@ app.put("/api/portal-news/:id", auth, requireAdmin, async (req, res) => {
           .map((t) => t.trim())
           .filter(Boolean)
       : [];
+    const normalizedTags = normalizePortalNewsTags(tags);
 
     if (!title || !body) {
       return res.status(400).json({ message: "Title and body are required" });
@@ -1143,11 +1191,10 @@ app.put("/api/portal-news/:id", auth, requireAdmin, async (req, res) => {
       data: {
         title,
         body,
-        tags,
+        tags: normalizedTags,
         published,
       },
     });
-    res.set("Content-Type", "application/json; charset=utf-8");
     res.json(updated);
   } catch (err) {
     console.error("portal news update error:", err);
@@ -1166,7 +1213,6 @@ app.delete("/api/portal-news/:id", auth, requireAdmin, async (req, res) => {
     }
 
     await prisma.portalNews.delete({ where: { id } });
-    res.set("Content-Type", "application/json; charset=utf-8");
     res.json({ ok: true });
   } catch (err) {
     console.error("portal news delete error:", err);

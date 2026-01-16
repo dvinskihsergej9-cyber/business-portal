@@ -1100,9 +1100,9 @@ export default function Warehouse() {
               <span className="warehouse-card__icon-symbol">🏷️</span>
             </div>
             <div className="warehouse-card__body">
-              <div className="warehouse-card__title">{"\u042f\u0447\u0435\u0439\u043a\u0438 / QR"}</div>
+              <div className="warehouse-card__title">{"Ячейки / QR"}</div>
               <div className="warehouse-card__subtitle">
-                {"\u0421\u043e\u0437\u0434\u0430\u043d\u0438\u0435 \u044f\u0447\u0435\u0435\u043a \u0438 \u043f\u0435\u0447\u0430\u0442\u044c QR-\u044d\u0442\u0438\u043a\u0435\u0442\u043e\u043a."}
+                {"Создание ячеек и печать QR-этикеток."}
               </div>
             </div>
           </button>

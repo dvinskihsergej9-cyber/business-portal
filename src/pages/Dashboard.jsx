@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+﻿import { useEffect, useMemo, useState } from "react";
 import { Link } from "react-router-dom";
 import { useAuth } from "../context/AuthContext";
 import { apiFetch } from "../apiConfig";
@@ -34,7 +34,7 @@ export default function Dashboard() {
       const data = await res.json();
       if (!res.ok) {
         throw new Error(
-          data?.message || data?.error || "\u041d\u0435 \u0443\u0434\u0430\u043b\u043e\u0441\u044c \u0437\u0430\u0433\u0440\u0443\u0437\u0438\u0442\u044c \u043d\u043e\u0432\u043e\u0441\u0442\u0438 \u043f\u043e\u0440\u0442\u0430\u043b\u0430"
+          data?.message || data?.error || "Не удалось загрузить новости портала"
         );
       }
       setPortalItems(Array.isArray(data?.items) ? data.items : []);
@@ -94,9 +94,9 @@ export default function Dashboard() {
   return (
     <div className="page" style={{ position: "relative", zIndex: 1 }}>
       <div className="page-header">
-        <h1 className="page-title">\u041d\u043e\u0432\u043e\u0441\u0442\u0438 \u043f\u043e\u0440\u0442\u0430\u043b\u0430</h1>
+        <h1 className="page-title">Новости портала</h1>
         <p className="page-subtitle">
-          \u041e\u0431\u043d\u043e\u0432\u043b\u0435\u043d\u0438\u044f \u043f\u043e\u0440\u0442\u0430\u043b\u0430, \u043f\u0440\u0430\u0432\u0438\u043b\u0430, \u043f\u0440\u043e\u0446\u0435\u0441\u0441\u044b \u0438 \u0438\u0437\u043c\u0435\u043d\u0435\u043d\u0438\u044f.
+          Обновления портала, правила, процессы и изменения.
         </p>
       </div>
 
@@ -136,9 +136,9 @@ export default function Dashboard() {
             N
           </div>
           <div style={{ flex: "1 1 auto" }}>
-            <div style={{ fontSize: 22, fontWeight: 700 }}>\u041d\u043e\u0432\u043e\u0441\u0442\u0438</div>
+            <div style={{ fontSize: 22, fontWeight: 700 }}>Новости</div>
             <div style={{ color: "#475569", fontSize: 13 }}>
-              \u041e\u0431\u043d\u043e\u0432\u043b\u0435\u043d\u0438\u044f \u043f\u043e\u0440\u0442\u0430\u043b\u0430 \u0438 \u0432\u0430\u0436\u043d\u044b\u0435 \u0438\u0437\u043c\u0435\u043d\u0435\u043d\u0438\u044f.
+              Обновления портала и важные изменения.
             </div>
           </div>
           {isAdmin && (
@@ -152,14 +152,14 @@ export default function Dashboard() {
                 textAlign: "center",
               }}
             >
-              \u0423\u043f\u0440\u0430\u0432\u043b\u0435\u043d\u0438\u0435 \u043d\u043e\u0432\u043e\u0441\u0442\u044f\u043c\u0438
+              Управление новостями
             </Link>
           )}
         </div>
 
         <div style={{ display: "flex", gap: 10, flexWrap: "wrap", marginBottom: 12 }}>
           <input
-            placeholder="\u041f\u043e\u0438\u0441\u043a \u043f\u043e \u0437\u0430\u0433\u043e\u043b\u043e\u0432\u043a\u0443 \u0438\u043b\u0438 \u0442\u0435\u043a\u0441\u0442\u0443"
+            placeholder="Поиск по заголовку или тексту"
             value={search}
             onChange={(e) => setSearch(e.target.value)}
             style={{ flex: "1 1 240px" }}
@@ -170,11 +170,11 @@ export default function Dashboard() {
             onClick={loadPortalNews}
             style={{ width: "100%", maxWidth: 160 }}
           >
-            \u041e\u0431\u043d\u043e\u0432\u0438\u0442\u044c
+            Обновить
           </button>
         </div>
 
-        {loading && <p>\u0417\u0430\u0433\u0440\u0443\u0437\u043a\u0430...</p>}
+        {loading && <p>Загрузка...</p>}
         {!loading && error && (
           <div className="alert alert--danger" style={{ marginBottom: 10 }}>
             {error}{" "}
@@ -184,12 +184,12 @@ export default function Dashboard() {
               onClick={loadPortalNews}
               style={{ marginLeft: 8 }}
             >
-              \u041e\u0431\u043d\u043e\u0432\u0438\u0442\u044c?
+              Обновить
             </button>
           </div>
         )}
         {!loading && !error && filteredNews.length === 0 && (
-          <p className="text-muted">\u041d\u043e\u0432\u043e\u0441\u0442\u0435\u0439 \u043d\u0435\u0442.</p>
+          <p className="text-muted">Новостей нет.</p>
         )}
 
         {!loading && !error && filteredNews.length > 0 && (
@@ -225,7 +225,7 @@ export default function Dashboard() {
                             fontWeight: 700,
                           }}
                         >
-                          \u041d\u043e\u0432\u043e\u0435
+                          Новое
                         </span>
                       )}
                       {tags.map((tag) => (
@@ -250,7 +250,7 @@ export default function Dashboard() {
                           className="btn btn--secondary btn--sm"
                           onClick={() => toggleExpanded(item.id)}
                         >
-                          {isExpanded ? "\u0421\u043a\u0440\u044b\u0442\u044c" : "\u041f\u043e\u0434\u0440\u043e\u0431\u043d\u0435\u0435"}
+                          {isExpanded ? "Скрыть" : "Подробнее"}
                         </button>
                       )}
                       <button
@@ -258,7 +258,7 @@ export default function Dashboard() {
                         className="btn btn--primary btn--sm"
                         onClick={() => toggleRead(item.id)}
                       >
-                        \u041e\u0442\u043c\u0435\u0442\u0438\u0442\u044c \u043a\u0430\u043a \u043f\u0440\u043e\u0447\u0438\u0442\u0430\u043d\u043e
+                        Отметить как прочитано
                       </button>
                     </div>
                   </div>

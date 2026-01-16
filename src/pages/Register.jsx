@@ -1,4 +1,4 @@
-import { useState } from "react";
+﻿import { useState } from "react";
 import { useAuth } from "../context/AuthContext";
 import { Link, useNavigate } from "react-router-dom";
 
@@ -40,7 +40,7 @@ export default function Register() {
       <h1 style={{ marginBottom: 24 }}>Регистрация</h1>
 
       <p style={{ fontSize: 14, color: "#6b7280", marginBottom: 16 }}>
-        Укажите имя, email и пароль. Права назначит администратор.
+        Укажите имя, email и пароль. После регистрации вы сможете войти в портал.
       </p>
 
       {error && (
@@ -61,7 +61,7 @@ export default function Register() {
         <div style={{ marginBottom: 8 }}>
           <input
             type="text"
-            placeholder="ФИО"
+            placeholder="Имя"
             value={form.name}
             onChange={(e) => setForm((f) => ({ ...f, name: e.target.value }))}
             required
@@ -72,7 +72,7 @@ export default function Register() {
         <div style={{ marginBottom: 8 }}>
           <input
             type="email"
-            placeholder="Эл. почта"
+            placeholder="Напр. name@company.com"
             value={form.email}
             onChange={(e) => setForm((f) => ({ ...f, email: e.target.value }))}
             onInvalid={emailInvalid}
@@ -106,7 +106,7 @@ export default function Register() {
             cursor: "pointer",
           }}
         >
-          {loading ? "Создаем..." : "Создать аккаунт"}
+          {loading ? "Создание..." : "Создать аккаунт"}
         </button>
       </form>
 
