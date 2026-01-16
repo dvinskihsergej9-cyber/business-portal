@@ -22,7 +22,7 @@ export default function Billing() {
       const payload = await res.json();
       if (!res.ok) {
         setStatus("error");
-        setError(payload.message || "Failed to load billing data");
+        setError(payload.message || "Не удалось загрузить данные оплаты");
         return;
       }
       setData(payload);
@@ -30,7 +30,7 @@ export default function Billing() {
     } catch (err) {
       console.error("billing fetch error:", err);
       setStatus("error");
-      setError("Failed to load billing data");
+      setError("Не удалось загрузить данные оплаты");
     }
   };
 
@@ -52,14 +52,14 @@ export default function Billing() {
       });
       const payload = await res.json();
       if (!res.ok) {
-        setError(payload.message || "Failed to activate test subscription");
+        setError(payload.message || "Не удалось активировать тестовую подписку");
         return;
       }
       await refreshUser();
       navigate("/dashboard");
     } catch (err) {
       console.error("activate test subscription error:", err);
-      setError("Failed to activate test subscription");
+      setError("Не удалось активировать тестовую подписку");
     } finally {
       setDevLoading(false);
     }
@@ -68,8 +68,8 @@ export default function Billing() {
   return (
     <div className="page">
       <div className="page-header">
-        <h1 className="page-title">Billing</h1>
-        <p className="page-subtitle">Manage your subscription</p>
+        <h1 className="page-title">Оплата и тариф</h1>
+        <p className="page-subtitle">Управление подпиской и статусом оплаты</p>
       </div>
 
       {status === "error" && (
@@ -80,27 +80,27 @@ export default function Billing() {
 
       <div className="card" style={{ display: "grid", gap: 10 }}>
         <div>
-          <strong>Plan:</strong> {subscription?.plan || "—"}
+          <strong>Тариф:</strong> {subscription?.plan || "—"}
         </div>
         <div>
-          <strong>Status:</strong> {subscription?.status || "inactive"}
+          <strong>Статус:</strong> {subscription?.status || "неактивна"}
         </div>
         <div>
-          <strong>Paid until:</strong>{" "}
+          <strong>Оплачено до:</strong>{" "}
           {subscription?.paidUntil
             ? new Date(subscription.paidUntil).toLocaleDateString()
             : "—"}
         </div>
         <div>
-          <strong>Active:</strong>{" "}
-          {subscription?.isActive ? "yes" : "no"}
+          <strong>Активна:</strong>{" "}
+          {subscription?.isActive ? "да" : "нет"}
         </div>
         <div style={{ display: "flex", gap: 8 }}>
           <button className="btn" onClick={fetchMe} disabled={status === "loading"}>
-            {status === "loading" ? "Refreshing..." : "Refresh status"}
+            {status === "loading" ? "Обновляем..." : "Обновить статус"}
           </button>
           <a className="btn primary" href="/pricing">
-            Extend subscription
+            Продлить подписку
           </a>
         </div>
         {isDev && (
@@ -111,8 +111,8 @@ export default function Billing() {
               disabled={devLoading}
             >
               {devLoading
-                ? "Activating..."
-                : "Activate test subscription (30 days)"}
+                ? "Активируем..."
+                : "Активировать тестовую подписку (30 дней)"}
             </button>
           </div>
         )}

@@ -29,7 +29,7 @@ export default function AdminConsole({ initialTab = "users" }) {
               Администрирование
             </div>
             <div className="admin-console__subtitle">
-              Нет доступа, нужна роль ADMIN.
+              Нет доступа, нужна роль администратора.
             </div>
           </div>
         </div>

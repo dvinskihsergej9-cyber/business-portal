@@ -192,7 +192,8 @@ export default function LeaveRequests() {
       <div className="page-header">
         <h1 className="page-title">Отпуска</h1>
         <p className="page-subtitle">
-          Оформление отпусков и контроль статусов. Сотрудники подают заявки, HR
+          Оформление отпусков и контроль статусов. Сотрудники подают заявки,
+          кадровая служба согласует.
           и руководители согласуют.
         </p>
       </div>
@@ -368,7 +369,7 @@ export default function LeaveRequests() {
                   }
                   onClick={() => setTab("all")}
                 >
-                  Все заявки (HR)
+                  Все заявки (кадры)
                 </button>
               )}
             </div>

@@ -1,5 +1,6 @@
 import { useState } from "react";
 import { useAuth } from "../context/AuthContext";
+import t from "../i18n/t";
 import { apiFetch } from "../apiConfig";
 
 export default function Profile() {
@@ -18,6 +19,23 @@ export default function Profile() {
   if (!user) {
     return <div style={{ padding: 24 }}>Нет данных пользователя.</div>;
   }
+
+  const roleLabel = (role) => {
+    switch (role) {
+      case "EMPLOYEE":
+        return t("roleEmployee");
+      case "HR":
+        return t("roleHr");
+      case "ACCOUNTING":
+        return t("roleAccounting");
+      case "WAREHOUSE":
+        return t("roleWarehouse");
+      case "ADMIN":
+        return t("roleAdmin");
+      default:
+        return role;
+    }
+  };
 
   const handleSubmit = async (e) => {
     e.preventDefault();
@@ -41,7 +59,7 @@ export default function Profile() {
   };
 
   const handleMakeMeAdmin = async () => {
-    setDevMsg("Делаю вас ADMIN...");
+      setDevMsg("Делаю вас администратором...");
     setError("");
     try {
       const token = localStorage.getItem("token");
@@ -53,12 +71,12 @@ export default function Profile() {
       });
       const data = await res.json();
       if (!res.ok) {
-        throw new Error(data.message || "Ошибка при повышении до ADMIN");
+        throw new Error(data.message || "Ошибка при повышении до администратора");
       }
 
       // Обновим локального пользователя и перезагрузим страницу
       localStorage.setItem("user", JSON.stringify(data.user));
-      setDevMsg("Теперь вы ADMIN. Обновляю страницу...");
+      setDevMsg("Теперь вы администратор. Обновляю страницу...");
       setTimeout(() => {
         window.location.reload();
       }, 800);
@@ -89,9 +107,9 @@ export default function Profile() {
         }}
       >
         <p>
-          <b>Email:</b> {user.email}
+          <b>Эл. почта:</b> {user.email}
           <br />
-          <b>Роль:</b> {user.role}
+          <b>Роль:</b> {roleLabel(user.role)}
         </p>
 
         {error && (
@@ -156,7 +174,7 @@ export default function Profile() {
         </form>
       </div>
 
-      {/* DEV-блок: сделать себя ADMIN — только для твоего email */}
+      {/* Блок для разработчика: сделать себя администратором — только для твоего email */}
       {isDevOwner && user.role !== "ADMIN" && (
         <div
           style={{
@@ -167,13 +185,13 @@ export default function Profile() {
             maxWidth: 480,
           }}
         >
-          <h3 style={{ marginTop: 0 }}>Dev-функция: сделать себя ADMIN</h3>
+          <h3 style={{ marginTop: 0 }}>Функция разработчика: сделать себя администратором</h3>
           <p style={{ fontSize: 14 }}>
             Эта кнопка доступна только для владельца портала
-            (<code>dvinskihsergej9@gmail.com</code>) и только в дев-среде.
+            (<code>dvinskihsergej9@gmail.com</code>) и только в среде разработки.
           </p>
           <button onClick={handleMakeMeAdmin} disabled={!!devMsg}>
-            Сделать меня ADMIN
+            Сделать меня администратором
           </button>
           {devMsg && (
             <p style={{ marginTop: 8, fontSize: 13, color: "#92400e" }}>

@@ -1,17 +1,17 @@
-import { useState } from "react";
+﻿import { useState } from "react";
 import { useNavigate, useSearchParams } from "react-router-dom";
 import { apiFetch } from "../apiConfig";
 
 const T = {
-  title: "Смена пароля",
+  title: "Сброс пароля",
   pass: "Новый пароль",
-  pass2: "Повтор пароля",
+  pass2: "Повторите пароль",
   phPass: "Минимум 8 символов",
-  phPass2: "Введите пароль ещё раз",
+  phPass2: "Повторите пароль еще раз",
   save: "Сохранить",
-  success: "Пароль обновлён.",
+  success: "Пароль обновлен.",
   login: "Войти",
-  errPass: "Пароль минимум 8 символов.",
+  errPass: "Пароль должен быть минимум 8 символов.",
   errPass2: "Пароли не совпадают.",
   invalid: "Ссылка недействительна или истекла.",
 };
@@ -123,9 +123,7 @@ export default function ResetPassword() {
           </div>
 
           <div style={{ marginBottom: 12 }}>
-            <label style={{ display: "block", marginBottom: 6 }}>
-              {T.pass2}
-            </label>
+            <label style={{ display: "block", marginBottom: 6 }}>{T.pass2}</label>
             <input
               type="password"
               placeholder={T.phPass2}

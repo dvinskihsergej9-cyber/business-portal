@@ -29,6 +29,7 @@ import LeaveRequests from "./pages/LeaveRequests";
 import PaymentRequests from "./pages/PaymentRequests";
 import UserManagement from "./pages/UserManagement";
 import AdminConsole from "./pages/AdminConsole";
+import PortalNewsAdmin from "./pages/PortalNewsAdmin";
 
 import DocFlow from "./pages/DocFlow";
 import Legal from "./pages/Legal";
@@ -149,6 +150,14 @@ function AppRoutesWithBackground() {
               element={
                 <ProtectedRoute roles={["ADMIN"]}>
                   <AdminConsole />
+                </ProtectedRoute>
+              }
+            />
+            <Route
+              path="admin/portal-news"
+              element={
+                <ProtectedRoute roles={["ADMIN"]}>
+                  <PortalNewsAdmin />
                 </ProtectedRoute>
               }
             />

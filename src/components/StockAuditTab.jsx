@@ -123,7 +123,7 @@ function openInventoryAuditActWindow(items, includeZero) {
         <tr>
           <th style="width:25px;">№</th>
           <th>Наименование товара</th>
-          <th style="width:60px;">SKU</th>
+          <th style="width:60px;">Артикул</th>
           <th style="width:40px;">Ед.</th>
           <th style="width:70px;">Остаток по учёту</th>
           <th style="width:80px;">Фактический остаток</th>
@@ -223,7 +223,7 @@ export default function StockAuditTab() {
     openInventoryAuditActWindow(items, includeZeroInPrint);
   };
 
-  // Фильтрация по коду (SKU) и названию для таблицы на экране
+  // Фильтрация по артикулу и названию для таблицы на экране
   const trimmedSearch = search.trim().toLowerCase();
   const visibleItems = trimmedSearch
     ? items.filter((it) => {
@@ -292,7 +292,7 @@ export default function StockAuditTab() {
             style={{ maxWidth: 240 }}
             value={search}
             onChange={(e) => setSearch(e.target.value)}
-            placeholder="Введите SKU или часть названия..."
+            placeholder="Введите артикул или часть названия..."
           />
         </div>
 
@@ -345,7 +345,7 @@ export default function StockAuditTab() {
                       width: 80,
                     }}
                   >
-                    SKU
+                    Артикул
                   </th>
                   <th
                     style={{

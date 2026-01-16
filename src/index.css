@@ -41,6 +41,38 @@ body {
   background: #ffffff;
 }
 
+html,
+body {
+  max-width: 100%;
+  overflow-x: hidden;
+}
+
+img,
+video,
+svg {
+  max-width: 100%;
+  height: auto;
+}
+
+.layout-main,
+.portal-surface,
+.portal-surface .page,
+.portal-surface .page-header,
+.portal-surface .card,
+.portal-surface .card--1c,
+.portal-surface .card1c__body {
+  max-width: 100%;
+  min-width: 0;
+}
+
+.text-wrap,
+.card-text,
+.news-text,
+.portal-text {
+  overflow-wrap: anywhere;
+  word-break: normal;
+}
+
 /* канвас с анимацией */
 
 .bg-network {
@@ -303,22 +335,65 @@ table {
   width: 100%;
   border-collapse: collapse;
   font-size: 14px;
+  word-break: normal;
+  overflow-wrap: normal;
 }
 
 th,
 td {
   padding: 8px 10px;
   border-bottom: 1px solid var(--border);
+  word-break: normal;
+  overflow-wrap: normal;
 }
 
 th {
   text-align: left;
   background: #f9fafb;
   font-weight: 500;
+  white-space: nowrap;
 }
 
 tr:last-child td {
   border-bottom: none;
+}
+
+.responsive-cards {
+  display: grid;
+  gap: 12px;
+}
+
+.responsive-card {
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  padding: 12px 14px;
+  background: #ffffff;
+  display: grid;
+  gap: 8px;
+}
+
+.responsive-card__title {
+  font-weight: 600;
+  font-size: 15px;
+}
+
+.responsive-card__meta {
+  display: flex;
+  gap: 10px;
+  flex-wrap: wrap;
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.responsive-card__row {
+  display: grid;
+  grid-template-columns: minmax(90px, 0.9fr) minmax(0, 1.5fr);
+  gap: 8px;
+  font-size: 13px;
+}
+
+.responsive-card__label {
+  color: var(--muted);
 }
 
 .sidebar-nav a:focus {
@@ -1089,6 +1164,16 @@ input[type="number"] {
   background: #cbd5f5;
 }
 
+.portal-surface .btn--danger {
+  background: var(--danger);
+  color: #ffffff;
+  box-shadow: 0 8px 18px rgba(220, 38, 38, 0.2);
+}
+
+.portal-surface .btn--danger:hover:not(:disabled) {
+  background: #b91c1c;
+}
+
 .portal-surface .btn--ghost {
   background: transparent;
   color: #0f172a;
@@ -1297,6 +1382,17 @@ input[type="number"] {
     padding: 12px 14px;
   }
 
+  .portal-surface .tabs {
+    width: 100%;
+    flex-wrap: wrap;
+    gap: 6px;
+  }
+
+  .portal-surface .tabs__btn {
+    flex: 1 1 120px;
+    text-align: center;
+  }
+
   .portal-surface .card,
   .portal-surface .card--1c {
     padding: 12px 14px;
@@ -1313,6 +1409,7 @@ input[type="number"] {
   .portal-surface .btn,
   .portal-surface button {
     min-height: 44px;
+    max-width: 100%;
   }
 
   .portal-surface form .btn,
@@ -1353,10 +1450,12 @@ input[type="number"] {
     display: block;
     width: 100%;
     overflow-x: auto;
+    max-width: 100%;
   }
 
   .portal-surface .table-wrapper {
     overflow-x: auto;
     -webkit-overflow-scrolling: touch;
+    max-width: 100%;
   }
 }

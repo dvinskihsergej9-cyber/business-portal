@@ -8,7 +8,6 @@ import ExcelJS from "exceljs";
 import multer from "multer";
 import crypto from "crypto";
 import nodemailer from "nodemailer";
-import { XMLParser } from "fast-xml-parser";
 import QRCode from "qrcode";
 import bwipjs from "bwip-js";
 import { AsyncLocalStorage } from "node:async_hooks";
@@ -18,7 +17,7 @@ import { fileURLToPath } from "node:url";
 import { adminRoutes } from "./adminRoutes.js";
 import { createWarehouseStockService } from "./services/warehouseStockService.js";
 
-// ================== РРќРР¦РРђР›РР—РђР¦РРЇ ==================
+// ================== НЦАЛЗАЦЯ ==================
 
 const app = express();
 const basePrisma = new PrismaClient();
@@ -126,6 +125,7 @@ const ORG_SCOPED_MODELS = new Set([
   "OrgProfile",
   "Supplier",
   "SupplierTruck",
+  "PortalNews",
   "InviteToken",
   "Membership",
   "Subscription",
@@ -136,11 +136,19 @@ function getOrgIdFromContext() {
   return orgContext.getStore()?.orgId || null;
 }
 
-// РґР»СЏ Р·Р°РіСЂСѓР·РєРё С„Р°Р№Р»РѕРІ РІ РїР°РјСЏС‚СЊ (Р±СѓРґРµРј С‡РёС‚Р°С‚СЊ Excel РёР· Р±СѓС„РµСЂР°)
+// для загрузки файлов в память (будем читать Excel из буфера)
 const upload = multer({ storage: multer.memoryStorage() });
 
 app.use(cors());
 app.use(express.json());
+app.use((req, res, next) => {
+  const originalJson = res.json.bind(res);
+  res.json = (body) => {
+    res.setHeader("Content-Type", "application/json; charset=utf-8");
+    return originalJson(body);
+  };
+  next();
+});
 app.get("/api/health", async (req, res) => {
   try {
     await prisma.$queryRaw`SELECT 1`;
@@ -152,7 +160,7 @@ app.get("/api/health", async (req, res) => {
 });
 
 
-// ================== JWT / РђР’РўРћР РР—РђР¦РРЇ ==================
+// ================== JWT / АВТОРЗАЦЯ ==================
 
 const JWT_SECRET = process.env.JWT_SECRET;
 if (!JWT_SECRET) {
@@ -177,25 +185,25 @@ function createToken(user) {
 async function auth(req, res, next) {
   const header = req.headers["authorization"];
   if (!header) {
-    return res.status(401).json({ message: "Authorization token missing" });
+    return res.status(401).json({ message: "Отсутствует токен авторизации" });
   }
 
   const [type, token] = header.split(" ");
   if (type !== "Bearer" || !token) {
-    return res.status(401).json({ message: "Invalid authorization header" });
+    return res.status(401).json({ message: "Некорректный заголовок авторизации" });
   }
 
   try {
     const payload = jwt.verify(token, JWT_SECRET);
     const user = await prisma.user.findUnique({ where: { id: payload.id } });
     if (!user) {
-      return res.status(401).json({ message: "TOKEN_INVALID" });
+      return res.status(401).json({ message: "Недействительный токен" });
     }
     if (user.isActive === false) {
-      return res.status(401).json({ message: "USER_INACTIVE" });
+      return res.status(401).json({ message: "Пользователь заблокирован" });
     }
     if ((payload.tokenVersion || 0) !== (user.tokenVersion || 0)) {
-      return res.status(401).json({ message: "TOKEN_INVALID" });
+      return res.status(401).json({ message: "Недействительный токен" });
     }
     const existingRoles = req.user?.roles;
     req.user = {
@@ -207,7 +215,7 @@ async function auth(req, res, next) {
     next();
   } catch (err) {
     console.error("auth error:", err);
-    return res.status(401).json({ message: "Invalid or expired token" });
+    return res.status(401).json({ message: "Недействительный или истекший токен" });
   }
 }
 
@@ -271,6 +279,10 @@ function isPathMatch(req, patterns) {
   return patterns.some((pattern) => pattern.test(fullPath));
 }
 
+function isPublicPortalNewsRequest(req) {
+  return req.method === "GET" && req.path === "/portal-news";
+}
+
 function resolveOrgContext(req, res, next) {
   (async () => {
     try {
@@ -279,7 +291,7 @@ function resolveOrgContext(req, res, next) {
         include: { org: true }
       });
       if (!memberships.length) {
-        return res.status(403).json({ message: "NO_ORG_MEMBERSHIP" });
+        return res.status(403).json({ message: "Нет доступа к организации" });
       }
 
       const rawOrgId = req.headers["x-org-id"];
@@ -288,7 +300,7 @@ function resolveOrgContext(req, res, next) {
       if (requestedOrgId && !Number.isNaN(requestedOrgId)) {
         const found = memberships.find((m) => m.orgId === requestedOrgId);
         if (!found) {
-          return res.status(403).json({ message: "ORG_ACCESS_DENIED" });
+          return res.status(403).json({ message: "Нет доступа к организации" });
         }
         membership = found;
       }
@@ -304,7 +316,7 @@ function resolveOrgContext(req, res, next) {
       return orgContext.run({ orgId: req.orgId }, () => next());
     } catch (err) {
       console.error("resolveOrgContext error:", err);
-      return res.status(500).json({ message: "ORG_CONTEXT_ERROR" });
+      return res.status(500).json({ message: "Ошибка контекста организации" });
     }
   })();
 }
@@ -322,26 +334,29 @@ async function requirePaidSubscription(req, res, next) {
       subscription.paidUntil &&
       new Date(subscription.paidUntil) > now;
     if (!isActive) {
-      return res.status(402).json({ message: "SUBSCRIPTION_REQUIRED" });
+      return res.status(402).json({ message: "Требуется активная подписка" });
     }
     return next();
   } catch (err) {
     console.error("subscription check error:", err);
-    return res.status(500).json({ message: "SUBSCRIPTION_CHECK_ERROR" });
+    return res.status(500).json({ message: "Ошибка проверки подписки" });
   }
 }
 
 app.use("/api", (req, res, next) => {
+  if (isPublicPortalNewsRequest(req)) return next();
   if (isPathMatch(req, AUTH_EXEMPT_PATHS)) return next();
   return auth(req, res, next);
 });
 
 app.use("/api", (req, res, next) => {
+  if (isPublicPortalNewsRequest(req)) return next();
   if (isPathMatch(req, ORG_EXEMPT_PATHS)) return next();
   return resolveOrgContext(req, res, next);
 });
 
 app.use("/api", (req, res, next) => {
+  if (isPublicPortalNewsRequest(req)) return next();
   if (isPathMatch(req, PAYWALL_EXEMPT_PATHS)) return next();
   return requirePaidSubscription(req, res, next);
 });
@@ -419,7 +434,7 @@ async function initMailer() {
   const pass = process.env.MAIL_PASS;
   const port = Number(process.env.MAIL_PORT || 465);
   const secure = String(process.env.MAIL_SECURE || "true") === "true";
-  const from = process.env.MAIL_FROM || `Business Portal <${user || ""}>`;
+  const from = process.env.MAIL_FROM || `Бизнес-портал <${user || ""}>`;
   const requireTLS =
     process.env.MAIL_REQUIRE_TLS !== undefined
       ? String(process.env.MAIL_REQUIRE_TLS) === "true"
@@ -482,12 +497,12 @@ async function sendInviteEmail(email, token) {
     return { sent: false, link, error: "MAIL_DISABLED" };
   }
 
-  const from = process.env.MAIL_FROM || `Business Portal <${process.env.MAIL_USER}>`;
-  const subject = "Приглашение в Business Portal";
-  const text = `Вы приглашены в Business Portal. Перейдите по ссылке для завершения регистрации: ${link}`;
+  const from = process.env.MAIL_FROM || `Бизнес-портал <${process.env.MAIL_USER}>`;
+  const subject = "Приглашение в Бизнес-портал";
+  const text = `Вы приглашены в Бизнес-портал. Перейдите по ссылке для завершения регистрации: ${link}`;
   const html = `
     <div style="font-family:Arial,sans-serif;font-size:14px;">
-      <p>Вы приглашены в Business Portal.</p>
+      <p>Вы приглашены в Бизнес-портал.</p>
       <p>Ссылка для завершения регистрации:</p>
       <p><a href="${link}">${link}</a></p>
       <p>Если вы не ожидали это письмо, просто игнорируйте его.</p>
@@ -521,8 +536,8 @@ async function sendPasswordResetEmail(email, token) {
     return { sent: false, link, error: "MAIL_DISABLED" };
   }
 
-  const from = process.env.MAIL_FROM || `Business Portal <${process.env.MAIL_USER}>`;
-  const subject = "Сброс пароля в Business Portal";
+  const from = process.env.MAIL_FROM || `Бизнес-портал <${process.env.MAIL_USER}>`;
+  const subject = "Сброс пароля в Бизнес-портале";
   const text = `Кто-то запросил сброс пароля для вашего аккаунта. Если это были вы, перейдите по ссылке: ${link}`;
   const html = `
     <div style="font-family:Arial,sans-serif;font-size:14px;">
@@ -554,10 +569,10 @@ async function sendPasswordChangedEmail(email) {
     return { sent: false, error: "MAIL_DISABLED" };
   }
 
-  const from = process.env.MAIL_FROM || `Business Portal <${process.env.MAIL_USER}>`;
+  const from = process.env.MAIL_FROM || `Бизнес-портал <${process.env.MAIL_USER}>`;
   const subject = "Пароль изменён";
   const text =
-    "Пароль в Business Portal был изменён. Если это были не вы, обратитесь к администратору.";
+    "Пароль в Бизнес-портале был изменён. Если это были не вы, обратитесь к администратору.";
   const html = `
     <div style="font-family:Arial,sans-serif;font-size:14px;">
       <p>${text}</p>
@@ -689,7 +704,7 @@ function calcAccruedLeaveDays(hiredAt) {
   const diffMs = now.getTime() - start.getTime();
   const diffDays = Math.max(0, Math.floor(diffMs / (1000 * 60 * 60 * 24)));
 
-  // 28 РґРЅРµР№ РІ РіРѕРґ в‰€ 2.33 РґРЅСЏ РІ РјРµСЃСЏС†
+  // 28 дней в год ≈ 2.33 дня в месяц
   return Math.floor((diffDays / 365) * 28);
 }
 
@@ -716,7 +731,7 @@ function formatDateBook(date) {
   const dd = String(d.getDate()).padStart(2, "0");
   const mm = String(d.getMonth() + 1).padStart(2, "0");
   const yyyy = d.getFullYear();
-  return `В«${dd}В» ${mm} ${yyyy} Рі.`;
+  return `«${dd}» ${mm} ${yyyy} г.`;
 }
 
 function formatDateLong(date) {
@@ -724,22 +739,22 @@ function formatDateLong(date) {
   if (Number.isNaN(d.getTime())) return "В«__В» __________ ____";
   const dd = String(d.getDate()).padStart(2, "0");
   const monthNames = [
-    "СЏРЅРІР°СЂСЏ",
-    "С„РµРІСЂР°Р»СЏ",
-    "РјР°СЂС‚Р°",
-    "Р°РїСЂРµР»СЏ",
-    "РјР°СЏ",
-    "РёСЋРЅСЏ",
-    "РёСЋР»СЏ",
-    "Р°РІРіСѓСЃС‚Р°",
-    "СЃРµРЅС‚СЏР±СЂСЏ",
-    "РѕРєС‚СЏР±СЂСЏ",
-    "РЅРѕСЏР±СЂСЏ",
-    "РґРµРєР°Р±СЂСЏ",
+    "января",
+    "февраля",
+    "марта",
+    "апреля",
+    "мая",
+    "июня",
+    "июля",
+    "августа",
+    "сентября",
+    "октября",
+    "ноября",
+    "декабря",
   ];
   const month = monthNames[d.getMonth()] || "";
   const yyyy = d.getFullYear();
-  return `В«${dd}В» ${month} ${yyyy} РіРѕРґР°`;
+  return `«${dd}» ${month} ${yyyy} года`;
 }
 
 function parseDateInput(value) {
@@ -770,30 +785,30 @@ function buildLeaveDoc(employee, application) {
   const toLong = formatDateLong(application.endDate);
   const today = formatDateRu(new Date());
 
-  const titleLine = "Р—РђРЇР’Р›Р•РќРР•";
+  const titleLine = "ЗАЯВЛЕНЕ";
 
   const body = isTermination
-    ? `РџСЂРѕС€Сѓ СѓРІРѕР»РёС‚СЊ РјРµРЅСЏ РїРѕ СЃРѕР±СЃС‚РІРµРЅРЅРѕРјСѓ Р¶РµР»Р°РЅРёСЋ ${fromLong}. РџСЂРѕС€Сѓ РїСЂРѕРёР·РІРµСЃС‚Рё РѕРєРѕРЅС‡Р°С‚РµР»СЊРЅС‹Р№ СЂР°СЃС‡РµС‚, РІС‹РґР°С‚СЊ С‚СЂСѓРґРѕРІСѓСЋ РєРЅРёР¶РєСѓ (РёР»Рё СЃРІРµРґРµРЅРёСЏ Рѕ С‚СЂСѓРґРѕРІРѕР№ РґРµСЏС‚РµР»СЊРЅРѕСЃС‚Рё) Рё СЃРїСЂР°РІРєРё СѓСЃС‚Р°РЅРѕРІР»РµРЅРЅРѕР№ С„РѕСЂРјС‹ РІ РґРµРЅСЊ СѓРІРѕР»СЊРЅРµРЅРёСЏ.`
+    ? `Прошу уволить меня по собственному желанию ${fromLong}. Прошу произвести окончательный расчет, выдать трудовую книжку (или сведения о трудовой деятельности) и справки установленной формы в день увольнения.`
     : isUnpaid
-      ? `Р’ СЃРѕРѕС‚РІРµС‚СЃС‚РІРёРё СЃРѕ СЃС‚Р°С‚СЊРµР№ 128 РўСЂСѓРґРѕРІРѕРіРѕ РєРѕРґРµРєСЃР° Р Р¤ РїСЂРѕС€Сѓ РїСЂРµРґРѕСЃС‚Р°РІРёС‚СЊ РјРЅРµ РѕС‚РїСѓСЃРє Р±РµР· СЃРѕС…СЂР°РЅРµРЅРёСЏ Р·Р°СЂР°Р±РѕС‚РЅРѕР№ РїР»Р°С‚С‹ СЃ ${fromLong} РїРѕ ${toLong} РїСЂРѕРґРѕР»Р¶РёС‚РµР»СЊРЅРѕСЃС‚СЊСЋ ${application.days} РєР°Р»РµРЅРґР°СЂРЅС‹С… РґРЅРµР№.`
-      : `Р’ СЃРѕРѕС‚РІРµС‚СЃС‚РІРёРё СЃРѕ СЃС‚Р°С‚СЊРµР№ 115 РўСЂСѓРґРѕРІРѕРіРѕ РєРѕРґРµРєСЃР° Р Р¤ РїСЂРѕС€Сѓ РїСЂРµРґРѕСЃС‚Р°РІРёС‚СЊ РјРЅРµ РµР¶РµРіРѕРґРЅС‹Р№ РѕРїР»Р°С‡РёРІР°РµРјС‹Р№ РѕС‚РїСѓСЃРє СЃ ${fromLong} РїРѕ ${toLong} РїСЂРѕРґРѕР»Р¶РёС‚РµР»СЊРЅРѕСЃС‚СЊСЋ ${application.days} РєР°Р»РµРЅРґР°СЂРЅС‹С… РґРЅРµР№.`;
+      ? `В соответствии со статьей 128 Трудового кодекса РФ прошу предоставить мне отпуск без сохранения заработной платы с ${fromLong} по ${toLong} продолжительностью ${application.days} календарных дней.`
+      : `В соответствии со статьей 115 Трудового кодекса РФ прошу предоставить мне ежегодный оплачиваемый отпуск с ${fromLong} по ${toLong} продолжительностью ${application.days} календарных дней.`;
 
   const reasonLine = application.reason
-    ? `<div class="doc-reason">РћСЃРЅРѕРІР°РЅРёРµ / РєРѕРјРјРµРЅС‚Р°СЂРёР№: ${application.reason}</div>`
+    ? `<div class="doc-reason">Основание / комментарий: ${application.reason}</div>`
     : "";
 
   const noteSpan = isUnpaid
     ? ""
     : isTermination
       ? ""
-      : `<span class="doc-note">(РїРѕРґР°РµС‚СЃСЏ Р·Р° 14 РєР°Р»РµРЅРґР°СЂРЅС‹С… РґРЅРµР№ РґРѕ РїРµСЂРІРѕРіРѕ РґРЅСЏ РѕС‚РїСѓСЃРєР°)</span>`;
+      : `<span class="doc-note">(подается за 14 календарных дней до первого дня отпуска)</span>`;
 
   return `
 <div class="doc-header">
-  <div>РљРћРњРЈ: ________________________________________________</div>
+  <div>КОМУ: ________________________________________________</div>
   <div>_____________________________________________________</div>
-  <div style="margin-top: 8px;">РћРў РљРћР“Рћ: ${employee.fullName}</div>
-  <div>Р”РѕР»Р¶РЅРѕСЃС‚СЊ: ${employee.position || ""}${employee.position ? ", " : ""}${employee.department || ""}</div>
+  <div style="margin-top: 8px;">ОТ КОГО: ${employee.fullName}</div>
+  <div>Должность: ${employee.position || ""}${employee.position ? ", " : ""}${employee.department || ""}</div>
 </div>
 
 <div class="doc-title">${titleLine}</div>
@@ -801,39 +816,39 @@ function buildLeaveDoc(employee, application) {
 <div class="doc-body">${body}</div>
 ${reasonLine}
 
-<div class="doc-meta">Р”Р°С‚Р° РїСЂРёРµРјР°: ${hired} &nbsp;&nbsp; Р”Р°С‚Р° СЂРѕР¶РґРµРЅРёСЏ: ${birth}</div>
+<div class="doc-meta">Дата приема: ${hired} &nbsp;&nbsp; Дата рождения: ${birth}</div>
 
-<div class="doc-date">Р”Р°С‚Р° Р·Р°СЏРІР»РµРЅРёСЏ: В«____В» __________ 20____ РіРѕРґР° ${noteSpan}</div>
-<div class="doc-sign">РџРѕРґРїРёСЃСЊ ________________</div>
+<div class="doc-date">Дата заявления: «____» __________ 20____ года ${noteSpan}</div>
+<div class="doc-sign">Подпись ________________</div>
 
-<div class="doc-meta" style="margin-top: 8px;">Р¤Р°РєС‚РёС‡РµСЃРєРё: ${today}</div>
+<div class="doc-meta" style="margin-top: 8px;">Фактически: ${today}</div>
 `.trim();
 }
 
 
 const DEFAULT_SAFETY_INSTRUCTIONS = [
   {
-    title: "Р’РІРѕРґРЅС‹Р№ РёРЅСЃС‚СЂСѓРєС‚Р°Р¶ РґР»СЏ СЃРєР»Р°РґР°",
+    title: "Вводный инструктаж для склада",
     description:
-      "РћР±С‰РёРµ С‚СЂРµР±РѕРІР°РЅРёСЏ РїРѕ С‚РµС…РЅРёРєРµ Р±РµР·РѕРїР°СЃРЅРѕСЃС‚Рё РЅР° СЃРєР»Р°РґРµ, СЂР°Р±РѕС‚Р° СЃ С‚РµР»РµР¶РєР°РјРё/РїРѕРіСЂСѓР·С‡РёРєР°РјРё, Р·РѕРЅС‹ Рё РјР°СЂС€СЂСѓС‚С‹ РїРµСЂРµРґРІРёР¶РµРЅРёСЏ.",
+      "Общие требования по технике безопасности на складе, работа с тележками/погрузчиками, зоны и маршруты передвижения.",
     role: "WAREHOUSE",
   },
   {
-    title: "РРЅСЃС‚СЂСѓРєС‚Р°Р¶ РґР»СЏ РіСЂСѓР·С‡РёРєРѕРІ",
+    title: "нструктаж для грузчиков",
     description:
-      "Р‘РµР·РѕРїР°СЃРЅРѕРµ РїРµСЂРµРјРµС‰РµРЅРёРµ Рё С€С‚Р°Р±РµР»РёСЂРѕРІР°РЅРёРµ РіСЂСѓР·РѕРІ, С„РёРєСЃР°С†РёСЏ РїР°Р»Р»РµС‚, СЂР°Р±РѕС‚Р° СЃ СЃС‚СЂРѕРїР°РјРё Рё Р·Р°С…РІР°С‚Р°РјРё, РѕС‚РґС‹С… РґР»СЏ СЃРїРёРЅС‹.",
+      "Безопасное перемещение и штабелирование грузов, фиксация паллет, работа с стропами и захватами, отдых для спины.",
     role: "LOADER",
   },
   {
-    title: "РџРѕРІС‚РѕСЂРЅС‹Р№ РёРЅСЃС‚СЂСѓРєС‚Р°Р¶ РїРѕ РћРў",
+    title: "Повторный инструктаж по ОТ",
     description:
-      "РќР°РїРѕРјРёРЅР°РЅРёРµ РїСЂРѕ СЃСЂРµРґСЃС‚РІР° Р·Р°С‰РёС‚С‹, СЃРёРіРЅР°Р»С‹ СЌРІР°РєСѓР°С†РёРё, РїРѕСЂСЏРґРѕРє РґРµР№СЃС‚РІРёР№ РїСЂРё С‚СЂР°РІРјР°С… Рё РІРѕР·РіРѕСЂР°РЅРёСЏС….",
+      "Напоминание про средства защиты, сигналы эвакуации, порядок действий при травмах и возгораниях.",
     role: "ALL",
   },
 ];
 
-const SAFETY_PERIODICITY_DAYS = 180; // СЂР°Р· РІ РїРѕР»РіРѕРґР°
-const SAFETY_FIRST_DUE_DAYS = 3; // РїРµСЂРІРёС‡РЅС‹Р№ РєРѕРЅС‚СЂРѕР»СЊ С‡РµСЂРµР· 3 РґРЅСЏ
+const SAFETY_PERIODICITY_DAYS = 180; // раз в полгода
+const SAFETY_FIRST_DUE_DAYS = 3; // первичный контроль через 3 дня
 
 function addDays(date, days) {
   const d = new Date(date);
@@ -865,7 +880,7 @@ async function ensureUniqueItemCodes({ barcode, qrCode }, itemId) {
       where: { barcode, NOT: { id: itemId } },
     });
     if (existing) {
-      throw new Error("РЁС‚СЂРёС…РєРѕРґ СѓР¶Рµ РёСЃРїРѕР»СЊР·СѓРµС‚СЃСЏ РґСЂСѓРіРёРј С‚РѕРІР°СЂРѕРј");
+      throw new Error("Штрихкод уже используется другим товаром");
     }
   }
   if (qrCode) {
@@ -873,7 +888,7 @@ async function ensureUniqueItemCodes({ barcode, qrCode }, itemId) {
       where: { qrCode, NOT: { id: itemId } },
     });
     if (existing) {
-      throw new Error("QR СѓР¶Рµ РёСЃРїРѕР»СЊР·СѓРµС‚СЃСЏ РґСЂСѓРіРёРј С‚РѕРІР°СЂРѕРј");
+      throw new Error("QR уже используется другим товаром");
     }
   }
 }
@@ -884,7 +899,7 @@ async function ensureUniqueLocationCodes({ code, qrCode }, locationId) {
       where: { code, NOT: { id: locationId } },
     });
     if (existing) {
-      throw new Error("РљРѕРґ СѓР¶Рµ РёСЃРїРѕР»СЊР·СѓРµС‚СЃСЏ РґСЂСѓРіРѕР№ Р»РѕРєР°С†РёРµР№");
+      throw new Error("Код уже используется другой локацией");
     }
   }
   if (qrCode) {
@@ -892,7 +907,7 @@ async function ensureUniqueLocationCodes({ code, qrCode }, locationId) {
       where: { qrCode, NOT: { id: locationId } },
     });
     if (existing) {
-      throw new Error("QR СѓР¶Рµ РёСЃРїРѕР»СЊР·СѓРµС‚СЃСЏ РґСЂСѓРіРѕР№ Р»РѕРєР°С†РёРµР№");
+      throw new Error("QR уже используется другой локацией");
     }
   }
 }
@@ -916,278 +931,39 @@ async function renderQrPng(value) {
   });
 }
 
-// ================== РќРѕРІРѕСЃС‚Рё (RSS Р°РіСЂРµРіР°С‚РѕСЂ) ==================
-const NEWS_SOURCES = [
-  { name: "Р’РµРґРѕРјРѕСЃС‚Рё", type: "rss", url: "https://www.vedomosti.ru/rss/rubric/business", defaultCategory: "business" },
-  { name: "Р’РµРґРѕРјРѕСЃС‚Рё", type: "rss", url: "https://www.vedomosti.ru/rss/rubric/economics/taxes", defaultCategory: "tax" },
-  { name: "Р’РµРґРѕРјРѕСЃС‚Рё", type: "rss", url: "https://www.vedomosti.ru/rss/rubric/economics/regulations", defaultCategory: "tax" },
-  { name: "РљРѕРјРјРµСЂСЃР°РЅС‚СЉ", type: "rss", url: "https://www.kommersant.ru/rss/news.xml", defaultCategory: "business" },
-  {
-    name: "Р Р‘Рљ",
-    type: "rss",
-    url: "https://rssexport.rbc.ru/rbcnews/news/30/full.rss",
-    fallbackUrls: [
-      "https://rss.rbc.ru/rbcnews/news/30/full.rss",
-      "https://static.feed.rbc.ru/rbc/internal/rss.rbc.ru/rbc.ru/economics.rss",
-    ],
-    defaultCategory: "business",
-  },
-  { name: "РњРёРЅС‚СЂСѓРґ", type: "rss", url: "https://mintrud.gov.ru/news/rss/official", defaultCategory: "hr" },
-];
-
-const NEWS_CATEGORIES = {
-  tax: ["РЅРґСЃ", "РЅР°Р»РѕРі", "С„РЅСЃ", "РІС‹С‡РµС‚", "СЃС‡РµС‚-С„Р°РєС‚СѓСЂ", "СѓРїРґ", "РєР°РјРµСЂР°Р»СЊРЅ", "РїСЂРѕРІРµСЂ", "Р°РєС†РёР·"],
-  hr: ["С‚СЂСѓРґ", "РєР°РґСЂС‹", "СѓРІРѕР»СЊРЅРµРЅ", "РїСЂРёРµРј", "РґРѕРіРѕРІРѕСЂ", "РјРёРЅС‚СЂСѓРґ", "СЃС‚СЂР°С…РѕРІ", "РІР·РЅРѕСЃ", "РѕС‚РїСѓСЃРє", "Р±РѕР»СЊРЅРёС‡РЅ", "СЃР°РјРѕР·Р°РЅСЏС‚", "С€С‚СЂР°С„"],
-};
-
-const NEWS_REFRESH_MS = 15 * 60 * 1000; // 15 РјРёРЅСѓС‚
-const NEWS_REQUEST_TIMEOUT = 10000; // 10 СЃРµРєСѓРЅРґ
-const NEWS_FETCH_HEADERS = {
-  "User-Agent": "business-portal/1.0",
-  Accept: "application/rss+xml, application/xml;q=0.9, text/xml;q=0.8, */*;q=0.5",
-  "Accept-Language": "ru-RU,ru;q=0.9,en;q=0.8",
-};
-
-let newsCache = {
-  items: [],
-  fetchedAt: 0,
-};
-const newsSourceCache = {};
-
-function classifyCategory(title = "", description = "", fallback = "business") {
-  const text = `${title} ${description}`.toLowerCase();
-  if (NEWS_CATEGORIES.tax?.some((k) => text.includes(k))) return "tax";
-  if (NEWS_CATEGORIES.hr?.some((k) => text.includes(k))) return "hr";
-  return fallback;
-}
-
-function hashId(value) {
-  return crypto.createHash("md5").update(value).digest("hex");
-}
-
-const RSS_PARSER = new XMLParser({
-  ignoreAttributes: false,
-  attributeNamePrefix: "@_",
-  textNodeName: "text",
-  cdataPropName: "text",
-  removeNSPrefix: true,
-  trimValues: true,
-});
-
-function normalizeText(value) {
-  if (value === null || value === undefined) return "";
-  if (typeof value === "string" || typeof value === "number") return String(value);
-  if (typeof value === "object") return value.text || value["#text"] || "";
-  return "";
-}
-
-function cleanText(value) {
-  return normalizeText(value).replace(/<[^>]+>/g, " ").replace(/\s+/g, " ").trim();
-}
-
-function extractLink(linkField) {
-  if (!linkField) return "";
-  if (typeof linkField === "string") return linkField;
-  if (Array.isArray(linkField)) {
-    const alt = linkField.find((l) => l?.["@_rel"] === "alternate") || linkField[0];
-    return alt?.["@_href"] || normalizeText(alt?.text);
-  }
-  return linkField["@_href"] || normalizeText(linkField.text);
-}
-
-function pickTag(block, tag) {
-  const regexCdata = new RegExp(`<${tag}>\\s*<!\\[CDATA\\[(.*?)\\]\\]>\\s*<\\/${tag}>`, "is");
-  const regexSimple = new RegExp(`<${tag}[^>]*>(.*?)<\\/${tag}>`, "is");
-  const mC = block.match(regexCdata);
-  if (mC) return mC[1].trim();
-  const m = block.match(regexSimple);
-  return m ? m[1].replace(/<[^>]+>/g, " ").replace(/\s+/g, " ").trim() : "";
-}
-
-function parseRssFallback(xml, source) {
-  const items = [];
-  const parts = xml.split(/<item[^>]*>/i).slice(1);
-  for (const raw of parts) {
-    const block = raw.split(/<\/item>/i)[0];
-    const title = pickTag(block, "title");
-    const link = pickTag(block, "link") || pickTag(block, "guid");
-    const pubDate = pickTag(block, "pubDate") || pickTag(block, "dc:date");
-    const desc = pickTag(block, "description");
-    const summary = desc ? desc.replace(/\s+/g, " ").trim().slice(0, 300) : undefined;
-    if (!title || !link) continue;
-    items.push({
-      id: hashId(link || title),
-      title,
-      source: source.name,
-      link,
-      publishedAt: pubDate ? new Date(pubDate).toISOString() : new Date().toISOString(),
-      summary,
-      category: classifyCategory(title, desc, source.defaultCategory || "business"),
-    });
-  }
-  return items;
-}
-
-function parseRss(xml, source) {
-  const items = [];
-  const data = RSS_PARSER.parse(xml);
-  const rss = data?.rss;
-  const feed = data?.feed;
-  const channel = rss ? (Array.isArray(rss.channel) ? rss.channel[0] : rss.channel) : feed;
-  const rawItems = channel?.item || channel?.entry || [];
-  const list = Array.isArray(rawItems) ? rawItems : rawItems ? [rawItems] : [];
-
-  for (const item of list) {
-    const title = cleanText(item?.title);
-    const link = extractLink(item?.link) || normalizeText(item?.guid);
-    const pubDate =
-      normalizeText(item?.pubDate) || normalizeText(item?.published) || normalizeText(item?.updated);
-    const descRaw = normalizeText(item?.description) || normalizeText(item?.summary) || normalizeText(item?.content);
-    const summary = descRaw ? cleanText(descRaw).slice(0, 300) : undefined;
-    if (!title || !link) continue;
-    items.push({
-      id: hashId(link || title),
-      title,
-      source: source.name,
-      link,
-      publishedAt: pubDate ? new Date(pubDate).toISOString() : new Date().toISOString(),
-      summary,
-      category: classifyCategory(title, descRaw, source.defaultCategory || "business"),
-    });
-  }
-  if (items.length === 0) {
-    return parseRssFallback(xml, source);
-  }
-  return items;
-}
-
-async function fetchWithTimeout(url, timeoutMs) {
-  const controller = new AbortController();
-  const t = setTimeout(() => controller.abort(), timeoutMs);
-  try {
-    const res = await fetch(url, {
-      signal: controller.signal,
-      headers: NEWS_FETCH_HEADERS,
-      redirect: "follow",
-    });
-    if (!res.ok) throw new Error(`Status ${res.status}`);
-    return await res.text();
-  } finally {
-    clearTimeout(t);
-  }
-}
-
-async function refreshNewsCache() {
-  try {
-    const now = Date.now();
-    if (newsCache.items.length && now - newsCache.fetchedAt < NEWS_REFRESH_MS) return newsCache.items;
-
-    const tasks = NEWS_SOURCES.map(async (src) => {
-      const cacheKey = src.url;
-      const tryFetch = async (url, label) => {
-        const xml = await fetchWithTimeout(url, NEWS_REQUEST_TIMEOUT);
-        const items = parseRss(xml, src);
-        if (items.length === 0) {
-          console.log(`[News] fetched 0 items from ${src.name}${label ? ` (${label})` : ""}`);
-        } else {
-          console.log(`[News] fetched ${items.length} items from ${src.name}${label ? ` (${label})` : ""}`);
-        }
-        return items;
-      };
-
-      try {
-        let items = await tryFetch(src.url, "primary");
-        if (items.length === 0 && Array.isArray(src.fallbackUrls)) {
-          for (const fallbackUrl of src.fallbackUrls) {
-            try {
-              items = await tryFetch(fallbackUrl, "fallback");
-              if (items.length) break;
-            } catch (fallbackErr) {
-              console.log("[News] source error", src.name, fallbackErr.message, fallbackErr.cause?.code, fallbackErr.cause?.message);
-            }
-          }
-        }
-        if (items.length) {
-          newsSourceCache[cacheKey] = items;
-          return items;
-        }
-        return newsSourceCache[cacheKey] || [];
-      } catch (err) {
-        console.log("[News] source error", src.name, err.message, err.cause?.code, err.cause?.message);
-        if (Array.isArray(src.fallbackUrls)) {
-          for (const fallbackUrl of src.fallbackUrls) {
-            try {
-              const items = await tryFetch(fallbackUrl, "fallback");
-              if (items.length) {
-                newsSourceCache[cacheKey] = items;
-                return items;
-              }
-            } catch (fallbackErr) {
-              console.log("[News] source error", src.name, fallbackErr.message, fallbackErr.cause?.code, fallbackErr.cause?.message);
-            }
-          }
-        }
-        return newsSourceCache[cacheKey] || [];
-      }
-    });
-
-    const results = await Promise.allSettled(tasks);
-    const collected = results.flatMap((r) => (r.status === "fulfilled" ? r.value : []));
-
-    const seen = new Set();
-    const unique = [];
-    for (const item of collected) {
-      const key = item.link || item.title;
-      if (!seen.has(key)) {
-        seen.add(key);
-        unique.push(item);
-      }
-    }
-
-    unique.sort((a, b) => new Date(b.publishedAt).getTime() - new Date(a.publishedAt).getTime());
-    newsCache = { items: unique.slice(0, 50), fetchedAt: now };
-    return newsCache.items;
-  } catch (err) {
-    console.error("[News] refresh error:", err);
-    return newsCache.items;
-  }
-}
-
-setInterval(refreshNewsCache, NEWS_REFRESH_MS);
-refreshNewsCache();
 const SAFETY_RESOURCES = {
   instructions: [
     {
-      title: "РРЅСЃС‚СЂСѓРєС†РёСЏ РћРў: РєР»Р°РґРѕРІС‰РёРє (СЃРєР»Р°Рґ)",
-      description: "РРЅСЃС‚СЂСѓРєС†РёСЏ РїРѕ РѕС…СЂР°РЅРµ С‚СЂСѓРґР° РґР»СЏ РєР»Р°РґРѕРІС‰РёРєРѕРІ СЃРєР»Р°РґР°.",
-      file: "/templates/РРЅСЃС‚СЂСѓРєС†РёСЏ_РћРў_РљР»Р°РґРѕРІС‰РёРє_РЎРєР»Р°Рґ.docx",
+      title: "нструкция ОТ: кладовщик (склад)",
+      description: "нструкция по охране труда для кладовщиков склада.",
+      file: "/templates/нструкция_ОТ_Кладовщик_Склад.docx",
     note: "",
     },
     {
-      title: "РРЅСЃС‚СЂСѓРєС†РёСЏ РћРў: РіСЂСѓР·С‡РёРє (СЃРєР»Р°Рґ)",
-      description: "РРЅСЃС‚СЂСѓРєС†РёСЏ РїРѕ РѕС…СЂР°РЅРµ С‚СЂСѓРґР° РґР»СЏ РіСЂСѓР·С‡РёРєРѕРІ СЃРєР»Р°РґР°.",
-      file: "/templates/РРЅСЃС‚СЂСѓРєС†РёСЏ_РћРў_Р“СЂСѓР·С‡РёРє_РЎРєР»Р°Рґ.docx",
+      title: "нструкция ОТ: грузчик (склад)",
+      description: "нструкция по охране труда для грузчиков склада.",
+      file: "/templates/нструкция_ОТ_Грузчик_Склад.docx",
     note: "",
     },
   ],
   journals: [
     {
-      title: "Р–СѓСЂРЅР°Р» СЂРµРіРёСЃС‚СЂР°С†РёРё РІРІРѕРґРЅРѕРіРѕ РёРЅСЃС‚СЂСѓРєС‚Р°Р¶Р°",
-      description: "РџСѓСЃС‚РѕР№ Р¶СѓСЂРЅР°Р» РґР»СЏ С„РёРєСЃР°С†РёРё РІРІРѕРґРЅРѕРіРѕ РёРЅСЃС‚СЂСѓРєС‚Р°Р¶Р° (Р¤РРћ, РґР°С‚Р°, РїРѕРґРїРёСЃРё).",
-      file: "/templates/Р–СѓСЂРЅР°Р»_Р’РІРѕРґРЅС‹Р№_РРЅСЃС‚СЂСѓРєС‚Р°Р¶_РћРў.docx",
+      title: "Журнал регистрации вводного инструктажа",
+      description: "Пустой журнал для фиксации вводного инструктажа (ФО, дата, подписи).",
+      file: "/templates/Журнал_Вводный_нструктаж_ОТ.docx",
     note: "",
     },
     {
-      title: "Р–СѓСЂРЅР°Р» РёРЅСЃС‚СЂСѓРєС‚Р°Р¶РµР№ РЅР° СЂР°Р±РѕС‡РµРј РјРµСЃС‚Рµ",
-      description: "РЈС‡РµС‚ РїРµСЂРІРёС‡РЅС‹С… Рё РїРѕРІС‚РѕСЂРЅС‹С… РёРЅСЃС‚СЂСѓРєС‚Р°Р¶РµР№ РЅР° СЃРєР»Р°РґРµ Рё РІ РїРѕРіСЂСѓР·РѕС‡РЅРѕ-СЂР°Р·РіСЂСѓР·РѕС‡РЅРѕР№ Р·РѕРЅРµ.",
-      file: "/templates/Р–СѓСЂРЅР°Р»_РРЅСЃС‚СЂСѓРєС‚Р°Р¶_РќР°_Р Р°Р±РѕС‡РµРј_РњРµСЃС‚Рµ_РћРў.docx",
-    note: "",
+      title: "Журнал инструктажей на рабочем месте",
+      description: "Учет первичных и повторных инструктажей на складе и в погрузочно-разгрузочной зоне.",
+      file: "/templates/Журнал_Инструктаж_На_Рабочем_Месте_ОТ.docx",
+      note: "",
     },
     {
-      title: "Р–СѓСЂРЅР°Р» СЂРµРіРёСЃС‚СЂР°С†РёРё С†РµР»РµРІС‹С… РёРЅСЃС‚СЂСѓРєС‚Р°Р¶РµР№",
-      description: "РСЃРїРѕР»СЊР·СѓРµС‚СЃСЏ РґР»СЏ С†РµР»РµРІС‹С… РёРЅСЃС‚СЂСѓРєС‚Р°Р¶РµР№ РїСЂРё РІРЅРµРїР»Р°РЅРѕРІС‹С… СЂР°Р±РѕС‚Р°С… Рё РџР Р .",
-      file: "/templates/Р–СѓСЂРЅР°Р»_Р¦РµР»РµРІРѕР№_РРЅСЃС‚СЂСѓРєС‚Р°Р¶_РћРў.docx",
-    note: "",
+      title: "Журнал регистрации целевых инструктажей",
+      description: "Используется для целевых инструктажей при внеплановых работах и ПРР.",
+      file: "/templates/Журнал_Целевой_Инструктаж_ОТ.docx",
+      note: "",
     },
   ],
 };
@@ -1205,7 +981,7 @@ async function createSafetyAssignmentsForEmployee(employeeId) {
   const instructions = await prisma.safetyInstruction.findMany();
 
   for (const instr of instructions) {
-    const due = addDays(new Date(), SAFETY_FIRST_DUE_DAYS); // РїРµСЂРІР°СЏ РґР°С‚Р° РєРѕРЅС‚СЂРѕР»СЏ вЂ” С‡РµСЂРµР· 3 РґРЅСЏ
+    const due = addDays(new Date(), SAFETY_FIRST_DUE_DAYS); // первая дата контроля — через 3 дня
     await prisma.safetyAssignment.create({
       data: {
         employeeId,
@@ -1217,7 +993,7 @@ async function createSafetyAssignmentsForEmployee(employeeId) {
   }
 }
 
-// РЅРѕСЂРјР°Р»РёР·СѓРµРј dueDate Сѓ СЃСѓС‰РµСЃС‚РІСѓСЋС‰РёС… РёРЅСЃС‚СЂСѓРєС‚Р°Р¶РµР№ (РїРѕСЃР»Рµ РёР·РјРµРЅРµРЅРёСЏ РїРµСЂРёРѕРґРёС‡РЅРѕСЃС‚Рё)
+// нормализуем dueDate у существующих инструктажей (после изменения периодичности)
 async function normalizeSafetyAssignments() {
   const items = await prisma.safetyAssignment.findMany();
   for (const a of items) {
@@ -1242,7 +1018,7 @@ async function normalizeSafetyAssignments() {
   }
 }
 
-// ---------- РћРҐР РђРќРђ РўР РЈР”Рђ (РёРЅСЃС‚СЂСѓРєС†РёРё) ----------
+// ---------- ОХРАНА ТРУДА (инструкции) ----------
 app.get("/api/safety/instructions", auth, requireHr, async (req, res) => {
   try {
     await ensureSafetyInstructions();
@@ -1250,7 +1026,7 @@ app.get("/api/safety/instructions", auth, requireHr, async (req, res) => {
       orderBy: { id: "asc" },
     });
 
-    // РѕР±РѕРіР°С‰Р°РµРј РїРѕР»РµР·РЅС‹РјРё РїРѕР»СЏРјРё РґР»СЏ С„СЂРѕРЅС‚Р°
+    // обогащаем полезными полями для фронта
     const mapped = instructions.map((i) => ({
       ...i,
       category: i.role || "ALL",
@@ -1293,22 +1069,270 @@ app.get("/api/safety/resources", auth, requireHr, async (req, res) => {
   }
 });
 
-// ---------- РќРѕРІРѕСЃС‚Рё ----------
-app.get("/api/news", auth, async (req, res) => {
+
+const PORTAL_NEWS_SEED = [
+  {
+    title: "Переезд на новый портал",
+    body:
+      "Мы обновили интерфейс и добавили раздел с новостями портала. Здесь будут важные обновления, регламенты и изменения в процессах.",
+    tags: ["портал", "обновления"],
+    published: true,
+  },
+  {
+    title: "Единый регламент заявок",
+    body:
+      "С этого месяца заявки оформляются только через портал. Проверьте роли и права доступа, чтобы видеть нужные разделы.",
+    tags: ["регламент", "заявки"],
+    published: true,
+  },
+  {
+    title: "Контакты поддержки",
+    body:
+      "Если вы столкнулись с ошибками или не видите нужный раздел, напишите в поддержку портала и укажите номер организации.",
+    tags: ["поддержка"],
+    published: true,
+  },
+];
+
+const decodeEscapedUnicode = (value) => {
+  if (typeof value !== "string") return value;
+  if (!value.includes("\\u")) return value;
+  return value.replace(/\\u([0-9a-fA-F]{4})/g, (_, hex) =>
+    String.fromCharCode(parseInt(hex, 16))
+  );
+};
+
+const normalizePortalNewsText = (value) =>
+  decodeEscapedUnicode(String(value || "").trim());
+
+const normalizePortalNewsTags = (value) => {
+  if (!Array.isArray(value)) return value;
+  return value
+    .map((tag) => decodeEscapedUnicode(String(tag).trim()))
+    .filter(Boolean);
+};
+
+async function resolvePortalNewsContext(req) {
+  const header = req.headers["authorization"];
+  if (!header) return { user: null, orgId: null, isAdmin: false };
+
+  const [type, token] = header.split(" ");
+  if (type !== "Bearer" || !token) {
+    return { user: null, orgId: null, isAdmin: false };
+  }
+
   try {
-    const category = String(req.query.category || "").toLowerCase();
-    const limit = Math.min(Number(req.query.limit) || 20, 50);
-    const items = await refreshNewsCache();
-    let list = items || [];
-    if (["business", "tax", "hr"].includes(category)) {
-      list = list.filter((item) => item.category === category);
+    const payload = jwt.verify(token, JWT_SECRET);
+    const user = await basePrisma.user.findUnique({
+      where: { id: payload.id },
+    });
+    if (!user || user.isActive === false) {
+      return { user: null, orgId: null, isAdmin: false };
     }
-    res.json({ items: list.slice(0, limit) });
+    if ((payload.tokenVersion || 0) !== (user.tokenVersion || 0)) {
+      return { user: null, orgId: null, isAdmin: false };
+    }
+
+    const memberships = await basePrisma.membership.findMany({
+      where: { userId: user.id },
+      include: { org: true },
+    });
+    const rawOrgId = req.headers["x-org-id"];
+    const requestedOrgId = rawOrgId ? Number(rawOrgId) : null;
+    let orgId = memberships[0]?.orgId || null;
+    if (requestedOrgId && !Number.isNaN(requestedOrgId)) {
+      const found = memberships.find((m) => m.orgId === requestedOrgId);
+      if (found) orgId = found.orgId;
+    }
+
+    return { user, orgId, isAdmin: user.role === "ADMIN" };
   } catch (err) {
-    console.error("news endpoint error:", err);
-    res.status(500).json({ items: [], message: "РќРµ СѓРґР°Р»РѕСЃСЊ Р·Р°РіСЂСѓР·РёС‚СЊ РЅРѕРІРѕСЃС‚Рё" });
+    return { user: null, orgId: null, isAdmin: false };
+  }
+}
+
+app.get("/api/portal-news", async (req, res) => {
+  try {
+    const { orgId, isAdmin } = await resolvePortalNewsContext(req);
+    let effectiveOrgId = orgId;
+    if (!effectiveOrgId) {
+      const defaultOrg = await basePrisma.organization.findFirst({
+        orderBy: { id: "asc" },
+      });
+      effectiveOrgId = defaultOrg?.id || null;
+    }
+
+    const where = {};
+    if (!isAdmin) {
+      where.published = true;
+    }
+    if (effectiveOrgId) {
+      where.orgId = effectiveOrgId;
+    }
+
+    let items = await basePrisma.portalNews.findMany({
+      where,
+      orderBy: { createdAt: "desc" },
+    });
+
+    if (items.length === 0 && effectiveOrgId) {
+      await basePrisma.portalNews.createMany({
+        data: PORTAL_NEWS_SEED.map((item) => ({
+          title: item.title,
+          body: item.body,
+          tags: item.tags,
+          published: item.published,
+          orgId: effectiveOrgId,
+        })),
+        skipDuplicates: true,
+      });
+      items = await basePrisma.portalNews.findMany({
+        where,
+        orderBy: { createdAt: "desc" },
+      });
+    }
+    const normalized = items.map((item) => ({
+      ...item,
+      title: decodeEscapedUnicode(item.title),
+      body: decodeEscapedUnicode(item.body),
+      tags: normalizePortalNewsTags(item.tags),
+    }));
+    const updates = normalized
+      .map((item, index) => {
+        const original = items[index];
+        if (
+          item.title === original.title &&
+          item.body === original.body &&
+          JSON.stringify(item.tags ?? null) === JSON.stringify(original.tags ?? null)
+        ) {
+          return null;
+        }
+        return prisma.portalNews.update({
+          where: { id: item.id },
+          data: {
+            title: item.title,
+            body: item.body,
+            tags: item.tags,
+          },
+        });
+      })
+      .filter(Boolean);
+
+    if (updates.length) {
+      await Promise.allSettled(updates);
+    }
+    res.json({ items: normalized });
+  } catch (err) {
+    console.error("portal news list error:", err);
+    res
+      .status(500)
+      .json({ items: [], message: "Не удалось загрузить новости портала" });
   }
 });
+
+app.post("/api/portal-news", auth, requireAdmin, async (req, res) => {
+  try {
+    const title = normalizePortalNewsText(req.body?.title);
+    const body = normalizePortalNewsText(req.body?.body);
+    const published = req.body?.published !== false;
+    const rawTags = req.body?.tags;
+    const tags = Array.isArray(rawTags)
+      ? rawTags.map((t) => String(t).trim()).filter(Boolean)
+      : typeof rawTags === "string"
+      ? rawTags
+          .split(",")
+          .map((t) => t.trim())
+          .filter(Boolean)
+      : [];
+    const normalizedTags = normalizePortalNewsTags(tags);
+
+    if (!title || !body) {
+      return res
+        .status(400)
+        .json({ message: "Заполните заголовок и текст новости" });
+    }
+
+    const created = await prisma.portalNews.create({
+      data: {
+        title,
+        body,
+        tags: normalizedTags,
+        published,
+      },
+    });
+    res.status(201).json(created);
+  } catch (err) {
+    console.error("portal news create error:", err);
+    res.status(500).json({ message: "Не удалось создать новость" });
+  }
+});
+
+app.put("/api/portal-news/:id", auth, requireAdmin, async (req, res) => {
+  try {
+    const id = Number(req.params.id);
+    if (!id || Number.isNaN(id)) {
+      return res.status(400).json({ message: "Некорректный идентификатор" });
+    }
+
+    const title = normalizePortalNewsText(req.body?.title);
+    const body = normalizePortalNewsText(req.body?.body);
+    const published = req.body?.published !== false;
+    const rawTags = req.body?.tags;
+    const tags = Array.isArray(rawTags)
+      ? rawTags.map((t) => String(t).trim()).filter(Boolean)
+      : typeof rawTags === "string"
+      ? rawTags
+          .split(",")
+          .map((t) => t.trim())
+          .filter(Boolean)
+      : [];
+    const normalizedTags = normalizePortalNewsTags(tags);
+
+    if (!title || !body) {
+      return res
+        .status(400)
+        .json({ message: "Заполните заголовок и текст новости" });
+    }
+
+    const updated = await prisma.portalNews.update({
+      where: { id },
+      data: {
+        title,
+        body,
+        tags: normalizedTags,
+        published,
+      },
+    });
+    res.json(updated);
+  } catch (err) {
+    console.error("portal news update error:", err);
+    if (err?.code === "P2025") {
+      return res.status(404).json({ message: "Новость не найдена" });
+    }
+    res.status(500).json({ message: "Не удалось обновить новость" });
+  }
+});
+
+app.delete("/api/portal-news/:id", auth, requireAdmin, async (req, res) => {
+  try {
+    const id = Number(req.params.id);
+    if (!id || Number.isNaN(id)) {
+      return res.status(400).json({ message: "Некорректный идентификатор" });
+    }
+
+    await prisma.portalNews.delete({ where: { id } });
+    res.json({ ok: true });
+  } catch (err) {
+    console.error("portal news delete error:", err);
+    if (err?.code === "P2025") {
+      return res.status(404).json({ message: "Новость не найдена" });
+    }
+    res.status(500).json({ message: "Не удалось удалить новость" });
+  }
+});
+
+
+// ---------- Новости ----------
 
 app.put(
   "/api/safety/assignments/:id/complete",
@@ -1321,7 +1345,7 @@ app.put(
         return res.status(400).json({ message: "Invalid assignment id" });
       }
 
-      // С‚СЏРЅРµРј РёРЅСЃС‚СЂСѓРєС‚Р°Р¶, С‡С‚РѕР±С‹ РїРѕРЅСЏС‚СЊ РїРµСЂРёРѕРґРёС‡РЅРѕСЃС‚СЊ
+      // тянем инструктаж, чтобы понять периодичность
       const assignment = await prisma.safetyAssignment.findUnique({
         where: { id },
         include: { instruction: true },
@@ -1410,7 +1434,7 @@ async function getOrCreateReceivingLocation() {
     location = await prisma.warehouseLocation.create({
       data: {
         code,
-        name: "Р—РѕРЅР° РїСЂРёРµРјРєРё",
+        name: "Зона приемки",
       },
     });
   }
@@ -1420,7 +1444,7 @@ async function getOrCreateReceivingLocation() {
 
 function buildReceiveActHtml(order, rows, orgInfo) {
   const safeOrg = {
-    name: orgInfo?.orgName || orgInfo?.name || "РћСЂРіР°РЅРёР·Р°С†РёСЏ",
+    name: orgInfo?.orgName || orgInfo?.name || "Организация",
     legalAddress: orgInfo?.legalAddress || "",
     actualAddress: orgInfo?.actualAddress || "",
     inn: orgInfo?.inn || "",
@@ -1462,7 +1486,7 @@ function buildReceiveActHtml(order, rows, orgInfo) {
     .join("");
 
   const phoneRow = safeOrg.phone
-    ? `<tr><td>РўРµР».: ${safeOrg.phone}</td></tr>`
+    ? `<tr><td>Тел.: ${safeOrg.phone}</td></tr>`
     : "";
 
   return `
@@ -1470,7 +1494,7 @@ function buildReceiveActHtml(order, rows, orgInfo) {
 <html lang="ru">
 <head>
   <meta charset="utf-8" />
-  <title>РђРљРў Р’РћР—Р’Р РђРўРђ РўРћР’РђР Рђ в„– ${order?.number || ""} РѕС‚ ${actDateStr}</title>
+  <title>АКТ ВОЗВРАТА ТОВАРА № ${order?.number || ""} от ${actDateStr}</title>
   <style>
     * { box-sizing: border-box; }
     body {
@@ -1534,39 +1558,39 @@ function buildReceiveActHtml(order, rows, orgInfo) {
   <div class="a4">
     <table class="no-border">
       <tr><td>${safeOrg.name}</td></tr>
-      <tr><td>Р®СЂРёРґРёС‡РµСЃРєРёР№ Р°РґСЂРµСЃ: ${safeOrg.legalAddress}</td></tr>
-      <tr><td>Р¤Р°РєС‚РёС‡РµСЃРєРёР№ Р°РґСЂРµСЃ: ${safeOrg.actualAddress}</td></tr>
-      <tr><td>РРќРќ ${safeOrg.inn}&nbsp;&nbsp;&nbsp;&nbsp;РљРџРџ ${safeOrg.kpp}</td></tr>
+      <tr><td>Юридический адрес: ${safeOrg.legalAddress}</td></tr>
+      <tr><td>Фактический адрес: ${safeOrg.actualAddress}</td></tr>
+      <tr><td>НН ${safeOrg.inn}&nbsp;&nbsp;&nbsp;&nbsp;КПП ${safeOrg.kpp}</td></tr>
       ${phoneRow}
     </table>
 
     <div class="title">
-      РђРљРў Р’РћР—Р’Р РђРўРђ РўРћР’РђР Рђ в„– ${order?.number || ""} РѕС‚ ${actDateStr}
+      АКТ ВОЗВРАТА ТОВАРА № ${order?.number || ""} от ${actDateStr}
     </div>
 
     <div class="small" style="margin-bottom:4px;">
-      РџРѕСЃС‚Р°РІС‰РёРє: ${order?.supplier?.name || ""}
+      Поставщик: ${order?.supplier?.name || ""}
     </div>
     <div class="small" style="margin-bottom:8px;">
-      Р”РѕРєСѓРјРµРЅС‚: Р·Р°РєР°Р· РїРѕСЃС‚Р°РІС‰РёРєСѓ в„– ${order?.number || ""} РѕС‚ ${orderDateStr}
+      Документ: заказ поставщику № ${order?.number || ""} от ${orderDateStr}
     </div>
 
     <div class="small" style="margin-bottom:6px;">
-      РџСЂРё РѕС†РµРЅРєРµ РєР°С‡РµСЃС‚РІР° РїРѕСЃС‚Р°РІР»РµРЅРЅРѕРіРѕ С‚РѕРІР°СЂР° Р·Р°С„РёРєСЃРёСЂРѕРІР°РЅС‹ СЃР»РµРґСѓСЋС‰РёРµ РЅРµРґРѕСЃС‚Р°С‚РєРё:
+      При оценке качества поставленного товара зафиксированы следующие недостатки:
     </div>
 
     <table class="act-table">
       <tr>
-        <th style="width:30px;">в„– Рї/Рї</th>
-        <th>РќР°РёРјРµРЅРѕРІР°РЅРёРµ С‚РѕРІР°СЂР°</th>
-        <th style="width:140px;">РљРѕР»РёС‡РµСЃС‚РІРѕ, С€С‚. (РїРѕ РЅР°РєР»Р°РґРЅРѕР№)</th>
-        <th style="width:120px;">РљРѕР»РёС‡РµСЃС‚РІРѕ, С€С‚. (С„Р°РєС‚РёС‡РµСЃРєРё)</th>
-        <th style="width:150px;">РљРѕР»РёС‡РµСЃС‚РІРѕ С‚РѕРІР°СЂР° СЃ РЅРµРґРѕСЃС‚Р°С‚РєР°РјРё, С€С‚.</th>
-        <th style="width:140px;">Р—Р°РєР»СЋС‡РµРЅРёРµ, РїСЂРёРјРµС‡Р°РЅРёРµ</th>
+        <th style="width:30px;">№ п/п</th>
+        <th>Наименование товара</th>
+        <th style="width:140px;">Количество, шт. (по накладной)</th>
+        <th style="width:120px;">Количество, шт. (фактически)</th>
+        <th style="width:150px;">Количество товара с недостатками, шт.</th>
+        <th style="width:140px;">Заключение, примечание</th>
       </tr>
       ${rowsHtml}
       <tr>
-        <td colspan="2" style="text-align:right;font-weight:bold;">РС‚РѕРіРѕ:</td>
+        <td colspan="2" style="text-align:right;font-weight:bold;">того:</td>
         <td style="text-align:center;font-weight:bold;">${totalOrdered}</td>
         <td style="text-align:center;font-weight:bold;">${totalReceived}</td>
         <td style="text-align:center;font-weight:bold;">${totalDiff}</td>
@@ -1575,42 +1599,42 @@ function buildReceiveActHtml(order, rows, orgInfo) {
     </table>
 
     <div class="small" style="margin-top:16px;">
-      РџСЂРёС‡РёРЅС‹ РЅРµРґРѕСЃС‚Р°С‡Рё С‚РѕРІР°СЂР° РјРѕРіСѓС‚ Р±С‹С‚СЊ РІС‹СЏРІР»РµРЅС‹ РїРѕСЃР»Рµ РІСЃРєСЂС‹С‚РёСЏ С‚Р°СЂС‹ Рё РїРµСЂРµСЃС‡РµС‚Р° С‚РѕРІР°СЂР°.
+      Причины недостачи товара могут быть выявлены после вскрытия тары и пересчета товара.
     </div>
 
     <div class="signs">
       <div class="sign">
-        <div>РџРѕР»СѓС‡Р°С‚РµР»СЊ</div>
+        <div>Получатель</div>
         <div class="line"></div>
-        <div class="small">РґРѕР»Р¶РЅРѕСЃС‚СЊ / РїРѕРґРїРёСЃСЊ / Р¤.Р.Рћ.</div>
-        <div class="small" style="margin-top:6px;">Рњ.Рџ.</div>
+        <div class="small">должность / подпись / Ф..О.</div>
+        <div class="small" style="margin-top:6px;">М.П.</div>
       </div>
       <div class="sign">
-        <div>РџСЂРµРґСЃС‚Р°РІРёС‚РµР»СЊ РїРѕСЃС‚Р°РІС‰РёРєР° (СЌРєСЃРїРµРґРёС‚РѕСЂ)</div>
+        <div>Представитель поставщика (экспедитор)</div>
         <div class="line"></div>
-        <div class="small">РґРѕР»Р¶РЅРѕСЃС‚СЊ / РїРѕРґРїРёСЃСЊ / Р¤.Р.Рћ.</div>
+        <div class="small">должность / подпись / Ф..О.</div>
       </div>
     </div>
 
-    <button class="print-btn" onclick="window.print()">РџРµС‡Р°С‚СЊ</button>
+    <button class="print-btn" onclick="window.print()">Печать</button>
   </div>
 </body>
 </html>
   `;
 }
 
-// ================== TELEGRAM Р‘РћРў (РўР•РЎРўРћР’Р«Р™) ==================
+// ================== TELEGRAM БОТ (ТЕСТОВЫЙ) ==================
 
 const TELEGRAM_BOT_TOKEN =
   "8254839296:AAGnAvL09dFoMyHzIyRqi2FZ11G6tJgDee4";
 const TELEGRAM_GROUP_CHAT_ID = "-4974442288";
 const TELEGRAM_API = `https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}`;
 
-// СѓРЅРёРІРµСЂСЃР°Р»СЊРЅР°СЏ РѕС‚РїСЂР°РІРєР° СЃРѕРѕР±С‰РµРЅРёСЏ
+// универсальная отправка сообщения
 async function sendTelegramMessage(chatId, text, extra = {}) {
   try {
     if (!TELEGRAM_BOT_TOKEN || !chatId) {
-      console.log("[Telegram] TOKEN РёР»Рё chatId РЅРµ СѓРєР°Р·Р°РЅ, РѕС‚РїСЂР°РІРєР° РїСЂРѕРїСѓС‰РµРЅР°");
+      console.log("[Telegram] TOKEN или chatId не указан, отправка пропущена");
       return;
     }
 
@@ -1632,14 +1656,14 @@ async function sendTelegramMessage(chatId, text, extra = {}) {
 
     if (!res.ok) {
       const data = await res.text();
-      console.error("[Telegram] РћС€РёР±РєР° РѕС‚РїСЂР°РІРєРё:", data);
+      console.error("[Telegram] Ошибка отправки:", data);
     }
   } catch (err) {
-    console.error("[Telegram] РћС€РёР±РєР°:", err);
+    console.error("[Telegram] Ошибка:", err);
   }
 }
 
-// РЈРґРѕР±РЅР°СЏ РѕР±С‘СЂС‚РєР°: РѕС‚РїСЂР°РІРёС‚СЊ СЃРѕРѕР±С‰РµРЅРёРµ РёРјРµРЅРЅРѕ РІ СЃРєР»Р°РґСЃРєРѕР№ РіСЂСѓРїРїРѕРІРѕР№ С‡Р°С‚
+// Удобная обёртка: отправить сообщение именно в складской групповой чат
 function sendWarehouseGroupMessage(text, extra = {}) {
   return sendTelegramMessage(TELEGRAM_GROUP_CHAT_ID, text, extra);
 }
@@ -1649,21 +1673,21 @@ async function sendSafetyReminderForAssignment(a, force = false) {
   const now = new Date();
   const due = new Date(a.dueDate);
   const diffDays = Math.floor((due - now) / (1000 * 60 * 60 * 24));
-  if (!force && diffDays > 3) return false; // РЅР°С‡РёРЅР°РµРј Р·Р° 3 РґРЅСЏ
+  if (!force && diffDays > 3) return false; // начинаем за 3 дня
 
   if (!force && a.lastReminderAt) {
     const last = new Date(a.lastReminderAt);
     const hoursSince = (now - last) / (1000 * 60 * 60);
-    if (hoursSince < 20) return false; // РЅРµ С‡Р°С‰Рµ СЂР°Р·Р° РІ СЃСѓС‚РєРё
+    if (hoursSince < 20) return false; // не чаще раза в сутки
   }
 
   const text = [
-    `РќР°РїРѕРјРёРЅР°РЅРёРµ РїРѕ РёРЅСЃС‚СЂСѓРєС‚Р°Р¶Сѓ: ${a.instruction?.title || "РёРЅСЃС‚СЂСѓРєС‚Р°Р¶"}`,
-    `РЎРѕС‚СЂСѓРґРЅРёРє: ${a.employee.fullName}`,
-    `РЎСЂРѕРє: ${due.toLocaleDateString("ru-RU")}`,
-    diffDays >= 0 ? `РћСЃС‚Р°Р»РѕСЃСЊ РґРЅРµР№: ${diffDays + 1}` : `РџСЂРѕСЃСЂРѕС‡РµРЅРѕ РЅР° ${Math.abs(diffDays)} РґРЅ.`,
+    `Напоминание по инструктажу: ${a.instruction?.title || "инструктаж"}`,
+    `Сотрудник: ${a.employee.fullName}`,
+    `Срок: ${due.toLocaleDateString("ru-RU")}`,
+    diffDays >= 0 ? `Осталось дней: ${diffDays + 1}` : `Просрочено на ${Math.abs(diffDays)} дн.`,
     "",
-    "РџРѕСЃР»Рµ РїСЂРѕС…РѕР¶РґРµРЅРёСЏ РїРѕСЃС‚Р°РІСЊС‚Рµ СЃС‚Р°С‚СѓСЃ В«РџСЂРѕР№РґРµРЅВ».",
+    "После прохождения поставьте статус «Пройден».",
   ].join("\n");
 
   await sendTelegramMessage(a.employee.telegramChatId, text);
@@ -1690,10 +1714,10 @@ async function sendSafetyReminders() {
   }
 }
 
-setInterval(sendSafetyReminders, 1000 * 60 * 60); // СЂР°Р· РІ С‡Р°СЃ
+setInterval(sendSafetyReminders, 1000 * 60 * 60); // раз в час
 sendSafetyReminders();
 
-// РѕР±СЂР°Р±РѕС‚РєР° callback_query (РєРЅРѕРїРєР° "вњ… Р’С‹РїРѕР»РЅРµРЅРѕ")
+// обработка callback_query (кнопка "✅ Выполнено")
 async function handleTelegramUpdate(update) {
   if (!update.callback_query) return;
 
@@ -1717,14 +1741,14 @@ async function handleTelegramUpdate(update) {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           callback_query_id: callbackId,
-          text: "Р—Р°РґР°С‡Р° РЅРµ РЅР°Р№РґРµРЅР°",
+          text: "Задача не найдена",
           show_alert: true,
         }),
       });
       return;
     }
 
-    // РїСЂРѕРІРµСЂСЏРµРј, С‡С‚Рѕ РЅР°Р¶Р°Р» РёРјРµРЅРЅРѕ РёСЃРїРѕР»РЅРёС‚РµР»СЊ (РµСЃР»Рё executorChatId Р·Р°РґР°РЅ)
+    // проверяем, что нажал именно исполнитель (если executorChatId задан)
     if (
       task.executorChatId &&
       String(task.executorChatId) !== String(from.id)
@@ -1734,14 +1758,14 @@ async function handleTelegramUpdate(update) {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           callback_query_id: callbackId,
-          text: "Р­С‚Р° Р·Р°РґР°С‡Р° РЅР°Р·РЅР°С‡РµРЅР° РґСЂСѓРіРѕРјСѓ СЃРѕС‚СЂСѓРґРЅРёРєСѓ.",
+          text: "Эта задача назначена другому сотруднику.",
           show_alert: true,
         }),
       });
       return;
     }
 
-    // РѕР±РЅРѕРІР»СЏРµРј СЃС‚Р°С‚СѓСЃ Р·Р°РґР°С‡Рё
+    // обновляем статус задачи
     await prisma.warehouseTask.update({
       where: { id: taskId },
       data: {
@@ -1750,10 +1774,10 @@ async function handleTelegramUpdate(update) {
       },
     });
 
-    // РµСЃР»Рё Р·Р°РґР°С‡Р° СЃРѕР·РґР°РЅР° РїРѕ Р·Р°СЏРІРєРµ РЅР° СЃРєР»Р°Рґ вЂ” Р°РІС‚Рѕ-РїСЂРѕРІРµРґРµРЅРёРµ Р·Р°СЏРІРєРё РїРѕ СЃРєР»Р°РґСѓ
+    // если задача создана по заявке на склад — авто-проведение заявки по складу
     try {
-      // title РІРёРґР°: "Р—Р°СЏРІРєР° РЅР° СЃРєР»Р°Рґ #19: ... "
-      const match = task.title.match(/Р—Р°СЏРІРєР° РЅР° СЃРєР»Р°Рґ #(\d+)/);
+      // title вида: "Заявка на склад #19: ... "
+      const match = task.title.match(/Заявка на склад #(\d+)/);
       if (match && task.assignerId) {
         const requestId = Number(match[1]);
         if (requestId) {
@@ -1764,40 +1788,40 @@ async function handleTelegramUpdate(update) {
       console.error("[Telegram] autoPostRequestFromTask error:", e);
     }
 
-    // РѕС‚РІРµС‚РёРј РўРµР»РµРіСЂР°РјСѓ, С‡С‚РѕР±С‹ СѓР±СЂР°Р»РёСЃСЊ "С‡Р°СЃРёРєРё" РЅР° РєРЅРѕРїРєРµ
+    // ответим Телеграму, чтобы убрались "часики" на кнопке
     await fetch(`${TELEGRAM_API}/answerCallbackQuery`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
         callback_query_id: callbackId,
-        text: "Р—Р°РґР°С‡Р° РѕС‚РјРµС‡РµРЅР° РєР°Рє РІС‹РїРѕР»РЅРµРЅРЅР°СЏ вњ…",
+        text: "Задача отмечена как выполненная ✅",
         show_alert: false,
       }),
     });
 
-    // РёСЃРїРѕР»РЅРёС‚РµР»СЋ
+    // исполнителю
     await sendTelegramMessage(
       from.id,
-      `вњ… Р—Р°РґР°С‡Р° <b>${task.title}</b> РѕС‚РјРµС‡РµРЅР° РєР°Рє РІС‹РїРѕР»РЅРµРЅРЅР°СЏ.`
+      `✅ Задача <b>${task.title}</b> отмечена как выполненная.`
     );
 
-    // РІ РіСЂСѓРїРїСѓ
+    // в группу
     await sendWarehouseGroupMessage(
-      `вњ… Р—Р°РґР°С‡Р° СЃРєР»Р°РґР° <b>${task.title}</b> РІС‹РїРѕР»РЅРµРЅР° РёСЃРїРѕР»РЅРёС‚РµР»РµРј.`
+      `✅ Задача склада <b>${task.title}</b> выполнена исполнителем.`
     );
 
     console.log(
-      `[Telegram] Р—Р°РґР°С‡Р° ${taskId} РѕС‚РјРµС‡РµРЅР° РєР°Рє РІС‹РїРѕР»РЅРµРЅРЅР°СЏ РїРѕР»СЊР·РѕРІР°С‚РµР»РµРј ${from.id}`
+      `[Telegram] Задача ${taskId} отмечена как выполненная пользователем ${from.id}`
     );
   } catch (err) {
-    console.error("[handleTelegramUpdate] РћС€РёР±РєР°:", err);
+    console.error("[handleTelegramUpdate] Ошибка:", err);
   }
 }
 
 let telegramOffset = 0;
 
 async function startTelegramPolling() {
-  console.log("в–¶пёЏ Р—Р°РїСѓСЃРє long polling Telegram...");
+  console.log("▶️ Запуск long polling Telegram...");
 
   while (true) {
     try {
@@ -1807,7 +1831,7 @@ async function startTelegramPolling() {
       const data = await res.json();
 
       if (!data.ok) {
-        console.error("[startTelegramPolling] РћС‚РІРµС‚ Telegram СЃ РѕС€РёР±РєРѕР№:", data);
+        console.error("[startTelegramPolling] Ответ Telegram с ошибкой:", data);
         await new Promise((r) => setTimeout(r, 5000));
         continue;
       }
@@ -1819,13 +1843,13 @@ async function startTelegramPolling() {
         }
       }
     } catch (err) {
-      console.error("[startTelegramPolling] РћС€РёР±РєР°:", err);
+      console.error("[startTelegramPolling] Ошибка:", err);
       await new Promise((r) => setTimeout(r, 5000));
     }
   }
 }
 
-// ================== РќРђРџРћРњРРќРђРќРРЇ РџРћ Р—РђР”РђР§РђРњ РЎРљР›РђР”Рђ ==================
+// ================== НАПОМНАНЯ ПО ЗАДАЧАМ СКЛАДА ==================
 
 async function checkWarehouseTaskNotifications() {
   try {
@@ -1852,7 +1876,7 @@ async function checkWarehouseTaskNotifications() {
         ? (now.getTime() - last.getTime()) / (1000 * 60)
         : Infinity;
 
-      // 1) Р—Р° 5 РјРёРЅСѓС‚ РґРѕ СЃСЂРѕРєР° вЂ” РѕРґРЅРѕ РЅР°РїРѕРјРёРЅР°РЅРёРµ
+      // 1) За 5 минут до срока — одно напоминание
       if (diffMinutes <= 5 && diffMinutes > 0 && !task.lastReminderAt) {
         const dueStr = due.toLocaleString("ru-RU", {
           day: "2-digit",
@@ -1863,20 +1887,20 @@ async function checkWarehouseTaskNotifications() {
         });
 
         const baseText =
-          "вЏ° <b>РЎРєРѕСЂРѕ СЃСЂРѕРє РїРѕ Р·Р°РґР°С‡Рµ СЃРєР»Р°РґР°</b>\n\n" +
-          `рџ“ќ <b>Р—Р°РґР°С‡Р°:</b> ${task.title}\n` +
+          "⏰ <b>Скоро срок по задаче склада</b>\n\n" +
+          `📝 <b>Задача:</b> ${task.title}\n` +
           (task.executorName
-            ? `рџ‘· <b>РСЃРїРѕР»РЅРёС‚РµР»СЊ:</b> ${task.executorName}\n`
+            ? `👷 <b>сполнитель:</b> ${task.executorName}\n`
             : "") +
-          `вЏ° <b>РЎСЂРѕРє:</b> ${dueStr}`;
+          `⏰ <b>Срок:</b> ${dueStr}`;
 
         await sendWarehouseGroupMessage(baseText);
 
         if (task.executorChatId) {
           const execText =
-            "вЏ° <b>РЈ РІР°СЃ СЃРєРѕСЂРѕ СЃСЂРѕРє РїРѕ Р·Р°РґР°С‡Рµ СЃРєР»Р°РґР°</b>\n\n" +
-            `рџ“ќ <b>Р—Р°РґР°С‡Р°:</b> ${task.title}\n` +
-            `вЏ° <b>РЎСЂРѕРє:</b> ${dueStr}`;
+            "⏰ <b>У вас скоро срок по задаче склада</b>\n\n" +
+            `📝 <b>Задача:</b> ${task.title}\n` +
+            `⏰ <b>Срок:</b> ${dueStr}`;
           await sendTelegramMessage(task.executorChatId, execText);
         }
 
@@ -1888,7 +1912,7 @@ async function checkWarehouseTaskNotifications() {
         continue;
       }
 
-      // 2) РЎСЂРѕРє СѓР¶Рµ РїСЂРѕС€С‘Р» вЂ” РЅР°РїРѕРјРёРЅР°РЅРёРµ СЂР°Р· РІ С‡Р°СЃ
+      // 2) Срок уже прошёл — напоминание раз в час
       if (diffMinutes < 0 && minutesSinceLast >= 60) {
         const dueStr = due.toLocaleString("ru-RU", {
           day: "2-digit",
@@ -1899,20 +1923,20 @@ async function checkWarehouseTaskNotifications() {
         });
 
         const baseText =
-          "вљ пёЏ <b>РџСЂРѕСЃСЂРѕС‡РµРЅР° Р·Р°РґР°С‡Р° СЃРєР»Р°РґР°</b>\n\n" +
-          `рџ“ќ <b>Р—Р°РґР°С‡Р°:</b> ${task.title}\n` +
+          "⚠️ <b>Просрочена задача склада</b>\n\n" +
+          `📝 <b>Задача:</b> ${task.title}\n` +
           (task.executorName
-            ? `рџ‘· <b>РСЃРїРѕР»РЅРёС‚РµР»СЊ:</b> ${task.executorName}\n`
+            ? `👷 <b>сполнитель:</b> ${task.executorName}\n`
             : "") +
-          `вЏ° <b>РЎСЂРѕРє Р±С‹Р»:</b> ${dueStr}`;
+          `⏰ <b>Срок был:</b> ${dueStr}`;
 
         await sendWarehouseGroupMessage(baseText);
 
         if (task.executorChatId) {
           const execText =
-            "вљ пёЏ <b>РЈ РІР°СЃ РїСЂРѕСЃСЂРѕС‡РµРЅР° Р·Р°РґР°С‡Р° СЃРєР»Р°РґР°</b>\n\n" +
-            `рџ“ќ <b>Р—Р°РґР°С‡Р°:</b> ${task.title}\n` +
-            `вЏ° <b>РЎСЂРѕРє Р±С‹Р»:</b> ${dueStr}`;
+            "⚠️ <b>У вас просрочена задача склада</b>\n\n" +
+            `📝 <b>Задача:</b> ${task.title}\n` +
+            `⏰ <b>Срок был:</b> ${dueStr}`;
           await sendTelegramMessage(task.executorChatId, execText);
         }
 
@@ -1923,13 +1947,13 @@ async function checkWarehouseTaskNotifications() {
       }
     }
   } catch (err) {
-    console.error("[checkWarehouseTaskNotifications] РћС€РёР±РєР°:", err);
+    console.error("[checkWarehouseTaskNotifications] Ошибка:", err);
   }
 }
 
-// ================== РђР’РўРћРџР РћР’Р•Р РљРђ РћРЎРўРђРўРљРћР’ (РќРћР’РђРЇ Р§РђРЎРўР¬) ==================
+// ================== АВТОПРОВЕРКА ОСТАТКОВ (НОВАЯ ЧАСТЬ) ==================
 
-// 1. РџРѕР»СѓС‡РёС‚СЊ С‚РѕРІР°СЂС‹, РіРґРµ С‚РµРєСѓС‰РёР№ РѕСЃС‚Р°С‚РѕРє < minStock
+// 1. Получить товары, где текущий остаток < minStock
 async function getLowStockItems() {
   const items = await prisma.item.findMany({
     where: {
@@ -1970,7 +1994,7 @@ async function getLowStockItems() {
   return result;
 }
 
-// 2. РћС‚РїСЂР°РІРёС‚СЊ РѕРґРёРЅ РѕР±С‰РёР№ РѕС‚С‡С‘С‚ РІ СЃРєР»Р°РґСЃРєРѕР№ С‡Р°С‚
+// 2. Отправить один общий отчёт в складской чат
 async function sendDailyLowStockSummary() {
   try {
     const lowItems = await getLowStockItems();
@@ -1979,27 +2003,27 @@ async function sendDailyLowStockSummary() {
 
     if (lowItems.length === 0) {
       await sendWarehouseGroupMessage(
-        `вњ… РќР° РєРѕРЅРµС† РґРЅСЏ (${dateStr}) С‚РѕРІР°СЂРѕРІ РЅРёР¶Рµ РјРёРЅРёРјР°Р»СЊРЅРѕРіРѕ РѕСЃС‚Р°С‚РєР° РЅРµС‚.`
+        `✅ На конец дня (${dateStr}) товаров ниже минимального остатка нет.`
       );
       return;
     }
 
-    let text = `рџ“¦ РЎРїРёСЃРѕРє С‚РѕРІР°СЂРѕРІ РґР»СЏ РґРѕР·Р°РєР°Р·Р° РЅР° ${dateStr}:\n\n`;
+    let text = `📦 Список товаров для дозаказа на ${dateStr}:\n\n`;
 
     for (const it of lowItems) {
-      text += `вЂў ${it.name} вЂ” СЃРµР№С‡Р°СЃ ${it.currentStock} ${it.unit || ""
-        }, РјРёРЅРёРјСѓРј ${it.minStock}\n`;
+      text += `• ${it.name} — сейчас ${it.currentStock} ${it.unit || ""
+        }, минимум ${it.minStock}\n`;
     }
 
     await sendWarehouseGroupMessage(text);
   } catch (err) {
-    console.error("[sendDailyLowStockSummary] РћС€РёР±РєР°:", err);
+    console.error("[sendDailyLowStockSummary] Ошибка:", err);
   }
 }
 
-// ================== РђРЈРўР•РќРўРР¤РРљРђР¦РРЇ ==================
+// ================== АУТЕНТФКАЦЯ ==================
 
-// СЂРµРіРёСЃС‚СЂР°С†РёСЏ
+// регистрация
 app.post("/api/register", async (req, res) => {
 
   if (process.env.DISABLE_PUBLIC_REGISTER !== "false") {
@@ -2081,7 +2105,7 @@ app.post("/api/register", async (req, res) => {
   }
 });
 
-// Р»РѕРіРёРЅ
+// логин
 app.post("/api/login", async (req, res) => {
   try {
     const { email, password } = req.body;
@@ -2089,7 +2113,7 @@ app.post("/api/login", async (req, res) => {
     if (!email || !password) {
       return res
         .status(400)
-        .json({ message: "email Рё РїР°СЂРѕР»СЊ РѕР±СЏР·Р°С‚РµР»СЊРЅС‹" });
+        .json({ message: "email и пароль обязательны" });
     }
 
     const user = await prisma.user.findUnique({ where: { email } });
@@ -2099,7 +2123,7 @@ app.post("/api/login", async (req, res) => {
     if (!user) {
       return res
         .status(401)
-        .json({ message: "РќРµРІРµСЂРЅС‹Р№ email РёР»Рё РїР°СЂРѕР»СЊ" });
+        .json({ message: "Неверный email или пароль" });
     }
 
     const storedHash = user.passwordHash || user.password;
@@ -2107,7 +2131,7 @@ app.post("/api/login", async (req, res) => {
     if (!ok) {
       return res
         .status(401)
-        .json({ message: "РќРµРІРµСЂРЅС‹Р№ email РёР»Рё РїР°СЂРѕР»СЊ" });
+        .json({ message: "Неверный email или пароль" });
     }
 
     const token = createToken(user);
@@ -2131,11 +2155,11 @@ app.post("/api/login", async (req, res) => {
     });
   } catch (err) {
     console.error("login error:", err);
-    res.status(500).json({ message: "РћС€РёР±РєР° СЃРµСЂРІРµСЂР° РїСЂРё РІС…РѕРґРµ" });
+    res.status(500).json({ message: "Ошибка сервера при входе" });
   }
 });
 
-// РїСЂРѕС„РёР»СЊ С‚РµРєСѓС‰РµРіРѕ РїРѕР»СЊР·РѕРІР°С‚РµР»СЏ
+// профиль текущего пользователя
 const getMeResponse = async (req, res) => {
   try {
     const user = await prisma.user.findUnique({
@@ -2309,13 +2333,13 @@ app.put("/api/settings/org-profile", auth, requireAdmin, async (req, res) => {
   }
 });
 
-// DEV: СЃРґРµР»Р°С‚СЊ С‚РµРєСѓС‰РµРіРѕ РїРѕР»СЊР·РѕРІР°С‚РµР»СЏ Р°РґРјРёРЅРѕРј РїРѕ email
+// DEV: сделать текущего пользователя админом по email
 app.post("/api/dev/make-me-admin", auth, async (req, res) => {
   try {
     const allowedEmail = "dvinskihsergej9@gmail.com";
 
     if (req.user.email.toLowerCase() !== allowedEmail.toLowerCase()) {
-      return res.status(403).json({ message: "РќРµС‚ РїСЂР°РІ" });
+      return res.status(403).json({ message: "Нет прав" });
     }
 
     const user = await prisma.user.update({
@@ -2324,12 +2348,12 @@ app.post("/api/dev/make-me-admin", auth, async (req, res) => {
       select: { id: true, email: true, name: true, role: true },
     });
 
-    res.json({ message: "РўРµРїРµСЂСЊ РІС‹ ADMIN", user });
+    res.json({ message: "Теперь вы ADMIN", user });
   } catch (err) {
     console.error("make-me-admin error:", err);
     res
       .status(500)
-      .json({ message: "РћС€РёР±РєР° СЃРµСЂРІРµСЂР° РїСЂРё РЅР°Р·РЅР°С‡РµРЅРёРё Р°РґРјРёРЅРёСЃС‚СЂР°С‚РѕСЂР°" });
+      .json({ message: "Ошибка сервера при назначении администратора" });
   }
 });
 
@@ -2384,7 +2408,7 @@ app.post("/api/dev/activate-test-subscription", auth, async (req, res) => {
 });
 
 
-// ================== РђР”РњРРќРљРђ РџРћР›Р¬Р—РћР’РђРўР•Р›Р•Р™ ==================
+// ================== АДМНКА ПОЛЬЗОВАТЕЛЕЙ ==================
 
 app.get("/api/users", auth, requireAdmin, async (req, res) => {
   try {
@@ -2403,7 +2427,7 @@ app.get("/api/users", auth, requireAdmin, async (req, res) => {
     console.error("users list error:", err);
     res
       .status(500)
-      .json({ message: "РћС€РёР±РєР° СЃРµСЂРІРµСЂР° РїСЂРё Р·Р°РіСЂСѓР·РєРµ РїРѕР»СЊР·РѕРІР°С‚РµР»РµР№" });
+      .json({ message: "Ошибка сервера при загрузке пользователей" });
   }
 });
 
@@ -2413,7 +2437,7 @@ app.put("/api/users/:id/role", auth, requireAdmin, async (req, res) => {
     const { role } = req.body;
 
     if (!["EMPLOYEE", "HR", "ACCOUNTING", "ADMIN"].includes(role)) {
-      return res.status(400).json({ message: "РќРµРґРѕРїСѓСЃС‚РёРјР°СЏ СЂРѕР»СЊ" });
+      return res.status(400).json({ message: "Недопустимая роль" });
     }
 
     const user = await prisma.user.update({
@@ -2430,7 +2454,7 @@ app.put("/api/users/:id/role", auth, requireAdmin, async (req, res) => {
     res.json(user);
   } catch (err) {
     console.error("change role error:", err);
-    res.status(500).json({ message: "РћС€РёР±РєР° СЃРµСЂРІРµСЂР° РїСЂРё СЃРјРµРЅРµ СЂРѕР»Рё" });
+    res.status(500).json({ message: "Ошибка сервера при смене роли" });
   }
 });
 
@@ -2629,8 +2653,8 @@ app.post("/api/debug/mail-test", auth, requireAdmin, async (req, res) => {
       return res.json({ sent: false, error: "MAIL_DISABLED" });
     }
 
-    const from = process.env.MAIL_FROM || `Business Portal <${process.env.MAIL_USER}>`;
-    const subject = "Тестовое письмо Business Portal";
+    const from = process.env.MAIL_FROM || `Бизнес-портал <${process.env.MAIL_USER}>`;
+    const subject = "Тестовое письмо Бизнес-портала";
     const text = "Это тестовое письмо. Если вы его получили, SMTP настроен корректно.";
 
     await transport.sendMail({ from, to: target, subject, text });
@@ -3198,9 +3222,9 @@ app.post("/api/billing/yookassa/webhook", async (req, res) => {
 
 
 // ================== ???????T????????'?????: ????"???'????????T???T???? ==================
-// ================== РЎРљР›РђР”: Р—РђРЇР’РљР ==================
+// ================== СКЛАД: ЗАЯВК ==================
 
-// СЃРѕР·РґР°С‚СЊ Р·Р°СЏРІРєСѓ РЅР° СЃРєР»Р°Рґ
+// создать заявку на склад
 
 // ================== HR: employees ==================
 
@@ -3246,7 +3270,7 @@ app.post("/api/hr/employees", auth, requireHr, async (req, res) => {
       !hiredAt ||
       !birthDate
     ) {
-      return res.status(400).json({ message: "Р—Р°РїРѕР»РЅРёС‚Рµ РІСЃРµ РїРѕР»СЏ, РІРєР»СЋС‡Р°СЏ Telegram ID." });
+      return res.status(400).json({ message: "Заполните все поля, включая Telegram ID." });
     }
 
     const allowedStatuses = ["ACTIVE", "FIRED"];
@@ -3257,7 +3281,7 @@ app.post("/api/hr/employees", auth, requireHr, async (req, res) => {
     const hiredDate = parseDateInput(hiredAt);
     const birth = parseDateInput(birthDate);
     if (!hiredDate || !birth) {
-      return res.status(400).json({ message: "РќРµРєРѕСЂСЂРµРєС‚РЅС‹Рµ РґР°С‚С‹ РїСЂРёРµРјР° РёР»Рё СЂРѕР¶РґРµРЅРёСЏ." });
+      return res.status(400).json({ message: "Некорректные даты приема или рождения." });
     }
 
     await ensureSafetyInstructions();
@@ -3302,13 +3326,13 @@ app.put("/api/hr/employees/:id", auth, requireHr, async (req, res) => {
       !hiredAt ||
       !birthDate
     ) {
-      return res.status(400).json({ message: "Р—Р°РїРѕР»РЅРёС‚Рµ РІСЃРµ РїРѕР»СЏ, РІРєР»СЋС‡Р°СЏ Telegram ID." });
+      return res.status(400).json({ message: "Заполните все поля, включая Telegram ID." });
     }
 
     const hiredDate = parseDateInput(hiredAt);
     const birth = parseDateInput(birthDate);
     if (!hiredDate || !birth) {
-      return res.status(400).json({ message: "РќРµРєРѕСЂСЂРµРєС‚РЅС‹Рµ РґР°С‚С‹ РїСЂРёРµРјР° РёР»Рё СЂРѕР¶РґРµРЅРёСЏ." });
+      return res.status(400).json({ message: "Некорректные даты приема или рождения." });
     }
 
     const employee = await prisma.employee.update({
@@ -3561,16 +3585,16 @@ app.post("/api/warehouse/requests", auth, async (req, res) => {
     if (!title || !type) {
       return res
         .status(400)
-        .json({ message: "РќРµ СѓРєР°Р·Р°РЅ С‚РёРї РёР»Рё РЅР°Р·РІР°РЅРёРµ Р·Р°СЏРІРєРё" });
+        .json({ message: "Не указан тип или название заявки" });
     }
 
     if (!Array.isArray(items) || items.length === 0) {
       return res
         .status(400)
-        .json({ message: "РќСѓР¶РЅРѕ СѓРєР°Р·Р°С‚СЊ С…РѕС‚СЏ Р±С‹ РѕРґРЅСѓ РїРѕР·РёС†РёСЋ" });
+        .json({ message: "Нужно указать хотя бы одну позицию" });
     }
 
-    // Р°РєРєСѓСЂР°С‚РЅРѕ СЂР°Р·Р±РёСЂР°РµРј РЅРѕРјРµСЂ РїР»Р°С‚С‘Р¶РєРё: С‚РѕР»СЊРєРѕ С‡РёСЃР»Рѕ, РёРЅР°С‡Рµ null
+    // аккуратно разбираем номер платёжки: только число, иначе null
     let paymentId = null;
     if (
       relatedPaymentId !== undefined &&
@@ -3583,7 +3607,7 @@ app.post("/api/warehouse/requests", auth, async (req, res) => {
       }
     }
 
-    // 1. РџСЂРёРІРѕРґРёРј РїРѕР·РёС†РёРё Рё РїСЂРѕРІРµСЂСЏРµРј РєРѕР»РёС‡РµСЃС‚РІРѕ
+    // 1. Приводим позиции и проверяем количество
     const preparedItems = [];
 
     for (const it of items) {
@@ -3591,7 +3615,7 @@ app.post("/api/warehouse/requests", auth, async (req, res) => {
 
       if (!Number.isFinite(q) || !Number.isInteger(q) || q <= 0) {
         return res.status(400).json({
-          message: `РљРѕР»РёС‡РµСЃС‚РІРѕ РїРѕ РїРѕР·РёС†РёРё "${it.name || ""}" РґРѕР»Р¶РЅРѕ Р±С‹С‚СЊ РїРѕР»РѕР¶РёС‚РµР»СЊРЅС‹Рј С†РµР»С‹Рј С‡РёСЃР»РѕРј`,
+          message: `Количество по позиции "${it.name || ""}" должно быть положительным целым числом`,
         });
       }
 
@@ -3602,7 +3626,7 @@ app.post("/api/warehouse/requests", auth, async (req, res) => {
       });
     }
 
-    // 2. Р•СЃР»Рё СЌС‚Рѕ РІС‹РґР°С‡Р° (ISSUE) вЂ” РїСЂРѕРІРµСЂСЏРµРј РѕСЃС‚Р°С‚РєРё
+    // 2. Если это выдача (ISSUE) — проверяем остатки
     if (type === "ISSUE") {
       for (const it of preparedItems) {
         if (!it.name) continue;
@@ -3611,7 +3635,7 @@ app.post("/api/warehouse/requests", auth, async (req, res) => {
           where: { name: it.name },
         });
 
-        // РµСЃР»Рё С‚РѕРІР°СЂР° РЅРµС‚ РІ РЅРѕРјРµРЅРєР»Р°С‚СѓСЂРµ вЂ” РїСЂРѕРїСѓСЃРєР°РµРј РїСЂРѕРІРµСЂРєСѓ
+        // если товара нет в номенклатуре — пропускаем проверку
         if (!invItem) continue;
 
         const currentStock = await getCurrentStockForItem(invItem.id);
@@ -3619,13 +3643,13 @@ app.post("/api/warehouse/requests", auth, async (req, res) => {
 
         if (current < it.quantity) {
           return res.status(400).json({
-            message: `РќРµРґРѕСЃС‚Р°С‚РѕС‡РЅРѕ РѕСЃС‚Р°С‚РєР° РїРѕ С‚РѕРІР°СЂСѓ "${it.name}". РќР° СЃРєР»Р°РґРµ ${current} ${invItem.unit || "С€С‚."}, РІ Р·Р°СЏРІРєРµ СѓРєР°Р·Р°РЅРѕ ${it.quantity}.`,
+            message: `Недостаточно остатка по товару "${it.name}". На складе ${current} ${invItem.unit || "шт."}, в заявке указано ${it.quantity}.`,
           });
         }
       }
     }
 
-    // 3. РЎРѕР·РґР°С‘Рј Р·Р°СЏРІРєСѓ
+    // 3. Создаём заявку
     const created = await prisma.warehouseRequest.create({
       data: {
         title,
@@ -3645,11 +3669,11 @@ app.post("/api/warehouse/requests", auth, async (req, res) => {
       },
     });
 
-    // 4. РЎРѕР·РґР°С‘Рј Р·Р°РґР°С‡Сѓ Рё С€Р»С‘Рј РІ Telegram
+    // 4. Создаём задачу и шлём в Telegram
     try {
       await createWarehouseTaskFromRequest(created, req.user.id);
     } catch (err) {
-      console.error("РћС€РёР±РєР° РїСЂРё СЃРѕР·РґР°РЅРёРё Р·Р°РґР°С‡Рё РїРѕ Р·Р°СЏРІРєРµ:", err);
+      console.error("Ошибка при создании задачи по заявке:", err);
     }
 
     res.status(201).json(created);
@@ -3657,11 +3681,11 @@ app.post("/api/warehouse/requests", auth, async (req, res) => {
     console.error("warehouse request create error:", err);
     res
       .status(500)
-      .json({ message: "РћС€РёР±РєР° СЃРµСЂРІРµСЂР° РїСЂРё СЃРѕР·РґР°РЅРёРё Р·Р°СЏРІРєРё РЅР° СЃРєР»Р°Рґ" });
+      .json({ message: "Ошибка сервера при создании заявки на склад" });
   }
 });
 
-// РјРѕРё Р·Р°СЏРІРєРё
+// мои заявки
 app.get("/api/warehouse/requests/my", auth, async (req, res) => {
   try {
     const list = await prisma.warehouseRequest.findMany({
@@ -3680,15 +3704,15 @@ app.get("/api/warehouse/requests/my", auth, async (req, res) => {
     console.error("warehouse my-requests error:", err);
     res
       .status(500)
-      .json({ message: "РћС€РёР±РєР° СЃРµСЂРІРµСЂР° РїСЂРё Р·Р°РіСЂСѓР·РєРµ РІР°С€РёС… Р·Р°СЏРІРѕРє" });
+      .json({ message: "Ошибка сервера при загрузке ваших заявок" });
   }
 });
 
-// РІСЃРµ Р·Р°СЏРІРєРё (ADMIN/ACCOUNTING)
+// все заявки (ADMIN/ACCOUNTING)
 app.get("/api/warehouse/requests", auth, async (req, res) => {
   try {
     if (req.user.role !== "ADMIN" && req.user.role !== "ACCOUNTING") {
-      return res.status(403).json({ message: "РќРµС‚ РїСЂР°РІ" });
+      return res.status(403).json({ message: "Нет прав" });
     }
 
     const list = await prisma.warehouseRequest.findMany({
@@ -3706,16 +3730,16 @@ app.get("/api/warehouse/requests", auth, async (req, res) => {
     console.error("warehouse all-requests error:", err);
     res
       .status(500)
-      .json({ message: "РћС€РёР±РєР° СЃРµСЂРІРµСЂР° РїСЂРё Р·Р°РіСЂСѓР·РєРµ СЃРєР»Р°РґСЃРєРёС… Р·Р°СЏРІРѕРє" });
+      .json({ message: "Ошибка сервера при загрузке складских заявок" });
   }
 });
 
-// РђРІС‚РѕРјР°С‚РёС‡РµСЃРєРё РїСЂРѕРІРµСЃС‚Рё Р·Р°СЏРІРєСѓ РїРѕ СЃРєР»Р°РґСѓ (СЃРѕР·РґР°С‚СЊ РґРІРёР¶РµРЅРёСЏ РїРѕ РЅРѕРјРµРЅРєР»Р°С‚СѓСЂРµ)
+// Автоматически провести заявку по складу (создать движения по номенклатуре)
 async function autoPostRequestToStock(requestId, userId) {
   const id = Number(requestId);
   if (!id) return;
 
-  // РЈР¶Рµ РµСЃС‚СЊ РґРІРёР¶РµРЅРёСЏ РїРѕ СЌС‚РѕР№ Р·Р°СЏРІРєРµ? (РёС‰РµРј РјРµС‚РєСѓ [REQ#id] РІ РєРѕРјРјРµРЅС‚Р°СЂРёРё)
+  // Уже есть движения по этой заявке? (ищем метку [REQ#id] в комментарии)
   const alreadyPosted = await prisma.stockMovement.findFirst({
     where: {
       comment: {
@@ -3726,12 +3750,12 @@ async function autoPostRequestToStock(requestId, userId) {
 
   if (alreadyPosted) {
     console.log(
-      `[Warehouse] Р—Р°СЏРІРєР° #${id} СѓР¶Рµ РїСЂРѕРІРµРґРµРЅР° РїРѕ СЃРєР»Р°РґСѓ, Р°РІС‚Рѕ-РїСЂРѕРІРµРґРµРЅРёРµ РїСЂРѕРїСѓС‰РµРЅРѕ`
+      `[Warehouse] Заявка #${id} уже проведена по складу, авто-проведение пропущено`
     );
     return;
   }
 
-  // Р‘РµСЂС‘Рј Р·Р°СЏРІРєСѓ Рё РµС‘ РїРѕР·РёС†РёРё
+  // Берём заявку и её позиции
   const request = await prisma.warehouseRequest.findUnique({
     where: { id },
     include: { items: true },
@@ -3739,22 +3763,22 @@ async function autoPostRequestToStock(requestId, userId) {
 
   if (!request) {
     console.warn(
-      `[Warehouse] Р—Р°СЏРІРєР° #${id} РЅРµ РЅР°Р№РґРµРЅР° РґР»СЏ Р°РІС‚Рѕ-РїСЂРѕРІРµРґРµРЅРёСЏ РїРѕ СЃРєР»Р°РґСѓ`
+      `[Warehouse] Заявка #${id} не найдена для авто-проведения по складу`
     );
     return;
   }
 
   if (!request.items || request.items.length === 0) {
     console.warn(
-      `[Warehouse] Р—Р°СЏРІРєР° #${id} РЅРµ РёРјРµРµС‚ РїРѕР·РёС†РёР№ РґР»СЏ Р°РІС‚Рѕ-РїСЂРѕРІРµРґРµРЅРёСЏ`
+      `[Warehouse] Заявка #${id} не имеет позиций для авто-проведения`
     );
     return;
   }
 
-  // РўРёРї РґРІРёР¶РµРЅРёСЏ РїРѕ СЃРєР»Р°РґСѓ РїРѕ С‚РёРїСѓ Р·Р°СЏРІРєРё
+  // Тип движения по складу по типу заявки
   const mapRequestTypeToMovementType = (reqType) => {
-    if (reqType === "ISSUE") return "ISSUE"; // РІС‹РґР°С‡Р° в†’ СЂР°СЃС…РѕРґ
-    if (reqType === "RETURN" || reqType === "INCOME") return "INCOME"; // РІРѕР·РІСЂР°С‚/РїСЂРёС…РѕРґ в†’ РїСЂРёС…РѕРґ
+    if (reqType === "ISSUE") return "ISSUE"; // выдача → расход
+    if (reqType === "RETURN" || reqType === "INCOME") return "INCOME"; // возврат/приход → приход
     return "ISSUE";
   };
 
@@ -3762,7 +3786,7 @@ async function autoPostRequestToStock(requestId, userId) {
 
   let createdCount = 0;
 
-  // РёРґС‘Рј РїРѕ РІСЃРµРј РїРѕР·РёС†РёСЏРј Р·Р°СЏРІРєРё
+  // идём по всем позициям заявки
   for (const item of request.items) {
     if (!item.name || !item.quantity) continue;
 
@@ -3771,19 +3795,19 @@ async function autoPostRequestToStock(requestId, userId) {
       continue;
     }
 
-    // РС‰РµРј С‚РѕРІР°СЂ РІ РЅРѕРјРµРЅРєР»Р°С‚СѓСЂРµ РїРѕ С‚РѕС‡РЅРѕРјСѓ РёРјРµРЅРё
+    // щем товар в номенклатуре по точному имени
     const invItem = await prisma.item.findFirst({
       where: { name: item.name },
     });
 
     if (!invItem) {
       console.warn(
-        `[Warehouse] РўРѕРІР°СЂ "${item.name}" РЅРµ РЅР°Р№РґРµРЅ РІ РЅРѕРјРµРЅРєР»Р°С‚СѓСЂРµ РїСЂРё Р°РІС‚Рѕ-РїСЂРѕРІРµРґРµРЅРёРё Р·Р°СЏРІРєРё #${id}`
+        `[Warehouse] Товар "${item.name}" не найден в номенклатуре при авто-проведении заявки #${id}`
       );
       continue;
     }
 
-    // Р•СЃР»Рё СЌС‚Рѕ СЂР°СЃС…РѕРґ вЂ” РїСЂРѕРІРµСЂСЏРµРј, С…РІР°С‚РёС‚ Р»Рё РѕСЃС‚Р°С‚РєР°
+    // Если это расход — проверяем, хватит ли остатка
     if (movementType === "ISSUE") {
       try {
         const stockInfo = await calculateStockAfterMovement(
@@ -3794,26 +3818,26 @@ async function autoPostRequestToStock(requestId, userId) {
 
         if (stockInfo.newStock < 0) {
           console.warn(
-            `[Warehouse] РќРµРґРѕСЃС‚Р°С‚РѕС‡РЅРѕ РѕСЃС‚Р°С‚РєР° РїРѕ "${item.name}" РїСЂРё Р°РІС‚Рѕ-СЃРїРёСЃР°РЅРёРё РїРѕ Р·Р°СЏРІРєРµ #${id} (РµСЃС‚СЊ ${stockInfo.current}, РЅСѓР¶РЅРѕ ${q})`
+            `[Warehouse] Недостаточно остатка по "${item.name}" при авто-списании по заявке #${id} (есть ${stockInfo.current}, нужно ${q})`
           );
           continue;
         }
       } catch (e) {
         console.error(
-          `[Warehouse] РћС€РёР±РєР° СЂР°СЃС‡С‘С‚Р° РѕСЃС‚Р°С‚РєР° РїРѕ "${item.name}" РїСЂРё Р°РІС‚Рѕ-РїСЂРѕРІРµРґРµРЅРёРё Р·Р°СЏРІРєРё #${id}:`,
+          `[Warehouse] Ошибка расчёта остатка по "${item.name}" при авто-проведении заявки #${id}:`,
           e
         );
         continue;
       }
     }
 
-    // РЎРѕР·РґР°С‘Рј РґРІРёР¶РµРЅРёРµ РїРѕ СЃРєР»Р°РґСѓ
+    // Создаём движение по складу
     await prisma.stockMovement.create({
       data: {
         itemId: invItem.id,
-        type: movementType, // "ISSUE" РёР»Рё "INCOME"
+        type: movementType, // "ISSUE" или "INCOME"
         quantity: q,
-        comment: `РђРІС‚РѕРґРІРёР¶РµРЅРёРµ РїРѕ Р·Р°СЏРІРєРµ СЃРєР»Р°РґР° #${request.id}: ${request.title} [REQ#${request.id}]`,
+        comment: `Автодвижение по заявке склада #${request.id}: ${request.title} [REQ#${request.id}]`,
         createdById: userId,
       },
     });
@@ -3822,27 +3846,27 @@ async function autoPostRequestToStock(requestId, userId) {
   }
 
   console.log(
-    `[Warehouse] РђРІС‚Рѕ-РїСЂРѕРІРµРґРµРЅРёРµ Р·Р°СЏРІРєРё #${id}: СЃРѕР·РґР°РЅРѕ РґРІРёР¶РµРЅРёР№ РїРѕ СЃРєР»Р°РґСѓ: ${createdCount}`
+    `[Warehouse] Авто-проведение заявки #${id}: создано движений по складу: ${createdCount}`
   );
 
   return createdCount;
 }
 
-// СЃРјРµРЅР° СЃС‚Р°С‚СѓСЃР° Р·Р°СЏРІРєРё + Р°РІС‚РѕРїСЂРѕРІРµРґРµРЅРёРµ РїРѕ СЃРєР»Р°РґСѓ РїСЂРё DONE
+// смена статуса заявки + автопроведение по складу при DONE
 app.put("/api/warehouse/requests/:id/status", auth, async (req, res) => {
   try {
     const id = Number(req.params.id);
     const { status, statusComment } = req.body;
 
     if (req.user.role !== "ADMIN" && req.user.role !== "ACCOUNTING") {
-      return res.status(403).json({ message: "РќРµС‚ РїСЂР°РІ" });
+      return res.status(403).json({ message: "Нет прав" });
     }
 
     if (!["NEW", "IN_PROGRESS", "DONE", "REJECTED"].includes(status)) {
-      return res.status(400).json({ message: "РќРµРґРѕРїСѓСЃС‚РёРјС‹Р№ СЃС‚Р°С‚СѓСЃ" });
+      return res.status(400).json({ message: "Недопустимый статус" });
     }
 
-    // 1. РњРµРЅСЏРµРј СЃС‚Р°С‚СѓСЃ Р·Р°СЏРІРєРё
+    // 1. Меняем статус заявки
     const updated = await prisma.warehouseRequest.update({
       where: { id },
       data: {
@@ -3859,7 +3883,7 @@ app.put("/api/warehouse/requests/:id/status", auth, async (req, res) => {
 
     let stockResult = null;
 
-    // 2. Р•СЃР»Рё Р·Р°СЏРІРєР° РїРµСЂРµРІРµРґРµРЅР° РІ DONE вЂ” РїСЂРѕРІРѕРґРёРј РµС‘ РїРѕ СЃРєР»Р°РґСѓ
+    // 2. Если заявка переведена в DONE — проводим её по складу
     if (status === "DONE") {
       try {
         stockResult = await autoPostRequestToStock(id, req.user.id);
@@ -3873,7 +3897,7 @@ app.put("/api/warehouse/requests/:id/status", auth, async (req, res) => {
           createdCount: 0,
           skipped: [],
           message:
-            "РћС€РёР±РєР° РїСЂРё Р°РІС‚РѕСЃРїРёСЃР°РЅРёРё РїРѕ СЃРєР»Р°РґСѓ. РџСЂРѕРІРµСЂСЊС‚Рµ Р¶СѓСЂРЅР°Р» РґРІРёР¶РµРЅРёР№ Рё РѕСЃС‚Р°С‚РєРё РІСЂСѓС‡РЅСѓСЋ.",
+            "Ошибка при автосписании по складу. Проверьте журнал движений и остатки вручную.",
         };
       }
     }
@@ -3886,25 +3910,25 @@ app.put("/api/warehouse/requests/:id/status", auth, async (req, res) => {
     console.error("warehouse request status error:", err);
     res
       .status(500)
-      .json({ message: "РћС€РёР±РєР° СЃРµСЂРІРµСЂР° РїСЂРё РѕР±РЅРѕРІР»РµРЅРёРё СЃС‚Р°С‚СѓСЃР° Р·Р°СЏРІРєРё" });
+      .json({ message: "Ошибка сервера при обновлении статуса заявки" });
   }
 });
 
-// ================== РЎРљР›РђР”: Р—РђР”РђР§Р ==================
+// ================== СКЛАД: ЗАДАЧ ==================
 
-// Р’СЃРїРѕРјРѕРіР°С‚РµР»СЊРЅР°СЏ С„СѓРЅРєС†РёСЏ: СЃРѕР·РґР°С‚СЊ Р·Р°РґР°С‡Сѓ СЃРєР»Р°РґР° РїРѕ Р·Р°СЏРІРєРµ
+// Вспомогательная функция: создать задачу склада по заявке
 async function createWarehouseTaskFromRequest(request, assignerId) {
   try {
-    // РЎРѕР±РёСЂР°РµРј РѕРїРёСЃР°РЅРёРµ Р·Р°РґР°С‡Рё РёР· РєРѕРјРјРµРЅС‚Р°СЂРёСЏ Рё РїРѕР·РёС†РёР№ Р·Р°СЏРІРєРё
+    // Собираем описание задачи из комментария и позиций заявки
     const lines = [];
 
     if (request.comment) {
-      lines.push(`РљРѕРјРјРµРЅС‚Р°СЂРёР№: ${request.comment}`);
+      lines.push(`Комментарий: ${request.comment}`);
     }
 
     if (request.items && request.items.length) {
       if (lines.length) lines.push("");
-      lines.push("РџРѕР·РёС†РёРё:");
+      lines.push("Позиции:");
 
       for (const it of request.items) {
         lines.push(
@@ -3917,11 +3941,11 @@ async function createWarehouseTaskFromRequest(request, assignerId) {
 
     const task = await prisma.warehouseTask.create({
       data: {
-        title: `Р—Р°СЏРІРєР° РЅР° СЃРєР»Р°Рґ #${request.id}: ${request.title}`,
+        title: `Заявка на склад #${request.id}: ${request.title}`,
         description,
-        // РїРѕРєР° СЃСЂРѕРє РЅРµ Р·Р°РґР°С‘Рј, РµРіРѕ РјРѕР¶РЅРѕ РїРѕС‚РѕРј СЂСѓРєР°РјРё РІС‹СЃС‚Р°РІРёС‚СЊ РІ Р·Р°РґР°С‡Р°С…
+        // пока срок не задаём, его можно потом руками выставить в задачах
         dueDate: null,
-        executorName: "РЎРєР»Р°Рґ",
+        executorName: "Склад",
         executorChatId: null,
         assignerId,
       },
@@ -3933,25 +3957,25 @@ async function createWarehouseTaskFromRequest(request, assignerId) {
     });
 
     console.log(
-      `[Warehouse] СЃРѕР·РґР°РЅР° Р·Р°РґР°С‡Р° ${task.id} РїРѕ Р·Р°СЏРІРєРµ ${request.id}`
+      `[Warehouse] Создана задача ${task.id} по заявке ${request.id}`
     );
 
-    // РЎРѕРѕР±С‰РµРЅРёРµ РІ СЃРєР»Р°РґСЃРєРѕР№ Telegram-С‡Р°С‚
+    // Сообщение в складской Telegram-чат
     const parts = [];
 
-    parts.push("рџ“¦ <b>РќРѕРІР°СЏ Р·Р°РґР°С‡Р° СЃРєР»Р°РґР° РїРѕ Р·Р°СЏРІРєРµ</b>");
+    parts.push("📦 <b>Новая задача склада по заявке</b>");
     parts.push("");
-    parts.push(`рџ“ќ <b>Р—Р°РґР°С‡Р°:</b> ${task.title}`);
+    parts.push(`📝 <b>Задача:</b> ${task.title}`);
 
     if (task.description) {
       parts.push("");
-      parts.push(`<b>Р”РµС‚Р°Р»Рё:</b>\n${task.description}`);
+      parts.push(`<b>Детали:</b>\n${task.description}`);
     }
 
     if (task.assigner) {
       parts.push("");
       parts.push(
-        `рџ‘¤ <b>РђРІС‚РѕСЂ Р·Р°СЏРІРєРё:</b> ${task.assigner.name || "РќРµРёР·РІРµСЃС‚РЅРѕ"} (${task.assigner.email || ""})`
+        `👤 <b>Автор заявки:</b> ${task.assigner.name || "Неизвестно"} (${task.assigner.email || ""})`
       );
     }
 
@@ -3961,11 +3985,11 @@ async function createWarehouseTaskFromRequest(request, assignerId) {
 
     return task;
   } catch (err) {
-    console.error("[createWarehouseTaskFromRequest] РћС€РёР±РєР°:", err);
+    console.error("[createWarehouseTaskFromRequest] Ошибка:", err);
   }
 }
 
-// СЃРѕР·РґР°С‚СЊ Р·Р°РґР°С‡Сѓ СЃРєР»Р°РґР°
+// создать задачу склада
 app.post("/api/warehouse/tasks", auth, async (req, res) => {
   try {
     const { title, description, dueDate, executorName, executorChatId } =
@@ -3974,7 +3998,7 @@ app.post("/api/warehouse/tasks", auth, async (req, res) => {
     if (!title) {
       return res
         .status(400)
-        .json({ message: "РћРїРёСЃР°РЅРёРµ Р·Р°РґР°С‡Рё РѕР±СЏР·Р°С‚РµР»СЊРЅРѕ" });
+        .json({ message: "Описание задачи обязательно" });
     }
 
     const task = await prisma.warehouseTask.create({
@@ -3993,19 +4017,19 @@ app.post("/api/warehouse/tasks", auth, async (req, res) => {
       },
     });
 
-    // РЎРѕРѕР±С‰РµРЅРёРµ РІ РіСЂСѓРїРїСѓ
+    // Сообщение в группу
     const parts = [];
 
-    parts.push("рџ“¦ <b>РќРѕРІР°СЏ Р·Р°РґР°С‡Р° СЃРєР»Р°РґР°</b>");
+    parts.push("📦 <b>Новая задача склада</b>");
     parts.push("");
-    parts.push(`рџ“ќ <b>Р—Р°РґР°С‡Р°:</b> ${task.title}`);
+    parts.push(`📝 <b>Задача:</b> ${task.title}`);
 
     if (task.description) {
-      parts.push(`рџ“„ <b>Р”РµС‚Р°Р»Рё:</b> ${task.description}`);
+      parts.push(`📄 <b>Детали:</b> ${task.description}`);
     }
 
     if (task.executorName) {
-      parts.push(`рџ‘· <b>РСЃРїРѕР»РЅРёС‚РµР»СЊ:</b> ${task.executorName}`);
+      parts.push(`👷 <b>сполнитель:</b> ${task.executorName}`);
     }
 
     if (task.dueDate) {
@@ -4018,14 +4042,14 @@ app.post("/api/warehouse/tasks", auth, async (req, res) => {
           hour: "2-digit",
           minute: "2-digit",
         });
-        parts.push(`вЏ° <b>РЎСЂРѕРє:</b> ${dueStr}`);
+        parts.push(`⏰ <b>Срок:</b> ${dueStr}`);
       }
     }
 
     if (task.assigner) {
       parts.push("");
       parts.push(
-        `рџ‘¤ <b>РќР°Р·РЅР°С‡РёР»:</b> ${task.assigner.name || "РќРµРёР·РІРµСЃС‚РЅРѕ"} (${task.assigner.email || ""
+        `👤 <b>Назначил:</b> ${task.assigner.name || "Неизвестно"} (${task.assigner.email || ""
         })`
       );
     }
@@ -4033,19 +4057,19 @@ app.post("/api/warehouse/tasks", auth, async (req, res) => {
     const groupText = parts.join("\n");
 
     sendWarehouseGroupMessage(groupText).catch((err) =>
-      console.error("РћС€РёР±РєР° РѕС‚РїСЂР°РІРєРё РІ Telegram (РіСЂСѓРїРїР°):", err)
+      console.error("Ошибка отправки в Telegram (группа):", err)
     );
 
-    // Р›РёС‡РЅРѕРµ СЃРѕРѕР±С‰РµРЅРёРµ РёСЃРїРѕР»РЅРёС‚РµР»СЋ
+    // Личное сообщение исполнителю
     if (task.executorChatId) {
       const execParts = [];
 
-      execParts.push("рџ‘‹ <b>Р’Р°Рј РЅР°Р·РЅР°С‡РµРЅР° Р·Р°РґР°С‡Р° СЃРєР»Р°РґР°</b>");
+      execParts.push("👋 <b>Вам назначена задача склада</b>");
       execParts.push("");
-      execParts.push(`рџ“ќ <b>Р—Р°РґР°С‡Р°:</b> ${task.title}`);
+      execParts.push(`📝 <b>Задача:</b> ${task.title}`);
 
       if (task.description) {
-        execParts.push(`рџ“„ <b>Р”РµС‚Р°Р»Рё:</b> ${task.description}`);
+        execParts.push(`📄 <b>Детали:</b> ${task.description}`);
       }
 
       if (task.dueDate) {
@@ -4058,14 +4082,14 @@ app.post("/api/warehouse/tasks", auth, async (req, res) => {
             hour: "2-digit",
             minute: "2-digit",
           });
-          execParts.push(`вЏ° <b>РЎСЂРѕРє:</b> ${dueStr}`);
+          execParts.push(`⏰ <b>Срок:</b> ${dueStr}`);
         }
       }
 
       if (task.assigner) {
         execParts.push("");
         execParts.push(
-          `рџ‘¤ <b>РќР°Р·РЅР°С‡РёР»:</b> ${task.assigner.name || "РќРµРёР·РІРµСЃС‚РЅРѕ"} (${task.assigner.email || ""
+          `👤 <b>Назначил:</b> ${task.assigner.name || "Неизвестно"} (${task.assigner.email || ""
           })`
         );
       }
@@ -4077,14 +4101,14 @@ app.post("/api/warehouse/tasks", auth, async (req, res) => {
           inline_keyboard: [
             [
               {
-                text: "вњ… Р’С‹РїРѕР»РЅРµРЅРѕ",
+                text: "✅ Выполнено",
                 callback_data: `done:${task.id}`,
               },
             ],
           ],
         },
       }).catch((err) =>
-        console.error("РћС€РёР±РєР° РѕС‚РїСЂР°РІРєРё РІ Telegram (РёСЃРїРѕР»РЅРёС‚РµР»СЊ):", err)
+        console.error("Ошибка отправки в Telegram (исполнитель):", err)
       );
     }
 
@@ -4093,11 +4117,11 @@ app.post("/api/warehouse/tasks", auth, async (req, res) => {
     console.error("Warehouse task create error:", err);
     res
       .status(500)
-      .json({ message: "РћС€РёР±РєР° СЃРµСЂРІРµСЂР° РїСЂРё СЃРѕР·РґР°РЅРёРё Р·Р°РґР°С‡Рё СЃРєР»Р°РґР°" });
+      .json({ message: "Ошибка сервера при создании задачи склада" });
   }
 });
 
-// РјРѕРё Р·Р°РґР°С‡Рё (РЅР°Р·РЅР°С‡РµРЅРЅС‹Рµ РјРЅРѕР№)
+// мои задачи (назначенные мной)
 app.get("/api/warehouse/tasks/my", auth, async (req, res) => {
   try {
     const tasks = await prisma.warehouseTask.findMany({
@@ -4115,15 +4139,15 @@ app.get("/api/warehouse/tasks/my", auth, async (req, res) => {
     console.error("warehouse tasks my error:", err);
     res
       .status(500)
-      .json({ message: "РћС€РёР±РєР° СЃРµСЂРІРµСЂР° РїСЂРё Р·Р°РіСЂСѓР·РєРµ РІР°С€РёС… Р·Р°РґР°С‡" });
+      .json({ message: "Ошибка сервера при загрузке ваших задач" });
   }
 });
 
-// РІСЃРµ Р·Р°РґР°С‡Рё СЃРєР»Р°РґР° (ADMIN/ACCOUNTING)
+// все задачи склада (ADMIN/ACCOUNTING)
 app.get("/api/warehouse/tasks", auth, async (req, res) => {
   try {
     if (req.user.role !== "ADMIN" && req.user.role !== "ACCOUNTING") {
-      return res.status(403).json({ message: "РќРµС‚ РїСЂР°РІ" });
+      return res.status(403).json({ message: "Нет прав" });
     }
 
     const tasks = await prisma.warehouseTask.findMany({
@@ -4140,22 +4164,22 @@ app.get("/api/warehouse/tasks", auth, async (req, res) => {
     console.error("warehouse tasks list error:", err);
     res
       .status(500)
-      .json({ message: "РћС€РёР±РєР° СЃРµСЂРІРµСЂР° РїСЂРё Р·Р°РіСЂСѓР·РєРµ Р·Р°РґР°С‡ СЃРєР»Р°РґР°" });
+      .json({ message: "Ошибка сервера при загрузке задач склада" });
   }
 });
 
-// СЃРјРµРЅР° СЃС‚Р°С‚СѓСЃР° Р·Р°РґР°С‡Рё (С‡РµСЂРµР· РїРѕСЂС‚Р°Р», РЅРµ С‡РµСЂРµР· Р±РѕС‚Р°)
+// смена статуса задачи (через портал, не через бота)
 app.put("/api/warehouse/tasks/:id/status", auth, async (req, res) => {
   try {
     const id = Number(req.params.id);
     const { status } = req.body;
 
     if (req.user.role !== "ADMIN" && req.user.role !== "ACCOUNTING") {
-      return res.status(403).json({ message: "РќРµС‚ РїСЂР°РІ" });
+      return res.status(403).json({ message: "Нет прав" });
     }
 
     if (!["NEW", "IN_PROGRESS", "DONE", "CANCELLED"].includes(status)) {
-      return res.status(400).json({ message: "РќРµРґРѕРїСѓСЃС‚РёРјС‹Р№ СЃС‚Р°С‚СѓСЃ" });
+      return res.status(400).json({ message: "Недопустимый статус" });
     }
 
     const updated = await prisma.warehouseTask.update({
@@ -4163,12 +4187,12 @@ app.put("/api/warehouse/tasks/:id/status", auth, async (req, res) => {
       data: { status },
     });
 
-    // Р•СЃР»Рё Р·Р°РґР°С‡Р° СЃРѕР·РґР°РЅР° РїРѕ Р·Р°СЏРІРєРµ РЅР° СЃРєР»Р°Рґ Рё РјС‹ РїРѕСЃС‚Р°РІРёР»Рё DONE вЂ”
-    // Р°РІС‚РѕРјР°С‚РёС‡РµСЃРєРё РїСЂРѕРІРѕРґРёРј СЌС‚Сѓ Р·Р°СЏРІРєСѓ РїРѕ СЃРєР»Р°РґСѓ
+    // Если задача создана по заявке на склад и мы поставили DONE —
+    // автоматически проводим эту заявку по складу
     if (status === "DONE") {
       try {
-        // title РІРёРґР°: "Р—Р°СЏРІРєР° РЅР° СЃРєР»Р°Рґ #19: ..."
-        const match = updated.title.match(/Р—Р°СЏРІРєР° РЅР° СЃРєР»Р°Рґ #(\d+)/);
+        // title вида: "Заявка на склад #19: ..."
+        const match = updated.title.match(/Заявка на склад #(\d+)/);
         if (match && updated.assignerId) {
           const requestId = Number(match[1]);
           if (requestId) {
@@ -4188,13 +4212,13 @@ app.put("/api/warehouse/tasks/:id/status", auth, async (req, res) => {
     console.error("warehouse task status error:", err);
     res
       .status(500)
-      .json({ message: "РћС€РёР±РєР° СЃРµСЂРІРµСЂР° РїСЂРё РѕР±РЅРѕРІР»РµРЅРёРё СЃС‚Р°С‚СѓСЃР° Р·Р°РґР°С‡Рё" });
+      .json({ message: "Ошибка сервера при обновлении статуса задачи" });
   }
 });
 
-// ================== РЎРљР›РђР”: РќРћРњР•РќРљР›РђРўРЈР Рђ Р РћРЎРўРђРўРљР ==================
+// ================== СКЛАД: НОМЕНКЛАТУРА  ОСТАТК ==================
 
-// РЎРѕР·РґР°С‚СЊ С‚РѕРІР°СЂ (РЅРѕРјРµРЅРєР»Р°С‚СѓСЂР°)
+// Создать товар (номенклатура)
 app.post("/api/inventory/items", auth, async (req, res) => {
   try {
     const {
@@ -4208,26 +4232,26 @@ app.post("/api/inventory/items", auth, async (req, res) => {
       defaultPrice,
     } = req.body;
 
-    // 1) РџСЂРѕРІРµСЂСЏРµРј, С‡С‚Рѕ СЃС‚СЂРѕРєРё РЅРµ РїСѓСЃС‚С‹Рµ
+    // 1) Проверяем, что строки не пустые
     if (!name || !name.trim()) {
       return res
         .status(400)
-        .json({ message: "РќР°РёРјРµРЅРѕРІР°РЅРёРµ С‚РѕРІР°СЂР° РѕР±СЏР·Р°С‚РµР»СЊРЅРѕ" });
+        .json({ message: "Наименование товара обязательно" });
     }
 
     if (!sku || !sku.trim()) {
       return res
         .status(400)
-        .json({ message: "РђСЂС‚РёРєСѓР» (SKU) РѕР±СЏР·Р°С‚РµР»РµРЅ" });
+        .json({ message: "Артикул (SKU) обязателен" });
     }
 
     if (!unit || !unit.trim()) {
       return res
         .status(400)
-        .json({ message: "Р•РґРёРЅРёС†Р° РёР·РјРµСЂРµРЅРёСЏ РѕР±СЏР·Р°С‚РµР»СЊРЅР°" });
+        .json({ message: "Единица измерения обязательна" });
     }
 
-    // 2) Р§РёСЃР»РѕРІС‹Рµ РїРѕР»СЏ
+    // 2) Числовые поля
     const minVal = Number(minStock);
     const maxVal = Number(maxStock);
     const priceVal = Number(
@@ -4236,23 +4260,23 @@ app.post("/api/inventory/items", auth, async (req, res) => {
 
     if (!Number.isFinite(minVal) || minVal <= 0) {
       return res.status(400).json({
-        message: "РњРёРЅРёРјР°Р»СЊРЅС‹Р№ РѕСЃС‚Р°С‚РѕРє РґРѕР»Р¶РµРЅ Р±С‹С‚СЊ РїРѕР»РѕР¶РёС‚РµР»СЊРЅС‹Рј С‡РёСЃР»РѕРј",
+        message: "Минимальный остаток должен быть положительным числом",
       });
     }
 
     if (!Number.isFinite(maxVal) || maxVal <= 0) {
       return res.status(400).json({
-        message: "РњР°РєСЃРёРјР°Р»СЊРЅС‹Р№ РѕСЃС‚Р°С‚РѕРє РґРѕР»Р¶РµРЅ Р±С‹С‚СЊ РїРѕР»РѕР¶РёС‚РµР»СЊРЅС‹Рј С‡РёСЃР»РѕРј",
+        message: "Максимальный остаток должен быть положительным числом",
       });
     }
 
     if (!Number.isFinite(priceVal) || priceVal <= 0) {
       return res.status(400).json({
-        message: "Р¦РµРЅР° Р·Р° РµРґРёРЅРёС†Сѓ РґРѕР»Р¶РЅР° Р±С‹С‚СЊ РїРѕР»РѕР¶РёС‚РµР»СЊРЅС‹Рј С‡РёСЃР»РѕРј",
+        message: "Цена за единицу должна быть положительным числом",
       });
     }
 
-    // 3) РЎРѕР·РґР°С‘Рј С‚РѕРІР°СЂ
+    // 3) Создаём товар
     const item = await prisma.item.create({
       data: {
         name: name.trim(),
@@ -4272,15 +4296,15 @@ app.post("/api/inventory/items", auth, async (req, res) => {
     if (err.code === "P2002") {
       return res
         .status(400)
-        .json({ message: "РђСЂС‚РёРєСѓР», С€С‚СЂРёС…РєРѕРґ РёР»Рё QR СѓР¶Рµ РёСЃРїРѕР»СЊР·СѓСЋС‚СЃСЏ" });
+        .json({ message: "Артикул, штрихкод или QR уже используются" });
     }
     return res
       .status(500)
-      .json({ message: "РћС€РёР±РєР° СЃРµСЂРІРµСЂР° РїСЂРё СЃРѕР·РґР°РЅРёРё С‚РѕРІР°СЂР°" });
+      .json({ message: "Ошибка сервера при создании товара" });
   }
 });
 
-// РЎРїРёСЃРѕРє С‚РѕРІР°СЂРѕРІ (Р±РµР· СЂР°СЃС‡С‘С‚Р° РѕСЃС‚Р°С‚РєРѕРІ)
+// Список товаров (без расчёта остатков)
 app.get("/api/inventory/items", auth, async (req, res) => {
   try {
     const items = await prisma.item.findMany({
@@ -4291,21 +4315,21 @@ app.get("/api/inventory/items", auth, async (req, res) => {
     console.error("list items error:", err);
     res
       .status(500)
-      .json({ message: "РћС€РёР±РєР° СЃРµСЂРІРµСЂР° РїСЂРё Р·Р°РіСЂСѓР·РєРµ С‚РѕРІР°СЂРѕРІ" });
+      .json({ message: "Ошибка сервера при загрузке товаров" });
   }
 });
 
-// РџРѕРёСЃРє С‚РѕРІР°СЂР° РїРѕ С€С‚СЂРёС…РєРѕРґСѓ (РґР»СЏ РјРѕР±РёР»СЊРЅРѕРіРѕ РўРЎР”)
+// Поиск товара по штрихкоду (для мобильного ТСД)
 app.get("/api/inventory/items/by-barcode/:barcode", auth, async (req, res) => {
   try {
     const raw = req.params.barcode || "";
     const barcode = raw.trim();
 
     if (!barcode) {
-      return res.status(400).json({ message: "РЁС‚СЂРёС…РєРѕРґ РѕР±СЏР·Р°С‚РµР»РµРЅ" });
+      return res.status(400).json({ message: "Штрихкод обязателен" });
     }
 
-    // РёС‰РµРј РїРѕ С€С‚СЂРёС…РєРѕРґСѓ, QR РёР»Рё SKU (РЅР° СЃР»СѓС‡Р°Р№, РµСЃР»Рё СЃРєР°РЅРµСЂ РїРѕСЃС‹Р»Р°РµС‚ РєРѕРґ Р°СЂС‚РёРєСѓР»Р°)
+    // ищем по штрихкоду, QR или SKU (на случай, если сканер посылает код артикула)
     const item = await prisma.item.findFirst({
       where: {
         OR: [
@@ -4319,10 +4343,10 @@ app.get("/api/inventory/items/by-barcode/:barcode", auth, async (req, res) => {
     if (!item) {
       return res
         .status(404)
-        .json({ message: "РўРѕРІР°СЂ СЃ С‚Р°РєРёРј С€С‚СЂРёС…РєРѕРґРѕРј РЅРµ РЅР°Р№РґРµРЅ" });
+        .json({ message: "Товар с таким штрихкодом не найден" });
     }
 
-    // СЃС‡РёС‚Р°РµРј С‚РµРєСѓС‰РёР№ РѕСЃС‚Р°С‚РѕРє РїРѕ СЌС‚РѕРјСѓ С‚РѕРІР°СЂСѓ
+    // считаем текущий остаток по этому товару
     const currentStock = await getCurrentStockForItem(item.id);
 
     return res.json({
@@ -4341,11 +4365,11 @@ app.get("/api/inventory/items/by-barcode/:barcode", auth, async (req, res) => {
     console.error("get item by barcode error:", err);
     return res
       .status(500)
-      .json({ message: "РћС€РёР±РєР° СЃРµСЂРІРµСЂР° РїСЂРё РїРѕРёСЃРєРµ С‚РѕРІР°СЂР° РїРѕ С€С‚СЂРёС…РєРѕРґСѓ" });
+      .json({ message: "Ошибка сервера при поиске товара по штрихкоду" });
   }
 });
 
-// РЈРґР°Р»РёС‚СЊ С‚РѕРІР°СЂ (РЅРѕРјРµРЅРєР»Р°С‚СѓСЂР°)
+// Удалить товар (номенклатура)
 app.delete("/api/inventory/items/:id", auth, async (req, res) => {
   try {
     const id = Number(req.params.id);
@@ -4353,7 +4377,7 @@ app.delete("/api/inventory/items/:id", auth, async (req, res) => {
     if (!id || Number.isNaN(id)) {
       return res
         .status(400)
-        .json({ message: "РќРµРєРѕСЂСЂРµРєС‚РЅС‹Р№ ID С‚РѕРІР°СЂР°" });
+        .json({ message: "Некорректный ID товара" });
     }
 
     const existing = await prisma.item.findUnique({
@@ -4361,29 +4385,29 @@ app.delete("/api/inventory/items/:id", auth, async (req, res) => {
     });
 
     if (!existing) {
-      return res.status(404).json({ message: "РўРѕРІР°СЂ РЅРµ РЅР°Р№РґРµРЅ" });
+      return res.status(404).json({ message: "Товар не найден" });
     }
 
-    // РЎРЅР°С‡Р°Р»Р° СѓРґР°Р»СЏРµРј РІСЃРµ РґРІРёР¶РµРЅРёСЏ РїРѕ СЌС‚РѕРјСѓ С‚РѕРІР°СЂСѓ
+    // Сначала удаляем все движения по этому товару
     await prisma.stockMovement.deleteMany({
       where: { itemId: id },
     });
 
-    // РџРѕС‚РѕРј СЃР°Рј С‚РѕРІР°СЂ
+    // Потом сам товар
     await prisma.item.delete({
       where: { id },
     });
 
-    return res.json({ message: "РўРѕРІР°СЂ Рё РІСЃРµ РґРІРёР¶РµРЅРёСЏ РїРѕ РЅРµРјСѓ СѓРґР°Р»РµРЅС‹" });
+    return res.json({ message: "Товар и все движения по нему удалены" });
   } catch (err) {
     console.error("delete item error:", err);
     return res
       .status(500)
-      .json({ message: "РћС€РёР±РєР° СЃРµСЂРІРµСЂР° РїСЂРё СѓРґР°Р»РµРЅРёРё С‚РѕРІР°СЂР°" });
+      .json({ message: "Ошибка сервера при удалении товара" });
   }
 });
 
-// ===== РЎРљР›РђР”: Р›РћРљРђР¦РР =====
+// ===== СКЛАД: ЛОКАЦ =====
 app.get("/api/warehouse/locations", auth, async (req, res) => {
   try {
     const locations = await prisma.warehouseLocation.findMany({
@@ -4392,7 +4416,7 @@ app.get("/api/warehouse/locations", auth, async (req, res) => {
     res.json(locations);
   } catch (err) {
     console.error("list locations error:", err);
-    res.status(500).json({ message: "РћС€РёР±РєР° СЃРµСЂРІРµСЂР° РїСЂРё Р·Р°РіСЂСѓР·РєРµ Р»РѕРєР°С†РёР№" });
+    res.status(500).json({ message: "Ошибка сервера при загрузке локаций" });
   }
 });
 
@@ -4400,7 +4424,7 @@ app.post("/api/warehouse/locations", auth, async (req, res) => {
   try {
     const { name, zone, aisle, rack, level } = req.body;
     if (!name || !name.trim()) {
-      return res.status(400).json({ message: "РќР°Р·РІР°РЅРёРµ Р»РѕРєР°С†РёРё РѕР±СЏР·Р°С‚РµР»СЊРЅРѕ" });
+      return res.status(400).json({ message: "Название локации обязательно" });
     }
 
     const location = await prisma.warehouseLocation.create({
@@ -4417,9 +4441,9 @@ app.post("/api/warehouse/locations", auth, async (req, res) => {
   } catch (err) {
     console.error("create location error:", err);
     if (err.code === "P2002") {
-      return res.status(400).json({ message: "РљРѕРґ Р»РѕРєР°С†РёРё СѓР¶Рµ РёСЃРїРѕР»СЊР·СѓРµС‚СЃСЏ" });
+      return res.status(400).json({ message: "Код локации уже используется" });
     }
-    res.status(500).json({ message: "РћС€РёР±РєР° СЃРµСЂРІРµСЂР° РїСЂРё СЃРѕР·РґР°РЅРёРё Р»РѕРєР°С†РёРё" });
+    res.status(500).json({ message: "Ошибка сервера при создании локации" });
   }
 });
 
@@ -4467,50 +4491,50 @@ app.delete("/api/warehouse/locations/:id", auth, async (req, res) => {
   try {
     const id = Number(req.params.id);
     if (!id || Number.isNaN(id)) {
-      return res.status(400).json({ message: "РќРµРєРѕСЂСЂРµРєС‚РЅС‹Р№ ID Р»РѕРєР°С†РёРё" });
+      return res.status(400).json({ message: "Некорректный ID локации" });
     }
     const existing = await prisma.warehouseLocation.findUnique({ where: { id } });
     if (!existing) {
-      return res.status(404).json({ message: "Р›РѕРєР°С†РёСЏ РЅРµ РЅР°Р№РґРµРЅР°" });
+      return res.status(404).json({ message: "Локация не найдена" });
     }
     await prisma.warehouseLocation.delete({ where: { id } });
-    res.json({ message: "Р›РѕРєР°С†РёСЏ СѓРґР°Р»РµРЅР°" });
+    res.json({ message: "Локация удалена" });
   } catch (err) {
     console.error("delete location error:", err);
-    res.status(500).json({ message: "РћС€РёР±РєР° СЃРµСЂРІРµСЂР° РїСЂРё СѓРґР°Р»РµРЅРёРё Р»РѕРєР°С†РёРё" });
+    res.status(500).json({ message: "Ошибка сервера при удалении локации" });
   }
 });
 
-// ===== РљРћР”Р«: РўРћР’РђР Р« =====
+// ===== КОДЫ: ТОВАРЫ =====
 app.post("/api/warehouse/products/:id/codes", auth, async (req, res) => {
   try {
     const id = Number(req.params.id);
     const { type, mode = "auto", value, force = false } = req.body || {};
     if (!id || Number.isNaN(id)) {
-      return res.status(400).json({ message: "РќРµРєРѕСЂСЂРµРєС‚РЅС‹Р№ ID С‚РѕРІР°СЂР°" });
+      return res.status(400).json({ message: "Некорректный ID товара" });
     }
     if (!["barcode", "qr", "both"].includes(type)) {
-      return res.status(400).json({ message: "РќРµРІРµСЂРЅС‹Р№ С‚РёРї РєРѕРґР°" });
+      return res.status(400).json({ message: "Неверный тип кода" });
     }
 
     const item = await prisma.item.findUnique({ where: { id } });
     if (!item) {
-      return res.status(404).json({ message: "РўРѕРІР°СЂ РЅРµ РЅР°Р№РґРµРЅ" });
+      return res.status(404).json({ message: "Товар не найден" });
     }
 
     const next = { barcode: item.barcode, qrCode: item.qrCode };
     const manualValue = value ? String(value).trim() : "";
 
     if ((type === "barcode" || type === "both") && next.barcode && !force) {
-      return res.status(400).json({ message: "РЁС‚СЂРёС…РєРѕРґ СѓР¶Рµ Р·Р°РґР°РЅ, РёСЃРїРѕР»СЊР·СѓР№С‚Рµ РїРµСЂРµРІС‹РїСѓСЃРє" });
+      return res.status(400).json({ message: "Штрихкод уже задан, используйте перевыпуск" });
     }
     if ((type === "qr" || type === "both") && next.qrCode && !force) {
-      return res.status(400).json({ message: "QR СѓР¶Рµ Р·Р°РґР°РЅ, РёСЃРїРѕР»СЊР·СѓР№С‚Рµ РїРµСЂРµРІС‹РїСѓСЃРє" });
+      return res.status(400).json({ message: "QR уже задан, используйте перевыпуск" });
     }
 
     if (type === "barcode" || type === "both") {
       if (mode === "manual") {
-        if (!manualValue) return res.status(400).json({ message: "РЈРєР°Р¶РёС‚Рµ Р·РЅР°С‡РµРЅРёРµ РєРѕРґР°" });
+        if (!manualValue) return res.status(400).json({ message: "Укажите значение кода" });
         next.barcode = manualValue;
       } else {
         next.barcode = buildProductCode(item);
@@ -4519,7 +4543,7 @@ app.post("/api/warehouse/products/:id/codes", auth, async (req, res) => {
 
     if (type === "qr" || type === "both") {
       if (mode === "manual") {
-        if (!manualValue) return res.status(400).json({ message: "РЈРєР°Р¶РёС‚Рµ Р·РЅР°С‡РµРЅРёРµ РєРѕРґР°" });
+        if (!manualValue) return res.status(400).json({ message: "Укажите значение кода" });
         next.qrCode = manualValue;
       } else {
         const base = next.barcode || buildProductCode(item);
@@ -4537,40 +4561,40 @@ app.post("/api/warehouse/products/:id/codes", auth, async (req, res) => {
     res.json({ productId: id, barcode: updated.barcode, qrCode: updated.qrCode });
   } catch (err) {
     console.error("product codes error:", err);
-    res.status(400).json({ message: err.message || "РћС€РёР±РєР° РіРµРЅРµСЂР°С†РёРё РєРѕРґР°" });
+    res.status(400).json({ message: err.message || "Ошибка генерации кода" });
   }
 });
 
-// ===== РљРћР”Р«: Р›РћРљРђР¦РР =====
+// ===== КОДЫ: ЛОКАЦ =====
 app.post("/api/warehouse/locations/:id/codes", auth, async (req, res) => {
   try {
     const id = Number(req.params.id);
     const { type, mode = "auto", value, force = false } = req.body || {};
     if (!id || Number.isNaN(id)) {
-      return res.status(400).json({ message: "РќРµРєРѕСЂСЂРµРєС‚РЅС‹Р№ ID Р»РѕРєР°С†РёРё" });
+      return res.status(400).json({ message: "Некорректный ID локации" });
     }
     if (!["barcode", "qr", "both"].includes(type)) {
-      return res.status(400).json({ message: "РќРµРІРµСЂРЅС‹Р№ С‚РёРї РєРѕРґР°" });
+      return res.status(400).json({ message: "Неверный тип кода" });
     }
 
     const location = await prisma.warehouseLocation.findUnique({ where: { id } });
     if (!location) {
-      return res.status(404).json({ message: "Р›РѕРєР°С†РёСЏ РЅРµ РЅР°Р№РґРµРЅР°" });
+      return res.status(404).json({ message: "Локация не найдена" });
     }
 
     const next = { code: location.code, qrCode: location.qrCode };
     const manualValue = value ? String(value).trim() : "";
 
     if ((type === "barcode" || type === "both") && next.code && !force) {
-      return res.status(400).json({ message: "РљРѕРґ СѓР¶Рµ Р·Р°РґР°РЅ, РёСЃРїРѕР»СЊР·СѓР№С‚Рµ РїРµСЂРµРІС‹РїСѓСЃРє" });
+      return res.status(400).json({ message: "Код уже задан, используйте перевыпуск" });
     }
     if ((type === "qr" || type === "both") && next.qrCode && !force) {
-      return res.status(400).json({ message: "QR СѓР¶Рµ Р·Р°РґР°РЅ, РёСЃРїРѕР»СЊР·СѓР№С‚Рµ РїРµСЂРµРІС‹РїСѓСЃРє" });
+      return res.status(400).json({ message: "QR уже задан, используйте перевыпуск" });
     }
 
     if (type === "barcode" || type === "both") {
       if (mode === "manual") {
-        if (!manualValue) return res.status(400).json({ message: "РЈРєР°Р¶РёС‚Рµ Р·РЅР°С‡РµРЅРёРµ РєРѕРґР°" });
+        if (!manualValue) return res.status(400).json({ message: "Укажите значение кода" });
         next.code = manualValue;
       } else {
         next.code = buildLocationCode(location);
@@ -4579,7 +4603,7 @@ app.post("/api/warehouse/locations/:id/codes", auth, async (req, res) => {
 
     if (type === "qr" || type === "both") {
       if (mode === "manual") {
-        if (!manualValue) return res.status(400).json({ message: "РЈРєР°Р¶РёС‚Рµ Р·РЅР°С‡РµРЅРёРµ РєРѕРґР°" });
+        if (!manualValue) return res.status(400).json({ message: "Укажите значение кода" });
         next.qrCode = manualValue;
       } else {
         const base = next.code || buildLocationCode(location);
@@ -4597,24 +4621,24 @@ app.post("/api/warehouse/locations/:id/codes", auth, async (req, res) => {
     res.json({ locationId: id, code: updated.code, qrCode: updated.qrCode });
   } catch (err) {
     console.error("location codes error:", err);
-    res.status(400).json({ message: err.message || "РћС€РёР±РєР° РіРµРЅРµСЂР°С†РёРё РєРѕРґР°" });
+    res.status(400).json({ message: err.message || "Ошибка генерации кода" });
   }
 });
 
-// ===== QR: РўРћР’РђР Р« =====
+// ===== QR: ТОВАРЫ =====
 app.post("/api/warehouse/products/:id/qr", auth, async (req, res) => {
   try {
     const id = Number(req.params.id);
     const { force = false } = req.body || {};
     if (!id || Number.isNaN(id)) {
-      return res.status(400).json({ message: "РќРµРєРѕСЂСЂРµРєС‚РЅС‹Р№ ID С‚РѕРІР°СЂР°" });
+      return res.status(400).json({ message: "Некорректный ID товара" });
     }
     const item = await prisma.item.findUnique({ where: { id } });
     if (!item) {
-      return res.status(404).json({ message: "РўРѕРІР°СЂ РЅРµ РЅР°Р№РґРµРЅ" });
+      return res.status(404).json({ message: "Товар не найден" });
     }
     if (item.qrCode && !force) {
-      return res.status(400).json({ message: "QR СѓР¶Рµ Р·Р°РґР°РЅ, РёСЃРїРѕР»СЊР·СѓР№С‚Рµ РїРµСЂРµРІС‹РїСѓСЃРє" });
+      return res.status(400).json({ message: "QR уже задан, используйте перевыпуск" });
     }
     const qrCode = `BP:PRODUCT:${item.id}`;
     await ensureUniqueItemCodes({ qrCode }, id);
@@ -4625,21 +4649,21 @@ app.post("/api/warehouse/products/:id/qr", auth, async (req, res) => {
     res.json({ id: updated.id, qrCode: updated.qrCode });
   } catch (err) {
     console.error("product qr error:", err);
-    res.status(400).json({ message: err.message || "РћС€РёР±РєР° РіРµРЅРµСЂР°С†РёРё QR" });
+    res.status(400).json({ message: err.message || "Ошибка генерации QR" });
   }
 });
 
-// ===== QR: Р›РћРљРђР¦РР =====
+// ===== QR: ЛОКАЦ =====
 app.post("/api/warehouse/locations/:id/qr", auth, async (req, res) => {
   try {
     const id = Number(req.params.id);
     const { force = false } = req.body || {};
     if (!id || Number.isNaN(id)) {
-      return res.status(400).json({ message: "РќРµРєРѕСЂСЂРµРєС‚РЅС‹Р№ ID Р»РѕРєР°С†РёРё" });
+      return res.status(400).json({ message: "Некорректный ID локации" });
     }
     const location = await prisma.warehouseLocation.findUnique({ where: { id } });
     if (!location) {
-      return res.status(404).json({ message: "Р›РѕРєР°С†РёСЏ РЅРµ РЅР°Р№РґРµРЅР°" });
+      return res.status(404).json({ message: "Локация не найдена" });
     }
     if (location.qrCode && !force) {
       return res.json({ id: location.id, qrCode: location.qrCode });
@@ -4653,11 +4677,11 @@ app.post("/api/warehouse/locations/:id/qr", auth, async (req, res) => {
     res.json({ id: updated.id, qrCode: updated.qrCode });
   } catch (err) {
     console.error("location qr error:", err);
-    res.status(400).json({ message: err.message || "РћС€РёР±РєР° РіРµРЅРµСЂР°С†РёРё QR" });
+    res.status(400).json({ message: err.message || "Ошибка генерации QR" });
   }
 });
 
-// ===== Р Р•Р—РћР›Р’ РЎРљРђРќРђ =====
+// ===== РЕЗОЛВ СКАНА =====
 app.get("/api/warehouse/scan/resolve", auth, async (req, res) => {
   try {
     const raw = String(req.query.code || "").trim();
@@ -5666,28 +5690,28 @@ app.post("/api/warehouse/print/labels", auth, async (req, res) => {
 });
 
 
-// ===== Р Р•РќР”Р•Р  QR =====
+// ===== РЕНДЕР QR =====
 app.get("/api/warehouse/qr/render", async (req, res) => {
   try {
     const value = String(req.query.value || "").trim();
     if (!value) {
-      return res.status(400).json({ message: "РќРµРІРµСЂРЅС‹Рµ РїР°СЂР°РјРµС‚СЂС‹" });
+      return res.status(400).json({ message: "Неверные параметры" });
     }
     const buffer = await renderQrPng(value);
     res.setHeader("Content-Type", "image/png");
     res.send(buffer);
   } catch (err) {
     console.error("render code error:", err);
-    res.status(500).json({ message: "РћС€РёР±РєР° РіРµРЅРµСЂР°С†РёРё РёР·РѕР±СЂР°Р¶РµРЅРёСЏ" });
+    res.status(500).json({ message: "Ошибка генерации изображения" });
   }
 });
 
-// ===== РџР•Р§РђРўР¬ QR =====
+// ===== ПЕЧАТЬ QR =====
 app.post("/api/warehouse/qr/print", auth, async (req, res) => {
   try {
     const { kind, id, qty = 1, layout = "A4" } = req.body || {};
     if (!id || !["product", "location"].includes(kind)) {
-      return res.status(400).json({ message: "РќРµРІРµСЂРЅС‹Рµ РїР°СЂР°РјРµС‚СЂС‹ РїРµС‡Р°С‚Рё" });
+      return res.status(400).json({ message: "Неверные параметры печати" });
     }
     const count = Math.max(1, Number(qty || 1));
     let title = "";
@@ -5695,14 +5719,14 @@ app.post("/api/warehouse/qr/print", auth, async (req, res) => {
     let qrValue = "";
     if (kind === "product") {
       const item = await prisma.item.findUnique({ where: { id: Number(id) } });
-      if (!item) return res.status(404).json({ message: "РўРѕРІР°СЂ РЅРµ РЅР°Р№РґРµРЅ" });
+      if (!item) return res.status(404).json({ message: "Товар не найден" });
       title = item.name;
       subtitle = item.sku ? `SKU: ${item.sku}` : "";
       qrValue = item.qrCode || `BP:PRODUCT:${item.id}`;
     } else {
       const location = await prisma.warehouseLocation.findUnique({ where: { id: Number(id) } });
-      if (!location) return res.status(404).json({ message: "Р›РѕРєР°С†РёСЏ РЅРµ РЅР°Р№РґРµРЅР°" });
-      title = `Р›РћРљРђР¦РРЇ: ${location.name}`;
+      if (!location) return res.status(404).json({ message: "Локация не найдена" });
+      title = `ЛОКАЦЯ: ${location.name}`;
       subtitle = [location.zone, location.aisle, location.rack, location.level].filter(Boolean).join(" / ");
       qrValue = location.qrCode || `BP:LOCATION:${location.id}`;
     }
@@ -5715,7 +5739,7 @@ app.post("/api/warehouse/qr/print", auth, async (req, res) => {
       <html>
         <head>
           <meta charset="utf-8" />
-          <title>QR РїРµС‡Р°С‚СЊ</title>
+          <title>QR печать</title>
           <style>
             @page { size: ${isLabel ? "58mm 40mm" : "A4"}; margin: ${isLabel ? "0" : "8mm"}; }
             body { font-family: Arial, sans-serif; margin: 0; color: #0f172a; }
@@ -5751,11 +5775,11 @@ app.post("/api/warehouse/qr/print", auth, async (req, res) => {
     res.send(html);
   } catch (err) {
     console.error("qr print error:", err);
-    res.status(500).json({ message: "РћС€РёР±РєР° РїРµС‡Р°С‚Рё QR" });
+    res.status(500).json({ message: "Ошибка печати QR" });
   }
 });
 
-// ===== Р РђР—РњР•Р©Р•РќРРЇ =====
+// ===== РАЗМЕЩЕНЯ =====
 app.post("/api/warehouse/placements", auth, async (req, res) => {
   try {
     const { itemId, locationId, qty } = req.body || {};
@@ -5763,7 +5787,7 @@ app.post("/api/warehouse/placements", auth, async (req, res) => {
     const location = Number(locationId);
     const amount = Number(qty);
     if (!item || !location || !Number.isFinite(amount) || amount <= 0) {
-      return res.status(400).json({ message: "РќРµРІРµСЂРЅС‹Рµ РґР°РЅРЅС‹Рµ СЂР°Р·РјРµС‰РµРЅРёСЏ" });
+      return res.status(400).json({ message: "Неверные данные размещения" });
     }
 
     const existing = await prisma.warehousePlacement.findUnique({
@@ -5784,7 +5808,7 @@ app.post("/api/warehouse/placements", auth, async (req, res) => {
     res.json({ itemId: updated.itemId, locationId: updated.locationId, qty: updated.qty });
   } catch (err) {
     console.error("placements create error:", err);
-    res.status(500).json({ message: "РћС€РёР±РєР° СЃРµСЂРІРµСЂР° РїСЂРё СЂР°Р·РјРµС‰РµРЅРёРё" });
+    res.status(500).json({ message: "Ошибка сервера при размещении" });
   }
 });
 
@@ -5792,7 +5816,7 @@ app.get("/api/warehouse/products/:id/placements", auth, async (req, res) => {
   try {
     const id = Number(req.params.id);
     if (!id || Number.isNaN(id)) {
-      return res.status(400).json({ message: "РќРµРєРѕСЂСЂРµРєС‚РЅС‹Р№ ID С‚РѕРІР°СЂР°" });
+      return res.status(400).json({ message: "Некорректный ID товара" });
     }
     const placements = await prisma.warehousePlacement.findMany({
       where: { itemId: id },
@@ -5813,7 +5837,7 @@ app.get("/api/warehouse/products/:id/placements", auth, async (req, res) => {
     );
   } catch (err) {
     console.error("placements list error:", err);
-    res.status(500).json({ message: "РћС€РёР±РєР° СЃРµСЂРІРµСЂР° РїСЂРё Р·Р°РіСЂСѓР·РєРµ СЂР°Р·РјРµС‰РµРЅРёР№" });
+    res.status(500).json({ message: "Ошибка сервера при загрузке размещений" });
   }
 });
 
@@ -5824,14 +5848,14 @@ app.put("/api/warehouse/placements/pick", auth, async (req, res) => {
     const location = Number(locationId);
     const amount = Number(qty);
     if (!item || !location || !Number.isFinite(amount) || amount <= 0) {
-      return res.status(400).json({ message: "РќРµРІРµСЂРЅС‹Рµ РґР°РЅРЅС‹Рµ РѕС‚Р±РѕСЂР°" });
+      return res.status(400).json({ message: "Неверные данные отбора" });
     }
 
     const existing = await prisma.warehousePlacement.findUnique({
       where: { itemId_locationId: { itemId: item, locationId: location } },
     });
     if (!existing || existing.qty < amount) {
-      return res.status(400).json({ message: "РќРµРґРѕСЃС‚Р°С‚РѕС‡РЅРѕ С‚РѕРІР°СЂР° РІ Р»РѕРєР°С†РёРё" });
+      return res.status(400).json({ message: "Недостаточно товара в локации" });
     }
 
     const nextQty = existing.qty - Math.trunc(amount);
@@ -5850,16 +5874,16 @@ app.put("/api/warehouse/placements/pick", auth, async (req, res) => {
     res.json({ itemId: updated.itemId, locationId: updated.locationId, qty: updated.qty });
   } catch (err) {
     console.error("placements pick error:", err);
-    res.status(500).json({ message: "РћС€РёР±РєР° СЃРµСЂРІРµСЂР° РїСЂРё РѕС‚Р±РѕСЂРµ" });
+    res.status(500).json({ message: "Ошибка сервера при отборе" });
   }
 });
 
-// ===== РџР•Р§РђРўР¬ Р­РўРРљР•РўРћРљ =====
+// ===== ПЕЧАТЬ ЭТКЕТОК =====
 app.post("/api/warehouse/labels/print", auth, async (req, res) => {
   try {
     const { items = [], format = "A4", labelSize = "58x40" } = req.body || {};
     if (!Array.isArray(items) || items.length === 0) {
-      return res.status(400).json({ message: "РЎРїРёСЃРѕРє СЌС‚РёРєРµС‚РѕРє РїСѓСЃС‚" });
+      return res.status(400).json({ message: "Список этикеток пуст" });
     }
 
     const labels = [];
@@ -5935,7 +5959,7 @@ app.post("/api/warehouse/labels/print", auth, async (req, res) => {
       <html>
         <head>
           <meta charset="utf-8" />
-          <title>Р­С‚РёРєРµС‚РєРё</title>
+          <title>Этикетки</title>
           <style>
             ${pageRule}
             @media print {
@@ -5988,7 +6012,7 @@ app.post("/api/warehouse/labels/print", auth, async (req, res) => {
                         ${r.qrImg ? `<img class="qr qr--big" src="${r.qrImg}" />` : ""}
                         ${r.code ? `<div class="barcode-label">${r.code}</div>` : ""}
                       </div>
-                      <div class="print-date">РџРµС‡Р°С‚СЊ: ${new Date().toLocaleDateString("ru-RU")}</div>
+                      <div class="print-date">Печать: ${new Date().toLocaleDateString("ru-RU")}</div>
                     </div>
                   `;
                 }
@@ -6003,7 +6027,7 @@ app.post("/api/warehouse/labels/print", auth, async (req, res) => {
                       </div>
                       ${r.qrImg ? `<img class="qr" src="${r.qrImg}" />` : ""}
                     </div>
-                    <div class="print-date">РџРµС‡Р°С‚СЊ: ${new Date().toLocaleDateString("ru-RU")}</div>
+                    <div class="print-date">Печать: ${new Date().toLocaleDateString("ru-RU")}</div>
                   </div>
                 `;
               })
@@ -6018,11 +6042,11 @@ app.post("/api/warehouse/labels/print", auth, async (req, res) => {
     res.send(html);
   } catch (err) {
     console.error("labels print error:", err);
-    res.status(500).json({ message: "РћС€РёР±РєР° РіРµРЅРµСЂР°С†РёРё СЌС‚РёРєРµС‚РѕРє" });
+    res.status(500).json({ message: "Ошибка генерации этикеток" });
   }
 });
 
-// РЎРїРёСЃРѕРє С‚РѕРІР°СЂРѕРІ СЃ С‚РµРєСѓС‰РёРјРё РѕСЃС‚Р°С‚РєР°РјРё
+// Список товаров с текущими остатками
 app.get("/api/inventory/stock", auth, async (req, res) => {
   try {
     const items = await prisma.item.findMany({
@@ -6059,7 +6083,7 @@ app.get("/api/inventory/stock", auth, async (req, res) => {
     console.error("stock list error:", err);
     res
       .status(500)
-      .json({ message: "РћС€РёР±РєР° СЃРµСЂРІРµСЂР° РїСЂРё СЂР°СЃС‡С‘С‚Рµ РѕСЃС‚Р°С‚РєРѕРІ" });
+      .json({ message: "Ошибка сервера при расчёте остатков" });
   }
 });
 
@@ -6127,10 +6151,10 @@ app.get("/api/warehouse/stock/item/:id", auth, async (req, res) => {
   }
 });
 
-// Р“РѕС‚РѕРІС‹Р№ Р·Р°РєР°Р· РїРѕ С‚РѕРІР°СЂР°Рј РЅРёР¶Рµ РјРёРЅРёРјР°Р»СЊРЅРѕРіРѕ РѕСЃС‚Р°С‚РєР° (Excel .xlsx)
+// Готовый заказ по товарам ниже минимального остатка (Excel .xlsx)
 app.get("/api/inventory/low-stock-order-file", auth, async (req, res) => {
   try {
-    // 1. Р‘РµСЂС‘Рј РІСЃРµ С‚РѕРІР°СЂС‹ СЃ РґРІРёР¶РµРЅРёСЏРјРё
+    // 1. Берём все товары с движениями
     const items = await prisma.item.findMany({
       orderBy: { name: "asc" },
       include: { movements: true },
@@ -6139,7 +6163,7 @@ app.get("/api/inventory/low-stock-order-file", auth, async (req, res) => {
     const lowItems = [];
 
     for (const item of items) {
-      // СЃС‡РёС‚Р°РµРј С‚РµРєСѓС‰РёР№ РѕСЃС‚Р°С‚РѕРє С‚Р°Рє Р¶Рµ, РєР°Рє РІ /api/inventory/stock
+      // считаем текущий остаток так же, как в /api/inventory/stock
       let qty = 0;
       for (const m of item.movements) {
         if (m.type === "INCOME" || m.type === "ADJUSTMENT") {
@@ -6153,18 +6177,18 @@ app.get("/api/inventory/low-stock-order-file", auth, async (req, res) => {
       const min = item.minStock != null ? Number(item.minStock) : null;
       const max = item.maxStock != null ? Number(item.maxStock) : null;
 
-      // Р›РѕРіРёРєР° "С‚РѕРІР°СЂ Рє Р·Р°РєР°Р·Сѓ" РґРµР»Р°РµРј С‚Р°РєРѕР№ Р¶Рµ, РєР°Рє РїРѕРґСЃРІРµС‚РєР° РІ РёРЅС‚РµСЂС„РµР№СЃРµ:
-      // 1) РµСЃР»Рё РѕСЃС‚Р°С‚РѕРє <= 0 Рё РµСЃС‚СЊ min РёР»Рё max
-      // 2) РёР»Рё РµСЃР»Рё РµСЃС‚СЊ min Рё РѕСЃС‚Р°С‚РѕРє < min
+      // Логика "товар к заказу" делаем такой же, как подсветка в интерфейсе:
+      // 1) если остаток <= 0 и есть min или max
+      // 2) или если есть min и остаток < min
       const shouldOrder =
         (currentStock <= 0 && ((min != null && min > 0) || (max != null && max > 0))) ||
         (min != null && currentStock < min);
 
       if (!shouldOrder) continue;
 
-      // РЎРєРѕР»СЊРєРѕ Р·Р°РєР°Р·С‹РІР°С‚СЊ:
-      // - РµСЃР»Рё Р·Р°РґР°РЅ min Рё >0 вЂ” РґРѕР±РёРІР°РµРј РґРѕ min
-      // - РёРЅР°С‡Рµ, РµСЃР»Рё РµСЃС‚СЊ max вЂ” РґРѕР±РёРІР°РµРј РґРѕ max
+      // Сколько заказывать:
+      // - если задан min и >0 — добиваем до min
+      // - иначе, если есть max — добиваем до max
       let orderQty = 0;
 
       if (min != null && min > 0) {
@@ -6186,27 +6210,27 @@ app.get("/api/inventory/low-stock-order-file", auth, async (req, res) => {
     if (lowItems.length === 0) {
       return res
         .status(400)
-        .json({ message: "РќРµС‚ С‚РѕРІР°СЂРѕРІ РЅРёР¶Рµ РјРёРЅРёРјР°Р»СЊРЅРѕРіРѕ РѕСЃС‚Р°С‚РєР°" });
+        .json({ message: "Нет товаров ниже минимального остатка" });
     }
 
-    // 2. РЎРѕР·РґР°С‘Рј Excel-РєРЅРёРіСѓ Рё Р»РёСЃС‚
+    // 2. Создаём Excel-книгу и лист
     const workbook = new ExcelJS.Workbook();
-    const worksheet = workbook.addWorksheet("Р—Р°РєР°Р·");
+    const worksheet = workbook.addWorksheet("Заказ");
 
-    // РЎС‚СЂРѕРєР° 1: Р—Р°РіРѕР»РѕРІРѕРє "Р—РђРљРђР— в„– ____ РѕС‚ [Р”Р°С‚Р°]"
+    // Строка 1: Заголовок "ЗАКАЗ № ____ от [Дата]"
     const now = new Date();
     const dateStr = now.toLocaleDateString("ru-RU");
     worksheet.mergeCells("A1:F1");
     const titleCell = worksheet.getCell("A1");
-    titleCell.value = `Р—РђРљРђР— в„– ____ РѕС‚ ${dateStr}`;
+    titleCell.value = `ЗАКАЗ № ____ от ${dateStr}`;
     titleCell.font = { bold: true, size: 14 };
     titleCell.alignment = { horizontal: "center", vertical: "middle" };
 
-    // РЎС‚СЂРѕРєР° 2: РЁР°РїРєР° С‚Р°Р±Р»РёС†С‹
-    // РљРѕР»РѕРЅРєРё: в„–, РќРѕРјРµРЅРєР»Р°С‚СѓСЂР°, РљРѕР»-РІРѕ, Р•Рґ., Р¦РµРЅР° Р·Р° С€С‚, РЎСѓРјРјР°
-    worksheet.getRow(2).values = ["в„–", "РќРѕРјРµРЅРєР»Р°С‚СѓСЂР°", "РљРѕР»-РІРѕ", "Р•Рґ.", "Р¦РµРЅР° Р·Р° С€С‚", "РЎСѓРјРјР°"];
+    // Строка 2: Шапка таблицы
+    // Колонки: №, Номенклатура, Кол-во, Ед., Цена за шт, Сумма
+    worksheet.getRow(2).values = ["№", "Номенклатура", "Кол-во", "Ед.", "Цена за шт", "Сумма"];
 
-    // РќР°СЃС‚СЂРѕР№РєР° РєРѕР»РѕРЅРѕРє (С€РёСЂРёРЅР°)
+    // Настройка колонок (ширина)
     worksheet.columns = [
       { key: "position", width: 8 },
       { key: "name", width: 40 },
@@ -6216,8 +6240,8 @@ app.get("/api/inventory/low-stock-order-file", auth, async (req, res) => {
       { key: "sum", width: 15 },
     ];
 
-    // 4. Р—Р°РїРѕР»РЅСЏРµРј СЃС‚СЂРѕРєРё РґР°РЅРЅС‹РјРё
-    const firstDataRow = 3; // РґР°РЅРЅС‹Рµ РЅР°С‡РёРЅР°СЋС‚СЃСЏ СЃ 3-Р№ СЃС‚СЂРѕРєРё
+    // 4. Заполняем строки данными
+    const firstDataRow = 3; // данные начинаются с 3-й строки
 
     lowItems.forEach((it, index) => {
       const rowIndex = firstDataRow + index;
@@ -6225,14 +6249,14 @@ app.get("/api/inventory/low-stock-order-file", auth, async (req, res) => {
 
       row.values = [
         index + 1,          // A: в„–
-        it.name,            // B: РќРѕРјРµРЅРєР»Р°С‚СѓСЂР°
-        it.orderQty,        // C: РљРѕР»-РІРѕ
-        it.unit || "С€С‚",    // D: Р•Рґ.
-        it.price ?? 0,      // E: Р¦РµРЅР°
-        // F: РЎСѓРјРјР° (С„РѕСЂРјСѓР»Р°)
+        it.name,            // B: Номенклатура
+        it.orderQty,        // C: Кол-во
+        it.unit || "шт",    // D: Ед.
+        it.price ?? 0,      // E: Цена
+        // F: Сумма (формула)
       ];
 
-      // Р¤РѕСЂРјСѓР»Р° СЃСѓРјРјС‹: C*E
+      // Формула суммы: C*E
       row.getCell(6).value = {
         formula: `C${rowIndex}*E${rowIndex}`,
       };
@@ -6240,22 +6264,22 @@ app.get("/api/inventory/low-stock-order-file", auth, async (req, res) => {
 
     const lastDataRow = firstDataRow + lowItems.length - 1;
 
-    // 5. РЎС‚СЂРѕРєР° СЃ РёС‚РѕРіРѕРј РїРѕРґ С‚Р°Р±Р»РёС†РµР№
+    // 5. Строка с итогом под таблицей
     const totalRowIndex = lastDataRow + 1;
     const totalRow = worksheet.getRow(totalRowIndex);
 
-    totalRow.getCell(5).value = "РРўРћР“Рћ:";
+    totalRow.getCell(5).value = "ТОГО:";
     totalRow.getCell(5).font = { bold: true };
     totalRow.getCell(5).alignment = { horizontal: "right", vertical: "middle" };
 
-    // РЎСѓРјРјР° РїРѕ СЃС‚РѕР»Р±С†Сѓ F
+    // Сумма по столбцу F
     totalRow.getCell(6).value = {
       formula: `SUM(F${firstDataRow}:F${lastDataRow})`,
     };
     totalRow.getCell(6).font = { bold: true };
 
-    // 6. РћС„РѕСЂРјР»РµРЅРёРµ РіСЂР°РЅРёС† Рё РІС‹СЂР°РІРЅРёРІР°РЅРёРµ
-    // РЁР°РїРєР° (СЃС‚СЂРѕРєР° 2)
+    // 6. Оформление границ и выравнивание
+    // Шапка (строка 2)
     const headerRow = worksheet.getRow(2);
     headerRow.eachCell((cell) => {
       cell.font = { bold: true };
@@ -6268,7 +6292,7 @@ app.get("/api/inventory/low-stock-order-file", auth, async (req, res) => {
       };
     });
 
-    // Р”Р°РЅРЅС‹Рµ
+    // Данные
     for (let r = firstDataRow; r <= lastDataRow; r++) {
       const row = worksheet.getRow(r);
       row.eachCell((cell) => {
@@ -6278,8 +6302,8 @@ app.get("/api/inventory/low-stock-order-file", auth, async (req, res) => {
           bottom: { style: "thin" },
           right: { style: "thin" },
         };
-        // Р’С‹СЂР°РІРЅРёРІР°РЅРёРµ: С‚РµРєСЃС‚ СЃР»РµРІР°, С‡РёСЃР»Р° СЃРїСЂР°РІР°/С†РµРЅС‚СЂ
-        if (cell.col === 2) { // РќРѕРјРµРЅРєР»Р°С‚СѓСЂР°
+        // Выравнивание: текст слева, числа справа/центр
+        if (cell.col === 2) { // Номенклатура
           cell.alignment = { horizontal: "left", vertical: "middle", wrapText: true };
         } else {
           cell.alignment = { horizontal: "center", vertical: "middle" };
@@ -6287,7 +6311,7 @@ app.get("/api/inventory/low-stock-order-file", auth, async (req, res) => {
       });
     }
 
-    // РС‚РѕРіРѕРІР°СЏ СЃС‚СЂРѕРєР° (РіСЂР°РЅРёС†С‹ РґР»СЏ СЃСѓРјРјС‹)
+    // тоговая строка (границы для суммы)
     totalRow.getCell(6).border = {
       top: { style: "thin" },
       left: { style: "thin" },
@@ -6295,7 +6319,7 @@ app.get("/api/inventory/low-stock-order-file", auth, async (req, res) => {
       right: { style: "thin" },
     };
 
-    // 7. РћС‚РґР°С‘Рј С„Р°Р№Р»
+    // 7. Отдаём файл
     const filename = `order_${now.toISOString().slice(0, 10)}.xlsx`;
     const buffer = await workbook.xlsx.writeBuffer();
 
@@ -6313,21 +6337,21 @@ app.get("/api/inventory/low-stock-order-file", auth, async (req, res) => {
     console.error("/api/inventory/low-stock-order-file error:", err);
     res
       .status(500)
-      .json({ message: "РћС€РёР±РєР° СЃРµСЂРІРµСЂР° РїСЂРё С„РѕСЂРјРёСЂРѕРІР°РЅРёРё Р·Р°РєР°Р·Р°" });
+      .json({ message: "Ошибка сервера при формировании заказа" });
   }
 });
 
-// РРјРїРѕСЂС‚ С‚РѕРІР°СЂРѕРІ РёР· Excel (С€Р°Р±Р»РѕРЅ "РРјРїРѕСЂС‚.xlsx")
+// мпорт товаров из Excel (шаблон "мпорт.xlsx")
 app.post(
   "/api/inventory/items/import",
   auth,
-  upload.single("file"), // Р¶РґС‘Рј С„Р°Р№Р» РІ РїРѕР»Рµ "file"
+  upload.single("file"), // ждём файл в поле "file"
   async (req, res) => {
     try {
       if (!req.file) {
         return res
           .status(400)
-          .json({ message: "Р¤Р°Р№Р» РЅРµ РїРµСЂРµРґР°РЅ" });
+          .json({ message: "Файл не передан" });
       }
 
       const workbook = new ExcelJS.Workbook();
@@ -6337,18 +6361,18 @@ app.post(
       if (!worksheet) {
         return res
           .status(400)
-          .json({ message: "РќРµ СѓРґР°Р»РѕСЃСЊ РїСЂРѕС‡РёС‚Р°С‚СЊ РїРµСЂРІС‹Р№ Р»РёСЃС‚ С„Р°Р№Р»Р°" });
+          .json({ message: "Не удалось прочитать первый лист файла" });
       }
 
-      // РџСЂРµРґРїРѕР»Р°РіР°РµРј СЃС‚СЂСѓРєС‚СѓСЂСѓ С„Р°Р№Р»Р° "РРјРїРѕСЂС‚.xlsx":
-      // 1-СЏ СЃС‚СЂРѕРєР° вЂ” Р·Р°РіРѕР»РѕРІРєРё, РґР°Р»СЊС€Рµ вЂ” РґР°РЅРЅС‹Рµ
-      // A: РќР°РёРјРµРЅРѕРІР°РЅРёРµ
-      // B: РђСЂС‚РёРєСѓР» (SKU)
-      // C: РЁС‚СЂРёС…РєРѕРґ
-      // D: Р•Рґ. РёР·Рј.
-      // E: РњРёРЅ. РѕСЃС‚Р°С‚РѕРє
-      // F: РњР°РєСЃ. РѕСЃС‚Р°С‚РѕРє
-      // G: Р¦РµРЅР° Р·Р° РµРґРёРЅРёС†Сѓ
+      // Предполагаем структуру файла "мпорт.xlsx":
+      // 1-я строка — заголовки, дальше — данные
+      // A: Наименование
+      // B: Артикул (SKU)
+      // C: Штрихкод
+      // D: Ед. изм.
+      // E: Мин. остаток
+      // F: Макс. остаток
+      // G: Цена за единицу
       const lastRow = worksheet.lastRow?.number || 0;
 
       let created = 0;
@@ -6370,7 +6394,7 @@ app.post(
         const barcode = String(row.getCell(3).value || "").trim();
         const unit = String(row.getCell(4).value || "").trim();
 
-        // Р§РёСЃР»РѕРІС‹Рµ Р·РЅР°С‡РµРЅРёСЏ
+        // Числовые значения
         // F=6 (Min), I=9 (Max), J=10 (Price)
         let minStock = Math.round(toNumber(row.getCell(6).value));
         let maxStock = Math.round(toNumber(row.getCell(9).value));
@@ -6378,19 +6402,19 @@ app.post(
 
         console.log(`Row ${rowNumber}: SKU=${sku}, Min=${minStock}, Max=${maxStock}, Price=${defaultPrice}`);
 
-        // Р•СЃР»Рё СЃС‚СЂРѕРєР° СЃРѕРІСЃРµРј РїСѓСЃС‚Р°СЏ вЂ” РїСЂРѕРїСѓСЃРєР°РµРј
+        // Если строка совсем пустая — пропускаем
         if (!name && !sku && !barcode) {
           skipped++;
           continue;
         }
 
-        // Р‘РµР· РёРјРµРЅРё РёР»Рё SKU вЂ” РїСЂРѕРїСѓСЃРєР°РµРј (РєР°Рє Рё РІ API СЃРѕР·РґР°РЅРёСЏ С‚РѕРІР°СЂР°)
+        // Без имени или SKU — пропускаем (как и в API создания товара)
         if (!name || !sku) {
           skipped++;
           continue;
         }
 
-        // РќРѕСЂРјР°Р»РёР·СѓРµРј: РЅРµ РґРѕРїСѓСЃРєР°РµРј РѕС‚СЂРёС†Р°С‚РµР»СЊРЅС‹С…
+        // Нормализуем: не допускаем отрицательных
         if (!Number.isFinite(minStock) || minStock < 0) {
           skipped++;
           continue;
@@ -6415,7 +6439,7 @@ app.post(
         };
 
         try {
-          // РС‰РµРј РїРѕ SKU (РѕРЅ Сѓ С‚РµР±СЏ СѓРЅРёРєР°Р»СЊРЅС‹Р№)
+          // щем по SKU (он у тебя уникальный)
           const existing = await prisma.item.findUnique({
             where: { sku },
           });
@@ -6432,7 +6456,7 @@ app.post(
           }
         } catch (err) {
           console.error(
-            "РћС€РёР±РєР° РїСЂРё РёРјРїРѕСЂС‚Рµ СЃС‚СЂРѕРєРё",
+            "Ошибка при импорте строки",
             rowNumber,
             err
           );
@@ -6441,24 +6465,24 @@ app.post(
       }
 
       return res.json({
-        message: "РРјРїРѕСЂС‚ Р·Р°РІРµСЂС€С‘РЅ",
+        message: "мпорт завершён",
         created,
         updated,
         skipped,
       });
     } catch (err) {
       console.error("import file error:", err);
-      res.status(500).json({ message: "РћС€РёР±РєР° СЃРµСЂРІРµСЂР° РїСЂРё РёРјРїРѕСЂС‚Рµ С„Р°Р№Р»Р°" });
+      res.status(500).json({ message: "Ошибка сервера при импорте файла" });
     }
   }
 );
 
-// РџР°РєРµС‚РЅРѕРµ СЃРѕР·РґР°РЅРёРµ С‚РѕРІР°СЂРѕРІ (JSON) вЂ” РґР»СЏ ImportItemsModal
+// Пакетное создание товаров (JSON) — для ImportItemsModal
 app.post("/api/inventory/items/batch", auth, async (req, res) => {
   try {
     const { items } = req.body;
     if (!Array.isArray(items)) {
-      return res.status(400).json({ message: "РћР¶РёРґР°РµС‚СЃСЏ РјР°СЃСЃРёРІ items" });
+      return res.status(400).json({ message: "Ожидается массив items" });
     }
 
     let created = 0;
@@ -6466,9 +6490,9 @@ app.post("/api/inventory/items/batch", auth, async (req, res) => {
     let errors = [];
 
     for (const item of items) {
-      // Р’Р°Р»РёРґР°С†РёСЏ
+      // Валидация
       if (!item.name || !item.sku) {
-        errors.push({ row: item.row, error: "РќРµС‚ РёРјРµРЅРё РёР»Рё SKU" });
+        errors.push({ row: item.row, error: "Нет имени или SKU" });
         continue;
       }
 
@@ -6476,7 +6500,7 @@ app.post("/api/inventory/items/batch", auth, async (req, res) => {
         name: String(item.name).trim(),
         sku: String(item.sku).trim(),
         barcode: item.barcode ? String(item.barcode).trim() : null,
-        unit: item.unit ? String(item.unit).trim() : "С€С‚",
+        unit: item.unit ? String(item.unit).trim() : "шт",
         minStock: item.minStock ? Number(item.minStock) : 0,
         maxStock: item.maxStock ? Number(item.maxStock) : 0,
         defaultPrice: item.defaultPrice ? Number(item.defaultPrice) : 0,
@@ -6499,25 +6523,25 @@ app.post("/api/inventory/items/batch", auth, async (req, res) => {
         }
       } catch (e) {
         console.error("batch item error:", e);
-        errors.push({ row: item.row, error: "РћС€РёР±РєР° Р‘Р” (РІРѕР·РјРѕР¶РЅРѕ РґСѓР±Р»СЊ)" });
+        errors.push({ row: item.row, error: "Ошибка БД (возможно дубль)" });
       }
     }
 
     res.json({
-      message: "РџР°РєРµС‚РЅР°СЏ РѕР±СЂР°Р±РѕС‚РєР° Р·Р°РІРµСЂС€РµРЅР°",
+      message: "Пакетная обработка завершена",
       created,
       updated,
       errors,
     });
   } catch (err) {
     console.error("batch import error:", err);
-    res.status(500).json({ message: "РћС€РёР±РєР° СЃРµСЂРІРµСЂР° РїСЂРё РїР°РєРµС‚РЅРѕРј РёРјРїРѕСЂС‚Рµ" });
+    res.status(500).json({ message: "Ошибка сервера при пакетном импорте" });
   }
 });
 
-// ====== РЎРљР›РђР”: РҐР•Р›РџР•Р Р« Р”Р›РЇ РћРЎРўРђРўРљРћР’ ======
+// ====== СКЛАД: ХЕЛПЕРЫ ДЛЯ ОСТАТКОВ ======
 
-// С‚РµРєСѓС‰РёР№ РѕСЃС‚Р°С‚РѕРє РїРѕ С‚РѕРІР°СЂСѓ
+// текущий остаток по товару
 async function getCurrentStockForItem(itemId) {
   const id = Number(itemId);
 
@@ -6541,7 +6565,7 @@ async function getCurrentStockForItem(itemId) {
     } else if (m.type === "ISSUE") {
       total -= Math.abs(q);
     } else if (m.type === "ADJUSTMENT") {
-      // РєРѕСЂСЂРµРєС‚РёСЂРѕРІРєР° РјРѕР¶РµС‚ Р±С‹С‚СЊ Рё РїР»СЋСЃ, Рё РјРёРЅСѓСЃ
+      // корректировка может быть и плюс, и минус
       total += q;
     }
   }
@@ -6549,7 +6573,7 @@ async function getCurrentStockForItem(itemId) {
   return total;
 }
 
-// СЂР°СЃС‡С‘С‚, РєР°РєРѕР№ РѕСЃС‚Р°С‚РѕРє Р±СѓРґРµС‚ РїРѕСЃР»Рµ РґРІРёР¶РµРЅРёСЏ
+// расчёт, какой остаток будет после движения
 async function calculateStockAfterMovement(itemId, type, qty) {
   const current = await getCurrentStockForItem(itemId);
   if (current === null) {
@@ -6578,7 +6602,7 @@ async function calculateStockAfterMovement(itemId, type, qty) {
   };
 }
 
-// РЎРѕР·РґР°С‚СЊ РґРІРёР¶РµРЅРёРµ (РїСЂРёС…РѕРґ / СЂР°СЃС…РѕРґ / РєРѕСЂСЂРµРєС‚РёСЂРѕРІРєР°) СЃ РїСЂРѕРІРµСЂРєРѕР№ РѕСЃС‚Р°С‚РєР°
+// Создать движение (приход / расход / корректировка) с проверкой остатка
 app.post("/api/inventory/movements", auth, async (req, res) => {
   try {
     const { itemId, type, quantity, comment, pricePerUnit } = req.body;
@@ -6586,37 +6610,37 @@ app.post("/api/inventory/movements", auth, async (req, res) => {
     if (!itemId || !type || quantity === undefined) {
       return res
         .status(400)
-        .json({ message: "РќСѓР¶РЅРѕ СѓРєР°Р·Р°С‚СЊ С‚РѕРІР°СЂ, С‚РёРї Рё РєРѕР»РёС‡РµСЃС‚РІРѕ" });
+        .json({ message: "Нужно указать товар, тип и количество" });
     }
 
     if (!["INCOME", "ISSUE", "ADJUSTMENT"].includes(type)) {
-      return res.status(400).json({ message: "РќРµРґРѕРїСѓСЃС‚РёРјС‹Р№ С‚РёРї РґРІРёР¶РµРЅРёСЏ" });
+      return res.status(400).json({ message: "Недопустимый тип движения" });
     }
 
     const itemIdNum = Number(itemId);
     const qtyNum = Number(quantity);
 
-    // С‚РѕР»СЊРєРѕ С†РµР»С‹Рµ С‡РёСЃР»Р° Рё РЅРµ 0
+    // только целые числа и не 0
     if (!Number.isFinite(qtyNum) || !Number.isInteger(qtyNum) || qtyNum === 0) {
       return res.status(400).json({
-        message: "РљРѕР»РёС‡РµСЃС‚РІРѕ РґРѕР»Р¶РЅРѕ Р±С‹С‚СЊ РЅРµРЅСѓР»РµРІС‹Рј С†РµР»С‹Рј С‡РёСЃР»РѕРј",
+        message: "Количество должно быть ненулевым целым числом",
       });
     }
 
     let normalizedQty = qtyNum;
 
-    // РґР»СЏ INCOME/ISSUE вЂ” С‚РѕР»СЊРєРѕ РїРѕР»РѕР¶РёС‚РµР»СЊРЅС‹Рµ С†РµР»С‹Рµ
+    // для INCOME/ISSUE — только положительные целые
     if (type === "INCOME" || type === "ISSUE") {
       if (qtyNum < 0) {
         return res.status(400).json({
           message:
-            "Р”Р»СЏ РїСЂРёС…РѕРґР° Рё СЂР°СЃС…РѕРґР° РєРѕР»РёС‡РµСЃС‚РІРѕ РґРѕР»Р¶РЅРѕ Р±С‹С‚СЊ РїРѕР»РѕР¶РёС‚РµР»СЊРЅС‹Рј С†РµР»С‹Рј С‡РёСЃР»РѕРј",
+            "Для прихода и расхода количество должно быть положительным целым числом",
         });
       }
       normalizedQty = qtyNum; // > 0
     }
 
-    // Р”Р»СЏ РџР РРҐРћР”Рђ РЅСѓР¶РЅР° С†РµРЅР° Р·Р° РµРґРёРЅРёС†Сѓ
+    // Для ПРХОДА нужна цена за единицу
     let priceValue = null;
     if (type === "INCOME") {
       if (
@@ -6626,21 +6650,21 @@ app.post("/api/inventory/movements", auth, async (req, res) => {
       ) {
         return res
           .status(400)
-          .json({ message: "Р”Р»СЏ РїСЂРёС…РѕРґР° РЅСѓР¶РЅРѕ СѓРєР°Р·Р°С‚СЊ С†РµРЅСѓ Р·Р° РµРґРёРЅРёС†Сѓ" });
+          .json({ message: "Для прихода нужно указать цену за единицу" });
       }
 
       const p = Number(String(pricePerUnit).replace(",", "."));
 
       if (!Number.isFinite(p) || p <= 0) {
         return res.status(400).json({
-          message: "Р¦РµРЅР° Р·Р° РµРґРёРЅРёС†Сѓ РґРѕР»Р¶РЅР° Р±С‹С‚СЊ РїРѕР»РѕР¶РёС‚РµР»СЊРЅС‹Рј С‡РёСЃР»РѕРј",
+          message: "Цена за единицу должна быть положительным числом",
         });
       }
 
       priceValue = p;
     }
 
-    // ===== РџР РћР’Р•Р РљРђ РћРЎРўРђРўРљРђ РџР•Р Р•Р” РЎРћР—Р”РђРќРР•Рњ Р”Р’РР–Р•РќРРЇ =====
+    // ===== ПРОВЕРКА ОСТАТКА ПЕРЕД СОЗДАНЕМ ДВЖЕНЯ =====
     let stockInfo;
     try {
       stockInfo = await calculateStockAfterMovement(
@@ -6650,20 +6674,20 @@ app.post("/api/inventory/movements", auth, async (req, res) => {
       );
     } catch (e) {
       if (e.code === "ITEM_NOT_FOUND") {
-        return res.status(404).json({ message: "РўРѕРІР°СЂ РЅРµ РЅР°Р№РґРµРЅ" });
+        return res.status(404).json({ message: "Товар не найден" });
       }
       console.error("calculateStockAfterMovement error:", e);
       return res
         .status(500)
-        .json({ message: "РћС€РёР±РєР° РїСЂРё СЂР°СЃС‡С‘С‚Рµ РѕСЃС‚Р°С‚РєР° РїРѕ С‚РѕРІР°СЂСѓ" });
+        .json({ message: "Ошибка при расчёте остатка по товару" });
     }
 
     if (stockInfo.newStock < 0) {
       return res.status(400).json({
-        message: `РќРµРґРѕСЃС‚Р°С‚РѕС‡РЅРѕ РѕСЃС‚Р°С‚РєР°. РќР° СЃРєР»Р°РґРµ ${stockInfo.current} С€С‚., РІС‹ РїС‹С‚Р°РµС‚РµСЃСЊ СЃРїРёСЃР°С‚СЊ ${normalizedQty} С€С‚.`,
+        message: `Недостаточно остатка. На складе ${stockInfo.current} шт., вы пытаетесь списать ${normalizedQty} шт.`,
       });
     }
-    // ===== РљРћРќР•Р¦ РџР РћР’Р•Р РљР РћРЎРўРђРўРљРђ =====
+    // ===== КОНЕЦ ПРОВЕРК ОСТАТКА =====
 
     const movement = await prisma.stockMovement.create({
       data: {
@@ -6686,12 +6710,12 @@ app.post("/api/inventory/movements", auth, async (req, res) => {
   } catch (err) {
     console.error("create movement error:", err);
     res.status(500).json({
-      message: "РћС€РёР±РєР° СЃРµСЂРІРµСЂР° РїСЂРё СЃРѕР·РґР°РЅРёРё РґРІРёР¶РµРЅРёСЏ РїРѕ СЃРєР»Р°РґСѓ",
+      message: "Ошибка сервера при создании движения по складу",
     });
   }
 });
 
-// Р–СѓСЂРЅР°Р» РґРІРёР¶РµРЅРёР№ РїРѕ СЃРєР»Р°РґСѓ
+// Журнал движений по складу
 app.get("/api/inventory/movements", auth, async (req, res) => {
   try {
     const limit = Number(req.query.limit) || 100;
@@ -6712,13 +6736,13 @@ app.get("/api/inventory/movements", auth, async (req, res) => {
     console.error("list movements error:", err);
     res
       .status(500)
-      .json({ message: "РћС€РёР±РєР° СЃРµСЂРІРµСЂР° РїСЂРё Р·Р°РіСЂСѓР·РєРµ РґРІРёР¶РµРЅРёР№" });
+      .json({ message: "Ошибка сервера при загрузке движений" });
   }
 });
 
-// ================== РџРћРЎРўРђР’Р©РРљР ==================
+// ================== ПОСТАВЩК ==================
 
-// РЎРїРёСЃРѕРє РїРѕСЃС‚Р°РІС‰РёРєРѕРІ
+// Список поставщиков
 app.get("/api/suppliers", auth, async (req, res) => {
   try {
     const suppliers = await prisma.supplier.findMany({
@@ -6729,15 +6753,15 @@ app.get("/api/suppliers", auth, async (req, res) => {
     console.error("suppliers list error:", err);
     res
       .status(500)
-      .json({ message: "РћС€РёР±РєР° СЃРµСЂРІРµСЂР° РїСЂРё Р·Р°РіСЂСѓР·РєРµ РїРѕСЃС‚Р°РІС‰РёРєРѕРІ" });
+      .json({ message: "Ошибка сервера при загрузке поставщиков" });
   }
 });
 
-// РЎРѕР·РґР°С‚СЊ РїРѕСЃС‚Р°РІС‰РёРєР°
+// Создать поставщика
 app.post("/api/suppliers", auth, async (req, res) => {
   try {
     if (!isWarehouseManager(req.user)) {
-      return res.status(403).json({ message: "РќРµС‚ РїСЂР°РІ" });
+      return res.status(403).json({ message: "Нет прав" });
     }
 
     const { name, inn, phone, email, comment } = req.body;
@@ -6745,7 +6769,7 @@ app.post("/api/suppliers", auth, async (req, res) => {
     if (!name || !name.trim()) {
       return res
         .status(400)
-        .json({ message: "РќР°Р·РІР°РЅРёРµ РїРѕСЃС‚Р°РІС‰РёРєР° РѕР±СЏР·Р°С‚РµР»СЊРЅРѕ" });
+        .json({ message: "Название поставщика обязательно" });
     }
 
     const supplier = await prisma.supplier.create({
@@ -6763,28 +6787,28 @@ app.post("/api/suppliers", auth, async (req, res) => {
     console.error("create supplier error:", err);
     res
       .status(500)
-      .json({ message: "РћС€РёР±РєР° СЃРµСЂРІРµСЂР° РїСЂРё СЃРѕР·РґР°РЅРёРё РїРѕСЃС‚Р°РІС‰РёРєР°" });
+      .json({ message: "Ошибка сервера при создании поставщика" });
   }
 });
 
-// РћР±РЅРѕРІРёС‚СЊ РїРѕСЃС‚Р°РІС‰РёРєР°
+// Обновить поставщика
 app.put("/api/suppliers/:id", auth, async (req, res) => {
   try {
     if (!isWarehouseManager(req.user)) {
-      return res.status(403).json({ message: "РќРµС‚ РїСЂР°РІ" });
+      return res.status(403).json({ message: "Нет прав" });
     }
 
     const id = Number(req.params.id);
     const { name, inn, phone, email, comment } = req.body;
 
     if (!id || Number.isNaN(id)) {
-      return res.status(400).json({ message: "РќРµРєРѕСЂСЂРµРєС‚РЅС‹Р№ ID РїРѕСЃС‚Р°РІС‰РёРєР°" });
+      return res.status(400).json({ message: "Некорректный ID поставщика" });
     }
 
     if (!name || !name.trim()) {
       return res
         .status(400)
-        .json({ message: "РќР°Р·РІР°РЅРёРµ РїРѕСЃС‚Р°РІС‰РёРєР° РѕР±СЏР·Р°С‚РµР»СЊРЅРѕ" });
+        .json({ message: "Название поставщика обязательно" });
     }
 
     const supplier = await prisma.supplier.update({
@@ -6803,20 +6827,20 @@ app.put("/api/suppliers/:id", auth, async (req, res) => {
     console.error("update supplier error:", err);
     res
       .status(500)
-      .json({ message: "РћС€РёР±РєР° СЃРµСЂРІРµСЂР° РїСЂРё РѕР±РЅРѕРІР»РµРЅРёРё РїРѕСЃС‚Р°РІС‰РёРєР°" });
+      .json({ message: "Ошибка сервера при обновлении поставщика" });
   }
 });
 
-// РЈРґР°Р»РёС‚СЊ РїРѕСЃС‚Р°РІС‰РёРєР° (РµСЃР»Рё РїРѕ РЅРµРјСѓ РЅРµС‚ Р·Р°РєР°Р·РѕРІ)
+// Удалить поставщика (если по нему нет заказов)
 app.delete("/api/suppliers/:id", auth, async (req, res) => {
   try {
     if (!isWarehouseManager(req.user)) {
-      return res.status(403).json({ message: "РќРµС‚ РїСЂР°РІ" });
+      return res.status(403).json({ message: "Нет прав" });
     }
 
     const id = Number(req.params.id);
     if (!id || Number.isNaN(id)) {
-      return res.status(400).json({ message: "РќРµРєРѕСЂСЂРµРєС‚РЅС‹Р№ ID РїРѕСЃС‚Р°РІС‰РёРєР°" });
+      return res.status(400).json({ message: "Некорректный ID поставщика" });
     }
 
     const ordersCount = await prisma.purchaseOrder.count({
@@ -6825,27 +6849,27 @@ app.delete("/api/suppliers/:id", auth, async (req, res) => {
 
     if (ordersCount > 0) {
       return res.status(400).json({
-        message: "РќРµР»СЊР·СЏ СѓРґР°Р»РёС‚СЊ РїРѕСЃС‚Р°РІС‰РёРєР°, РїРѕ РЅРµРјСѓ РµСЃС‚СЊ Р·Р°РєР°Р·С‹",
+        message: "Нельзя удалить поставщика, по нему есть заказы",
       });
     }
 
     await prisma.supplier.delete({ where: { id } });
-    res.json({ message: "РџРѕСЃС‚Р°РІС‰РёРє СѓРґР°Р»С‘РЅ" });
+    res.json({ message: "Поставщик удалён" });
   } catch (err) {
     console.error("delete supplier error:", err);
     res
       .status(500)
-      .json({ message: "РћС€РёР±РєР° СЃРµСЂРІРµСЂР° РїСЂРё СѓРґР°Р»РµРЅРёРё РїРѕСЃС‚Р°РІС‰РёРєР°" });
+      .json({ message: "Ошибка сервера при удалении поставщика" });
   }
 });
 
-// ================== Р—РђРљРђР—Р« РџРћРЎРўРђР’Р©РРљРЈ ==================
+// ================== ЗАКАЗЫ ПОСТАВЩКУ ==================
 
-// РЎРѕР·РґР°С‚СЊ Р·Р°РєР°Р· РїРѕСЃС‚Р°РІС‰РёРєСѓ (Р·Р°РїРёСЃСЊ РІ Р‘Р”)
+// Создать заказ поставщику (запись в БД)
 app.post("/api/purchase-orders", auth, async (req, res) => {
   try {
     if (!isWarehouseManager(req.user)) {
-      return res.status(403).json({ message: "РќРµС‚ РїСЂР°РІ" });
+      return res.status(403).json({ message: "Нет прав" });
     }
 
     const { supplierId, plannedDate, comment, items } = req.body;
@@ -6854,25 +6878,25 @@ app.post("/api/purchase-orders", auth, async (req, res) => {
     if (!supplierIdNum || Number.isNaN(supplierIdNum)) {
       return res
         .status(400)
-        .json({ message: "РќСѓР¶РЅРѕ СѓРєР°Р·Р°С‚СЊ РєРѕСЂСЂРµРєС‚РЅРѕРіРѕ РїРѕСЃС‚Р°РІС‰РёРєР°" });
+        .json({ message: "Нужно указать корректного поставщика" });
     }
 
     if (!Array.isArray(items) || items.length === 0) {
       return res
         .status(400)
-        .json({ message: "РќСѓР¶РЅРѕ СѓРєР°Р·Р°С‚СЊ С…РѕС‚СЏ Р±С‹ РѕРґРЅСѓ РїРѕР·РёС†РёСЋ Р·Р°РєР°Р·Р°" });
+        .json({ message: "Нужно указать хотя бы одну позицию заказа" });
     }
 
-    // РџСЂРѕРІРµСЂСЏРµРј, С‡С‚Рѕ РїРѕСЃС‚Р°РІС‰РёРє СЃСѓС‰РµСЃС‚РІСѓРµС‚
+    // Проверяем, что поставщик существует
     const supplier = await prisma.supplier.findUnique({
       where: { id: supplierIdNum },
     });
 
     if (!supplier) {
-      return res.status(404).json({ message: "РџРѕСЃС‚Р°РІС‰РёРє РЅРµ РЅР°Р№РґРµРЅ" });
+      return res.status(404).json({ message: "Поставщик не найден" });
     }
 
-    // Р“РѕС‚РѕРІРёРј РїРѕР·РёС†РёРё
+    // Готовим позиции
     const preparedItems = [];
     for (const row of items) {
       const itemId = Number(row.itemId);
@@ -6882,19 +6906,19 @@ app.post("/api/purchase-orders", auth, async (req, res) => {
       if (!itemId || Number.isNaN(itemId)) {
         return res
           .status(400)
-          .json({ message: "РќРµРєРѕСЂСЂРµРєС‚РЅС‹Р№ С‚РѕРІР°СЂ РІ СЃРїРёСЃРєРµ РїРѕР·РёС†РёР№" });
+          .json({ message: "Некорректный товар в списке позиций" });
       }
 
       if (!Number.isFinite(qty) || qty <= 0) {
         return res.status(400).json({
-          message: "РљРѕР»РёС‡РµСЃС‚РІРѕ РїРѕ РєР°Р¶РґРѕР№ РїРѕР·РёС†РёРё РґРѕР»Р¶РЅРѕ Р±С‹С‚СЊ > 0",
+          message: "Количество по каждой позиции должно быть > 0",
         });
       }
 
       if (!Number.isFinite(price) || price < 0) {
         return res.status(400).json({
           message:
-            "Р¦РµРЅР° РїРѕ РєР°Р¶РґРѕР№ РїРѕР·РёС†РёРё РґРѕР»Р¶РЅР° Р±С‹С‚СЊ С‡РёСЃР»РѕРј (РјРѕР¶РµС‚ Р±С‹С‚СЊ 0, РЅРѕ РЅРµ РјРµРЅСЊС€Рµ)",
+            "Цена по каждой позиции должна быть числом (может быть 0, но не меньше)",
         });
       }
 
@@ -6905,7 +6929,7 @@ app.post("/api/purchase-orders", auth, async (req, res) => {
       });
     }
 
-    // Р“РµРЅРµСЂРёСЂСѓРµРј РЅРѕРјРµСЂ Р·Р°РєР°Р·Р°: PO-00001, PO-00002, ...
+    // Генерируем номер заказа: PO-00001, PO-00002, ...
     const lastOrder = await prisma.purchaseOrder.findFirst({
       orderBy: { id: "desc" },
       select: { id: true },
@@ -6948,15 +6972,15 @@ app.post("/api/purchase-orders", auth, async (req, res) => {
     console.error("create purchase order error:", err);
     res
       .status(500)
-      .json({ message: "РћС€РёР±РєР° СЃРµСЂРІРµСЂР° РїСЂРё СЃРѕР·РґР°РЅРёРё Р·Р°РєР°Р·Р° РїРѕСЃС‚Р°РІС‰РёРєСѓ" });
+      .json({ message: "Ошибка сервера при создании заказа поставщику" });
   }
 });
 
-// РЎРїРёСЃРѕРє Р·Р°РєР°Р·РѕРІ РїРѕСЃС‚Р°РІС‰РёРєСѓ
+// Список заказов поставщику
 app.get("/api/purchase-orders", auth, async (req, res) => {
   try {
     if (!isWarehouseManager(req.user)) {
-      return res.status(403).json({ message: "РќРµС‚ РїСЂР°РІ" });
+      return res.status(403).json({ message: "Нет прав" });
     }
 
     const { status } = req.query;
@@ -6985,7 +7009,7 @@ app.get("/api/purchase-orders", auth, async (req, res) => {
     console.error("list purchase orders error:", err);
     res
       .status(500)
-      .json({ message: "РћС€РёР±РєР° СЃРµСЂРІРµСЂР° РїСЂРё Р·Р°РіСЂСѓР·РєРµ Р·Р°РєР°Р·РѕРІ РїРѕСЃС‚Р°РІС‰РёРєСѓ" });
+      .json({ message: "Ошибка сервера при загрузке заказов поставщику" });
   }
 });
 
@@ -7048,16 +7072,16 @@ app.get("/api/warehouse/receiving/open-pos", auth, async (req, res) => {
 });
 
 
-// РџРѕР»СѓС‡РёС‚СЊ РѕРґРёРЅ Р·Р°РєР°Р·
+// Получить один заказ
 app.get("/api/purchase-orders/:id", auth, async (req, res) => {
   try {
     if (!isWarehouseManager(req.user)) {
-      return res.status(403).json({ message: "РќРµС‚ РїСЂР°РІ" });
+      return res.status(403).json({ message: "Нет прав" });
     }
 
     const id = Number(req.params.id);
     if (!id || Number.isNaN(id)) {
-      return res.status(400).json({ message: "РќРµРєРѕСЂСЂРµРєС‚РЅС‹Р№ ID Р·Р°РєР°Р·Р°" });
+      return res.status(400).json({ message: "Некорректный ID заказа" });
     }
 
     const order = await prisma.purchaseOrder.findUnique({
@@ -7074,7 +7098,7 @@ app.get("/api/purchase-orders/:id", auth, async (req, res) => {
     });
 
     if (!order) {
-      return res.status(404).json({ message: "Р—Р°РєР°Р· РЅРµ РЅР°Р№РґРµРЅ" });
+      return res.status(404).json({ message: "Заказ не найден" });
     }
 
     res.json(order);
@@ -7082,11 +7106,11 @@ app.get("/api/purchase-orders/:id", auth, async (req, res) => {
     console.error("get purchase order error:", err);
     res
       .status(500)
-      .json({ message: "РћС€РёР±РєР° СЃРµСЂРІРµСЂР° РїСЂРё Р·Р°РіСЂСѓР·РєРµ Р·Р°РєР°Р·Р° РїРѕСЃС‚Р°РІС‰РёРєСѓ" });
+      .json({ message: "Ошибка сервера при загрузке заказа поставщику" });
   }
 });
 
-// Excel-С„Р°Р№Р» РїРѕ СѓР¶Рµ СЃРѕС…СЂР°РЅС‘РЅРЅРѕРјСѓ Р·Р°РєР°Р·Сѓ РїРѕСЃС‚Р°РІС‰РёРєСѓ
+// Excel-файл по уже сохранённому заказу поставщику
 
 // ===== Purchase Order: RECEIVE ACT (PRINT) =====
 app.get("/api/purchase-orders/:id/print-receive-act", auth, async (req, res) => {
@@ -7146,14 +7170,14 @@ app.get("/api/purchase-orders/:id/print-receive-act", auth, async (req, res) => 
 app.get("/api/purchase-orders/:id/excel-file", auth, async (req, res) => {
   try {
     if (!isWarehouseManager(req.user)) {
-      return res.status(403).json({ message: "РќРµС‚ РїСЂР°РІ" });
+      return res.status(403).json({ message: "Нет прав" });
     }
 
     const id = Number(req.params.id);
     if (!id || Number.isNaN(id)) {
       return res
         .status(400)
-        .json({ message: "РќРµРєРѕСЂСЂРµРєС‚РЅС‹Р№ ID Р·Р°РєР°Р·Р°" });
+        .json({ message: "Некорректный ID заказа" });
     }
 
     const order = await prisma.purchaseOrder.findUnique({
@@ -7167,35 +7191,35 @@ app.get("/api/purchase-orders/:id/excel-file", auth, async (req, res) => {
     });
 
     if (!order) {
-      return res.status(404).json({ message: "Р—Р°РєР°Р· РЅРµ РЅР°Р№РґРµРЅ" });
+      return res.status(404).json({ message: "Заказ не найден" });
     }
 
     // ---------- Excel ----------
     const workbook = new ExcelJS.Workbook();
-    const worksheet = workbook.addWorksheet("Р—Р°РєР°Р· РїРѕСЃС‚Р°РІС‰РёРєСѓ");
+    const worksheet = workbook.addWorksheet("Заказ поставщику");
 
     const dateStr = new Date(order.date).toLocaleDateString("ru-RU");
     worksheet.mergeCells("A1:F1");
     const titleCell = worksheet.getCell("A1");
-    titleCell.value = `Р—РђРљРђР— ${order.number} РѕС‚ ${dateStr}`;
+    titleCell.value = `ЗАКАЗ ${order.number} от ${dateStr}`;
     titleCell.font = { bold: true, size: 14 };
     titleCell.alignment = { horizontal: "center", vertical: "middle" };
 
-    // РџРѕРґРїРёСЃСЊ РїРѕСЃС‚Р°РІС‰РёРєР° РїРѕРґ Р·Р°РіРѕР»РѕРІРєРѕРј (РїРѕ Р¶РµР»Р°РЅРёСЋ)
+    // Подпись поставщика под заголовком (по желанию)
     worksheet.mergeCells("A2:F2");
     const supCell = worksheet.getCell("A2");
-    supCell.value = `РџРѕСЃС‚Р°РІС‰РёРє: ${order.supplier?.name || ""}`;
+    supCell.value = `Поставщик: ${order.supplier?.name || ""}`;
     supCell.alignment = { horizontal: "left", vertical: "middle" };
 
-    // РЁР°РїРєР° С‚Р°Р±Р»РёС†С‹
+    // Шапка таблицы
     const headerRowIndex = 4;
     worksheet.getRow(headerRowIndex).values = [
       "в„–",
-      "РќРѕРјРµРЅРєР»Р°С‚СѓСЂР°",
-      "РљРѕР»-РІРѕ",
-      "Р•Рґ.",
-      "Р¦РµРЅР° Р·Р° С€С‚",
-      "РЎСѓРјРјР°",
+      "Номенклатура",
+      "Кол-во",
+      "Ед.",
+      "Цена за шт",
+      "Сумма",
     ];
 
     worksheet.columns = [
@@ -7214,7 +7238,7 @@ app.get("/api/purchase-orders/:id/excel-file", auth, async (req, res) => {
       const r = worksheet.getRow(rIndex);
 
       const name = row.item?.name || "";
-      const unit = row.item?.unit || "С€С‚";
+      const unit = row.item?.unit || "шт";
       const qty = Number(row.quantity) || 0;
       const price = Number(row.price) || 0;
 
@@ -7233,10 +7257,10 @@ app.get("/api/purchase-orders/:id/excel-file", auth, async (req, res) => {
 
     const lastDataRow = firstDataRow + order.items.length - 1;
 
-    // РС‚РѕРі
+    // тог
     const totalRowIndex = lastDataRow + 1;
     const totalRow = worksheet.getRow(totalRowIndex);
-    totalRow.getCell(5).value = "РРўРћР“Рћ:";
+    totalRow.getCell(5).value = "ТОГО:";
     totalRow.getCell(5).font = { bold: true };
     totalRow.getCell(5).alignment = {
       horizontal: "right",
@@ -7247,7 +7271,7 @@ app.get("/api/purchase-orders/:id/excel-file", auth, async (req, res) => {
     };
     totalRow.getCell(6).font = { bold: true };
 
-    // РћС„РѕСЂРјР»РµРЅРёРµ
+    // Оформление
     const headerRow = worksheet.getRow(headerRowIndex);
     headerRow.eachCell((cell) => {
       cell.font = { bold: true };
@@ -7305,27 +7329,27 @@ app.get("/api/purchase-orders/:id/excel-file", auth, async (req, res) => {
     console.error("/api/purchase-orders/:id/excel-file error:", err);
     res
       .status(500)
-      .json({ message: "РћС€РёР±РєР° СЃРµСЂРІРµСЂР° РїСЂРё С„РѕСЂРјРёСЂРѕРІР°РЅРёРё Excel Р·Р°РєР°Р·Р°" });
+      .json({ message: "Ошибка сервера при формировании Excel заказа" });
   }
 });
 
-// РЎРјРµРЅР° СЃС‚Р°С‚СѓСЃР° Р·Р°РєР°Р·Р° (Рё РїСЂРё RECEIVED вЂ” Р°РІС‚РѕРјР°С‚РёС‡РµСЃРєРёР№ РїСЂРёС…РѕРґ РЅР° СЃРєР»Р°Рґ)
+// Смена статуса заказа (и при RECEIVED — автоматический приход на склад)
 app.put("/api/purchase-orders/:id/status", auth, async (req, res) => {
   try {
     if (!isWarehouseManager(req.user)) {
-      return res.status(403).json({ message: "РќРµС‚ РїСЂР°РІ" });
+      return res.status(403).json({ message: "Нет прав" });
     }
 
     const id = Number(req.params.id);
     const { status } = req.body;
 
     if (!id || Number.isNaN(id)) {
-      return res.status(400).json({ message: "РќРµРєРѕСЂСЂРµРєС‚РЅС‹Р№ ID Р·Р°РєР°Р·Р°" });
+      return res.status(400).json({ message: "Некорректный ID заказа" });
     }
 
     const allowedStatuses = ["DRAFT", "SENT", "PARTIAL", "RECEIVED", "CLOSED"];
     if (!allowedStatuses.includes(status)) {
-      return res.status(400).json({ message: "РќРµРґРѕРїСѓСЃС‚РёРјС‹Р№ СЃС‚Р°С‚СѓСЃ Р·Р°РєР°Р·Р°" });
+      return res.status(400).json({ message: "Недопустимый статус заказа" });
     }
 
     const order = await prisma.purchaseOrder.findUnique({
@@ -7336,7 +7360,7 @@ app.put("/api/purchase-orders/:id/status", auth, async (req, res) => {
     });
 
     if (!order) {
-      return res.status(404).json({ message: "Р—Р°РєР°Р· РЅРµ РЅР°Р№РґРµРЅ" });
+      return res.status(404).json({ message: "Заказ не найден" });
     }
 
     if (status === "RECEIVED") {
@@ -7350,7 +7374,7 @@ app.put("/api/purchase-orders/:id/status", auth, async (req, res) => {
 
       if (alreadyPosted) {
         return res.status(400).json({
-          message: "Р­С‚РѕС‚ Р·Р°РєР°Р· СѓР¶Рµ РїСЂРѕРІРµРґС‘РЅ РїРѕ СЃРєР»Р°РґСѓ",
+          message: "Этот заказ уже проведён по складу",
         });
       }
 
@@ -7363,7 +7387,7 @@ app.put("/api/purchase-orders/:id/status", auth, async (req, res) => {
             type: "INCOME",
             quantity: row.quantity,
             pricePerUnit: row.price,
-            comment: `РџСЂРёС…РѕРґ РїРѕ Р·Р°РєР°Р·Сѓ РїРѕСЃС‚Р°РІС‰РёРєСѓ ${order.number} [PO#${order.id}]`,
+            comment: `Приход по заказу поставщику ${order.number} [PO#${order.id}]`,
             createdById: req.user.id,
           },
         });
@@ -7386,28 +7410,28 @@ app.put("/api/purchase-orders/:id/status", auth, async (req, res) => {
     console.error("update purchase order status error:", err);
     res
       .status(500)
-      .json({ message: "РћС€РёР±РєР° СЃРµСЂРІРµСЂР° РїСЂРё СЃРјРµРЅРµ СЃС‚Р°С‚СѓСЃР° Р·Р°РєР°Р·Р°" });
+      .json({ message: "Ошибка сервера при смене статуса заказа" });
   }
 });
 
-// РџСЂРёС‘РјРєР° Р·Р°РєР°Р·Р° РїРѕСЃС‚Р°РІС‰РёРєСѓ (СЃ Р°РєС‚РѕРј СЂР°СЃС…РѕР¶РґРµРЅРёР№)
+// Приёмка заказа поставщику (с актом расхождений)
 app.post("/api/purchase-orders/:id/receive", auth, async (req, res) => {
   try {
     if (!isWarehouseManager(req.user)) {
-      return res.status(403).json({ message: "РќРµС‚ РїСЂР°РІ" });
+      return res.status(403).json({ message: "Нет прав" });
     }
 
     const id = Number(req.params.id);
     const { items } = req.body || {};
 
     if (!id || Number.isNaN(id)) {
-      return res.status(400).json({ message: "РќРµРєРѕСЂСЂРµРєС‚РЅС‹Р№ ID Р·Р°РєР°Р·Р°" });
+      return res.status(400).json({ message: "Некорректный ID заказа" });
     }
 
     if (!Array.isArray(items)) {
       return res
         .status(400)
-        .json({ message: "РќСѓР¶РЅРѕ РїРµСЂРµРґР°С‚СЊ РјР°СЃСЃРёРІ РїРѕР·РёС†РёР№ РґР»СЏ РїСЂРёС‘РјРєРё" });
+        .json({ message: "Нужно передать массив позиций для приёмки" });
     }
 
     const order = await prisma.purchaseOrder.findUnique({
@@ -7421,17 +7445,17 @@ app.post("/api/purchase-orders/:id/receive", auth, async (req, res) => {
     });
 
     if (!order) {
-      return res.status(404).json({ message: "Р—Р°РєР°Р· РЅРµ РЅР°Р№РґРµРЅ" });
+      return res.status(404).json({ message: "Заказ не найден" });
     }
 
-    // РµСЃР»Рё СЃС‚Р°С‚СѓСЃ СѓР¶Рµ РїРѕР»СѓС‡РµРЅ/Р·Р°РєСЂС‹С‚ вЂ” РЅРµ РґР°С‘Рј РїСЂРѕРІРµСЃС‚Рё РµС‰С‘ СЂР°Р·
+    // если статус уже получен/закрыт — не даём провести ещё раз
     if (order.status === "RECEIVED" || order.status === "CLOSED") {
       return res
         .status(400)
-        .json({ message: "Р­С‚РѕС‚ Р·Р°РєР°Р· СѓР¶Рµ Р±С‹Р» РїСЂРѕРІРµРґС‘РЅ РїРѕ СЃРєР»Р°РґСѓ" });
+        .json({ message: "Этот заказ уже был проведён по складу" });
     }
 
-    // РџСЂРѕРІРµСЂРєР° РЅР° СѓР¶Рµ СЃРѕР·РґР°РЅРЅС‹Рµ РґРІРёР¶РµРЅРёСЏ РїРѕ СЌС‚РѕРјСѓ Р·Р°РєР°Р·Сѓ
+    // Проверка на уже созданные движения по этому заказу
     const alreadyPosted = await prisma.stockMovement.findFirst({
       where: {
         comment: {
@@ -7443,7 +7467,7 @@ app.post("/api/purchase-orders/:id/receive", auth, async (req, res) => {
     if (alreadyPosted) {
       return res
         .status(400)
-        .json({ message: "Р­С‚РѕС‚ Р·Р°РєР°Р· СѓР¶Рµ РїСЂРѕРІРµРґС‘РЅ РїРѕ СЃРєР»Р°РґСѓ" });
+        .json({ message: "Этот заказ уже проведён по складу" });
     }
 
     // payload: orderItemId -> receivedQuantity
@@ -7473,9 +7497,9 @@ app.post("/api/purchase-orders/:id/receive", auth, async (req, res) => {
       const ordered = Number(row.quantity) || 0;
       const received = qtyByOrderItemId.has(row.id)
         ? Number(qtyByOrderItemId.get(row.id)) || 0
-        : ordered; // РїРѕ СѓРјРѕР»С‡Р°РЅРёСЋ СЃС‡РёС‚Р°РµРј, С‡С‚Рѕ РїСЂРёС€Р»Рѕ СЃС‚РѕР»СЊРєРѕ Р¶Рµ, СЃРєРѕР»СЊРєРѕ Р·Р°РєР°Р·Р°РЅРѕ
+        : ordered; // по умолчанию считаем, что пришло столько же, сколько заказано
 
-      // РґРІРёР¶РµРЅРёРµ РїРѕ СЃРєР»Р°РґСѓ вЂ” С‚РѕР»СЊРєРѕ РµСЃР»Рё СЂРµР°Р»СЊРЅРѕ С‡С‚Рѕ-С‚Рѕ РїСЂРёС€Р»Рѕ
+      // движение по складу — только если реально что-то пришло
       receivedByOrderItemId.set(row.id, received);
       if (received > 0) {
         movementsData.push({
@@ -7483,7 +7507,7 @@ app.post("/api/purchase-orders/:id/receive", auth, async (req, res) => {
           type: "INCOME",
           quantity: Math.round(received),
           pricePerUnit: row.price,
-          comment: `РџСЂРёС…РѕРґ РїРѕ Р·Р°РєР°Р·Сѓ ${order.number} [PO#${order.id}] (Р·Р°РєР°Р·Р°РЅРѕ ${ordered}, РїРѕР»СѓС‡РµРЅРѕ ${received})`,
+          comment: `Приход по заказу ${order.number} [PO#${order.id}] (заказано ${ordered}, получено ${received})`,
           createdById: userId,
         });
       }
@@ -7492,7 +7516,7 @@ app.post("/api/purchase-orders/:id/receive", auth, async (req, res) => {
       if (diff !== 0) {
         discrepancies.push({
           itemName: row.item?.name || "",
-          unit: row.item?.unit || "С€С‚",
+          unit: row.item?.unit || "шт",
           orderedQty: ordered,
           receivedQty: received,
           diffQty: diff,
@@ -7501,12 +7525,12 @@ app.post("/api/purchase-orders/:id/receive", auth, async (req, res) => {
       }
     }
 
-    // СЃРѕР·РґР°С‘Рј РґРІРёР¶РµРЅРёСЏ
+    // создаём движения
     if (movementsData.length > 0) {
       await prisma.stockMovement.createMany({ data: movementsData });
     }
 
-    // РѕР±РЅРѕРІР»СЏРµРј СЃС‚Р°С‚СѓСЃ Р·Р°РєР°Р·Р°
+    // обновляем статус заказа
     for (const row of order.items) {
       const received = receivedByOrderItemId.get(row.id) || 0;
       await prisma.purchaseOrderItem.update({
@@ -7549,7 +7573,7 @@ app.post("/api/purchase-orders/:id/receive", auth, async (req, res) => {
     console.error("purchase-order receive error:", err);
     res
       .status(500)
-      .json({ message: "РћС€РёР±РєР° СЃРµСЂРІРµСЂР° РїСЂРё РїСЂРёС‘РјРєРµ Р·Р°РєР°Р·Р°" });
+      .json({ message: "Ошибка сервера при приёмке заказа" });
   }
 });
 
@@ -7831,11 +7855,11 @@ app.patch("/api/warehouse/receiving/discrepancies/:id/close", auth, async (req, 
 });
 
 
-// ===== Excel-С„Р°Р№Р» Р·Р°РєР°Р·Р° РїРѕСЃС‚Р°РІС‰РёРєСѓ (Р±РµР· СЃРѕС…СЂР°РЅРµРЅРёСЏ РІ Р‘Р”) =====
+// ===== Excel-файл заказа поставщику (без сохранения в БД) =====
 app.post("/api/purchase-orders/excel-file", auth, async (req, res) => {
   try {
     if (!isWarehouseManager(req.user)) {
-      return res.status(403).json({ message: "РќРµС‚ РїСЂР°РІ" });
+      return res.status(403).json({ message: "Нет прав" });
     }
 
     const { supplierId, plannedDate, comment, items } = req.body;
@@ -7844,31 +7868,31 @@ app.post("/api/purchase-orders/excel-file", auth, async (req, res) => {
     if (!supplierIdNum || Number.isNaN(supplierIdNum)) {
       return res
         .status(400)
-        .json({ message: "РќРµРєРѕСЂСЂРµРєС‚РЅС‹Р№ РїРѕСЃС‚Р°РІС‰РёРє" });
+        .json({ message: "Некорректный поставщик" });
     }
 
     if (!Array.isArray(items) || items.length === 0) {
       return res.status(400).json({
-        message: "РќСѓР¶РЅРѕ СѓРєР°Р·Р°С‚СЊ С…РѕС‚СЏ Р±С‹ РѕРґРЅСѓ РїРѕР·РёС†РёСЋ Р·Р°РєР°Р·Р°",
+        message: "Нужно указать хотя бы одну позицию заказа",
       });
     }
 
-    // РџС‹С‚Р°РµРјСЃСЏ СѓР·РЅР°С‚СЊ РёРјСЏ РїРѕСЃС‚Р°РІС‰РёРєР° (РµСЃР»Рё РЅРµ РїРѕР»СѓС‡РёС‚СЃСЏ вЂ“ РїСЂРѕСЃС‚Рѕ Р±СѓРґРµС‚ "РџРѕСЃС‚Р°РІС‰РёРє")
-    let supplierName = "РџРѕСЃС‚Р°РІС‰РёРє";
+    // Пытаемся узнать имя поставщика (если не получится – просто будет "Поставщик")
+    let supplierName = "Поставщик";
     try {
       const supplier = await prisma.supplier.findUnique({
         where: { id: supplierIdNum },
       });
       if (supplier?.name) supplierName = supplier.name;
     } catch (e) {
-      console.error("[excel-file] РћС€РёР±РєР° С‡С‚РµРЅРёСЏ РїРѕСЃС‚Р°РІС‰РёРєР°:", e);
+      console.error("[excel-file] Ошибка чтения поставщика:", e);
     }
 
-    // Р§РёСЃС‚РёРј Рё РІР°Р»РёРґРёСЂСѓРµРј РїРѕР·РёС†РёРё
+    // Чистим и валидируем позиции
     const cleanedItems = [];
     for (const raw of items) {
       const name = String(raw.name || "").trim();
-      const unit = String(raw.unit || "С€С‚").trim();
+      const unit = String(raw.unit || "шт").trim();
       const qty = Number(raw.quantity);
       const price = Number(
         String(raw.price ?? "")
@@ -7885,13 +7909,13 @@ app.post("/api/purchase-orders/excel-file", auth, async (req, res) => {
 
     if (cleanedItems.length === 0) {
       return res.status(400).json({
-        message: "РќРµС‚ РІР°Р»РёРґРЅС‹С… РїРѕР·РёС†РёР№ РґР»СЏ С„РѕСЂРјРёСЂРѕРІР°РЅРёСЏ Р·Р°РєР°Р·Р°",
+        message: "Нет валидных позиций для формирования заказа",
       });
     }
 
-    // === Р¤РѕСЂРјРёСЂСѓРµРј Excel ===
+    // === Формируем Excel ===
     const workbook = new ExcelJS.Workbook();
-    const worksheet = workbook.addWorksheet("Р—Р°РєР°Р·");
+    const worksheet = workbook.addWorksheet("Заказ");
 
     const now = new Date();
     const orderDateStr = now.toLocaleDateString("ru-RU");
@@ -7899,29 +7923,29 @@ app.post("/api/purchase-orders/excel-file", auth, async (req, res) => {
       ? new Date(plannedDate).toLocaleDateString("ru-RU")
       : null;
 
-    // РЎС‚СЂРѕРєР° 1 вЂ” Р·Р°РіРѕР»РѕРІРѕРє
+    // Строка 1 — заголовок
     worksheet.mergeCells("A1:F1");
     const titleCell = worksheet.getCell("A1");
-    titleCell.value = `Р—Р°РєР°Р· РїРѕСЃС‚Р°РІС‰РёРєСѓ: ${supplierName}`;
+    titleCell.value = `Заказ поставщику: ${supplierName}`;
     titleCell.font = { bold: true, size: 14 };
     titleCell.alignment = { horizontal: "center", vertical: "middle" };
 
-    // РЎС‚СЂРѕРєР° 2 вЂ” РґР°С‚Р° Р·Р°РєР°Р·Р° / РїР»Р°РЅ. РїСЂРёС‘РјРєР°
+    // Строка 2 — дата заказа / план. приёмка
     worksheet.mergeCells("A2:F2");
     const metaCell = worksheet.getCell("A2");
     metaCell.value =
-      `Р”Р°С‚Р° Р·Р°РєР°Р·Р°: ${orderDateStr}` +
-      (plannedDateStr ? ` / РџР»Р°РЅ. РїСЂРёС‘РјРєР°: ${plannedDateStr}` : "");
+      `Дата заказа: ${orderDateStr}` +
+      (plannedDateStr ? ` / План. приёмка: ${plannedDateStr}` : "");
     metaCell.alignment = { horizontal: "right", vertical: "middle" };
     metaCell.font = { size: 11, color: { argb: "FF555555" } };
 
-    // РЎС‚СЂРѕРєР° 3 вЂ” РїСѓСЃС‚Р°СЏ
+    // Строка 3 — пустая
     worksheet.getRow(3).height = 4;
 
-    // РЎС‚СЂРѕРєР° 4 вЂ” С€Р°РїРєР° С‚Р°Р±Р»РёС†С‹
+    // Строка 4 — шапка таблицы
     const headerRowIndex = 4;
     const headerRow = worksheet.getRow(headerRowIndex);
-    headerRow.values = ["в„–", "РќРѕРјРµРЅРєР»Р°С‚СѓСЂР°", "РљРѕР»-РІРѕ", "Р•Рґ.", "Р¦РµРЅР°", "РЎСѓРјРјР°"];
+    headerRow.values = ["№", "Номенклатура", "Кол-во", "Ед.", "Цена", "Сумма"];
 
     worksheet.columns = [
       { key: "position", width: 6 },
@@ -7948,7 +7972,7 @@ app.post("/api/purchase-orders/excel-file", auth, async (req, res) => {
       };
     });
 
-    // Р”Р°РЅРЅС‹Рµ
+    // Данные
     const firstDataRow = headerRowIndex + 1;
 
     cleanedItems.forEach((it, index) => {
@@ -7961,7 +7985,7 @@ app.post("/api/purchase-orders/excel-file", auth, async (req, res) => {
         it.qty,
         it.unit,
         it.price,
-        undefined, // С„РѕСЂРјСѓР»Р° Р±СѓРґРµС‚ РЅРёР¶Рµ
+        undefined, // формула будет ниже
       ];
 
       row.getCell(6).value = { formula: `C${rowIndex}*E${rowIndex}` };
@@ -7988,11 +8012,11 @@ app.post("/api/purchase-orders/excel-file", auth, async (req, res) => {
 
     const lastDataRow = firstDataRow + cleanedItems.length - 1;
 
-    // РС‚РѕРіРѕРІР°СЏ СЃС‚СЂРѕРєР°
+    // тоговая строка
     const totalRowIndex = lastDataRow + 1;
     const totalRow = worksheet.getRow(totalRowIndex);
 
-    totalRow.getCell(5).value = "РС‚РѕРіРѕ:";
+    totalRow.getCell(5).value = "того:";
     totalRow.getCell(5).font = { bold: true };
     totalRow.getCell(5).alignment = {
       horizontal: "right",
@@ -8010,12 +8034,12 @@ app.post("/api/purchase-orders/excel-file", auth, async (req, res) => {
       right: { style: "thin" },
     };
 
-    // РљРѕРјРјРµРЅС‚Р°СЂРёР№ (РµСЃР»Рё РµСЃС‚СЊ)
+    // Комментарий (если есть)
     if (comment) {
       const commentRowIndex = totalRowIndex + 2;
       worksheet.mergeCells(`A${commentRowIndex}:F${commentRowIndex}`);
       const cCell = worksheet.getCell(`A${commentRowIndex}`);
-      cCell.value = `РљРѕРјРјРµРЅС‚Р°СЂРёР№: ${comment}`;
+      cCell.value = `Комментарий: ${comment}`;
       cCell.alignment = {
         horizontal: "left",
         vertical: "middle",
@@ -8042,15 +8066,15 @@ app.post("/api/purchase-orders/excel-file", auth, async (req, res) => {
   } catch (err) {
     console.error("/api/purchase-orders/excel-file error:", err);
     return res.status(500).json({
-      message: "РћС€РёР±РєР° СЃРµСЂРІРµСЂР° РїСЂРё С„РѕСЂРјРёСЂРѕРІР°РЅРёРё Excel-Р·Р°РєР°Р·Р° РїРѕСЃС‚Р°РІС‰РёРєСѓ",
+      message: "Ошибка сервера при формировании Excel-заказа поставщику",
       error: String(err),
     });
   }
 });
 
-// ================== РћР§Р•Р Р•Р”Р¬ РњРђРЁРРќ РџРћРЎРўРђР’Р©РРљРћР’ ==================
+// ================== ОЧЕРЕДЬ МАШН ПОСТАВЩКОВ ==================
 
-// СЃРїРёСЃРѕРє РјР°С€РёРЅ РІ РѕС‡РµСЂРµРґРё (СЃ С„РёР»СЊС‚СЂР°РјРё)
+// список машин в очереди (с фильтрами)
 app.get("/api/supplier-trucks", auth, async (req, res) => {
   try {
     const onlyActive = req.query.onlyActive === "1";
@@ -8058,17 +8082,17 @@ app.get("/api/supplier-trucks", auth, async (req, res) => {
 
     const where = {};
 
-    // С„РёР»СЊС‚СЂ РїРѕ СЃС‚Р°С‚СѓСЃСѓ
+    // фильтр по статусу
     if (onlyActive) {
       where.status = { in: ["IN_QUEUE", "UNLOADING"] };
     }
 
-    // С„РёР»СЊС‚СЂ РїРѕ РґР°С‚Рµ РїСЂРёР±С‹С‚РёСЏ (РєРѕР»РѕРЅРєР° "РџСЂРёР±С‹С‚РёРµ")
-    // dateFrom Рё dateTo РїСЂРёС…РѕРґСЏС‚ РІ С„РѕСЂРјР°С‚Рµ "YYYY-MM-DD"
+    // фильтр по дате прибытия (колонка "Прибытие")
+    // dateFrom и dateTo приходят в формате "YYYY-MM-DD"
     if (dateFrom) {
       const from = new Date(dateFrom);
       if (!Number.isNaN(from.getTime())) {
-        // РЅР°С‡Р°Р»Рѕ РґРЅСЏ
+        // начало дня
         from.setHours(0, 0, 0, 0);
         where.arrivalAt = { ...(where.arrivalAt || {}), gte: from };
       }
@@ -8077,7 +8101,7 @@ app.get("/api/supplier-trucks", auth, async (req, res) => {
     if (dateTo) {
       const to = new Date(dateTo);
       if (!Number.isNaN(to.getTime())) {
-        // РєРѕРЅРµС† РґРЅСЏ
+        // конец дня
         to.setHours(23, 59, 59, 999);
         where.arrivalAt = { ...(where.arrivalAt || {}), lte: to };
       }
@@ -8096,15 +8120,15 @@ app.get("/api/supplier-trucks", auth, async (req, res) => {
     console.error("supplier trucks list error:", err);
     res
       .status(500)
-      .json({ message: "РћС€РёР±РєР° СЃРµСЂРІРµСЂР° РїСЂРё Р·Р°РіСЂСѓР·РєРµ РѕС‡РµСЂРµРґРё РјР°С€РёРЅ" });
+      .json({ message: "Ошибка сервера при загрузке очереди машин" });
   }
 });
 
-// СЂРµРіРёСЃС‚СЂР°С†РёСЏ РјР°С€РёРЅС‹ РІ РѕС‡РµСЂРµРґРё
+// регистрация машины в очереди
 app.post("/api/supplier-trucks", auth, async (req, res) => {
   try {
     if (!isWarehouseManager(req.user)) {
-      return res.status(403).json({ message: "РќРµС‚ РїСЂР°РІ" });
+      return res.status(403).json({ message: "Нет прав" });
     }
 
     const {
@@ -8123,7 +8147,7 @@ app.post("/api/supplier-trucks", auth, async (req, res) => {
     if (!supplier && !truckNumber && !driverName) {
       return res.status(400).json({
         message:
-          "РЈРєР°Р¶РёС‚Рµ С…РѕС‚СЏ Р±С‹ РїРѕСЃС‚Р°РІС‰РёРєР°, РЅРѕРјРµСЂ РјР°С€РёРЅС‹ РёР»Рё РІРѕРґРёС‚РµР»СЏ РґР»СЏ СЂРµРіРёСЃС‚СЂР°С†РёРё РІ РѕС‡РµСЂРµРґРё",
+          "Укажите хотя бы поставщика, номер машины или водителя для регистрации в очереди",
       });
     }
 
@@ -8139,7 +8163,7 @@ app.post("/api/supplier-trucks", auth, async (req, res) => {
         cargo: cargo?.trim() || null,
         note: note || null,
         directImport: Boolean(directImport),
-        // arrivalAt Рё status РїРѕСЃС‚Р°РІСЏС‚СЃСЏ СЃР°РјРё (РґРµС„РѕР»С‚С‹)
+        // arrivalAt и status поставятся сами (дефолты)
       },
     });
 
@@ -8148,26 +8172,26 @@ app.post("/api/supplier-trucks", auth, async (req, res) => {
     console.error("create supplier truck error:", err);
     res
       .status(500)
-      .json({ message: "РћС€РёР±РєР° СЃРµСЂРІРµСЂР° РїСЂРё СЂРµРіРёСЃС‚СЂР°С†РёРё РјР°С€РёРЅС‹ РІ РѕС‡РµСЂРµРґРё" });
+      .json({ message: "Ошибка сервера при регистрации машины в очереди" });
   }
 });
 
-// СЃРјРµРЅР° СЃС‚Р°С‚СѓСЃР° (РІ РѕС‡РµСЂРµРґРё -> РЅР° СЂР°Р·РіСЂСѓР·РєРµ -> РІС‹РµС…Р°Р»)
+// смена статуса (в очереди -> на разгрузке -> выехал)
 app.put("/api/supplier-trucks/:id/status", auth, async (req, res) => {
   try {
     if (!isWarehouseManager(req.user)) {
-      return res.status(403).json({ message: "РќРµС‚ РїСЂР°РІ" });
+      return res.status(403).json({ message: "Нет прав" });
     }
 
     const id = Number(req.params.id);
     const { status, gate } = req.body || {};
 
     if (!id || Number.isNaN(id)) {
-      return res.status(400).json({ message: "РќРµРєРѕСЂСЂРµРєС‚РЅС‹Р№ ID Р·Р°РїРёСЃРё" });
+      return res.status(400).json({ message: "Некорректный ID записи" });
     }
 
     if (!["IN_QUEUE", "UNLOADING", "DONE"].includes(status)) {
-      return res.status(400).json({ message: "РќРµРґРѕРїСѓСЃС‚РёРјС‹Р№ СЃС‚Р°С‚СѓСЃ" });
+      return res.status(400).json({ message: "Недопустимый статус" });
     }
 
     const truck = await prisma.supplierTruck.findUnique({
@@ -8175,19 +8199,19 @@ app.put("/api/supplier-trucks/:id/status", auth, async (req, res) => {
     });
 
     if (!truck) {
-      return res.status(404).json({ message: "Р—Р°РїРёСЃСЊ РЅРµ РЅР°Р№РґРµРЅР°" });
+      return res.status(404).json({ message: "Запись не найдена" });
     }
 
     const data = { status };
     const now = new Date();
 
-    // РєРѕРіРґР° СЃС‚Р°РІРёРј РЅР° СЂР°Р·РіСЂСѓР·РєСѓ вЂ” С„РёРєСЃРёСЂСѓРµРј РІСЂРµРјСЏ Рё РІРѕСЂРѕС‚Р°
+    // когда ставим на разгрузку — фиксируем время и ворота
     if (status === "UNLOADING" && !truck.unloadStartAt) {
       data.unloadStartAt = now;
       if (gate) data.gate = gate;
     }
 
-    // РєРѕРіРґР° РІС‹РµС…Р°Р» вЂ” С„РёРєСЃРёСЂСѓРµРј РІСЂРµРјСЏ РІС‹РµР·РґР°
+    // когда выехал — фиксируем время выезда
     if (status === "DONE" && !truck.unloadEndAt) {
       data.unloadEndAt = now;
     }
@@ -8202,23 +8226,23 @@ app.put("/api/supplier-trucks/:id/status", auth, async (req, res) => {
     console.error("update supplier truck status error:", err);
     res
       .status(500)
-      .json({ message: "РћС€РёР±РєР° СЃРµСЂРІРµСЂР° РїСЂРё СЃРјРµРЅРµ СЃС‚Р°С‚СѓСЃР° РјР°С€РёРЅС‹" });
+      .json({ message: "Ошибка сервера при смене статуса машины" });
   }
 });
 
-// ================== РџР•Р РРћР”РР§Р•РЎРљРР• Р—РђР”РђР§Р ==================
+// ================== ПЕРОДЧЕСКЕ ЗАДАЧ ==================
 
-// РґР°С‚Р°, Р·Р° РєРѕС‚РѕСЂСѓСЋ СѓР¶Рµ РѕС‚РїСЂР°РІР»РµРЅ РµР¶РµРґРЅРµРІРЅС‹Р№ РѕС‚С‡С‘С‚ РїРѕ РѕСЃС‚Р°С‚РєР°Рј (С„РѕСЂРјР°С‚ "YYYY-MM-DD")
+// дата, за которую уже отправлен ежедневный отчёт по остаткам (формат "YYYY-MM-DD")
 let lastLowStockReportDate = null;
 
-// РїСЂРѕРІРµСЂРєР° РєР°Р¶РґС‹Рµ 60 СЃРµРєСѓРЅРґ
+// проверка каждые 60 секунд
 setInterval(() => {
-  // 1) РЅР°РїРѕРјРёРЅР°РЅРёСЏ РїРѕ Р·Р°РґР°С‡Р°Рј СЃРєР»Р°РґР°
+  // 1) напоминания по задачам склада
   checkWarehouseTaskNotifications().catch((err) =>
-    console.error("РћС€РёР±РєР° РІ checkWarehouseTaskNotifications:", err)
+    console.error("Ошибка в checkWarehouseTaskNotifications:", err)
   );
 
-  // 2) СЂР°Р· РІ РґРµРЅСЊ РІ 18:00 РѕС‚РїСЂР°РІР»СЏРµРј РѕС‚С‡С‘С‚ РїРѕ РјРёРЅРёРјР°Р»СЊРЅС‹Рј РѕСЃС‚Р°С‚РєР°Рј
+  // 2) раз в день в 18:00 отправляем отчёт по минимальным остаткам
   const now = new Date();
   const hours = now.getHours(); // 0..23
   const minutes = now.getMinutes(); // 0..59
@@ -8228,24 +8252,24 @@ setInterval(() => {
     lastLowStockReportDate = todayKey;
 
     sendDailyLowStockSummary().catch((err) =>
-      console.error("РћС€РёР±РєР° РІ sendDailyLowStockSummary:", err)
+      console.error("Ошибка в sendDailyLowStockSummary:", err)
     );
   }
 }, 60 * 1000);
 
-// Р·Р°РїСѓСЃРє long polling Telegram (РѕРґРёРЅ СЌРєР·РµРјРїР»СЏСЂ)
+// запуск long polling Telegram (один экземпляр)
 startTelegramPolling().catch((err) =>
-  console.error("РћС€РёР±РєР° РїСЂРё Р·Р°РїСѓСЃРєРµ startTelegramPolling:", err)
+  console.error("Ошибка при запуске startTelegramPolling:", err)
 );
 
-// ================== Р—РђРџРЈРЎРљ РЎР•Р Р’Р•Р Рђ ==================
+// ================== ЗАПУСК СЕРВЕРА ==================
 
 initMailer().catch((err) => console.error("[MAIL] init error:", err));
 
 const PORT = process.env.PORT || 3001;
 
 app.listen(PORT, () => {
-  console.log(`рџљЂ API Р·Р°РїСѓС‰РµРЅ: http://localhost:${PORT}`);
+  console.log(`🚀 API запущен: http://localhost:${PORT}`);
 });
 
 

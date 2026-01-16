@@ -10,6 +10,8 @@ import StockDiscrepanciesTab from "../components/StockDiscrepanciesTab";
 import SupplierTrucksQueueTab from "../components/SupplierTrucksQueueTab";
 import MobileTsdTab from "../components/MobileTsdTab";
 import WarehouseLocationsPanel from "../components/WarehouseLocationsPanel";
+import ResponsiveDataView from "../components/ResponsiveDataView";
+import useIsMobile from "../hooks/useIsMobile";
 import { apiFetch } from "../apiConfig";
 
 const TYPE_LABELS = {
@@ -61,6 +63,7 @@ export default function Warehouse() {
   const { user } = useAuth();
   const isWarehouseManager =
     user?.role === "ADMIN" || user?.role === "ACCOUNTING";
+  const isMobile = useIsMobile();
 
   const [section, setSection] = useState("requests");
   const [requestsTab, setRequestsTab] = useState("new"); // 'new' | 'journal'
@@ -1097,9 +1100,9 @@ export default function Warehouse() {
               <span className="warehouse-card__icon-symbol">🏷️</span>
             </div>
             <div className="warehouse-card__body">
-              <div className="warehouse-card__title">{"\u042f\u0447\u0435\u0439\u043a\u0438 / QR"}</div>
+              <div className="warehouse-card__title">{"Ячейки / QR"}</div>
               <div className="warehouse-card__subtitle">
-                {"\u0421\u043e\u0437\u0434\u0430\u043d\u0438\u0435 \u044f\u0447\u0435\u0435\u043a \u0438 \u043f\u0435\u0447\u0430\u0442\u044c QR-\u044d\u0442\u0438\u043a\u0435\u0442\u043e\u043a."}
+                {"Создание ячеек и печать QR-этикеток."}
               </div>
             </div>
           </button>
@@ -1305,25 +1308,12 @@ export default function Warehouse() {
                 ) : filteredRequests.length === 0 ? (
                   <p className="text-muted">Заявок не найдено.</p>
                 ) : (
-                  <div className="table-wrapper">
-                    <table className="table">
-                      <thead>
-                        <tr>
-                          <th style={{ width: 40 }}>№</th>
-                          <th style={{ width: 170 }}>Дата</th>
-                          <th style={{ width: 110 }}>Статус</th>
-                          <th style={{ width: 200 }}>Автор</th>
-                          <th>Товар / заявка</th>
-                          <th style={{ width: 70 }}>Кол-во</th>
-                          <th style={{ width: 220 }}>Комментарий</th>
-                        </tr>
-                      </thead>
-                      <tbody>
+                  <ResponsiveDataView
+                    isMobile={isMobile}
+                    cards={
+                      <div className="responsive-cards">
                         {filteredRequests.map((req, index) => {
-                          // автор (новые заявки: createdBy, старые: author)
                           const createdBy = req.createdBy || req.author;
-
-                          // общее количество по позициям заявки
                           const totalQty =
                             Array.isArray(req.items) && req.items.length
                               ? req.items.reduce(
@@ -1334,12 +1324,8 @@ export default function Warehouse() {
                               : req.quantity != null
                               ? req.quantity
                               : null;
-
-                          // комментарий пользователя
                           const requestComment =
                             req.comment ?? req.description;
-
-                          // заголовок/товар
                           const title =
                             req.title ||
                             (Array.isArray(req.items) &&
@@ -1348,40 +1334,133 @@ export default function Warehouse() {
                             "-";
 
                           return (
-                            <tr key={req.id}>
-                              <td>{index + 1}</td>
-                              <td>
-                                {req.createdAt
-                                  ? new Date(
-                                      req.createdAt
-                                    ).toLocaleString("ru-RU", {
-                                      day: "2-digit",
-                                      month: "2-digit",
-                                      year: "numeric",
-                                      hour: "2-digit",
-                                      minute: "2-digit",
-                                    })
-                                  : "-"}
-                              </td>
-                              <td>{statusLabel(req.status)}</td>
-                              <td>
-                                {createdBy?.name ||
-                                  createdBy?.email ||
-                                  "-"}
-                              </td>
-                              <td>{title}</td>
-                              <td style={{ textAlign: "right" }}>
-                                {totalQty != null && totalQty !== 0
-                                  ? totalQty
-                                  : "-"}
-                              </td>
-                              <td>{requestComment || "-"}</td>
-                            </tr>
+                            <div key={req.id} className="responsive-card">
+                              <div className="responsive-card__title text-wrap">
+                                {title}
+                              </div>
+                              <div className="responsive-card__meta">
+                                <span>№ {index + 1}</span>
+                                <span>{statusLabel(req.status)}</span>
+                                <span>
+                                  {req.createdAt
+                                    ? new Date(
+                                        req.createdAt
+                                      ).toLocaleString("ru-RU", {
+                                        day: "2-digit",
+                                        month: "2-digit",
+                                        year: "numeric",
+                                        hour: "2-digit",
+                                        minute: "2-digit",
+                                      })
+                                    : "-"}
+                                </span>
+                              </div>
+                              <div className="responsive-card__row">
+                                <span className="responsive-card__label">
+                                  Автор
+                                </span>
+                                <span>
+                                  {createdBy?.name ||
+                                    createdBy?.email ||
+                                    "-"}
+                                </span>
+                              </div>
+                              <div className="responsive-card__row">
+                                <span className="responsive-card__label">
+                                  Кол-во
+                                </span>
+                                <span>
+                                  {totalQty != null && totalQty !== 0
+                                    ? totalQty
+                                    : "-"}
+                                </span>
+                              </div>
+                              <div className="responsive-card__row">
+                                <span className="responsive-card__label">
+                                  Комментарий
+                                </span>
+                                <span className="text-wrap">
+                                  {requestComment || "-"}
+                                </span>
+                              </div>
+                            </div>
                           );
                         })}
-                      </tbody>
-                    </table>
-                  </div>
+                      </div>
+                    }
+                    table={
+                      <div className="table-wrapper">
+                        <table className="table">
+                          <thead>
+                            <tr>
+                              <th style={{ width: 40 }}>№</th>
+                              <th style={{ width: 170 }}>Дата</th>
+                              <th style={{ width: 110 }}>Статус</th>
+                              <th style={{ width: 200 }}>Автор</th>
+                              <th>Товар / заявка</th>
+                              <th style={{ width: 70 }}>Кол-во</th>
+                              <th style={{ width: 220 }}>Комментарий</th>
+                            </tr>
+                          </thead>
+                          <tbody>
+                            {filteredRequests.map((req, index) => {
+                              const createdBy = req.createdBy || req.author;
+                              const totalQty =
+                                Array.isArray(req.items) && req.items.length
+                                  ? req.items.reduce(
+                                      (sum, it) =>
+                                        sum + (Number(it.quantity) || 0),
+                                      0
+                                    )
+                                  : req.quantity != null
+                                  ? req.quantity
+                                  : null;
+                              const requestComment =
+                                req.comment ?? req.description;
+                              const title =
+                                req.title ||
+                                (Array.isArray(req.items) &&
+                                  req.items[0] &&
+                                  req.items[0].name) ||
+                                "-";
+
+                              return (
+                                <tr key={req.id}>
+                                  <td>{index + 1}</td>
+                                  <td>
+                                    {req.createdAt
+                                      ? new Date(
+                                          req.createdAt
+                                        ).toLocaleString("ru-RU", {
+                                          day: "2-digit",
+                                          month: "2-digit",
+                                          year: "numeric",
+                                          hour: "2-digit",
+                                          minute: "2-digit",
+                                        })
+                                      : "-"}
+                                  </td>
+                                  <td>{statusLabel(req.status)}</td>
+                                  <td>
+                                    {createdBy?.name ||
+                                      createdBy?.email ||
+                                      "-"}
+                                  </td>
+                                  <td>{title}</td>
+                                  <td style={{ textAlign: "right" }}>
+                                    {totalQty != null && totalQty !== 0
+                                      ? totalQty
+                                      : "-"}
+                                  </td>
+                                  <td>{requestComment || "-"}</td>
+                                </tr>
+                              );
+                            })}
+                          </tbody>
+                        </table>
+                      </div>
+                    }
+                  />
                 )}
               </div>
             </div>
@@ -2136,7 +2215,7 @@ export default function Warehouse() {
                     </div>
 
                     <div className="form__group">
-                      <label className="form__label">Email</label>
+                      <label className="form__label">Эл. почта</label>
                       <input
                         className="form__input"
                         value={supplierForm.email}
@@ -2184,7 +2263,7 @@ export default function Warehouse() {
                             <th>Название</th>
                             <th>ИНН</th>
                             <th>Телефон</th>
-                            <th>Email</th>
+                            <th>Эл. почта</th>
                           </tr>
                         </thead>
                         <tbody>

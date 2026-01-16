@@ -1,4 +1,4 @@
-import { useState } from "react";
+﻿import { useState } from "react";
 import { useNavigate, Link } from "react-router-dom";
 import { useAuth } from "../context/AuthContext";
 
@@ -28,6 +28,11 @@ export default function Login() {
     navigate("/dashboard");
   };
 
+  const emailInvalid = (event) =>
+    event.target.setCustomValidity("Введите корректный email");
+
+  const clearInvalid = (event) => event.target.setCustomValidity("");
+
   return (
     <div style={{ maxWidth: 400, margin: "60px auto", padding: "0 16px" }}>
       <h1 style={{ marginBottom: 24 }}>Вход</h1>
@@ -50,9 +55,12 @@ export default function Login() {
         <div style={{ marginBottom: 8 }}>
           <input
             type="email"
-            placeholder="Email"
+            placeholder="Напр. name@company.com"
             value={email}
             onChange={(e) => setEmail(e.target.value)}
+            onInvalid={emailInvalid}
+            onInput={clearInvalid}
+            title="Введите корректный email"
             required
             style={{ width: "100%", padding: 6, boxSizing: "border-box" }}
           />
@@ -89,7 +97,7 @@ export default function Login() {
         <Link to="/forgot-password">Забыли пароль?</Link>
       </p>
       <p style={{ marginTop: 8, color: "#6b7280", fontSize: 13 }}>
-        Регистрация доступна только по приглашению администратора.
+        Если у вас нет аккаунта, зарегистрируйтесь в системе.
       </p>
     </div>
   );

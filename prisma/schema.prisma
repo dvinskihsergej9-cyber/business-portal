@@ -40,6 +40,7 @@ model Organization {
   suppliers            Supplier[]
   supplierTrucks       SupplierTruck[]
   inviteTokens         InviteToken[]
+  portalNews           PortalNews[]
 }
 
 model Membership {
@@ -147,6 +148,22 @@ model PasswordResetToken {
   usedAt    DateTime?
   createdAt DateTime @default(now())
   user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+model PortalNews {
+  id        Int      @id @default(autoincrement())
+  orgId     Int
+  title     String
+  body      String
+  tags      Json?
+  published Boolean  @default(true)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  org Organization @relation(fields: [orgId], references: [id])
+
+  @@unique([id, orgId])
+  @@map("portal_news")
 }
 
 // ============ HR ============
