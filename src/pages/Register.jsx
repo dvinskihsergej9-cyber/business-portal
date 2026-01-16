@@ -30,12 +30,17 @@ export default function Register() {
     }
   };
 
+  const emailInvalid = (event) =>
+    event.target.setCustomValidity("Введите корректный email");
+
+  const clearInvalid = (event) => event.target.setCustomValidity("");
+
   return (
     <div style={{ maxWidth: 400, margin: "60px auto", padding: "0 16px" }}>
       <h1 style={{ marginBottom: 24 }}>Регистрация</h1>
 
       <p style={{ fontSize: 14, color: "#6b7280", marginBottom: 16 }}>
-        Укажите имя, email и пароль. Права вам назначит система/админ.
+        Укажите имя, email и пароль. Права назначит администратор.
       </p>
 
       {error && (
@@ -56,7 +61,7 @@ export default function Register() {
         <div style={{ marginBottom: 8 }}>
           <input
             type="text"
-            placeholder="Имя"
+            placeholder="ФИО"
             value={form.name}
             onChange={(e) => setForm((f) => ({ ...f, name: e.target.value }))}
             required
@@ -70,6 +75,9 @@ export default function Register() {
             placeholder="Эл. почта"
             value={form.email}
             onChange={(e) => setForm((f) => ({ ...f, email: e.target.value }))}
+            onInvalid={emailInvalid}
+            onInput={clearInvalid}
+            title="Введите корректный email"
             required
             style={{ width: "100%", padding: 6, boxSizing: "border-box" }}
           />
@@ -98,7 +106,7 @@ export default function Register() {
             cursor: "pointer",
           }}
         >
-          {loading ? "Регистрируем..." : "Зарегистрироваться"}
+          {loading ? "Создаем..." : "Создать аккаунт"}
         </button>
       </form>
 

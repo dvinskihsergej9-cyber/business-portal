@@ -64,7 +64,7 @@ export function AuthProvider({ children }) {
     const data = await res.json();
 
     if (!res.ok) {
-      return { ok: false, message: data.message || "?????? ?????" };
+      return { ok: false, message: data.message || "\u041e\u0448\u0438\u0431\u043a\u0430 \u0432\u0445\u043e\u0434\u0430" };
     }
 
     localStorage.setItem("token", data.token);
@@ -88,7 +88,7 @@ export function AuthProvider({ children }) {
     return { ok: true };
   } catch (e) {
     console.error("Login error:", e);
-    return { ok: false, message: "?????? ????" };
+    return { ok: false, message: "\u041e\u0448\u0438\u0431\u043a\u0430 \u0441\u0435\u0442\u0438" };
   }
 };
 
@@ -104,7 +104,7 @@ export function AuthProvider({ children }) {
     const data = await res.json();
 
     if (!res.ok) {
-      return { ok: false, message: data.message || "?????? ???????????" };
+      return { ok: false, message: data.message || "\u041e\u0448\u0438\u0431\u043a\u0430 \u0440\u0435\u0433\u0438\u0441\u0442\u0440\u0430\u0446\u0438\u0438" };
     }
 
     localStorage.setItem("token", data.token);
@@ -128,7 +128,7 @@ export function AuthProvider({ children }) {
     return { ok: true };
   } catch (e) {
     console.error("Register error:", e);
-    return { ok: false, message: "?????? ????" };
+    return { ok: false, message: "\u041e\u0448\u0438\u0431\u043a\u0430 \u0441\u0435\u0442\u0438" };
   }
 };
 
@@ -147,7 +147,7 @@ export function AuthProvider({ children }) {
     const data = await res.json();
 
     if (!res.ok) {
-      return { ok: false, message: data.message || "?????? ?????????? ???????" };
+      return { ok: false, message: data.message || "\u041e\u0448\u0438\u0431\u043a\u0430 \u043e\u0431\u043d\u043e\u0432\u043b\u0435\u043d\u0438\u044f \u043f\u0440\u043e\u0444\u0438\u043b\u044f" };
     }
 
     const nextUser = {
@@ -160,7 +160,7 @@ export function AuthProvider({ children }) {
     return { ok: true };
   } catch (e) {
     console.error("Update profile error:", e);
-    return { ok: false, message: "?????? ????" };
+    return { ok: false, message: "\u041e\u0448\u0438\u0431\u043a\u0430 \u0441\u0435\u0442\u0438" };
   }
 };
 
