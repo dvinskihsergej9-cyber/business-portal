@@ -1,7 +1,8 @@
 ﻿import { useEffect, useMemo, useState } from "react";
 import { Link } from "react-router-dom";
 import { useAuth } from "../context/AuthContext";
-import { apiFetch } from "../apiConfig";
+import { apiFetch, API_CONFIG_ERROR } from "../apiConfig";
+import { FALLBACK_PORTAL_NEWS } from "../data/portalNewsFallback";
 
 const PORTAL_READ_KEY = "portal_news_read";
 
@@ -13,6 +14,7 @@ export default function Dashboard() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
   const [search, setSearch] = useState("");
+  const [usingFallback, setUsingFallback] = useState(false);
   const [expandedIds, setExpandedIds] = useState(() => new Set());
   const [readIds, setReadIds] = useState(() => {
     try {
@@ -30,6 +32,12 @@ export default function Dashboard() {
     try {
       setLoading(true);
       setError("");
+      if (API_CONFIG_ERROR) {
+        setUsingFallback(true);
+        setPortalItems(FALLBACK_PORTAL_NEWS);
+        setError(API_CONFIG_ERROR);
+        return;
+      }
       const res = await apiFetch("/portal-news", { headers });
       const data = await res.json();
       if (!res.ok) {
@@ -37,9 +45,18 @@ export default function Dashboard() {
           data?.message || data?.error || "Не удалось загрузить новости портала"
         );
       }
-      setPortalItems(Array.isArray(data?.items) ? data.items : []);
+      const nextItems = Array.isArray(data?.items) ? data.items : [];
+      if (nextItems.length === 0) {
+        setUsingFallback(true);
+        setPortalItems(FALLBACK_PORTAL_NEWS);
+      } else {
+        setUsingFallback(false);
+        setPortalItems(nextItems);
+      }
     } catch (e) {
       console.error(e);
+      setUsingFallback(true);
+      setPortalItems(FALLBACK_PORTAL_NEWS);
       setError(e.message);
     } finally {
       setLoading(false);
@@ -175,6 +192,11 @@ export default function Dashboard() {
         </div>
 
         {loading && <p>Загрузка...</p>}
+        {!loading && usingFallback && (
+          <div className="alert alert--warning" style={{ marginBottom: 10 }}>
+            Показаны локальные новости: база пуста или недоступна.
+          </div>
+        )}
         {!loading && error && (
           <div className="alert alert--danger" style={{ marginBottom: 10 }}>
             {error}{" "}

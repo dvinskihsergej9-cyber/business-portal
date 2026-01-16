@@ -1,5 +1,6 @@
-import { useEffect, useMemo, useState } from "react";
-import { apiFetch } from "../apiConfig";
+﻿import { useEffect, useMemo, useState } from "react";
+import { apiFetch, API_CONFIG_ERROR } from "../apiConfig";
+import { FALLBACK_PORTAL_NEWS } from "../data/portalNewsFallback";
 import useIsMobile from "../hooks/useIsMobile";
 
 const emptyForm = {
@@ -23,6 +24,7 @@ export default function PortalNewsAdmin() {
   const [error, setError] = useState("");
   const [form, setForm] = useState(emptyForm);
   const [editingId, setEditingId] = useState(null);
+  const [usingFallback, setUsingFallback] = useState(false);
 
   const token = localStorage.getItem("token");
   const headers = useMemo(
@@ -37,14 +39,26 @@ export default function PortalNewsAdmin() {
     try {
       setLoading(true);
       setError("");
+
+      if (API_CONFIG_ERROR) {
+        setUsingFallback(true);
+        setItems([]);
+        setError(API_CONFIG_ERROR);
+        return;
+      }
+
       const res = await apiFetch("/portal-news", { headers });
       const data = await res.json();
       if (!res.ok) {
         throw new Error(data?.message || "Не удалось загрузить новости портала");
       }
-      setItems(Array.isArray(data?.items) ? data.items : []);
+      const nextItems = Array.isArray(data?.items) ? data.items : [];
+      setItems(nextItems);
+      setUsingFallback(nextItems.length === 0);
     } catch (e) {
       console.error(e);
+      setUsingFallback(true);
+      setItems([]);
       setError(e.message);
     } finally {
       setLoading(false);
@@ -56,6 +70,7 @@ export default function PortalNewsAdmin() {
   }, []);
 
   const startEdit = (item) => {
+    if (usingFallback) return;
     setEditingId(item.id);
     setForm({
       title: item.title || "",
@@ -74,6 +89,11 @@ export default function PortalNewsAdmin() {
     event.preventDefault();
     if (!form.title.trim() || !form.body.trim()) {
       setError("Заполните заголовок и текст новости.");
+      return;
+    }
+
+    if (API_CONFIG_ERROR) {
+      setError(API_CONFIG_ERROR);
       return;
     }
 
@@ -108,6 +128,7 @@ export default function PortalNewsAdmin() {
   };
 
   const handleDelete = async (item) => {
+    if (usingFallback) return;
     const ok = window.confirm("Удалить новость?");
     if (!ok) return;
 
@@ -132,6 +153,9 @@ export default function PortalNewsAdmin() {
     }
   };
 
+  const displayItems = usingFallback ? FALLBACK_PORTAL_NEWS : items;
+  const formDisabled = Boolean(API_CONFIG_ERROR);
+
   return (
     <div className="page">
       <div className="page-header">
@@ -151,6 +175,11 @@ export default function PortalNewsAdmin() {
               {error}
             </div>
           )}
+          {API_CONFIG_ERROR && (
+            <div className="alert alert--warning" style={{ marginBottom: 12 }}>
+              {API_CONFIG_ERROR}
+            </div>
+          )}
           <form onSubmit={handleSubmit} className="form request-form-1c">
             <div className="form__group">
               <label className="form__label">Заголовок</label>
@@ -161,6 +190,7 @@ export default function PortalNewsAdmin() {
                   setForm((prev) => ({ ...prev, title: e.target.value }))
                 }
                 placeholder="Заголовок новости"
+                disabled={formDisabled}
               />
             </div>
             <div className="form__group">
@@ -173,6 +203,7 @@ export default function PortalNewsAdmin() {
                   setForm((prev) => ({ ...prev, body: e.target.value }))
                 }
                 placeholder="Полный текст новости"
+                disabled={formDisabled}
               />
             </div>
             <div className="form__group">
@@ -183,7 +214,8 @@ export default function PortalNewsAdmin() {
                 onChange={(e) =>
                   setForm((prev) => ({ ...prev, tags: e.target.value }))
                 }
-                placeholder="обновление, процесс, важно"
+                placeholder="обновления, процессы, важно"
+                disabled={formDisabled}
               />
             </div>
             <div className="form__group">
@@ -198,6 +230,7 @@ export default function PortalNewsAdmin() {
                       published: e.target.checked,
                     }))
                   }
+                  disabled={formDisabled}
                 />
                 Показать в новостях портала
               </label>
@@ -209,7 +242,7 @@ export default function PortalNewsAdmin() {
               <button
                 type="submit"
                 className="btn btn--primary"
-                disabled={saving}
+                disabled={saving || formDisabled}
                 style={{ width: "100%" }}
               >
                 {saving
@@ -223,7 +256,7 @@ export default function PortalNewsAdmin() {
                   type="button"
                   className="btn btn--secondary"
                   onClick={resetForm}
-                  disabled={saving}
+                  disabled={saving || formDisabled}
                   style={{ width: "100%" }}
                 >
                   Отмена
@@ -239,63 +272,76 @@ export default function PortalNewsAdmin() {
         <div className="card1c__body">
           {loading ? (
             <p>Загрузка...</p>
-          ) : items.length === 0 ? (
+          ) : displayItems.length === 0 ? (
             <p className="text-muted">Новостей пока нет.</p>
           ) : (
-            <div className="responsive-cards">
-              {items.map((item) => {
-                const tags = Array.isArray(item.tags) ? item.tags : [];
-                return (
-                  <div key={item.id} className="responsive-card">
-                    <div className="responsive-card__title text-wrap">
-                      {item.title}
-                    </div>
-                    <div className="responsive-card__meta">
-                      <span>
-                        {item.createdAt
-                          ? new Date(item.createdAt).toLocaleString("ru-RU")
-                          : "-"}
-                      </span>
-                      <span>{item.published ? "Опубликовано" : "Черновик"}</span>
-                    </div>
-                    {tags.length > 0 && (
-                      <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
-                        {tags.map((tag) => (
-                          <span key={tag} style={{ fontSize: 12, color: "#64748b" }}>
-                            #{tag}
-                          </span>
-                        ))}
+            <>
+              {usingFallback && (
+                <div className="alert alert--warning" style={{ marginBottom: 12 }}>
+                  Показаны локальные новости. Чтобы управлять ими, подключите API.
+                </div>
+              )}
+              <div className="responsive-cards">
+                {displayItems.map((item) => {
+                  const tags = Array.isArray(item.tags) ? item.tags : [];
+                  return (
+                    <div key={item.id} className="responsive-card">
+                      <div className="responsive-card__title text-wrap">
+                        {item.title}
                       </div>
-                    )}
-                    <div className="portal-text" style={{ color: "#4b5563", fontSize: 14 }}>
-                      {item.body}
+                      <div className="responsive-card__meta">
+                        <span>
+                          {item.createdAt
+                            ? new Date(item.createdAt).toLocaleString("ru-RU")
+                            : "-"}
+                        </span>
+                        <span>
+                          {item.published ? "Опубликовано" : "Черновик"}
+                        </span>
+                      </div>
+                      {tags.length > 0 && (
+                        <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+                          {tags.map((tag) => (
+                            <span key={tag} style={{ fontSize: 12, color: "#64748b" }}>
+                              #{tag}
+                            </span>
+                          ))}
+                        </div>
+                      )}
+                      <div className="portal-text" style={{ color: "#4b5563", fontSize: 14 }}>
+                        {item.body}
+                      </div>
+                      {!usingFallback && (
+                        <div
+                          style={{
+                            display: "grid",
+                            gap: 10,
+                            gridTemplateColumns: isMobile
+                              ? "1fr"
+                              : "repeat(2, minmax(0, 1fr))",
+                          }}
+                        >
+                          <button
+                            type="button"
+                            className="btn btn--secondary"
+                            onClick={() => startEdit(item)}
+                          >
+                            Редактировать
+                          </button>
+                          <button
+                            type="button"
+                            className="btn btn--danger"
+                            onClick={() => handleDelete(item)}
+                          >
+                            Удалить
+                          </button>
+                        </div>
+                      )}
                     </div>
-                    <div
-                      style={{
-                        display: "grid",
-                        gap: 10,
-                        gridTemplateColumns: isMobile ? "1fr" : "repeat(2, minmax(0, 1fr))",
-                      }}
-                    >
-                      <button
-                        type="button"
-                        className="btn btn--secondary"
-                        onClick={() => startEdit(item)}
-                      >
-                        Редактировать
-                      </button>
-                      <button
-                        type="button"
-                        className="btn btn--danger"
-                        onClick={() => handleDelete(item)}
-                      >
-                        Удалить
-                      </button>
-                    </div>
-                  </div>
-                );
-              })}
-            </div>
+                  );
+                })}
+              </div>
+            </>
           )}
         </div>
       </div>

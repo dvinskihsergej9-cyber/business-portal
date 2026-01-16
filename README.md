@@ -24,7 +24,7 @@ Required:
 - `DATABASE_URL`
 - `JWT_SECRET`
 - `FRONTEND_URL`
-- `VITE_API_BASE`
+- `VITE_API_BASE` (обязательно для Preview/Production, абсолютный URL API)
 - `APP_URL`
 - `YOOKASSA_SHOP_ID`
 - `YOOKASSA_SECRET_KEY`

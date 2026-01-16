@@ -1063,6 +1063,30 @@ app.get("/api/safety/resources", auth, requireHr, async (req, res) => {
 });
 
 
+const PORTAL_NEWS_SEED = [
+  {
+    title: "Переезд на новый портал",
+    body:
+      "Мы обновили интерфейс и добавили раздел с новостями портала. Здесь будут важные обновления, регламенты и изменения в процессах.",
+    tags: ["портал", "обновления"],
+    published: true,
+  },
+  {
+    title: "Единый регламент заявок",
+    body:
+      "С этого месяца заявки оформляются только через портал. Проверьте роли и права доступа, чтобы видеть нужные разделы.",
+    tags: ["регламент", "заявки"],
+    published: true,
+  },
+  {
+    title: "Контакты поддержки",
+    body:
+      "Если вы столкнулись с ошибками или не видите нужный раздел, напишите в поддержку портала и укажите номер организации.",
+    tags: ["поддержка"],
+    published: true,
+  },
+];
+
 const decodeEscapedUnicode = (value) => {
   if (typeof value !== "string") return value;
   if (!value.includes("\\u")) return value;
@@ -1085,10 +1109,25 @@ app.get("/api/portal-news", auth, async (req, res) => {
   try {
     const roles = getRequestRoles(req);
     const isAdmin = roles.includes("ADMIN");
-    const items = await prisma.portalNews.findMany({
+    let items = await prisma.portalNews.findMany({
       where: isAdmin ? {} : { published: true },
       orderBy: { createdAt: "desc" },
     });
+
+    if (items.length === 0) {
+      await prisma.portalNews.createMany({
+        data: PORTAL_NEWS_SEED.map((item) => ({
+          title: item.title,
+          body: item.body,
+          tags: item.tags,
+          published: item.published,
+        })),
+      });
+      items = await prisma.portalNews.findMany({
+        where: isAdmin ? {} : { published: true },
+        orderBy: { createdAt: "desc" },
+      });
+    }
     const normalized = items.map((item) => ({
       ...item,
       title: decodeEscapedUnicode(item.title),
