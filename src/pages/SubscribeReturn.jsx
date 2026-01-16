@@ -15,7 +15,7 @@ export default function SubscribeReturn() {
   const check = async () => {
     if (!paymentId) {
       setStatus("error");
-      setError("Payment ID missing");
+      setError("Не указан идентификатор платежа");
       return;
     }
 
@@ -32,7 +32,7 @@ export default function SubscribeReturn() {
       const data = await res.json();
       if (!res.ok) {
         setStatus("error");
-        setError(data.message || "Payment check failed");
+        setError(data.message || "Не удалось проверить статус платежа");
         return;
       }
       if (data.status === "succeeded" && data.paid) {
@@ -43,7 +43,7 @@ export default function SubscribeReturn() {
         setTimeout(() => navigate("/dashboard"), 1500);
       } else if (data.status === "canceled") {
         setStatus("error");
-        setError("Payment was canceled");
+        setError("Платёж был отменён");
         if (timerRef.current) {
           clearInterval(timerRef.current);
         }
@@ -53,14 +53,14 @@ export default function SubscribeReturn() {
     } catch (err) {
       console.error("payment status error:", err);
       setStatus("error");
-      setError("Payment check failed");
+      setError("Не удалось проверить статус платежа");
     }
   };
 
   useEffect(() => {
     if (!paymentId) {
       setStatus("error");
-      setError("Payment ID missing");
+      setError("Не указан идентификатор платежа");
       return;
     }
 
@@ -80,26 +80,26 @@ export default function SubscribeReturn() {
   return (
     <div className="page">
       <div className="page-header">
-        <h1 className="page-title">Subscription</h1>
-        <p className="page-subtitle">Checking payment status...</p>
+        <h1 className="page-title">Подписка</h1>
+        <p className="page-subtitle">Проверяем статус платежа...</p>
       </div>
 
       <div className="card">
-        {status === "checking" && <div>Checking payment...</div>}
+        {status === "checking" && <div>Проверяем платёж...</div>}
         {status === "pending" && (
           <div>
-            Payment is still processing. We will keep checking for a while.
+            Платёж всё ещё обрабатывается. Мы продолжим проверку.
           </div>
         )}
-        {status === "success" && <div>Payment succeeded. Redirecting...</div>}
+        {status === "success" && <div>Платёж успешен. Перенаправляем...</div>}
         {status === "error" && <div>{error}</div>}
         {status !== "success" && paymentId && (
           <div style={{ marginTop: 12, display: "flex", gap: 8 }}>
             <button className="btn" onClick={check}>
-              Refresh status
+              Обновить статус
             </button>
             <div style={{ fontSize: 12, color: "#6b7280", alignSelf: "center" }}>
-              checks: {attempts}
+              проверок: {attempts}
             </div>
           </div>
         )}

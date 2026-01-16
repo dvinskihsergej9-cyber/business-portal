@@ -653,7 +653,7 @@ export default function WarehouseLocationsPanel() {
                     onChange={(event) => setLayout(event.target.value)}
                   >
                     <option value="A4">A4</option>
-                    <option value="label">Label</option>
+                    <option value="label">Этикетка</option>
                   </select>
                 </div>
               </div>
@@ -725,7 +725,7 @@ export default function WarehouseLocationsPanel() {
                         </div>
                         {item.sku && (
                           <div className="warehouse-locations__list-meta">
-                            SKU: {item.sku}
+                            Артикул: {item.sku}
                           </div>
                         )}
                       </div>
@@ -764,7 +764,7 @@ export default function WarehouseLocationsPanel() {
                     onChange={(event) => setLayout(event.target.value)}
                   >
                     <option value="A4">A4</option>
-                    <option value="label">Label</option>
+                    <option value="label">Этикетка</option>
                   </select>
                 </div>
               </div>

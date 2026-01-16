@@ -50,7 +50,7 @@ export default function Login() {
         <div style={{ marginBottom: 8 }}>
           <input
             type="email"
-            placeholder="Email"
+            placeholder="Эл. почта"
             value={email}
             onChange={(e) => setEmail(e.target.value)}
             required

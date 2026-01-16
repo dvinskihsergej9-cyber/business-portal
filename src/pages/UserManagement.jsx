@@ -119,9 +119,15 @@ export default function UserManagement() {
     if (mail.error === "MAIL_DISABLED") {
       return { type: "warning", text: "SMTP не настроен. Письмо не отправлено." };
     }
+    if (mail.error === "MAIL_SEND_FAILED") {
+      return { type: "error", text: "Не удалось отправить письмо." };
+    }
+    if (typeof mail.error === "string" && /^[A-Z0-9_]+$/.test(mail.error)) {
+      return { type: "error", text: "Не удалось отправить письмо." };
+    }
     return {
       type: "error",
-      text: `Ошибка отправки: ${mail.error || "MAIL_SEND_FAILED"}`,
+      text: `Ошибка отправки: ${mail.error || "неизвестная ошибка"}`,
     };
   };
 
@@ -180,8 +186,10 @@ export default function UserManagement() {
 
   const mapInviteError = (code) => {
     switch (code) {
+      case "INVITES_LOAD_ERROR":
+        return "Не удалось загрузить приглашения";
       case "INVITE_EMAIL_REQUIRED":
-        return "Укажите email";
+        return "Укажите адрес эл. почты";
       case "BAD_INVITE":
         return "Некорректные данные";
       case "EMAIL_ALREADY_EXISTS":
@@ -192,8 +200,30 @@ export default function UserManagement() {
         return "Превышен общий лимит отправки";
       case "INVITE_NOT_FOUND":
         return "Приглашение не найдено";
+      case "INVITE_SEND_ERROR":
+        return "Не удалось отправить приглашение";
+      case "INVITE_RESEND_ERROR":
+        return "Не удалось отправить приглашение повторно";
       default:
+        if (typeof code === "string" && /^[A-Z0-9_]+$/.test(code)) {
+          return "Неизвестная ошибка";
+        }
         return code;
+    }
+  };
+
+  const inviteStatusLabel = (status) => {
+    switch (status) {
+      case "PENDING":
+        return "Ожидает";
+      case "SENT":
+        return "Отправлено";
+      case "ACCEPTED":
+        return "Принято";
+      case "EXPIRED":
+        return "Просрочено";
+      default:
+        return status || "-";
     }
   };
 
@@ -202,11 +232,11 @@ export default function UserManagement() {
       case "EMPLOYEE":
         return "Сотрудник";
       case "HR":
-        return "HR";
+        return "Кадры";
       case "ACCOUNTING":
         return "Бухгалтерия";
       case "ADMIN":
-        return "Админ";
+        return "Администратор";
       case "WAREHOUSE":
         return "Склад";
       default:
@@ -217,7 +247,7 @@ export default function UserManagement() {
   if (user?.role !== "ADMIN") {
     return (
       <div style={{ padding: 24 }}>
-        Нет доступа. Этот раздел доступен только для роли ADMIN.
+        Нет доступа. Этот раздел доступен только для роли администратора.
       </div>
     );
   }
@@ -246,7 +276,7 @@ export default function UserManagement() {
         <div style={{ display: "grid", gap: 8, gridTemplateColumns: "1fr 220px auto" }}>
           <input
             type="email"
-            placeholder="Email"
+            placeholder="Эл. почта"
             value={inviteEmail}
             onChange={(e) => setInviteEmail(e.target.value)}
             style={{ padding: 8 }}
@@ -258,7 +288,7 @@ export default function UserManagement() {
           >
             {ALL_ROLES.map((r) => (
               <option key={r} value={r}>
-                {roleLabel(r)} ({r})
+                {roleLabel(r)}
               </option>
             ))}
           </select>
@@ -338,7 +368,7 @@ export default function UserManagement() {
           >
             <thead>
               <tr>
-                <th style={thStyle}>Email</th>
+                <th style={thStyle}>Эл. почта</th>
                 <th style={thStyle}>Роль</th>
                 <th style={thStyle}>Статус</th>
                 <th style={thStyle}>Создан</th>
@@ -350,9 +380,9 @@ export default function UserManagement() {
                 <tr key={inv.id}>
                   <td style={tdStyle}>{inv.email}</td>
                   <td style={tdStyle}>
-                    {roleLabel(inv.role)} ({inv.role})
+                    {roleLabel(inv.role)}
                   </td>
-                  <td style={tdStyle}>{inv.status}</td>
+                  <td style={tdStyle}>{inviteStatusLabel(inv.status)}</td>
                   <td style={tdStyle}>
                     {inv.createdAt
                       ? new Date(inv.createdAt).toLocaleString()
@@ -394,7 +424,7 @@ export default function UserManagement() {
             <tr>
               <th style={thStyle}>ID</th>
               <th style={thStyle}>Имя</th>
-              <th style={thStyle}>Email</th>
+              <th style={thStyle}>Эл. почта</th>
               <th style={thStyle}>Роль</th>
               <th style={thStyle}>Создан</th>
               <th style={thStyle}></th>
@@ -415,7 +445,7 @@ export default function UserManagement() {
                   >
                     {ALL_ROLES.map((r) => (
                       <option key={r} value={r}>
-                        {roleLabel(r)} ({r})
+                        {roleLabel(r)}
                       </option>
                     ))}
                   </select>
