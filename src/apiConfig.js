@@ -1,7 +1,6 @@
 // src/apiConfig.js
 const rawBase = (import.meta.env.VITE_API_BASE || "").trim();
-const configErrorMessage =
-  "Ошибка конфигурации: не задан VITE_API_BASE. Укажите адрес API в переменных окружения Vercel (Preview/Production).";
+const configErrorMessage = "Не настроен адрес API (VITE_API_BASE)";
 let normalizedBase = "";
 let configError = "";
 
@@ -11,12 +10,10 @@ if (!rawBase) {
   try {
     const url = new URL(rawBase);
     const trimmedBase = url.toString().replace(/\/+$/, "");
-    normalizedBase = trimmedBase.endsWith("/api")
-      ? trimmedBase
-      : `${trimmedBase}/api`;
+    const baseWithoutApi = trimmedBase.replace(/\/api$/i, "");
+    normalizedBase = `${baseWithoutApi}/api`;
   } catch (err) {
-    configError =
-      "Ошибка конфигурации: VITE_API_BASE должен быть абсолютным URL (например, https://api.example.com).";
+    configError = configErrorMessage;
   }
 }
 
@@ -38,7 +35,10 @@ export function apiFetch(path, options = {}) {
   const headers = new Headers(options.headers || {});
   const token = localStorage.getItem("token");
 
-  if (token && !headers.has("Authorization")) {
+  const isAuthRequest =
+    typeof path === "string" && (/^\/?login$/i.test(path) || /^\/?register$/i.test(path));
+
+  if (token && !headers.has("Authorization") && !isAuthRequest) {
     headers.set("Authorization", `Bearer ${token}`);
   }
 

@@ -185,25 +185,25 @@ function createToken(user) {
 async function auth(req, res, next) {
   const header = req.headers["authorization"];
   if (!header) {
-    return res.status(401).json({ message: "Authorization token missing" });
+    return res.status(401).json({ message: "Отсутствует токен авторизации" });
   }
 
   const [type, token] = header.split(" ");
   if (type !== "Bearer" || !token) {
-    return res.status(401).json({ message: "Invalid authorization header" });
+    return res.status(401).json({ message: "Некорректный заголовок авторизации" });
   }
 
   try {
     const payload = jwt.verify(token, JWT_SECRET);
     const user = await prisma.user.findUnique({ where: { id: payload.id } });
     if (!user) {
-      return res.status(401).json({ message: "TOKEN_INVALID" });
+      return res.status(401).json({ message: "Недействительный токен" });
     }
     if (user.isActive === false) {
-      return res.status(401).json({ message: "USER_INACTIVE" });
+      return res.status(401).json({ message: "Пользователь заблокирован" });
     }
     if ((payload.tokenVersion || 0) !== (user.tokenVersion || 0)) {
-      return res.status(401).json({ message: "TOKEN_INVALID" });
+      return res.status(401).json({ message: "Недействительный токен" });
     }
     const existingRoles = req.user?.roles;
     req.user = {
@@ -215,7 +215,7 @@ async function auth(req, res, next) {
     next();
   } catch (err) {
     console.error("auth error:", err);
-    return res.status(401).json({ message: "Invalid or expired token" });
+    return res.status(401).json({ message: "Недействительный или истекший токен" });
   }
 }
 
@@ -279,6 +279,10 @@ function isPathMatch(req, patterns) {
   return patterns.some((pattern) => pattern.test(fullPath));
 }
 
+function isPublicPortalNewsRequest(req) {
+  return req.method === "GET" && req.path === "/portal-news";
+}
+
 function resolveOrgContext(req, res, next) {
   (async () => {
     try {
@@ -287,7 +291,7 @@ function resolveOrgContext(req, res, next) {
         include: { org: true }
       });
       if (!memberships.length) {
-        return res.status(403).json({ message: "NO_ORG_MEMBERSHIP" });
+        return res.status(403).json({ message: "Нет доступа к организации" });
       }
 
       const rawOrgId = req.headers["x-org-id"];
@@ -296,7 +300,7 @@ function resolveOrgContext(req, res, next) {
       if (requestedOrgId && !Number.isNaN(requestedOrgId)) {
         const found = memberships.find((m) => m.orgId === requestedOrgId);
         if (!found) {
-          return res.status(403).json({ message: "ORG_ACCESS_DENIED" });
+          return res.status(403).json({ message: "Нет доступа к организации" });
         }
         membership = found;
       }
@@ -312,7 +316,7 @@ function resolveOrgContext(req, res, next) {
       return orgContext.run({ orgId: req.orgId }, () => next());
     } catch (err) {
       console.error("resolveOrgContext error:", err);
-      return res.status(500).json({ message: "ORG_CONTEXT_ERROR" });
+      return res.status(500).json({ message: "Ошибка контекста организации" });
     }
   })();
 }
@@ -330,26 +334,29 @@ async function requirePaidSubscription(req, res, next) {
       subscription.paidUntil &&
       new Date(subscription.paidUntil) > now;
     if (!isActive) {
-      return res.status(402).json({ message: "SUBSCRIPTION_REQUIRED" });
+      return res.status(402).json({ message: "Требуется активная подписка" });
     }
     return next();
   } catch (err) {
     console.error("subscription check error:", err);
-    return res.status(500).json({ message: "SUBSCRIPTION_CHECK_ERROR" });
+    return res.status(500).json({ message: "Ошибка проверки подписки" });
   }
 }
 
 app.use("/api", (req, res, next) => {
+  if (isPublicPortalNewsRequest(req)) return next();
   if (isPathMatch(req, AUTH_EXEMPT_PATHS)) return next();
   return auth(req, res, next);
 });
 
 app.use("/api", (req, res, next) => {
+  if (isPublicPortalNewsRequest(req)) return next();
   if (isPathMatch(req, ORG_EXEMPT_PATHS)) return next();
   return resolveOrgContext(req, res, next);
 });
 
 app.use("/api", (req, res, next) => {
+  if (isPublicPortalNewsRequest(req)) return next();
   if (isPathMatch(req, PAYWALL_EXEMPT_PATHS)) return next();
   return requirePaidSubscription(req, res, next);
 });
@@ -1105,26 +1112,82 @@ const normalizePortalNewsTags = (value) => {
     .filter(Boolean);
 };
 
-app.get("/api/portal-news", auth, async (req, res) => {
+async function resolvePortalNewsContext(req) {
+  const header = req.headers["authorization"];
+  if (!header) return { user: null, orgId: null, isAdmin: false };
+
+  const [type, token] = header.split(" ");
+  if (type !== "Bearer" || !token) {
+    return { user: null, orgId: null, isAdmin: false };
+  }
+
   try {
-    const roles = getRequestRoles(req);
-    const isAdmin = roles.includes("ADMIN");
-    let items = await prisma.portalNews.findMany({
-      where: isAdmin ? {} : { published: true },
+    const payload = jwt.verify(token, JWT_SECRET);
+    const user = await basePrisma.user.findUnique({
+      where: { id: payload.id },
+    });
+    if (!user || user.isActive === false) {
+      return { user: null, orgId: null, isAdmin: false };
+    }
+    if ((payload.tokenVersion || 0) !== (user.tokenVersion || 0)) {
+      return { user: null, orgId: null, isAdmin: false };
+    }
+
+    const memberships = await basePrisma.membership.findMany({
+      where: { userId: user.id },
+      include: { org: true },
+    });
+    const rawOrgId = req.headers["x-org-id"];
+    const requestedOrgId = rawOrgId ? Number(rawOrgId) : null;
+    let orgId = memberships[0]?.orgId || null;
+    if (requestedOrgId && !Number.isNaN(requestedOrgId)) {
+      const found = memberships.find((m) => m.orgId === requestedOrgId);
+      if (found) orgId = found.orgId;
+    }
+
+    return { user, orgId, isAdmin: user.role === "ADMIN" };
+  } catch (err) {
+    return { user: null, orgId: null, isAdmin: false };
+  }
+}
+
+app.get("/api/portal-news", async (req, res) => {
+  try {
+    const { orgId, isAdmin } = await resolvePortalNewsContext(req);
+    let effectiveOrgId = orgId;
+    if (!effectiveOrgId) {
+      const defaultOrg = await basePrisma.organization.findFirst({
+        orderBy: { id: "asc" },
+      });
+      effectiveOrgId = defaultOrg?.id || null;
+    }
+
+    const where = {};
+    if (!isAdmin) {
+      where.published = true;
+    }
+    if (effectiveOrgId) {
+      where.orgId = effectiveOrgId;
+    }
+
+    let items = await basePrisma.portalNews.findMany({
+      where,
       orderBy: { createdAt: "desc" },
     });
 
-    if (items.length === 0) {
-      await prisma.portalNews.createMany({
+    if (items.length === 0 && effectiveOrgId) {
+      await basePrisma.portalNews.createMany({
         data: PORTAL_NEWS_SEED.map((item) => ({
           title: item.title,
           body: item.body,
           tags: item.tags,
           published: item.published,
+          orgId: effectiveOrgId,
         })),
+        skipDuplicates: true,
       });
-      items = await prisma.portalNews.findMany({
-        where: isAdmin ? {} : { published: true },
+      items = await basePrisma.portalNews.findMany({
+        where,
         orderBy: { createdAt: "desc" },
       });
     }
@@ -1161,7 +1224,9 @@ app.get("/api/portal-news", auth, async (req, res) => {
     res.json({ items: normalized });
   } catch (err) {
     console.error("portal news list error:", err);
-    res.status(500).json({ items: [], message: "Failed to load portal news" });
+    res
+      .status(500)
+      .json({ items: [], message: "Не удалось загрузить новости портала" });
   }
 });
 
@@ -1182,7 +1247,9 @@ app.post("/api/portal-news", auth, requireAdmin, async (req, res) => {
     const normalizedTags = normalizePortalNewsTags(tags);
 
     if (!title || !body) {
-      return res.status(400).json({ message: "Title and body are required" });
+      return res
+        .status(400)
+        .json({ message: "Заполните заголовок и текст новости" });
     }
 
     const created = await prisma.portalNews.create({
@@ -1196,7 +1263,7 @@ app.post("/api/portal-news", auth, requireAdmin, async (req, res) => {
     res.status(201).json(created);
   } catch (err) {
     console.error("portal news create error:", err);
-    res.status(500).json({ message: "Failed to create portal news" });
+    res.status(500).json({ message: "Не удалось создать новость" });
   }
 });
 
@@ -1204,7 +1271,7 @@ app.put("/api/portal-news/:id", auth, requireAdmin, async (req, res) => {
   try {
     const id = Number(req.params.id);
     if (!id || Number.isNaN(id)) {
-      return res.status(400).json({ message: "Invalid id" });
+      return res.status(400).json({ message: "Некорректный идентификатор" });
     }
 
     const title = normalizePortalNewsText(req.body?.title);
@@ -1222,7 +1289,9 @@ app.put("/api/portal-news/:id", auth, requireAdmin, async (req, res) => {
     const normalizedTags = normalizePortalNewsTags(tags);
 
     if (!title || !body) {
-      return res.status(400).json({ message: "Title and body are required" });
+      return res
+        .status(400)
+        .json({ message: "Заполните заголовок и текст новости" });
     }
 
     const updated = await prisma.portalNews.update({
@@ -1238,9 +1307,9 @@ app.put("/api/portal-news/:id", auth, requireAdmin, async (req, res) => {
   } catch (err) {
     console.error("portal news update error:", err);
     if (err?.code === "P2025") {
-      return res.status(404).json({ message: "Portal news not found" });
+      return res.status(404).json({ message: "Новость не найдена" });
     }
-    res.status(500).json({ message: "Failed to update portal news" });
+    res.status(500).json({ message: "Не удалось обновить новость" });
   }
 });
 
@@ -1248,7 +1317,7 @@ app.delete("/api/portal-news/:id", auth, requireAdmin, async (req, res) => {
   try {
     const id = Number(req.params.id);
     if (!id || Number.isNaN(id)) {
-      return res.status(400).json({ message: "Invalid id" });
+      return res.status(400).json({ message: "Некорректный идентификатор" });
     }
 
     await prisma.portalNews.delete({ where: { id } });
@@ -1256,9 +1325,9 @@ app.delete("/api/portal-news/:id", auth, requireAdmin, async (req, res) => {
   } catch (err) {
     console.error("portal news delete error:", err);
     if (err?.code === "P2025") {
-      return res.status(404).json({ message: "Portal news not found" });
+      return res.status(404).json({ message: "Новость не найдена" });
     }
-    res.status(500).json({ message: "Failed to delete portal news" });
+    res.status(500).json({ message: "Не удалось удалить новость" });
   }
 });
 
