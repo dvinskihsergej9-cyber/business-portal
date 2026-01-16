@@ -8,11 +8,8 @@ import ExcelJS from "exceljs";
 import multer from "multer";
 import crypto from "crypto";
 import nodemailer from "nodemailer";
-import { XMLParser } from "fast-xml-parser";
 import QRCode from "qrcode";
 import bwipjs from "bwip-js";
-import iconv from "iconv-lite";
-import he from "he";
 import { AsyncLocalStorage } from "node:async_hooks";
 import fs from "node:fs";
 import path from "node:path";
@@ -128,6 +125,7 @@ const ORG_SCOPED_MODELS = new Set([
   "OrgProfile",
   "Supplier",
   "SupplierTruck",
+  "PortalNews",
   "InviteToken",
   "Membership",
   "Subscription",
@@ -918,313 +916,6 @@ async function renderQrPng(value) {
   });
 }
 
-// ================== Новости (RSS агрегатор) ==================
-const NEWS_SOURCES = [
-  { name: "Ведомости", type: "rss", url: "https://www.vedomosti.ru/rss/rubric/business", defaultCategory: "business" },
-  { name: "Ведомости", type: "rss", url: "https://www.vedomosti.ru/rss/rubric/economics/taxes", defaultCategory: "tax" },
-  { name: "Ведомости", type: "rss", url: "https://www.vedomosti.ru/rss/rubric/economics/regulations", defaultCategory: "tax" },
-  { name: "Коммерсантъ", type: "rss", url: "https://www.kommersant.ru/rss/news.xml", defaultCategory: "business" },
-  {
-    name: "РБК",
-    type: "rss",
-    url: "https://rssexport.rbc.ru/rbcnews/news/30/full.rss",
-    fallbackUrls: [
-      "https://rss.rbc.ru/rbcnews/news/30/full.rss",
-      "https://static.feed.rbc.ru/rbc/internal/rss.rbc.ru/rbc.ru/economics.rss",
-    ],
-    defaultCategory: "business",
-  },
-  { name: "Минтруд", type: "rss", url: "https://mintrud.gov.ru/news/rss/official", defaultCategory: "hr" },
-];
-
-const NEWS_CATEGORIES = {
-  tax: ["ндс", "налог", "фнс", "вычет", "счет-фактур", "упд", "камеральн", "провер", "акциз"],
-  hr: ["труд", "кадры", "увольнен", "прием", "договор", "минтруд", "страхов", "взнос", "отпуск", "больничн", "самозанят", "штраф"],
-};
-
-const NEWS_REFRESH_MS = 15 * 60 * 1000; // 15 минут
-const NEWS_REQUEST_TIMEOUT = 10000; // 10 секунд
-const NEWS_FETCH_HEADERS = {
-  "User-Agent": "business-portal/1.0",
-  Accept: "application/rss+xml, application/xml;q=0.9, text/xml;q=0.8, */*;q=0.5",
-  "Accept-Language": "ru-RU,ru;q=0.9,en;q=0.8",
-};
-
-let newsCache = {
-  items: [],
-  fetchedAt: 0,
-};
-const newsSourceCache = {};
-
-function classifyCategory(title = "", description = "", fallback = "business") {
-  const text = `${title} ${description}`.toLowerCase();
-  if (NEWS_CATEGORIES.tax?.some((k) => text.includes(k))) return "tax";
-  if (NEWS_CATEGORIES.hr?.some((k) => text.includes(k))) return "hr";
-  return fallback;
-}
-
-function hashId(value) {
-  return crypto.createHash("md5").update(value).digest("hex");
-}
-
-const RSS_PARSER = new XMLParser({
-  ignoreAttributes: false,
-  attributeNamePrefix: "@_",
-  textNodeName: "text",
-  cdataPropName: "text",
-  removeNSPrefix: true,
-  trimValues: true,
-});
-
-function decodeHtmlEntities(value) {
-  return he.decode(value, { isAttributeValue: false });
-}
-
-function sanitizeText(value) {
-  return value
-    .replace(/\u00A0/g, " ")
-    .replace(/\uFFFD/g, "")
-    .replace(/\s+/g, " ")
-    .trim();
-}
-
-function normalizeText(value) {
-  if (value === null || value === undefined) return "";
-  let text = "";
-  if (typeof value === "string" || typeof value === "number") {
-    text = String(value);
-  } else if (typeof value === "object") {
-    text = value.text || value["#text"] || "";
-  }
-  return decodeHtmlEntities(text);
-}
-
-function cleanText(value) {
-  const stripped = normalizeText(value).replace(/<[^>]+>/g, " ");
-  return sanitizeText(stripped);
-}
-
-function extractLink(linkField) {
-  if (!linkField) return "";
-  if (typeof linkField === "string") return linkField;
-  if (Array.isArray(linkField)) {
-    const alt = linkField.find((l) => l?.["@_rel"] === "alternate") || linkField[0];
-    return alt?.["@_href"] || normalizeText(alt?.text);
-  }
-  return linkField["@_href"] || normalizeText(linkField.text);
-}
-
-function pickTag(block, tag) {
-  const regexCdata = new RegExp(`<${tag}>\\s*<!\\[CDATA\\[(.*?)\\]\\]>\\s*<\\/${tag}>`, "is");
-  const regexSimple = new RegExp(`<${tag}[^>]*>(.*?)<\\/${tag}>`, "is");
-  const mC = block.match(regexCdata);
-  if (mC) return sanitizeText(decodeHtmlEntities(mC[1]));
-  const m = block.match(regexSimple);
-  if (!m) return "";
-  const cleaned = m[1].replace(/<[^>]+>/g, " ");
-  return sanitizeText(decodeHtmlEntities(cleaned));
-}
-
-function parseRssFallback(xml, source) {
-  const items = [];
-  const parts = xml.split(/<item[^>]*>/i).slice(1);
-  for (const raw of parts) {
-    const block = raw.split(/<\/item>/i)[0];
-    const title = pickTag(block, "title");
-    const link = pickTag(block, "link") || pickTag(block, "guid");
-    const pubDate = pickTag(block, "pubDate") || pickTag(block, "dc:date");
-    const desc = pickTag(block, "description");
-    const summary = desc ? desc.replace(/\s+/g, " ").trim().slice(0, 300) : undefined;
-    if (!title || !link) continue;
-    items.push({
-      id: hashId(link || title),
-      title,
-      source: source.name,
-      link,
-      publishedAt: pubDate ? new Date(pubDate).toISOString() : new Date().toISOString(),
-      summary,
-      category: classifyCategory(title, desc, source.defaultCategory || "business"),
-    });
-  }
-  return items;
-}
-
-function parseRss(xml, source) {
-  const items = [];
-  const data = RSS_PARSER.parse(xml);
-  const rss = data?.rss;
-  const feed = data?.feed;
-  const channel = rss ? (Array.isArray(rss.channel) ? rss.channel[0] : rss.channel) : feed;
-  const rawItems = channel?.item || channel?.entry || [];
-  const list = Array.isArray(rawItems) ? rawItems : rawItems ? [rawItems] : [];
-
-  for (const item of list) {
-    const title = cleanText(item?.title);
-    const link = extractLink(item?.link) || normalizeText(item?.guid);
-    const pubDate =
-      normalizeText(item?.pubDate) || normalizeText(item?.published) || normalizeText(item?.updated);
-    const descRaw = normalizeText(item?.description) || normalizeText(item?.summary) || normalizeText(item?.content);
-    const summary = descRaw ? cleanText(descRaw).slice(0, 300) : undefined;
-    if (!title || !link) continue;
-    items.push({
-      id: hashId(link || title),
-      title,
-      source: source.name,
-      link,
-      publishedAt: pubDate ? new Date(pubDate).toISOString() : new Date().toISOString(),
-      summary,
-      category: classifyCategory(title, descRaw, source.defaultCategory || "business"),
-    });
-  }
-  if (items.length === 0) {
-    return parseRssFallback(xml, source);
-  }
-  return items;
-}
-
-function normalizeCharset(raw) {
-  if (!raw) return null;
-  const value = String(raw).trim().toLowerCase();
-  if (!value) return null;
-  if (value === "utf8") return "utf-8";
-  if (["windows-1251", "win-1251", "cp1251"].includes(value)) {
-    return "windows-1251";
-  }
-  return value;
-}
-
-function detectCharset(contentType = "") {
-  const match = /charset=([^;]+)/i.exec(contentType);
-  if (!match) return null;
-  return normalizeCharset(match[1]);
-}
-
-function detectCharsetFromXml(buffer) {
-  const head = buffer.toString("ascii", 0, 200);
-  const match = /encoding=[\"']([^\"']+)[\"']/i.exec(head);
-  if (!match) return null;
-  return normalizeCharset(match[1]);
-}
-
-function decodeRssBuffer(buffer, charset) {
-  const candidates = [];
-  if (charset) candidates.push(charset);
-  for (const fallback of ["utf-8", "windows-1251"]) {
-    if (!candidates.includes(fallback)) candidates.push(fallback);
-  }
-  let bestText = null;
-  let bestScore = Infinity;
-  for (const enc of candidates) {
-    if (!iconv.encodingExists(enc)) continue;
-    const decoded = iconv.decode(buffer, enc);
-    const score = (decoded.match(/\uFFFD/g) || []).length;
-    if (score < bestScore) {
-      bestScore = score;
-      bestText = decoded;
-    }
-    if (score === 0) break;
-  }
-  return bestText ?? buffer.toString("utf-8");
-}
-
-async function fetchWithTimeout(url, timeoutMs) {
-  const controller = new AbortController();
-  const t = setTimeout(() => controller.abort(), timeoutMs);
-  try {
-    const res = await fetch(url, {
-      signal: controller.signal,
-      headers: NEWS_FETCH_HEADERS,
-      redirect: "follow",
-    });
-    if (!res.ok) throw new Error(`Status ${res.status}`);
-    const buffer = Buffer.from(await res.arrayBuffer());
-    const headerCharset = detectCharset(res.headers.get("content-type") || "");
-    const xmlCharset = detectCharsetFromXml(buffer);
-    const charset = headerCharset || xmlCharset;
-    return decodeRssBuffer(buffer, charset);
-  } finally {
-    clearTimeout(t);
-  }
-}
-
-async function refreshNewsCache() {
-  try {
-    const now = Date.now();
-    if (newsCache.items.length && now - newsCache.fetchedAt < NEWS_REFRESH_MS) return newsCache.items;
-
-    const tasks = NEWS_SOURCES.map(async (src) => {
-      const cacheKey = src.url;
-      const tryFetch = async (url, label) => {
-        const xml = await fetchWithTimeout(url, NEWS_REQUEST_TIMEOUT);
-        const items = parseRss(xml, src);
-        if (items.length === 0) {
-          console.log(`[News] fetched 0 items from ${src.name}${label ? ` (${label})` : ""}`);
-        } else {
-          console.log(`[News] fetched ${items.length} items from ${src.name}${label ? ` (${label})` : ""}`);
-        }
-        return items;
-      };
-
-      try {
-        let items = await tryFetch(src.url, "primary");
-        if (items.length === 0 && Array.isArray(src.fallbackUrls)) {
-          for (const fallbackUrl of src.fallbackUrls) {
-            try {
-              items = await tryFetch(fallbackUrl, "fallback");
-              if (items.length) break;
-            } catch (fallbackErr) {
-              console.log("[News] source error", src.name, fallbackErr.message, fallbackErr.cause?.code, fallbackErr.cause?.message);
-            }
-          }
-        }
-        if (items.length) {
-          newsSourceCache[cacheKey] = items;
-          return items;
-        }
-        return newsSourceCache[cacheKey] || [];
-      } catch (err) {
-        console.log("[News] source error", src.name, err.message, err.cause?.code, err.cause?.message);
-        if (Array.isArray(src.fallbackUrls)) {
-          for (const fallbackUrl of src.fallbackUrls) {
-            try {
-              const items = await tryFetch(fallbackUrl, "fallback");
-              if (items.length) {
-                newsSourceCache[cacheKey] = items;
-                return items;
-              }
-            } catch (fallbackErr) {
-              console.log("[News] source error", src.name, fallbackErr.message, fallbackErr.cause?.code, fallbackErr.cause?.message);
-            }
-          }
-        }
-        return newsSourceCache[cacheKey] || [];
-      }
-    });
-
-    const results = await Promise.allSettled(tasks);
-    const collected = results.flatMap((r) => (r.status === "fulfilled" ? r.value : []));
-
-    const seen = new Set();
-    const unique = [];
-    for (const item of collected) {
-      const key = item.link || item.title;
-      if (!seen.has(key)) {
-        seen.add(key);
-        unique.push(item);
-      }
-    }
-
-    unique.sort((a, b) => new Date(b.publishedAt).getTime() - new Date(a.publishedAt).getTime());
-    newsCache = { items: unique.slice(0, 50), fetchedAt: now };
-    return newsCache.items;
-  } catch (err) {
-    console.error("[News] refresh error:", err);
-    return newsCache.items;
-  }
-}
-
-setInterval(refreshNewsCache, NEWS_REFRESH_MS);
-refreshNewsCache();
 const SAFETY_RESOURCES = {
   instructions: [
     {
@@ -1363,23 +1054,123 @@ app.get("/api/safety/resources", auth, requireHr, async (req, res) => {
   }
 });
 
-// ---------- Новости ----------
-app.get("/api/news", auth, async (req, res) => {
+
+app.get("/api/portal-news", auth, async (req, res) => {
   try {
-    const category = String(req.query.category || "").toLowerCase();
-    const limit = Math.min(Number(req.query.limit) || 20, 50);
-    const items = await refreshNewsCache();
-    let list = items || [];
-    if (["business", "tax", "hr"].includes(category)) {
-      list = list.filter((item) => item.category === category);
-    }
+    const roles = getRequestRoles(req);
+    const isAdmin = roles.includes("ADMIN");
+    const items = await prisma.portalNews.findMany({
+      where: isAdmin ? {} : { published: true },
+      orderBy: { createdAt: "desc" },
+    });
     res.set("Content-Type", "application/json; charset=utf-8");
-    res.json({ items: list.slice(0, limit) });
+    res.json({ items });
   } catch (err) {
-    console.error("news endpoint error:", err);
-    res.status(500).json({ items: [], message: "Не удалось загрузить новости" });
+    console.error("portal news list error:", err);
+    res.status(500).json({ items: [], message: "Failed to load portal news" });
   }
 });
+
+app.post("/api/portal-news", auth, requireAdmin, async (req, res) => {
+  try {
+    const title = String(req.body?.title || "").trim();
+    const body = String(req.body?.body || "").trim();
+    const published = req.body?.published !== false;
+    const rawTags = req.body?.tags;
+    const tags = Array.isArray(rawTags)
+      ? rawTags.map((t) => String(t).trim()).filter(Boolean)
+      : typeof rawTags === "string"
+      ? rawTags
+          .split(",")
+          .map((t) => t.trim())
+          .filter(Boolean)
+      : [];
+
+    if (!title || !body) {
+      return res.status(400).json({ message: "Title and body are required" });
+    }
+
+    const created = await prisma.portalNews.create({
+      data: {
+        title,
+        body,
+        tags,
+        published,
+      },
+    });
+    res.set("Content-Type", "application/json; charset=utf-8");
+    res.status(201).json(created);
+  } catch (err) {
+    console.error("portal news create error:", err);
+    res.status(500).json({ message: "Failed to create portal news" });
+  }
+});
+
+app.put("/api/portal-news/:id", auth, requireAdmin, async (req, res) => {
+  try {
+    const id = Number(req.params.id);
+    if (!id || Number.isNaN(id)) {
+      return res.status(400).json({ message: "Invalid id" });
+    }
+
+    const title = String(req.body?.title || "").trim();
+    const body = String(req.body?.body || "").trim();
+    const published = req.body?.published !== false;
+    const rawTags = req.body?.tags;
+    const tags = Array.isArray(rawTags)
+      ? rawTags.map((t) => String(t).trim()).filter(Boolean)
+      : typeof rawTags === "string"
+      ? rawTags
+          .split(",")
+          .map((t) => t.trim())
+          .filter(Boolean)
+      : [];
+
+    if (!title || !body) {
+      return res.status(400).json({ message: "Title and body are required" });
+    }
+
+    const updated = await prisma.portalNews.update({
+      where: { id },
+      data: {
+        title,
+        body,
+        tags,
+        published,
+      },
+    });
+    res.set("Content-Type", "application/json; charset=utf-8");
+    res.json(updated);
+  } catch (err) {
+    console.error("portal news update error:", err);
+    if (err?.code === "P2025") {
+      return res.status(404).json({ message: "Portal news not found" });
+    }
+    res.status(500).json({ message: "Failed to update portal news" });
+  }
+});
+
+app.delete("/api/portal-news/:id", auth, requireAdmin, async (req, res) => {
+  try {
+    const id = Number(req.params.id);
+    if (!id || Number.isNaN(id)) {
+      return res.status(400).json({ message: "Invalid id" });
+    }
+
+    await prisma.portalNews.delete({ where: { id } });
+    res.set("Content-Type", "application/json; charset=utf-8");
+    res.json({ ok: true });
+  } catch (err) {
+    console.error("portal news delete error:", err);
+    if (err?.code === "P2025") {
+      return res.status(404).json({ message: "Portal news not found" });
+    }
+    res.status(500).json({ message: "Failed to delete portal news" });
+  }
+});
+
+
+// ---------- Новости ----------
 
 app.put(
   "/api/safety/assignments/:id/complete",

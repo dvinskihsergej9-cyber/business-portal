@@ -1164,6 +1164,16 @@ input[type="number"] {
   background: #cbd5f5;
 }
 
+.portal-surface .btn--danger {
+  background: var(--danger);
+  color: #ffffff;
+  box-shadow: 0 8px 18px rgba(220, 38, 38, 0.2);
+}
+
+.portal-surface .btn--danger:hover:not(:disabled) {
+  background: #b91c1c;
+}
+
 .portal-surface .btn--ghost {
   background: transparent;
   color: #0f172a;

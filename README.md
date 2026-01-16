@@ -10,9 +10,9 @@ npm run db:migrate
 npm run dev
 ```
 
-Local SQLite config:
+Local PostgreSQL config:
 ```
-DATABASE_URL=file:./dev.db
+DATABASE_URL=postgresql://user:password@localhost:5432/business_portal?schema=public
 ```
 
 Dev-only test subscription:
@@ -57,6 +57,7 @@ Render (API):
 ```
 npm run db:migrate
 ```
+3) Portal news admin is available at `/admin/portal-news` for ADMIN users.
 3) Configure YooKassa webhook URL:
 ```
 POST https://your-api-domain/api/billing/yookassa/webhook
