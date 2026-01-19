@@ -1711,16 +1711,23 @@ export default function HrPanel() {
                     Печать
                   </button>
                 </div>
-                <pre
-                  style={{
-                    whiteSpace: "pre-wrap",
-                    fontFamily: "Segoe UI, sans-serif",
-                    margin: 0,
-                    fontSize: 13,
-                  }}
-                >
-{leavePreview.docText}
-                </pre>
+                {/<[^>]+>/.test(leavePreview.docText) ? (
+                  <div
+                    className="leave-doc-preview"
+                    dangerouslySetInnerHTML={{ __html: leavePreview.docText }}
+                  />
+                ) : (
+                  <pre
+                    style={{
+                      whiteSpace: "pre-wrap",
+                      fontFamily: "Segoe UI, sans-serif",
+                      margin: 0,
+                      fontSize: 13,
+                    }}
+                  >
+                    {leavePreview.docText}
+                  </pre>
+                )}
               </div>
             )}
           </div>

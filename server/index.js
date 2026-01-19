@@ -731,30 +731,30 @@ function formatDateBook(date) {
   const dd = String(d.getDate()).padStart(2, "0");
   const mm = String(d.getMonth() + 1).padStart(2, "0");
   const yyyy = d.getFullYear();
-  return `«${dd}» ${mm} ${yyyy} г.`;
+  return `?${dd}? ${mm} ${yyyy} ?.`;
 }
 
 function formatDateLong(date) {
   const d = new Date(date);
-  if (Number.isNaN(d.getTime())) return "В«__В» __________ ____";
+  if (Number.isNaN(d.getTime())) return "?__? __________ ____";
   const dd = String(d.getDate()).padStart(2, "0");
   const monthNames = [
-    "января",
-    "февраля",
-    "марта",
-    "апреля",
-    "мая",
-    "июня",
-    "июля",
-    "августа",
-    "сентября",
-    "октября",
-    "ноября",
-    "декабря",
+    "??????",
+    "???????",
+    "?????",
+    "??????",
+    "???",
+    "????",
+    "????",
+    "???????",
+    "????????",
+    "???????",
+    "??????",
+    "???????",
   ];
   const month = monthNames[d.getMonth()] || "";
   const yyyy = d.getFullYear();
-  return `«${dd}» ${month} ${yyyy} года`;
+  return `?${dd}? ${month} ${yyyy} ?.`;
 }
 
 function parseDateInput(value) {
@@ -785,30 +785,30 @@ function buildLeaveDoc(employee, application) {
   const toLong = formatDateLong(application.endDate);
   const today = formatDateRu(new Date());
 
-  const titleLine = "ЗАЯВЛЕНЕ";
+  const titleLine = "?????????";
 
   const body = isTermination
-    ? `Прошу уволить меня по собственному желанию ${fromLong}. Прошу произвести окончательный расчет, выдать трудовую книжку (или сведения о трудовой деятельности) и справки установленной формы в день увольнения.`
+    ? `????? ??????? ???? ?? ???????????? ??????? ${fromLong}. ????? ?????????? ????????????? ??????, ?????? ???????? ?????? (??? ???????? ? ???????? ????????????) ? ???????, ??????????????? ?????????????????.`
     : isUnpaid
-      ? `В соответствии со статьей 128 Трудового кодекса РФ прошу предоставить мне отпуск без сохранения заработной платы с ${fromLong} по ${toLong} продолжительностью ${application.days} календарных дней.`
-      : `В соответствии со статьей 115 Трудового кодекса РФ прошу предоставить мне ежегодный оплачиваемый отпуск с ${fromLong} по ${toLong} продолжительностью ${application.days} календарных дней.`;
+      ? `? ???????????? ?? ??????? 128 ????????? ??????? ?? ????? ???????????? ??? ?????? ??? ?????????? ?????????? ????? ? ${fromLong} ?? ${toLong} ?????????????????? ${application.days} ??????????? ????.`
+      : `? ???????????? ?? ??????? 115 ????????? ??????? ?? ????? ???????????? ??? ????????? ???????????? ?????? ? ${fromLong} ?? ${toLong} ?????????????????? ${application.days} ??????????? ????.`;
 
   const reasonLine = application.reason
-    ? `<div class="doc-reason">Основание / комментарий: ${application.reason}</div>`
+    ? `<div class="doc-reason">????????? / ???????????: ${application.reason}</div>`
     : "";
 
   const noteSpan = isUnpaid
     ? ""
     : isTermination
       ? ""
-      : `<span class="doc-note">(подается за 14 календарных дней до первого дня отпуска)</span>`;
+      : `<span class="doc-note">(???????? ?? 14 ??????????? ???? ?? ?????? ???????)</span>`;
 
   return `
 <div class="doc-header">
-  <div>КОМУ: ________________________________________________</div>
+  <div>????????????: ____________________________________________</div>
   <div>_____________________________________________________</div>
-  <div style="margin-top: 8px;">ОТ КОГО: ${employee.fullName}</div>
-  <div>Должность: ${employee.position || ""}${employee.position ? ", " : ""}${employee.department || ""}</div>
+  <div style="margin-top: 8px;">??: ${employee.fullName}</div>
+  <div>?????????: ${employee.position || ""}${employee.position ? ", " : ""}${employee.department || ""}</div>
 </div>
 
 <div class="doc-title">${titleLine}</div>
@@ -816,13 +816,22 @@ function buildLeaveDoc(employee, application) {
 <div class="doc-body">${body}</div>
 ${reasonLine}
 
-<div class="doc-meta">Дата приема: ${hired} &nbsp;&nbsp; Дата рождения: ${birth}</div>
+<div class="doc-meta">???? ??????: ${hired} &nbsp;&nbsp; ???? ????????: ${birth}</div>
 
-<div class="doc-date">Дата заявления: «____» __________ 20____ года ${noteSpan}</div>
-<div class="doc-sign">Подпись ________________</div>
+<div class="doc-date">???? ?????????: ?____? __________ 20____ ?. ${noteSpan}</div>
+<div class="doc-sign">??????? ________________</div>
 
-<div class="doc-meta" style="margin-top: 8px;">Фактически: ${today}</div>
+<div class="doc-meta" style="margin-top: 8px;">????????????: ${today}</div>
 `.trim();
+}
+
+function hasNonRussianCyrillic(value) {
+  return /[ЃЄІЇЉЊЌЎЏђѓєіїљњќўџ]/.test(value || "");
+}
+
+function shouldRegenerateLeaveDoc(docText) {
+  if (!docText) return true;
+  return hasNonRussianCyrillic(docText);
 }
 
 
@@ -3351,7 +3360,7 @@ app.put("/api/hr/employees/:id", auth, requireHr, async (req, res) => {
   try {
     const id = Number(req.params.id);
     if (!id || Number.isNaN(id)) {
-      return res.status(400).json({ message: "Invalid employee id" });
+      return res.status(400).json({ message: "???????????? ????????????? ??????????" });
     }
 
     const { fullName, position, department, telegramChatId, hiredAt, birthDate } = req.body || {};
@@ -3389,7 +3398,7 @@ app.put("/api/hr/employees/:id", auth, requireHr, async (req, res) => {
     console.error("update employee error:", err);
 
     if (err?.code === "P2025") {
-      return res.status(404).json({ message: "Employee not found" });
+      return res.status(404).json({ message: "????????? ?? ??????" });
     }
 
     res.status(500).json({ message: "Failed to update employee" });
@@ -3402,7 +3411,7 @@ app.put("/api/hr/employees/:id/status", auth, requireHr, async (req, res) => {
     const { status } = req.body || {};
 
     if (!id || Number.isNaN(id)) {
-      return res.status(400).json({ message: "Invalid employee id" });
+      return res.status(400).json({ message: "???????????? ????????????? ??????????" });
     }
 
     const allowedStatuses = ["ACTIVE", "FIRED"];
@@ -3420,7 +3429,7 @@ app.put("/api/hr/employees/:id/status", auth, requireHr, async (req, res) => {
     console.error("update employee status error:", err);
 
     if (err?.code === "P2025") {
-      return res.status(404).json({ message: "Employee not found" });
+      return res.status(404).json({ message: "????????? ?? ??????" });
     }
 
     res
@@ -3438,12 +3447,12 @@ app.get(
     try {
       const id = Number(req.params.id);
       if (!id || Number.isNaN(id)) {
-        return res.status(400).json({ message: "Invalid employee id" });
+        return res.status(400).json({ message: "???????????? ????????????? ??????????" });
       }
 
       const employee = await prisma.employee.findUnique({ where: { id } });
       if (!employee) {
-        return res.status(404).json({ message: "Employee not found" });
+        return res.status(404).json({ message: "????????? ?? ??????" });
       }
 
       const accruedDays = calcAccruedLeaveDays(employee.hiredAt);
@@ -3459,7 +3468,7 @@ app.get(
       res.json({ accruedDays, usedDays, availableDays });
     } catch (err) {
       console.error("leave balance error:", err);
-      res.status(500).json({ message: "Failed to get leave balance" });
+      res.status(500).json({ message: "?? ??????? ???????? ?????? ???????" });
     }
   }
 );
@@ -3474,11 +3483,11 @@ app.post(
       const id = Number(employeeId);
 
       if (!id || Number.isNaN(id)) {
-        return res.status(400).json({ message: "Invalid employee id" });
+        return res.status(400).json({ message: "???????????? ????????????? ??????????" });
       }
 
       if (!["PAID", "UNPAID", "TERMINATION"].includes(type)) {
-        return res.status(400).json({ message: "Invalid leave type" });
+        return res.status(400).json({ message: "???????????? ??? ???????" });
       }
 
       const parsedStart = parseDateInput(startDate);
@@ -3490,13 +3499,13 @@ app.post(
 
       if (type !== "TERMINATION") {
         if (!days || days < 1) {
-          return res.status(400).json({ message: "Invalid dates range" });
+          return res.status(400).json({ message: "???????????? ???????? ???" });
         }
       }
 
       const employee = await prisma.employee.findUnique({ where: { id } });
       if (!employee) {
-        return res.status(404).json({ message: "Employee not found" });
+        return res.status(404).json({ message: "????????? ?? ??????" });
       }
 
       const accruedDays = calcAccruedLeaveDays(employee.hiredAt);
@@ -3513,7 +3522,7 @@ app.post(
       if (type === "PAID" && days > availableDays) {
         return res
           .status(400)
-          .json({ message: "Not enough leave balance" });
+          .json({ message: "???????????? ????????? ???? ???????" });
       }
 
       const application = await prisma.hrLeaveApplication.create({
@@ -3553,7 +3562,7 @@ app.post(
       console.error("create leave application error:", err);
       res
         .status(500)
-        .json({ message: "Failed to create leave application" });
+        .json({ message: "?? ??????? ??????? ?????????" });
     }
   }
 );
@@ -3565,7 +3574,7 @@ app.get(
     try {
       const id = Number(req.params.id);
       if (!id || Number.isNaN(id)) {
-        return res.status(400).json({ message: "Invalid application id" });
+        return res.status(400).json({ message: "???????????? ????????????? ?????????" });
       }
 
       const application = await prisma.hrLeaveApplication.findUnique({
@@ -3574,21 +3583,27 @@ app.get(
       });
 
       if (!application) {
-        return res.status(404).json({ message: "Application not found" });
+        return res.status(404).json({ message: "????????? ?? ???????" });
       }
 
-      const docText =
-        application.docText ||
-        buildLeaveDoc(
-          {
-            fullName: application.fullName,
-            position: application.position,
-            department: application.department,
-            birthDate: application.birthDate,
-            hiredAt: application.hiredAt,
-          },
-          application
-        );
+      const baseEmployee = {
+        fullName: application.employee.fullName,
+        position: application.employee.position,
+        department: application.employee.department,
+        birthDate: application.employee.birthDate,
+        hiredAt: application.employee.hiredAt,
+      };
+      const needsRebuild = shouldRegenerateLeaveDoc(application.docText);
+      const docText = needsRebuild
+        ? buildLeaveDoc(baseEmployee, application)
+        : application.docText;
+
+      if (needsRebuild) {
+        await prisma.hrLeaveApplication.update({
+          where: { id: application.id },
+          data: { docText },
+        });
+      }
 
       res.json({
         id: application.id,
@@ -3601,7 +3616,7 @@ app.get(
       });
     } catch (err) {
       console.error("leave doc error:", err);
-      res.status(500).json({ message: "Failed to get leave document" });
+      res.status(500).json({ message: "?? ??????? ???????? ????????" });
     }
   }
 );
