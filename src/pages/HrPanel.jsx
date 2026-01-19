@@ -192,17 +192,14 @@ function openPrintWindow(docText) {
       body { font-family: "Times New Roman", serif; font-size: 18px; margin: 0; color: #111; }
       .sheet { width: 100%; min-height: 60vh; display: flex; justify-content: center; }
       .paper { width: 70%; margin-top: 25mm; line-height: 1.6; }
-      .doc-header { text-align: right; line-height: 1.7; margin-bottom: 24px; }
-      .doc-title { text-align: center; font-weight: 700; margin: 18px 0; font-size: 20px; }
-      .doc-body { margin: 0 0 18px 0; }
-      .doc-meta { margin-top: 6px; color: #444; }
-      .doc-date { margin: 16px 0 6px 0; }
-      .doc-note { font-size: 12px; color: #666; font-style: italic; }
-      .doc-sign { margin-top: 12px; }
+      pre { white-space: pre-wrap; font-family: "Times New Roman", serif; margin: 0; }
     </style>
   `;
+  const safeText = String(docText || "").replace(/[&<>]/g, (ch) =>
+    ({ '&': '&amp;', '<': '&lt;', '>': '&gt;' }[ch])
+  );
   win.document.write(
-    `<html><head><title>Заявление</title>${styles}</head><body><div class="sheet"><div class="paper">${docText}</div></div><script>window.print();</script></body></html>`
+    `<html><head><title>?????????</title>${styles}</head><body><div class="sheet"><div class="paper"><pre>${safeText}</pre></div></div><script>window.print();</script></body></html>`
   );
   win.document.close();
 }
@@ -1711,23 +1708,7 @@ export default function HrPanel() {
                     Печать
                   </button>
                 </div>
-                {/<[^>]+>/.test(leavePreview.docText) ? (
-                  <div
-                    className="leave-doc-preview"
-                    dangerouslySetInnerHTML={{ __html: leavePreview.docText }}
-                  />
-                ) : (
-                  <pre
-                    style={{
-                      whiteSpace: "pre-wrap",
-                      fontFamily: "Segoe UI, sans-serif",
-                      margin: 0,
-                      fontSize: 13,
-                    }}
-                  >
-                    {leavePreview.docText}
-                  </pre>
-                )}
+                <pre className="doc-preview">{leavePreview.docText}</pre>
               </div>
             )}
           </div>

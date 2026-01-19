@@ -522,47 +522,21 @@ svg {
   box-shadow: 0 0 0 1px rgba(37, 99, 235, 0.15);
 }
 
-.leave-doc-preview {
-  font-family: "Segoe UI", sans-serif;
-  font-size: 13px;
-  line-height: 1.6;
-  color: #111827;
-}
 
-.leave-doc-preview .doc-header {
-  text-align: right;
-  line-height: 1.7;
-  margin-bottom: 12px;
-}
 
-.leave-doc-preview .doc-title {
-  text-align: center;
-  font-weight: 700;
-  margin: 10px 0;
-}
 
-.leave-doc-preview .doc-body {
-  margin-bottom: 10px;
-}
 
-.leave-doc-preview .doc-meta {
-  color: #475569;
-  font-size: 12px;
-}
 
-.leave-doc-preview .doc-date {
-  margin-top: 10px;
-}
 
-.leave-doc-preview .doc-sign {
-  margin-top: 8px;
-}
 
-.leave-doc-preview .doc-note {
-  font-size: 12px;
-  color: #6b7280;
-}
-}
+
+
+
+
+
+
+
+
 
 .layout-drawer__logo {
   margin-bottom: 16px;
@@ -1861,4 +1835,14 @@ input[type="number"] {
     -webkit-overflow-scrolling: touch;
     max-width: 100%;
   }
+}
+
+.doc-preview {
+  white-space: pre-wrap;
+  font-family: "Segoe UI", sans-serif;
+  font-size: 13px;
+  line-height: 1.6;
+  color: #111827;
+}
+
 }
