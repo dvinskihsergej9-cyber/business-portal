@@ -160,6 +160,83 @@ svg {
   transform: translateX(0);
 }
 
+@media (max-width: 768px) {
+  .tasks-journal-filters {
+    flex-direction: column;
+    align-items: stretch;
+    gap: 12px;
+  }
+
+  .tasks-journal-filter {
+    width: 100%;
+  }
+
+  .tasks-journal-filter .form__select,
+  .tasks-journal-filter .form__input {
+    width: 100%;
+  }
+
+  .tasks-journal-cards {
+    display: grid;
+    gap: 12px;
+  }
+
+  .mobile-task-card .card__body {
+    display: grid;
+    gap: 10px;
+  }
+
+  .mobile-task-header {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+  }
+
+  .mobile-task-title {
+    font-size: 16px;
+    font-weight: 600;
+    color: #111827;
+  }
+
+  .mobile-task-meta {
+    display: grid;
+    gap: 8px;
+    color: #475569;
+    font-size: 13px;
+  }
+
+  .mobile-task-label {
+    font-size: 11px;
+    text-transform: uppercase;
+    letter-spacing: 0.4px;
+    color: #94a3b8;
+    margin-bottom: 2px;
+  }
+
+  .mobile-task-text {
+    overflow-wrap: anywhere;
+  }
+
+  .mobile-task-description {
+    font-size: 14px;
+    color: #334155;
+    background: #f8fafc;
+    border-radius: 10px;
+    padding: 10px;
+  }
+
+  .mobile-task-overdue {
+    color: #dc2626;
+    margin-left: 6px;
+    font-size: 12px;
+  }
+
+  .mobile-task-actions {
+    display: grid;
+    gap: 6px;
+  }
+}
+
 .layout-drawer__logo {
   margin-bottom: 16px;
 }

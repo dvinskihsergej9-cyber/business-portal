@@ -1609,6 +1609,7 @@ export default function Warehouse() {
               <div className="card1c__body">
                 {/* Фильтры сверху, в стиле Истории движений */}
                 <div
+                  className="tasks-journal-filters"
                   style={{
                     display: "flex",
                     gap: 16,
@@ -1617,7 +1618,7 @@ export default function Warehouse() {
                     flexWrap: "wrap",
                   }}
                 >
-                  <div>
+                  <div className="tasks-journal-filter">
                     <label className="form__label">Статус</label>
                     <select
                       className="form__select"
@@ -1634,7 +1635,7 @@ export default function Warehouse() {
                   </div>
 
                   {isWarehouseManager && (
-                    <div>
+                    <div className="tasks-journal-filter">
                       <label className="form__label">Список задач</label>
                       <select
                         className="form__select"
@@ -1647,7 +1648,7 @@ export default function Warehouse() {
                     </div>
                   )}
 
-                  <div style={{ flex: 1, minWidth: 200 }}>
+                  <div className="tasks-journal-filter" style={{ flex: 1, minWidth: 200 }}>
                     <label className="form__label">Поиск</label>
                     <input
                       type="text"
@@ -1663,6 +1664,102 @@ export default function Warehouse() {
                   <p>Загрузка...</p>
                 ) : filteredTasks.length === 0 ? (
                   <p className="text-muted">Задач не найдено.</p>
+                ) : isMobile ? (
+                  <div className="tasks-journal-cards">
+                    {filteredTasks.map((t) => {
+                      const overdue = isTaskOverdue(t);
+                      const createdAt = t.createdAt
+                        ? new Date(t.createdAt).toLocaleString("ru-RU", {
+                            day: "2-digit",
+                            month: "2-digit",
+                            year: "numeric",
+                            hour: "2-digit",
+                            minute: "2-digit",
+                          })
+                        : "-";
+                      const dueAt = t.dueDate
+                        ? new Date(t.dueDate).toLocaleString("ru-RU", {
+                            day: "2-digit",
+                            month: "2-digit",
+                            year: "numeric",
+                            hour: "2-digit",
+                            minute: "2-digit",
+                          })
+                        : "-";
+                      const executor =
+                        t.executorName || t.executorChatId
+                          ? `${t.executorName || ""}${
+                              t.executorChatId ? ` (TG: ${t.executorChatId})` : ""
+                            }`
+                          : "-";
+                      const author = t.assigner?.name || t.assigner?.email || "-";
+
+                      return (
+                        <div key={t.id} className="card mobile-task-card">
+                          <div className="card__body">
+                            <div className="mobile-task-header">
+                              <div className="mobile-task-title">{t.title || "-"}</div>
+                              <span className={taskStatusBadgeClass(t.status)}>
+                                {TASK_STATUS_LABELS[t.status] || t.status}
+                              </span>
+                            </div>
+                            <div className="mobile-task-meta">
+                              <div>
+                                <div className="mobile-task-label">Дата создания</div>
+                                <div>{createdAt}</div>
+                              </div>
+                              <div>
+                                <div className="mobile-task-label">Срок</div>
+                                <div>
+                                  {dueAt}
+                                  {overdue && (
+                                    <span className="mobile-task-overdue">
+                                      (просрочено)
+                                    </span>
+                                  )}
+                                </div>
+                              </div>
+                            </div>
+                            <div className="mobile-task-meta">
+                              <div>
+                                <div className="mobile-task-label">Исполнитель</div>
+                                <div className="mobile-task-text">{executor}</div>
+                              </div>
+                              <div>
+                                <div className="mobile-task-label">Автор</div>
+                                <div className="mobile-task-text">{author}</div>
+                              </div>
+                            </div>
+                            {t.description && (
+                              <div className="mobile-task-description mobile-task-text">
+                                {t.description}
+                              </div>
+                            )}
+                            {isWarehouseManager && (
+                              <div className="mobile-task-actions">
+                                <label className="form__label">Статус</label>
+                                <select
+                                  className="form__select"
+                                  value={t.status}
+                                  onChange={(e) =>
+                                    handleTaskStatusChangeLocal(t.id, e.target.value)
+                                  }
+                                  onBlur={() => handleTaskStatusSave(t.id)}
+                                  disabled={taskStatusSavingId === t.id}
+                                >
+                                  {TASK_STATUS_OPTIONS.map((o) => (
+                                    <option key={o.value} value={o.value}>
+                                      {o.label}
+                                    </option>
+                                  ))}
+                                </select>
+                              </div>
+                            )}
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
                 ) : (
                   <div className="table-wrapper">
                     <table className="table">
