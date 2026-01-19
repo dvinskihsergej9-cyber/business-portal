@@ -731,44 +731,106 @@ function formatDateBook(date) {
   const dd = String(d.getDate()).padStart(2, "0");
   const mm = String(d.getMonth() + 1).padStart(2, "0");
   const yyyy = d.getFullYear();
-  return `?${dd}? ${mm} ${yyyy} ?.`;
+  return `«${dd}» ${mm} ${yyyy} г.`;
 }
 
 function formatDateLong(date) {
   const d = new Date(date);
-  if (Number.isNaN(d.getTime())) return "?__? __________ ____";
+  if (Number.isNaN(d.getTime())) return "«__» __________ ____";
   const dd = String(d.getDate()).padStart(2, "0");
   const monthNames = [
-    "??????",
-    "???????",
-    "?????",
-    "??????",
-    "???",
-    "????",
-    "????",
-    "???????",
-    "????????",
-    "???????",
-    "??????",
-    "???????",
+    "января",
+    "февраля",
+    "марта",
+    "апреля",
+    "мая",
+    "июня",
+    "июля",
+    "августа",
+    "сентября",
+    "октября",
+    "ноября",
+    "декабря",
   ];
   const month = monthNames[d.getMonth()] || "";
   const yyyy = d.getFullYear();
-  return `?${dd}? ${month} ${yyyy} ?.`;
+  return `«${dd}» ${month} ${yyyy} г.`;
 }
 
-function fixMojibakeRu(s) {
-  if (!s || typeof s !== "string") return s;
-  const hasMojibake = /[??][-¿]/.test(s) || /?[?-???]/.test(s);
-  if (!hasMojibake) return s;
-  try {
-    const fixed = Buffer.from(s, "latin1").toString("utf8");
-    const cyr = (fixed.match(/[?-??-???]/g) || []).length;
-    const cyrOld = (s.match(/[?-??-???]/g) || []).length;
-    return cyr >= cyrOld ? fixed : s;
-  } catch {
-    return s;
+function normalizeRuText(value) {
+  if (!value || typeof value !== "string") return value;
+  let s = value;
+  s = s
+    .replace(/&amp;/g, "&")
+    .replace(/&lt;/g, "<")
+    .replace(/&gt;/g, ">")
+    .replace(/&nbsp;/g, " ");
+  s = s.replace(/\\n/g, "\n").replace(/\r\n/g, "\n").replace(/\r/g, "\n");
+
+  const hasMojibake = /[ÐÑ][\u0080-\u00BF]/.test(s) || /Р[А-яЁё]/.test(s);
+  if (hasMojibake) {
+    try {
+      const fixed = Buffer.from(s, "latin1").toString("utf8");
+      const cyr = (fixed.match(/[А-яЁё]/g) || []).length;
+      const cyrOld = (s.match(/[А-яЁё]/g) || []).length;
+      s = cyr >= cyrOld ? fixed : s;
+    } catch {
+      // keep as-is
+    }
   }
+
+  s = s.replace(/\s+\n/g, "\n").replace(/\n{3,}/g, "\n\n");
+  return s.trim();
+}
+
+function buildLeaveApplicationText({ employee, application, today }) {
+  const birth = employee.birthDate ? formatDateRu(employee.birthDate) : "___";
+  const hired = employee.hiredAt ? formatDateRu(employee.hiredAt) : "___";
+  const isUnpaid = application.type === "UNPAID";
+  const isTermination = application.type === "TERMINATION";
+  const fromLong = formatDateLong(application.startDate);
+  const toLong = formatDateLong(application.endDate);
+
+  const titleLine = "Заявление";
+
+  const body = isTermination
+    ? `Прошу уволить меня по собственному желанию с ${fromLong}.`
+    : isUnpaid
+      ? `Прошу предоставить отпуск без сохранения заработной платы с ${fromLong} по ${toLong} продолжительностью ${application.days} календарных дней.`
+      : `Прошу предоставить ежегодный оплачиваемый отпуск с ${fromLong} по ${toLong} продолжительностью ${application.days} календарных дней.`;
+
+  const reasonLine = application.reason
+    ? `Причина / комментарий: ${application.reason}`
+    : "";
+
+  const noteLine = isUnpaid || isTermination
+    ? ""
+    : "(не более 14 календарных дней за свой счет)";
+
+  const lines = [
+    "Директору: ____________________________________________",
+    "_____________________________________________________",
+    `От: ${employee.fullName}`,
+    `Должность: ${employee.position || ""}${employee.position ? ", " : ""}${employee.department || ""}`,
+    "",
+    titleLine,
+    "",
+    body,
+    reasonLine,
+    "",
+    `Дата приема: ${hired}    Дата рождения: ${birth}`,
+    `Дата заявления: «____» __________ 20____ г. ${noteLine}`,
+    "Подпись ________________",
+    `Сформировано: ${today}`
+  ];
+
+  return lines.filter((line) => line !== "").join("\n");
+}
+
+function shouldRegenerateLeaveDoc(docText) {
+  if (!docText) return true;
+  const fixed = normalizeRuText(docText);
+  return fixed !== docText;
 }
 
 function parseDateInput(value) {
@@ -787,63 +849,6 @@ function parseDateInput(value) {
   }
   return null;
 }
-
-function buildLeaveDoc(employee, application) {
-  const birth = employee.birthDate ? formatDateRu(employee.birthDate) : "___";
-  const hired = employee.hiredAt ? formatDateRu(employee.hiredAt) : "___";
-  const isUnpaid = application.type === "UNPAID";
-  const isTermination = application.type === "TERMINATION";
-  const fromLong = formatDateLong(application.startDate);
-  const toLong = formatDateLong(application.endDate);
-  const today = formatDateRu(new Date());
-
-  const titleLine = "????????? ?? ??????";
-
-  const body = isTermination
-    ? `????? ??????? ???? ?? ???????????? ??????? ${fromLong}. ????? ?????????? ????????????? ??????, ?????? ???????? ?????? (??? ???????? ? ???????? ????????????) ? ???????, ??????????????? ?????????????????.`
-    : isUnpaid
-      ? `? ???????????? ?? ??????? 128 ????????? ??????? ?? ????? ???????????? ??? ?????? ??? ?????????? ?????????? ????? ? ${fromLong} ?? ${toLong} ?????????????????? ${application.days} ??????????? ????.`
-      : `? ???????????? ?? ??????? 115 ????????? ??????? ?? ????? ???????????? ??? ????????? ???????????? ?????? ? ${fromLong} ?? ${toLong} ?????????????????? ${application.days} ??????????? ????.`;
-
-  const reasonLine = application.reason
-    ? `????????? / ???????????: ${application.reason}`
-    : "";
-
-  const noteLine = isUnpaid || isTermination
-    ? ""
-    : "(???????? ?? 14 ??????????? ???? ?? ?????? ???????)";
-
-  return [
-    "????????????: ____________________________________________",
-    "_____________________________________________________",
-    `??: ${employee.fullName}`,
-    `?????????: ${employee.position || ""}${employee.position ? ", " : ""}${employee.department || ""}`,
-    "",
-    titleLine,
-    "",
-    body,
-    reasonLine,
-    "",
-    `???? ??????: ${hired}    ???? ????????: ${birth}`,
-    `???? ?????????: ?____? __________ 20____ ?. ${noteLine}`,
-    "??????? ________________",
-    `????????????: ${today}`,
-  ]
-    .filter((line) => line !== "")
-    .join("
-");
-}
-
-function hasNonRussianCyrillic(value) {
-  return /[ЃЄІЇЉЊЌЎЏђѓєіїљњќўџ]/.test(value || "");
-}
-
-function shouldRegenerateLeaveDoc(docText) {
-  if (!docText) return true;
-  const fixed = fixMojibakeRu(docText);
-  return fixed !== docText || hasNonRussianCyrillic(docText);
-}
-
 
 const DEFAULT_SAFETY_INSTRUCTIONS = [
   {
@@ -3490,15 +3495,15 @@ app.post(
   async (req, res) => {
     try {
       const { employeeId, type, startDate, endDate, reason } = req.body || {};
-      const cleanReason = fixMojibakeRu(reason);
       const id = Number(employeeId);
+      const cleanReason = normalizeRuText(reason);
 
       if (!id || Number.isNaN(id)) {
-        return res.status(400).json({ message: "???????????? ????????????? ??????????" });
+        return res.status(400).json({ message: "Некорректный идентификатор сотрудника" });
       }
 
       if (!["PAID", "UNPAID", "TERMINATION"].includes(type)) {
-        return res.status(400).json({ message: "???????????? ??? ???????" });
+        return res.status(400).json({ message: "Некорректный тип отпуска" });
       }
 
       const parsedStart = parseDateInput(startDate);
@@ -3510,13 +3515,13 @@ app.post(
 
       if (type !== "TERMINATION") {
         if (!days || days < 1) {
-          return res.status(400).json({ message: "???????????? ???????? ???" });
+          return res.status(400).json({ message: "Некорректное количество дней" });
         }
       }
 
       const employee = await prisma.employee.findUnique({ where: { id } });
       if (!employee) {
-        return res.status(404).json({ message: "????????? ?? ??????" });
+        return res.status(404).json({ message: "Сотрудник не найден" });
       }
 
       const accruedDays = calcAccruedLeaveDays(employee.hiredAt);
@@ -3533,8 +3538,10 @@ app.post(
       if (type === "PAID" && days > availableDays) {
         return res
           .status(400)
-          .json({ message: "???????????? ????????? ???? ???????" });
+          .json({ message: "Недостаточно доступных дней отпуска" });
       }
+
+      const today = formatDateRu(new Date());
 
       const application = await prisma.hrLeaveApplication.create({
         data: {
@@ -3548,12 +3555,18 @@ app.post(
         },
       });
 
-      const docText = fixMojibakeRu(buildLeaveDoc({
-        ...employee,
-        fullName: fixMojibakeRu(employee.fullName),
-        position: fixMojibakeRu(employee.position),
-        department: fixMojibakeRu(employee.department),
-      }, { ...application, reason: cleanReason }));
+      const docText = normalizeRuText(
+        buildLeaveApplicationText({
+          employee: {
+            ...employee,
+            fullName: normalizeRuText(employee.fullName),
+            position: normalizeRuText(employee.position),
+            department: normalizeRuText(employee.department),
+          },
+          application: { ...application, reason: cleanReason },
+          today,
+        })
+      );
 
       const withDoc = await prisma.hrLeaveApplication.update({
         where: { id: application.id },
@@ -3576,9 +3589,7 @@ app.post(
       });
     } catch (err) {
       console.error("create leave application error:", err);
-      res
-        .status(500)
-        .json({ message: "?? ??????? ??????? ?????????" });
+      res.status(500).json({ message: "Не удалось создать заявление" });
     }
   }
 );
@@ -3590,7 +3601,7 @@ app.get(
     try {
       const id = Number(req.params.id);
       if (!id || Number.isNaN(id)) {
-        return res.status(400).json({ message: "???????????? ????????????? ?????????" });
+        return res.status(400).json({ message: "Некорректный идентификатор заявления" });
       }
 
       const application = await prisma.hrLeaveApplication.findUnique({
@@ -3599,26 +3610,31 @@ app.get(
       });
 
       if (!application) {
-        return res.status(404).json({ message: "????????? ?? ???????" });
+        return res.status(404).json({ message: "Заявление не найдено" });
       }
 
       const baseEmployee = {
-        fullName: fixMojibakeRu(application.employee.fullName),
-        position: fixMojibakeRu(application.employee.position),
-        department: fixMojibakeRu(application.employee.department),
-        fullName: application.employee.fullName,
-        position: application.employee.position,
-        department: application.employee.department,
+        fullName: normalizeRuText(application.employee.fullName),
+        position: normalizeRuText(application.employee.position),
+        department: normalizeRuText(application.employee.department),
         birthDate: application.employee.birthDate,
         hiredAt: application.employee.hiredAt,
       };
-      const needsRebuild = shouldRegenerateLeaveDoc(application.docText);
-      const safeStored = fixMojibakeRu(application.docText);
-      const docText = needsRebuild || safeStored !== application.docText
-        ? fixMojibakeRu(buildLeaveDoc(baseEmployee, { ...application, reason: fixMojibakeRu(application.reason) }))
-        : safeStored;
+      const today = formatDateRu(new Date());
+      const rawDocText = application.docText || "";
+      const safeStored = normalizeRuText(rawDocText);
+      const needsRebuild =
+        !rawDocText || safeStored !== rawDocText || shouldRegenerateLeaveDoc(rawDocText);
 
+      let docText = safeStored;
       if (needsRebuild) {
+        docText = normalizeRuText(
+          buildLeaveApplicationText({
+            employee: baseEmployee,
+            application: { ...application, reason: normalizeRuText(application.reason) },
+            today,
+          })
+        );
         await prisma.hrLeaveApplication.update({
           where: { id: application.id },
           data: { docText },
@@ -3636,7 +3652,60 @@ app.get(
       });
     } catch (err) {
       console.error("leave doc error:", err);
-      res.status(500).json({ message: "?? ??????? ???????? ????????" });
+      res.status(500).json({ message: "Не удалось получить документ заявления" });
+    }
+  }
+);
+
+app.get(
+  "/api/hr/leave-applications/:id/doc/debug",
+  auth,
+  requireHr,
+  async (req, res) => {
+    try {
+      const id = Number(req.params.id);
+      if (!id || Number.isNaN(id)) {
+        return res.status(400).json({ message: "Некорректный идентификатор заявления" });
+      }
+
+      const application = await prisma.hrLeaveApplication.findUnique({
+        where: { id },
+        include: { employee: true },
+      });
+
+      if (!application) {
+        return res.status(404).json({ message: "Заявление не найдено" });
+      }
+
+      const baseEmployee = {
+        fullName: normalizeRuText(application.employee.fullName),
+        position: normalizeRuText(application.employee.position),
+        department: normalizeRuText(application.employee.department),
+        birthDate: application.employee.birthDate,
+        hiredAt: application.employee.hiredAt,
+      };
+
+      const today = formatDateRu(new Date());
+      const normalizedDocText = normalizeRuText(
+        buildLeaveApplicationText({
+          employee: baseEmployee,
+          application: { ...application, reason: normalizeRuText(application.reason) },
+          today,
+        })
+      );
+
+      const rawDocText = application.docText || "";
+      const storedNormalized = normalizeRuText(rawDocText);
+      const wasFixed = storedNormalized !== rawDocText || shouldRegenerateLeaveDoc(rawDocText);
+
+      res.json({
+        rawDocText,
+        normalizedDocText,
+        wasFixed,
+      });
+    } catch (err) {
+      console.error("leave doc debug error:", err);
+      res.status(500).json({ message: "Не удалось получить диагностику документа" });
     }
   }
 );

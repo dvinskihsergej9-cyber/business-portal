@@ -645,6 +645,8 @@ a:hover {
   gap: 16px;
 }
 
+}
+
 @media (max-width: 900px) {
   .grid-2 {
     grid-template-columns: minmax(0, 1fr);
@@ -1843,6 +1845,6 @@ input[type="number"] {
   font-size: 13px;
   line-height: 1.6;
   color: #111827;
-}
-
+  word-break: normal;
+  overflow-wrap: anywhere;
 }

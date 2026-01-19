@@ -199,7 +199,7 @@ function openPrintWindow(docText) {
     ({ '&': '&amp;', '<': '&lt;', '>': '&gt;' }[ch])
   );
   win.document.write(
-    `<html><head><title>?????????</title>${styles}</head><body><div class="sheet"><div class="paper"><pre>${safeText}</pre></div></div><script>window.print();</script></body></html>`
+    `<html><head><title>Заявление</title>${styles}</head><body><div class="sheet"><div class="paper"><pre>${safeText}</pre></div></div><script>window.print();</script></body></html>`
   );
   win.document.close();
 }
