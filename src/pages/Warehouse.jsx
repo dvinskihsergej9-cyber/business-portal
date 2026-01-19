@@ -2388,14 +2388,7 @@ export default function Warehouse() {
               <div className="card card--1c" style={{ gridColumn: "span 2" }}>
                 <div className="card1c__header">Заказы поставщику</div>
                 <div className="card1c__body">
-                  <div
-                    style={{
-                      display: "flex",
-                      gap: 8,
-                      marginBottom: 12,
-                      flexWrap: "wrap",
-                    }}
-                  >
+                  <div className="orders-actions">
                     <button
                       className="btn btn--secondary"
                       onClick={handleOpenPurchaseOrder}
@@ -2423,6 +2416,57 @@ export default function Warehouse() {
                     <p>Загрузка заказов...</p>
                   ) : sortedPurchaseOrders.length === 0 ? (
                     <p className="text-muted">Заказов пока нет.</p>
+                  ) : isMobile ? (
+                    <div className="orders-cards">
+                      {sortedPurchaseOrders.map((po) => {
+                        const dateObj = po.createdAt
+                          ? new Date(po.createdAt)
+                          : null;
+                        const dateStr = dateObj
+                          ? dateObj.toLocaleDateString("ru-RU", {
+                              day: "2-digit",
+                              month: "2-digit",
+                              year: "numeric",
+                            })
+                          : "Без даты";
+                        const timeStr = dateObj
+                          ? dateObj.toLocaleTimeString("ru-RU", {
+                              hour: "2-digit",
+                              minute: "2-digit",
+                            })
+                          : "-";
+                        return (
+                          <div key={po.id} className="card mobile-order-card">
+                            <div className="card__body">
+                              <div className="mobile-order-header">
+                                <div className="mobile-order-title">
+                                  Заказ №{po.id}
+                                </div>
+                                <span className="badge badge--muted">
+                                  {PO_STATUS_LABELS[po.status] || po.status}
+                                </span>
+                              </div>
+                              <div className="mobile-order-meta">
+                                <div>
+                                  <div className="mobile-order-label">Поставщик</div>
+                                  <div className="mobile-order-text">
+                                    {po.supplier?.name || "-"}
+                                  </div>
+                                </div>
+                                <div>
+                                  <div className="mobile-order-label">Дата</div>
+                                  <div>{dateStr}</div>
+                                </div>
+                                <div>
+                                  <div className="mobile-order-label">Время</div>
+                                  <div>{timeStr}</div>
+                                </div>
+                              </div>
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </div>
                   ) : (
                     <div className="table-wrapper">
                       <table className="table">

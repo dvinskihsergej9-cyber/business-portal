@@ -235,6 +235,129 @@ svg {
     display: grid;
     gap: 6px;
   }
+
+  .inventory-header {
+    display: grid;
+    gap: 12px;
+  }
+
+  .inventory-header__left {
+    display: grid;
+    gap: 8px;
+  }
+
+  .inventory-header__checkbox {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    font-size: 13px;
+    color: #475569;
+  }
+
+  .inventory-header__btn {
+    width: 100%;
+  }
+
+  .inventory-search {
+    display: grid;
+    gap: 8px;
+    margin-bottom: 8px;
+  }
+
+  .inventory-search .form__input {
+    width: 100%;
+  }
+
+  .mobile-inventory-cards {
+    display: grid;
+    gap: 12px;
+  }
+
+  .mobile-inventory-card .card__body {
+    display: grid;
+    gap: 10px;
+  }
+
+  .mobile-inventory-title {
+    font-size: 16px;
+    font-weight: 600;
+    color: #111827;
+  }
+
+  .mobile-inventory-meta {
+    display: grid;
+    gap: 8px;
+    color: #475569;
+    font-size: 13px;
+  }
+
+  .mobile-inventory-label {
+    font-size: 11px;
+    text-transform: uppercase;
+    letter-spacing: 0.4px;
+    color: #94a3b8;
+    margin-bottom: 2px;
+  }
+
+  .mobile-inventory-text {
+    overflow-wrap: anywhere;
+  }
+
+  .mobile-inventory-stock--low {
+    color: #b91c1c;
+    font-weight: 600;
+  }
+
+  .orders-actions {
+    display: grid;
+    gap: 8px;
+    margin-bottom: 12px;
+  }
+
+  .orders-actions .btn {
+    width: 100%;
+  }
+
+  .orders-cards {
+    display: grid;
+    gap: 12px;
+  }
+
+  .mobile-order-card .card__body {
+    display: grid;
+    gap: 10px;
+  }
+
+  .mobile-order-header {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+  }
+
+  .mobile-order-title {
+    font-size: 16px;
+    font-weight: 600;
+    color: #111827;
+  }
+
+  .mobile-order-meta {
+    display: grid;
+    gap: 8px;
+    color: #475569;
+    font-size: 13px;
+  }
+
+  .mobile-order-label {
+    font-size: 11px;
+    text-transform: uppercase;
+    letter-spacing: 0.4px;
+    color: #94a3b8;
+    margin-bottom: 2px;
+  }
+
+  .mobile-order-text {
+    overflow-wrap: anywhere;
+  }
 }
 
 .layout-drawer__logo {
