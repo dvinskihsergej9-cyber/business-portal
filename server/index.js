@@ -1114,11 +1114,18 @@ const normalizePortalNewsTags = (value) => {
 
 async function resolvePortalNewsContext(req) {
   const header = req.headers["authorization"];
-  if (!header) return { user: null, orgId: null, isAdmin: false };
+  if (!header) {
+    return { user: null, orgId: null, isAdmin: false, authError: "missing" };
+  }
 
   const [type, token] = header.split(" ");
   if (type !== "Bearer" || !token) {
-    return { user: null, orgId: null, isAdmin: false };
+    return {
+      user: null,
+      orgId: null,
+      isAdmin: false,
+      authError: "invalid",
+    };
   }
 
   try {
@@ -1127,10 +1134,20 @@ async function resolvePortalNewsContext(req) {
       where: { id: payload.id },
     });
     if (!user || user.isActive === false) {
-      return { user: null, orgId: null, isAdmin: false };
+      return {
+        user: null,
+        orgId: null,
+        isAdmin: false,
+        authError: "invalid",
+      };
     }
     if ((payload.tokenVersion || 0) !== (user.tokenVersion || 0)) {
-      return { user: null, orgId: null, isAdmin: false };
+      return {
+        user: null,
+        orgId: null,
+        isAdmin: false,
+        authError: "invalid",
+      };
     }
 
     const memberships = await basePrisma.membership.findMany({
@@ -1145,15 +1162,35 @@ async function resolvePortalNewsContext(req) {
       if (found) orgId = found.orgId;
     }
 
-    return { user, orgId, isAdmin: user.role === "ADMIN" };
+    return {
+      user,
+      orgId,
+      isAdmin: user.role === "ADMIN",
+      hasMembership: memberships.length > 0,
+    };
   } catch (err) {
-    return { user: null, orgId: null, isAdmin: false };
+    return { user: null, orgId: null, isAdmin: false, authError: "invalid" };
   }
 }
 
 app.get("/api/portal-news", async (req, res) => {
   try {
-    const { orgId, isAdmin } = await resolvePortalNewsContext(req);
+    const wantsAll = req.query?.all === "1";
+    const { orgId, isAdmin, user, hasMembership, authError } =
+      await resolvePortalNewsContext(req);
+    if (wantsAll && !user) {
+      const message =
+        authError === "invalid"
+          ? "Недействительный или истекший токен"
+          : "Отсутствует токен авторизации";
+      return res.status(401).json({ message });
+    }
+    if (wantsAll && !isAdmin) {
+      return res.status(403).json({ message: "Недостаточно прав" });
+    }
+    if (wantsAll && !hasMembership) {
+      return res.status(403).json({ message: "Нет доступа к организации" });
+    }
     let effectiveOrgId = orgId;
     if (!effectiveOrgId) {
       const defaultOrg = await basePrisma.organization.findFirst({
@@ -1163,7 +1200,7 @@ app.get("/api/portal-news", async (req, res) => {
     }
 
     const where = {};
-    if (!isAdmin) {
+    if (!wantsAll) {
       where.published = true;
     }
     if (effectiveOrgId) {

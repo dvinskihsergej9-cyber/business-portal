@@ -26,6 +26,21 @@ export default function PortalNewsAdmin() {
   const [editingId, setEditingId] = useState(null);
   const [usingFallback, setUsingFallback] = useState(false);
 
+  const formatNewsError = (err) => {
+    const raw = typeof err === "string" ? err : err?.message || "";
+    if (!raw) return "Не удалось загрузить новости портала";
+    if (raw.includes("The string did not match the expected pattern")) {
+      return "Не настроен адрес API (VITE_API_BASE)";
+    }
+    if (raw.includes("Failed to fetch")) {
+      return "Не удалось подключиться к серверу";
+    }
+    if (/[A-Za-z]/.test(raw)) {
+      return "Не удалось загрузить новости портала";
+    }
+    return raw;
+  };
+
   const token = localStorage.getItem("token");
   const headers = useMemo(
     () => ({
@@ -47,7 +62,7 @@ export default function PortalNewsAdmin() {
         return;
       }
 
-      const res = await apiFetch("/portal-news", { headers });
+      const res = await apiFetch("/portal-news?all=1", { headers });
       const data = await res.json();
       if (!res.ok) {
         throw new Error(data?.message || "Не удалось загрузить новости портала");
@@ -59,7 +74,7 @@ export default function PortalNewsAdmin() {
       console.error(e);
       setUsingFallback(true);
       setItems([]);
-      setError(e.message);
+      setError(formatNewsError(e));
     } finally {
       setLoading(false);
     }
@@ -121,7 +136,7 @@ export default function PortalNewsAdmin() {
       await loadItems();
     } catch (e) {
       console.error(e);
-      setError(e.message);
+      setError(formatNewsError(e));
     } finally {
       setSaving(false);
     }
@@ -147,7 +162,7 @@ export default function PortalNewsAdmin() {
       await loadItems();
     } catch (e) {
       console.error(e);
-      setError(e.message);
+      setError(formatNewsError(e));
     } finally {
       setSaving(false);
     }

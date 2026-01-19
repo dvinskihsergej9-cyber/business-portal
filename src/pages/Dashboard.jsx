@@ -7,6 +7,20 @@ import { FALLBACK_PORTAL_NEWS } from "../data/portalNewsFallback";
 const PORTAL_READ_KEY = "portal_news_read";
 
 export default function Dashboard() {
+  const formatNewsError = (err) => {
+    const raw = typeof err === "string" ? err : err?.message || "";
+    if (!raw) return "Не удалось загрузить новости портала";
+    if (raw.includes("The string did not match the expected pattern")) {
+      return "Не настроен адрес API (VITE_API_BASE)";
+    }
+    if (raw.includes("Failed to fetch")) {
+      return "Не удалось подключиться к серверу";
+    }
+    if (/[A-Za-z]/.test(raw)) {
+      return "Не удалось загрузить новости портала";
+    }
+    return raw;
+  };
   const { user } = useAuth();
   const isAdmin = user?.role === "ADMIN";
 
@@ -57,7 +71,7 @@ export default function Dashboard() {
       console.error(e);
       setUsingFallback(true);
       setPortalItems(FALLBACK_PORTAL_NEWS);
-      setError(e.message);
+      setError(formatNewsError(e));
     } finally {
       setLoading(false);
     }
