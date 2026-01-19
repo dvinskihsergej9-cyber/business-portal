@@ -25,7 +25,7 @@ export default function Login() {
       return;
     }
 
-    navigate("/dashboard");
+    navigate("/warehouse");
   };
 
   const emailInvalid = (event) =>

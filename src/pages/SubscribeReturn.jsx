@@ -40,7 +40,7 @@ export default function SubscribeReturn() {
         if (timerRef.current) {
           clearInterval(timerRef.current);
         }
-        setTimeout(() => navigate("/dashboard"), 1500);
+        setTimeout(() => navigate("/warehouse"), 1500);
       } else if (data.status === "canceled") {
         setStatus("error");
         setError("Платёж был отменён");

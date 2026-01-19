@@ -76,7 +76,7 @@ export default function Pricing() {
         return;
       }
       await refreshUser();
-      navigate("/dashboard");
+      navigate("/warehouse");
     } catch (err) {
       console.error("test subscription error:", err);
       setError("Не удалось активировать тестовую подписку");

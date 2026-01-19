@@ -26,7 +26,7 @@ export default function Register() {
     if (!res.ok) {
       setError(res.message || "Ошибка регистрации");
     } else {
-      navigate("/dashboard");
+      navigate("/warehouse");
     }
   };
 

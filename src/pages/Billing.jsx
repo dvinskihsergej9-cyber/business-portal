@@ -56,7 +56,7 @@ export default function Billing() {
         return;
       }
       await refreshUser();
-      navigate("/dashboard");
+      navigate("/warehouse");
     } catch (err) {
       console.error("activate test subscription error:", err);
       setError("Не удалось активировать тестовую подписку");

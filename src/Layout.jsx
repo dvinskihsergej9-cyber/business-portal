@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+﻿import { useEffect, useMemo, useState } from "react";
 import { NavLink, Outlet, useLocation } from "react-router-dom";
 import { useAuth } from "./context/AuthContext";
 import t from "./i18n/t";
@@ -11,34 +11,14 @@ export default function Layout() {
 
   const menu = [
     {
-      label: "Главная",
-      to: "/dashboard",
+      label: "Склад",
+      to: "/warehouse",
       roles: ["EMPLOYEE", "HR", "ACCOUNTING", "ADMIN"],
     },
     {
       label: "Кадры",
       to: "/hr",
       roles: ["HR", "ADMIN"],
-    },
-    {
-      label: "Бухгалтерия",
-      to: "/accounting",
-      roles: ["ACCOUNTING", "ADMIN"],
-    },
-    {
-      label: "Документооборот",
-      to: "/documents",
-      roles: ["EMPLOYEE", "HR", "ACCOUNTING", "ADMIN"],
-    },
-    {
-      label: "Юрист",
-      to: "/legal",
-      roles: ["EMPLOYEE", "HR", "ACCOUNTING", "ADMIN"],
-    },
-    {
-      label: "Склад",
-      to: "/warehouse",
-      roles: ["EMPLOYEE", "HR", "ACCOUNTING", "ADMIN"],
     },
     {
       label: "Техподдержка",
@@ -79,11 +59,7 @@ export default function Layout() {
   };
 
   const pageTitle = useMemo(() => {
-    const match = allowedMenu.find((item) =>
-      location.pathname === "/"
-        ? item.to === "/dashboard"
-        : location.pathname.startsWith(item.to)
-    );
+    const match = allowedMenu.find((item) => location.pathname.startsWith(item.to));
     return match?.label || t("appName");
   }, [allowedMenu, location.pathname]);
 
@@ -250,20 +226,14 @@ export default function Layout() {
         </>
       )}
 
-
-      {/* Правая часть: шапка + контент */}
       <div style={styles.main} className="layout-main">
         <header style={styles.header} className="portal-header layout-header">
           <div>
-            <div style={styles.headerTitle}>
-              {location.pathname === "/dashboard"
-                ? "Главная"
-                : "Раздел портала"}
-            </div>
+            <div style={styles.headerTitle}>{pageTitle}</div>
             <div style={styles.headerSubtitle}>
               {user
                 ? `${t("roleUser")}: ${user.name} (${roleLabel(user.role)})`
-                : "Вы вошли в гостевом режиме"}
+                : ""}
             </div>
           </div>
         </header>
@@ -358,14 +328,14 @@ const styles = {
     fontSize: 14,
     gap: 8,
     background: "transparent",
-    border: "1px solid #111827", // чёрная рамка всегда
+    border: "1px solid #111827",
     transition:
       "background 0.15s ease, color 0.15s ease, border 0.15s ease, box-shadow 0.15s ease",
   },
   navItemActive: {
     background: "#ffffff",
     color: "#1d4ed8",
-    borderColor: "#2563eb", // активный — синяя рамка
+    borderColor: "#2563eb",
     boxShadow: "0 0 0 1px rgba(37, 99, 235, 0.12)",
     fontWeight: 600,
   },
