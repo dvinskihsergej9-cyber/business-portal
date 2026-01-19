@@ -67,7 +67,6 @@ svg {
 
 .text-wrap,
 .card-text,
-.news-text,
 .portal-text {
   overflow-wrap: anywhere;
   word-break: normal;
