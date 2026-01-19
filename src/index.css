@@ -358,6 +358,62 @@ svg {
   .mobile-order-text {
     overflow-wrap: anywhere;
   }
+
+  .movements-filters {
+    display: grid;
+    gap: 12px;
+    margin-bottom: 8px;
+  }
+
+  .movements-filter .form__select,
+  .movements-filter .form__input {
+    width: 100%;
+  }
+
+  .movement-cards {
+    display: grid;
+    gap: 12px;
+  }
+
+  .movement-card .card__body {
+    display: grid;
+    gap: 10px;
+  }
+
+  .movement-card__title {
+    font-size: 16px;
+    font-weight: 600;
+    color: #111827;
+    overflow-wrap: break-word;
+    word-break: normal;
+  }
+
+  .movement-card__meta {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+    font-size: 13px;
+    color: #475569;
+  }
+
+  .movement-card__details {
+    display: grid;
+    gap: 8px;
+    font-size: 13px;
+    color: #475569;
+  }
+
+  .movement-card__label {
+    font-size: 11px;
+    text-transform: uppercase;
+    letter-spacing: 0.4px;
+    color: #94a3b8;
+    margin-bottom: 2px;
+  }
+
+  .movement-card__text {
+    overflow-wrap: anywhere;
+  }
 }
 
 .layout-drawer__logo {
