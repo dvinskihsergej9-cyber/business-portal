@@ -142,10 +142,19 @@ const upload = multer({ storage: multer.memoryStorage() });
 app.use(cors());
 app.use(express.json());
 app.use((req, res, next) => {
+  if (req.body) {
+    req.body = normalizeDeep(req.body);
+  }
+  if (req.query) {
+    req.query = normalizeDeep(req.query);
+  }
+  if (req.params) {
+    req.params = normalizeDeep(req.params);
+  }
   const originalJson = res.json.bind(res);
   res.json = (body) => {
     res.setHeader("Content-Type", "application/json; charset=utf-8");
-    return originalJson(body);
+    return originalJson(normalizeDeep(body, { normalizeErrors: true }));
   };
   next();
 });
@@ -757,30 +766,77 @@ function formatDateLong(date) {
   return `«${dd}» ${month} ${yyyy} г.`;
 }
 
+function decodeUnicodeEscapes(input) {
+  if (!input || typeof input !== "string") return input;
+  if (!/\\u[0-9a-fA-F]{4}/.test(input)) return input;
+  return input.replace(/\\u([0-9a-fA-F]{4})/g, (_, code) => String.fromCharCode(parseInt(code, 16)));
+}
+
 function normalizeRuText(value) {
   if (!value || typeof value !== "string") return value;
   let s = value;
+  s = s.replace(/\u00A0/g, " ");
   s = s
     .replace(/&amp;/g, "&")
     .replace(/&lt;/g, "<")
     .replace(/&gt;/g, ">")
+    .replace(/&quot;/g, "\"")
+    .replace(/&#34;/g, "\"")
+    .replace(/&#39;/g, "'")
+    .replace(/&apos;/g, "'")
     .replace(/&nbsp;/g, " ");
-  s = s.replace(/\\n/g, "\n").replace(/\r\n/g, "\n").replace(/\r/g, "\n");
+  s = s.replace(/\\n/g, \"\n\").replace(/\r\n/g, \"\n\").replace(/\r/g, \"\n\");
+  s = decodeUnicodeEscapes(s);
 
-  const hasMojibake = /[ÐÑ][\u0080-\u00BF]/.test(s) || /Р[А-яЁё]/.test(s);
+  const hasMojibake = /[??][\u0080-\u00BF]/.test(s) || /?[?-???]/.test(s);
   if (hasMojibake) {
     try {
       const fixed = Buffer.from(s, "latin1").toString("utf8");
-      const cyr = (fixed.match(/[А-яЁё]/g) || []).length;
-      const cyrOld = (s.match(/[А-яЁё]/g) || []).length;
+      const cyr = (fixed.match(/[?-??-???]/g) || []).length;
+      const cyrOld = (s.match(/[?-??-???]/g) || []).length;
       s = cyr >= cyrOld ? fixed : s;
     } catch {
       // keep as-is
     }
   }
 
-  s = s.replace(/\s+\n/g, "\n").replace(/\n{3,}/g, "\n\n");
+  s = s.replace(/\s+\n/g, \"\n\").replace(/\n{3,}/g, \"\n\n\");
   return s.trim();
+}
+
+function normalizeErrorMessage(message) {
+  const normalized = normalizeRuText(message);
+  if (!normalized) return normalized;
+  const manyQuestions = /\?{3,}/.test(normalized) || /^[\?\s]+$/.test(normalized);
+  const hasLatin = /[A-Za-z]/.test(normalized);
+  if (manyQuestions || hasLatin) {
+    return "????????? ??????. ?????????? ??? ???.";
+  }
+  return normalized;
+}
+
+function normalizeDeep(value, options = {}) {
+  const { normalizeErrors = false, key } = options;
+  if (value == null) return value;
+  if (typeof value === "string") {
+    if (normalizeErrors && (key === "message" || key === "error")) {
+      return normalizeErrorMessage(value);
+    }
+    return normalizeRuText(value);
+  }
+  if (Array.isArray(value)) {
+    return value.map((item) => normalizeDeep(item, { normalizeErrors }));
+  }
+  if (value instanceof Date) return value;
+  if (Buffer.isBuffer(value)) return value;
+  if (typeof value === "object") {
+    const result = Array.isArray(value) ? [] : {};
+    for (const [k, v] of Object.entries(value)) {
+      result[k] = normalizeDeep(v, { normalizeErrors, key: k });
+    }
+    return result;
+  }
+  return value;
 }
 
 function buildLeaveApplicationText({ employee, application, today }) {
@@ -1463,14 +1519,14 @@ app.post("/api/safety/assignments/:id/remind", auth, requireHr, async (req, res)
     }
 
     if (!assignment.employee?.telegramChatId) {
-      return res.status(400).json({ message: "??? ?????????? ?? ?????? Telegram ID" });
+      return res.status(400).json({ message: "У сотрудника не указан Telegram ID" });
     }
     if (!assignment.dueDate) {
-      return res.status(400).json({ message: "??? ???? ??????????? ???????????" });
+      return res.status(400).json({ message: "Не указана дата напоминания" });
     }
 
     await sendSafetyReminderForAssignment(assignment, true);
-    return res.json({ message: "??????????? ??????????" });
+    return res.json({ message: "Напоминание отправлено" });
   } catch (err) {
     console.error("manual remind error:", err);
     return res.status(500).json({ message: "Failed to send reminder" });
@@ -3311,10 +3367,11 @@ app.get("/api/hr/employees", auth, requireHr, async (req, res) => {
         ...params
       )) || [];
 
-    res.json(employees);
+    const healed = await Promise.all(employees.map((employee) => healEmployeeRecord(employee)));
+    res.json(healed);
   } catch (err) {
     console.error("employees list error:", err);
-    res.status(500).json({ message: "Failed to load employees" });
+    res.status(500).json({ message: "?? ??????? ???????? ?????? ???????????" });
   }
 });
 
@@ -3705,7 +3762,7 @@ app.get(
       });
     } catch (err) {
       console.error("leave doc debug error:", err);
-      res.status(500).json({ message: "Не удалось получить диагностику документа" });
+      res.status(500).json({ message: "?? ??????? ???????? ??????????? ?????????" });
     }
   }
 );
@@ -3840,7 +3897,8 @@ app.get("/api/warehouse/requests/my", auth, async (req, res) => {
       },
     });
 
-    res.json(list);
+    const healed = await Promise.all(list.map((item) => healWarehouseRequestRecord(item)));
+    res.json(healed);
   } catch (err) {
     console.error("warehouse my-requests error:", err);
     res
@@ -3866,7 +3924,8 @@ app.get("/api/warehouse/requests", auth, async (req, res) => {
       },
     });
 
-    res.json(list);
+    const healed = await Promise.all(list.map((item) => healWarehouseRequestRecord(item)));
+    res.json(healed);
   } catch (err) {
     console.error("warehouse all-requests error:", err);
     res
@@ -3991,6 +4050,69 @@ async function autoPostRequestToStock(requestId, userId) {
   );
 
   return createdCount;
+}
+
+async function healWarehouseRequestRecord(request) {
+  if (!request || !request.id) return request;
+  const normalized = normalizeDeep(request);
+  const fields = ["title", "comment", "relatedDocument", "targetEmployee"];
+  const updateData = {};
+  fields.forEach((field) => {
+    const original = request[field] ?? null;
+    const fixed = normalized[field] ?? null;
+    if (original !== fixed) {
+      updateData[field] = fixed;
+    }
+  });
+
+  if (Object.keys(updateData).length) {
+    await prisma.warehouseRequest.update({
+      where: { id: request.id },
+      data: updateData,
+    });
+  }
+
+  if (Array.isArray(request.items)) {
+    for (const item of request.items) {
+      const normalizedItem = normalizeDeep(item);
+      const itemUpdate = {};
+      if ((item.name ?? null) !== (normalizedItem.name ?? null)) {
+        itemUpdate.name = normalizedItem.name;
+      }
+      if ((item.unit ?? null) !== (normalizedItem.unit ?? null)) {
+        itemUpdate.unit = normalizedItem.unit;
+      }
+      if (Object.keys(itemUpdate).length) {
+        await prisma.warehouseRequestItem.update({
+          where: { id: item.id },
+          data: itemUpdate,
+        });
+      }
+    }
+  }
+
+  return normalized;
+}
+
+async function healEmployeeRecord(employee) {
+  if (!employee || !employee.id) return employee;
+  const normalized = normalizeDeep(employee);
+  const fields = ["fullName", "position", "department", "telegramChatId"];
+  const updateData = {};
+  fields.forEach((field) => {
+    const original = employee[field] ?? null;
+    const fixed = normalized[field] ?? null;
+    if (original !== fixed) {
+      updateData[field] = fixed;
+    }
+  });
+  if (Object.keys(updateData).length) {
+    await prisma.employee.update({
+      where: { id: employee.id },
+      data: updateData,
+    });
+  }
+  return normalized;
 }
 
 // смена статуса заявки + автопроведение по складу при DONE
