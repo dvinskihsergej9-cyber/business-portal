@@ -65,12 +65,20 @@ const prisma = basePrisma.$extends({
           if (nextArgs.data && nextArgs.data.orgId == null) {
             nextArgs.data.orgId = orgId;
           }
+          if (nextArgs.data) {
+            nextArgs.data = normalizeDeep(nextArgs.data);
+          }
           return query(nextArgs);
         }
 
         if (operation === "createMany") {
           if (Array.isArray(nextArgs.data)) {
-            nextArgs.data = nextArgs.data.map((row) => (row.orgId == null ? { ...row, orgId } : row));
+            nextArgs.data = nextArgs.data.map((row) => {
+              const normalized = normalizeDeep(row);
+              return normalized.orgId == null ? { ...normalized, orgId } : normalized;
+            });
+          } else if (nextArgs.data) {
+            nextArgs.data = normalizeDeep(nextArgs.data);
           }
           return query(nextArgs);
         }
@@ -81,6 +89,9 @@ const prisma = basePrisma.$extends({
           } else if (!where?.id_orgId && nextArgs.where && nextArgs.where.orgId == null) {
             nextArgs.where = { ...where, orgId };
           }
+          if (operation === "update" && nextArgs.data) {
+            nextArgs.data = normalizeDeep(nextArgs.data);
+          }
           return query(nextArgs);
         }
 
@@ -90,6 +101,12 @@ const prisma = basePrisma.$extends({
           }
           if (nextArgs.create && nextArgs.create.orgId == null) {
             nextArgs.create.orgId = orgId;
+          }
+          if (nextArgs.create) {
+            nextArgs.create = normalizeDeep(nextArgs.create);
+          }
+          if (nextArgs.update) {
+            nextArgs.update = normalizeDeep(nextArgs.update);
           }
           return query(nextArgs);
         }
@@ -146,15 +163,16 @@ app.use((req, res, next) => {
     req.body = normalizeDeep(req.body);
   }
   if (req.query) {
-    req.query = normalizeDeep(req.query);
+    Object.assign(req.query, normalizeDeep(req.query));
   }
   if (req.params) {
-    req.params = normalizeDeep(req.params);
+    Object.assign(req.params, normalizeDeep(req.params));
   }
   const originalJson = res.json.bind(res);
   res.json = (body) => {
     res.setHeader("Content-Type", "application/json; charset=utf-8");
-    return originalJson(normalizeDeep(body, { normalizeErrors: true }));
+    const normalizeErrors = res.statusCode >= 400;
+    return originalJson(normalizeDeep(body, { normalizeErrors }));
   };
   next();
 });
@@ -166,6 +184,15 @@ app.get("/api/health", async (req, res) => {
     console.error("health db error:", err?.message || err);
     return res.json({ ok: false, version: APP_VERSION, db: "error" });
   }
+});
+
+app.get("/api/encoding-check", (req, res) => {
+  res.setHeader("Content-Type", "application/json; charset=utf-8");
+  const payload = {
+    text: "Проверка кодировки: Привет, Ёжик",
+    headers: res.getHeaders(),
+  };
+  return res.json(payload);
 });
 
 
@@ -785,22 +812,22 @@ function normalizeRuText(value) {
     .replace(/&#39;/g, "'")
     .replace(/&apos;/g, "'")
     .replace(/&nbsp;/g, " ");
-  s = s.replace(/\\n/g, \"\n\").replace(/\r\n/g, \"\n\").replace(/\r/g, \"\n\");
+  s = s.replace(/\\n/g, "\n").replace(/\r\n/g, "\n").replace(/\r/g, "\n");
   s = decodeUnicodeEscapes(s);
 
-  const hasMojibake = /[??][\u0080-\u00BF]/.test(s) || /?[?-???]/.test(s);
+  const hasMojibake = /[ÐÑ][\u0080-\u00BF]/.test(s) || /Р[А-яЁё]/.test(s);
   if (hasMojibake) {
     try {
       const fixed = Buffer.from(s, "latin1").toString("utf8");
-      const cyr = (fixed.match(/[?-??-???]/g) || []).length;
-      const cyrOld = (s.match(/[?-??-???]/g) || []).length;
+      const cyr = (fixed.match(/[А-Яа-яЁё]/g) || []).length;
+      const cyrOld = (s.match(/[А-Яа-яЁё]/g) || []).length;
       s = cyr >= cyrOld ? fixed : s;
     } catch {
       // keep as-is
     }
   }
 
-  s = s.replace(/\s+\n/g, \"\n\").replace(/\n{3,}/g, \"\n\n\");
+  s = s.replace(/\s+\n/g, "\n").replace(/\n{3,}/g, "\n\n");
   return s.trim();
 }
 
@@ -809,8 +836,10 @@ function normalizeErrorMessage(message) {
   if (!normalized) return normalized;
   const manyQuestions = /\?{3,}/.test(normalized) || /^[\?\s]+$/.test(normalized);
   const hasLatin = /[A-Za-z]/.test(normalized);
-  if (manyQuestions || hasLatin) {
-    return "????????? ??????. ?????????? ??? ???.";
+  const hasCyrillic = /[А-Яа-яЁё]/.test(normalized);
+  const hasControl = /[\u0080-\u009F]/.test(normalized) || /\uFFFD/.test(normalized);
+  if (manyQuestions || hasControl || (hasLatin && !hasCyrillic)) {
+    return "Произошла ошибка. Попробуйте еще раз.";
   }
   return normalized;
 }
@@ -3333,17 +3362,12 @@ app.post("/api/billing/yookassa/webhook", async (req, res) => {
     });
     console.error("yookassa webhook error:", err);
     return res.status(500).json({ message: "WEBHOOK_ERROR" });
+
+
   }
 });
 
-
-
-// ================== ???????T????????'?????: ????"???'????????T???T???? ==================
-// ================== СКЛАД: ЗАЯВК ==================
-
-// создать заявку на склад
-
-// ================== HR: employees ==================
+// ================== HR: ÑÐ¾ÑÑÑÐ´Ð½Ð¸ÐºÐ¸ ==================
 
 app.get("/api/hr/employees", auth, requireHr, async (req, res) => {
   try {
@@ -3371,7 +3395,7 @@ app.get("/api/hr/employees", auth, requireHr, async (req, res) => {
     res.json(healed);
   } catch (err) {
     console.error("employees list error:", err);
-    res.status(500).json({ message: "?? ??????? ???????? ?????? ???????????" });
+    res.status(500).json({ message: "ÐÐµ ÑÐ´Ð°Ð»Ð¾ÑÑ Ð¿Ð¾Ð»ÑÑÐ¸ÑÑ ÑÐ¿Ð¸ÑÐ¾Ðº ÑÐ¾ÑÑÑÐ´Ð½Ð¸ÐºÐ¾Ð²" });
   }
 });
 
@@ -3432,7 +3456,7 @@ app.put("/api/hr/employees/:id", auth, requireHr, async (req, res) => {
   try {
     const id = Number(req.params.id);
     if (!id || Number.isNaN(id)) {
-      return res.status(400).json({ message: "???????????? ????????????? ??????????" });
+      return res.status(400).json({ message: "ÐÐµÐºÐ¾ÑÑÐµÐºÑÐ½ÑÐ¹ Ð¸Ð´ÐµÐ½ÑÐ¸ÑÐ¸ÐºÐ°ÑÐ¾Ñ" });
     }
 
     const { fullName, position, department, telegramChatId, hiredAt, birthDate } = req.body || {};
@@ -3470,7 +3494,7 @@ app.put("/api/hr/employees/:id", auth, requireHr, async (req, res) => {
     console.error("update employee error:", err);
 
     if (err?.code === "P2025") {
-      return res.status(404).json({ message: "????????? ?? ??????" });
+      return res.status(404).json({ message: "Ð¡Ð¾ÑÑÑÐ´Ð½Ð¸Ðº Ð½Ðµ Ð½Ð°Ð¹Ð´ÐµÐ½" });
     }
 
     res.status(500).json({ message: "Failed to update employee" });
@@ -3483,7 +3507,7 @@ app.put("/api/hr/employees/:id/status", auth, requireHr, async (req, res) => {
     const { status } = req.body || {};
 
     if (!id || Number.isNaN(id)) {
-      return res.status(400).json({ message: "???????????? ????????????? ??????????" });
+      return res.status(400).json({ message: "ÐÐµÐºÐ¾ÑÑÐµÐºÑÐ½ÑÐ¹ Ð¸Ð´ÐµÐ½ÑÐ¸ÑÐ¸ÐºÐ°ÑÐ¾Ñ" });
     }
 
     const allowedStatuses = ["ACTIVE", "FIRED"];
@@ -3501,7 +3525,7 @@ app.put("/api/hr/employees/:id/status", auth, requireHr, async (req, res) => {
     console.error("update employee status error:", err);
 
     if (err?.code === "P2025") {
-      return res.status(404).json({ message: "????????? ?? ??????" });
+      return res.status(404).json({ message: "Ð¡Ð¾ÑÑÑÐ´Ð½Ð¸Ðº Ð½Ðµ Ð½Ð°Ð¹Ð´ÐµÐ½" });
     }
 
     res
@@ -3519,12 +3543,12 @@ app.get(
     try {
       const id = Number(req.params.id);
       if (!id || Number.isNaN(id)) {
-        return res.status(400).json({ message: "???????????? ????????????? ??????????" });
+        return res.status(400).json({ message: "ÐÐµÐºÐ¾ÑÑÐµÐºÑÐ½ÑÐ¹ Ð¸Ð´ÐµÐ½ÑÐ¸ÑÐ¸ÐºÐ°ÑÐ¾Ñ" });
       }
 
       const employee = await prisma.employee.findUnique({ where: { id } });
       if (!employee) {
-        return res.status(404).json({ message: "????????? ?? ??????" });
+        return res.status(404).json({ message: "Ð¡Ð¾ÑÑÑÐ´Ð½Ð¸Ðº Ð½Ðµ Ð½Ð°Ð¹Ð´ÐµÐ½" });
       }
 
       const accruedDays = calcAccruedLeaveDays(employee.hiredAt);
@@ -3540,7 +3564,7 @@ app.get(
       res.json({ accruedDays, usedDays, availableDays });
     } catch (err) {
       console.error("leave balance error:", err);
-      res.status(500).json({ message: "?? ??????? ???????? ?????? ???????" });
+      res.status(500).json({ message: "ÐÐµ ÑÐ´Ð°Ð»Ð¾ÑÑ Ð¿Ð¾Ð»ÑÑÐ¸ÑÑ Ð±Ð°Ð»Ð°Ð½Ñ Ð¾ÑÐ¿ÑÑÐºÐ°" });
     }
   }
 );
@@ -3762,7 +3786,7 @@ app.get(
       });
     } catch (err) {
       console.error("leave doc debug error:", err);
-      res.status(500).json({ message: "?? ??????? ???????? ??????????? ?????????" });
+      res.status(500).json({ message: "ÐÐµ ÑÐ´Ð°Ð»Ð¾ÑÑ Ð¿Ð¾Ð»ÑÑÐ¸ÑÑ Ð´Ð¸Ð°Ð³Ð½Ð¾ÑÑÐ¸ÐºÑ Ð´Ð¾ÐºÑÐ¼ÐµÐ½ÑÐ°" });
     }
   }
 );
