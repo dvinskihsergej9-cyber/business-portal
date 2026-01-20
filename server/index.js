@@ -179,10 +179,28 @@ app.use((req, res, next) => {
 app.get("/api/health", async (req, res) => {
   try {
     await prisma.$queryRaw`SELECT 1`;
-    return res.json({ ok: true, version: APP_VERSION, db: "ok" });
+    return res.json({
+      ok: true,
+      version: APP_VERSION,
+      env: process.env.NODE_ENV || "development",
+      commit: BUILD_COMMIT,
+      buildTime: BUILD_TIME,
+      db: "ok",
+      dbType: DB_INFO.type,
+      dbHost: DB_INFO.host,
+    });
   } catch (err) {
     console.error("health db error:", err?.message || err);
-    return res.json({ ok: false, version: APP_VERSION, db: "error" });
+    return res.json({
+      ok: false,
+      version: APP_VERSION,
+      env: process.env.NODE_ENV || "development",
+      commit: BUILD_COMMIT,
+      buildTime: BUILD_TIME,
+      db: "error",
+      dbType: DB_INFO.type,
+      dbHost: DB_INFO.host,
+    });
   }
 });
 
@@ -421,6 +439,33 @@ const APP_VERSION = (() => {
     return "unknown";
   }
 })();
+const BUILD_COMMIT =
+  process.env.APP_COMMIT ||
+  process.env.GIT_COMMIT ||
+  process.env.VERCEL_GIT_COMMIT_SHA ||
+  process.env.RENDER_GIT_COMMIT ||
+  "unknown";
+const BUILD_TIME =
+  process.env.BUILD_TIME ||
+  process.env.VERCEL_BUILD_TIME ||
+  process.env.RENDER_BUILD_TIME ||
+  null;
+
+function getDbInfo() {
+  const url = process.env.DATABASE_URL || "";
+  if (!url) return { type: "unknown", host: "unknown" };
+  if (url.startsWith("file:")) {
+    return { type: "sqlite", host: url.replace("file:", "") || "local" };
+  }
+  try {
+    const parsed = new URL(url);
+    return { type: parsed.protocol.replace(":", ""), host: parsed.host || "unknown" };
+  } catch {
+    return { type: "unknown", host: "unknown" };
+  }
+}
+
+const DB_INFO = getDbInfo();
 
 const FRONTEND_URL = process.env.FRONTEND_URL || "http://localhost:5173";
 const APP_URL = process.env.APP_URL || FRONTEND_URL;
@@ -866,6 +911,23 @@ function normalizeDeep(value, options = {}) {
     return result;
   }
   return value;
+}
+
+function isHtmlLike(text) {
+  if (!text || typeof text !== "string") return false;
+  return /<\s*\/?\s*[a-z][^>]*>/i.test(text) || /&lt;.+&gt;/.test(text);
+}
+
+function isMojibakeLike(text) {
+  if (!text || typeof text !== "string") return false;
+  return /[ÐÑ][\u0080-\u00BF]/.test(text) || /Р[А-яЁё]/.test(text) || /\?{3,}/.test(text);
+}
+
+function shouldRebuildDocText(docText) {
+  if (!docText) return true;
+  if (isHtmlLike(docText) || isMojibakeLike(docText)) return true;
+  const normalized = normalizeRuText(docText);
+  return normalized !== docText;
 }
 
 function buildLeaveApplicationText({ employee, application, today }) {
@@ -3787,6 +3849,56 @@ app.get(
     } catch (err) {
       console.error("leave doc debug error:", err);
       res.status(500).json({ message: "ÐÐµ ÑÐ´Ð°Ð»Ð¾ÑÑ Ð¿Ð¾Ð»ÑÑÐ¸ÑÑ Ð´Ð¸Ð°Ð³Ð½Ð¾ÑÑÐ¸ÐºÑ Ð´Ð¾ÐºÑÐ¼ÐµÐ½ÑÐ°" });
+    }
+  }
+);
+
+app.post(
+  "/api/admin/hr/leave-applications/fix-docs",
+  auth,
+  requireAdmin,
+  async (req, res) => {
+    try {
+      const list = await prisma.hrLeaveApplication.findMany({
+        include: { employee: true },
+      });
+
+      let checked = 0;
+      let fixed = 0;
+
+      for (const application of list) {
+        checked += 1;
+        if (!shouldRebuildDocText(application.docText)) {
+          continue;
+        }
+
+        const baseEmployee = {
+          fullName: normalizeRuText(application.employee.fullName),
+          position: normalizeRuText(application.employee.position),
+          department: normalizeRuText(application.employee.department),
+          birthDate: application.employee.birthDate,
+          hiredAt: application.employee.hiredAt,
+        };
+        const today = formatDateRu(new Date());
+        const docText = normalizeRuText(
+          buildLeaveApplicationText({
+            employee: baseEmployee,
+            application: { ...application, reason: normalizeRuText(application.reason) },
+            today,
+          })
+        );
+
+        await prisma.hrLeaveApplication.update({
+          where: { id: application.id },
+          data: { docText },
+        });
+        fixed += 1;
+      }
+
+      res.json({ checked, fixed });
+    } catch (err) {
+      console.error("leave doc bulk fix error:", err);
+      res.status(500).json({ message: "Не удалось выполнить массовую правку заявлений" });
     }
   }
 );
