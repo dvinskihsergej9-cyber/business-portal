@@ -2053,7 +2053,7 @@ export default function MobileTsd() {
                   }
                 >
                   <option value="A4">A4</option>
-                  <option value="label">Label</option>
+                  <option value="label">Этикетка</option>
                 </select>
               </div>
             </div>
@@ -2139,7 +2139,7 @@ export default function MobileTsd() {
                   }
                 >
                   <option value="A4">A4</option>
-                  <option value="label">Label</option>
+                  <option value="label">Этикетка</option>
                 </select>
               </div>
             </div>

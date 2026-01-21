@@ -1,5 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { apiFetch } from "../../apiConfig";
+import ResponsiveDataView from "../ResponsiveDataView";
+import useIsMobile from "../../hooks/useIsMobile";
 
 const REQUEST_STATUS_OPTIONS = [
   { value: "NEW", label: "Новая" },
@@ -22,6 +24,7 @@ export default function AdminWarehousePanel() {
   const [requests, setRequests] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
+  const isMobile = useIsMobile();
 
   const [editItem, setEditItem] = useState(null);
   const [editLocation, setEditLocation] = useState(null);
@@ -368,12 +371,57 @@ export default function AdminWarehousePanel() {
       )}
 
       {!loading && activeTab === "items" && (
+        <ResponsiveDataView
+          isMobile={isMobile}
+          cards={
+            <div className="responsive-cards">
+              {items.map((item) => (
+                <div key={item.id} className="responsive-card">
+                  <div className="responsive-card__title text-wrap">{item.name}</div>
+                  <div className="responsive-card__meta">
+                    <span>ID: {item.id}</span>
+                    <span>{item.sku || "-"}</span>
+                  </div>
+                  <div className="responsive-card__row">
+                    <span className="responsive-card__label">Barcode</span>
+                    <span className="text-wrap">{item.barcode || "-"}</span>
+                  </div>
+                  <div className="responsive-card__row">
+                    <span className="responsive-card__label">Unit</span>
+                    <span>{item.unit || "-"}</span>
+                  </div>
+                  <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+                    <button
+                      type="button"
+                      className="admin-btn admin-btn--secondary"
+                      onClick={() => setEditItem(item)}
+                    >
+                      Edit
+                    </button>
+                    <button
+                      type="button"
+                      className="admin-btn admin-btn--danger"
+                      onClick={() => setDeleteItem(item)}
+                    >
+                      Delete
+                    </button>
+                  </div>
+                </div>
+              ))}
+              {!items.length && (
+                <div className="responsive-card">
+                  <div className="admin-muted">No items found.</div>
+                </div>
+              )}
+            </div>
+          }
+          table={
         <div className="admin-table-wrapper">
           <table className="admin-table">
             <thead>
               <tr>
                 <th>Товар</th>
-                <th>SKU</th>
+                <th>Артикул</th>
                 <th>Штрихкод</th>
                 <th>Ед.</th>
                 <th></th>
@@ -417,9 +465,56 @@ export default function AdminWarehousePanel() {
             </tbody>
           </table>
         </div>
+          }
+        />
       )}
 
       {!loading && activeTab === "locations" && (
+        <ResponsiveDataView
+          isMobile={isMobile}
+          cards={
+            <div className="responsive-cards">
+              {locations.map((loc) => (
+                <div key={loc.id} className="responsive-card">
+                  <div className="responsive-card__title text-wrap">{loc.name}</div>
+                  <div className="responsive-card__meta">
+                    <span>ID: {loc.id}</span>
+                    <span>{loc.code || "-"}</span>
+                  </div>
+                  <div className="responsive-card__row">
+                    <span className="responsive-card__label">Zone</span>
+                    <span>{loc.zone || "-"}</span>
+                  </div>
+                  <div className="responsive-card__row">
+                    <span className="responsive-card__label">Aisle</span>
+                    <span>{loc.aisle || "-"}</span>
+                  </div>
+                  <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+                    <button
+                      type="button"
+                      className="admin-btn admin-btn--secondary"
+                      onClick={() => setEditLocation(loc)}
+                    >
+                      Edit
+                    </button>
+                    <button
+                      type="button"
+                      className="admin-btn admin-btn--danger"
+                      onClick={() => setDeleteLocation(loc)}
+                    >
+                      Delete
+                    </button>
+                  </div>
+                </div>
+              ))}
+              {!locations.length && (
+                <div className="responsive-card">
+                  <div className="admin-muted">No locations found.</div>
+                </div>
+              )}
+            </div>
+          }
+          table={
         <div className="admin-table-wrapper">
           <table className="admin-table">
             <thead>
@@ -469,9 +564,49 @@ export default function AdminWarehousePanel() {
             </tbody>
           </table>
         </div>
+          }
+        />
       )}
 
       {!loading && activeTab === "requests" && (
+        <ResponsiveDataView
+          isMobile={isMobile}
+          cards={
+            <div className="responsive-cards">
+              {requests.map((req) => (
+                <div key={req.id} className="responsive-card">
+                  <div className="responsive-card__title text-wrap">{req.title}</div>
+                  <div className="responsive-card__meta">
+                    <span>ID: {req.id}</span>
+                    <span>{req.status}</span>
+                  </div>
+                  <div className="responsive-card__row">
+                    <span className="responsive-card__label">Type</span>
+                    <span>{req.type}</span>
+                  </div>
+                  <div className="responsive-card__row">
+                    <span className="responsive-card__label">Author</span>
+                    <span className="text-wrap">{req.createdBy?.name || "-"}</span>
+                  </div>
+                  <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+                    <button
+                      type="button"
+                      className="admin-btn admin-btn--secondary"
+                      onClick={() => setEditRequest(req)}
+                    >
+                      Edit
+                    </button>
+                  </div>
+                </div>
+              ))}
+              {!requests.length && (
+                <div className="responsive-card">
+                  <div className="admin-muted">No requests found.</div>
+                </div>
+              )}
+            </div>
+          }
+          table={
         <div className="admin-table-wrapper">
           <table className="admin-table">
             <thead>
@@ -514,6 +649,8 @@ export default function AdminWarehousePanel() {
             </tbody>
           </table>
         </div>
+          }
+        />
       )}
 
       {editItem && (
@@ -550,7 +687,7 @@ export default function AdminWarehousePanel() {
                   />
                 </div>
                 <div>
-                  <label className="admin-label">SKU</label>
+                  <label className="admin-label">Артикул</label>
                   <input
                     className="admin-input"
                     value={itemForm.sku}

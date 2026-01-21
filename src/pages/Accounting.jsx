@@ -1,1 +1,0 @@
-import React from 'react'; export default function Accounting(){ return <div className='card'>Бухгалтерия: отчётность, сверки, счета.</div> }

@@ -22,7 +22,7 @@ const Tab = ({ to, children }) => (
 export default function HrRouter() {
   return (
     <div className="page">
-      <h1>Кадры (HR)</h1>
+      <h1>Кадры</h1>
 
       <div className="tabs">
         <Tab to="">Обзор</Tab>
