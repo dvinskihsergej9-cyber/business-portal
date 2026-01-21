@@ -1,4 +1,4 @@
-import useIsMobile from "../hooks/useIsMobile";
+﻿import useIsMobile from "../hooks/useIsMobile";
 
 export default function ResponsiveDataView({ isMobile, cards, table }) {
   const resolvedIsMobile = isMobile ?? useIsMobile();
