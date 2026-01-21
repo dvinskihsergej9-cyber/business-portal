@@ -1,3 +1,4 @@
+Codex test branch push: 2026-01-21
 # Business Portal SaaS (MVP)
 
 ## Local setup
@@ -85,3 +86,4 @@ ${APP_URL}/subscribe/return?paymentId=...
 - Return to `/subscribe/return`, verify status shows success.
 - Check `/api/me` for `subscription.isActive === true`.
 - Verify API returns 402 for paid routes without active subscription.
+
