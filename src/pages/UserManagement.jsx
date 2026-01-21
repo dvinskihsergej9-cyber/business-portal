@@ -1,17 +1,14 @@
 import { useEffect, useState } from "react";
 import { useAuth } from "../context/AuthContext";
 import { apiFetch } from "../apiConfig";
+import ResponsiveDataView from "../components/ResponsiveDataView";
+import useIsMobile from "../hooks/useIsMobile";
 
 const ALL_ROLES = ["EMPLOYEE", "HR", "ACCOUNTING", "WAREHOUSE", "ADMIN"];
 
-const inviteStatusStyles = {
-  success: { background: "#e6ffed", color: "#146c2e" },
-  warning: { background: "#fff4e5", color: "#8a5a00" },
-  error: { background: "#ffe6e6", color: "#b00020" },
-};
-
 export default function UserManagement() {
   const { user } = useAuth();
+  const isMobile = useIsMobile();
   const [users, setUsers] = useState([]);
   const [loading, setLoading] = useState(true);
   const [savingId, setSavingId] = useState(null);
@@ -244,47 +241,44 @@ export default function UserManagement() {
     }
   };
 
+  const inviteStatusVariant =
+    inviteStatus?.type === "success"
+      ? "success"
+      : inviteStatus?.type === "warning"
+        ? "warning"
+        : "error";
+
   if (user?.role !== "ADMIN") {
     return (
-      <div style={{ padding: 24 }}>
-        Нет доступа. Этот раздел доступен только для роли администратора.
+      <div className="admin-console__card admin-console__card--warn">
+        <div className="admin-console__card-text">
+          Нет доступа. Этот раздел доступен только для роли администратора.
+        </div>
       </div>
     );
   }
 
   return (
-    <div style={{ padding: 24 }}>
-      <h1>Управление пользователями</h1>
-      <div style={{ marginBottom: 12, color: "#475569" }}>
+    <div className="admin-console__card">
+      <div className="admin-console__card-title">Управление пользователями</div>
+      <div className="admin-console__card-text">
         Здесь администратор может просматривать пользователей и менять их роли.
       </div>
 
-      <div
-        style={{
-          marginTop: 16,
-          marginBottom: 16,
-          padding: 12,
-          borderRadius: 8,
-          background: "#fff",
-          border: "1px solid #e5e7eb",
-          boxShadow: "0 1px 2px rgba(15,23,42,0.06)",
-        }}
-      >
-        <div style={{ fontWeight: 600, marginBottom: 8 }}>
-          Пригласить пользователя
-        </div>
-        <div style={{ display: "grid", gap: 8, gridTemplateColumns: "1fr 220px auto" }}>
+      <div className="admin-section">
+        <div className="admin-section__title">Пригласить пользователя</div>
+        <div className="admin-invite-grid">
           <input
+            className="admin-input"
             type="email"
             placeholder="Эл. почта"
             value={inviteEmail}
             onChange={(e) => setInviteEmail(e.target.value)}
-            style={{ padding: 8 }}
           />
           <select
+            className="admin-select"
             value={inviteRole}
             onChange={(e) => setInviteRole(e.target.value)}
-            style={{ padding: 8 }}
           >
             {ALL_ROLES.map((r) => (
               <option key={r} value={r}>
@@ -294,190 +288,252 @@ export default function UserManagement() {
           </select>
           <button
             type="button"
+            className="admin-btn admin-btn--primary"
             onClick={handleInviteSubmit}
             disabled={inviteSending}
-            style={{
-              padding: "8px 14px",
-              background: "#1976d2",
-              color: "#fff",
-              border: "none",
-              cursor: "pointer",
-            }}
           >
             {inviteSending ? "Отправляем..." : "Отправить"}
           </button>
         </div>
         {invitesError && (
-          <div
-            style={{
-              marginTop: 10,
-              padding: 8,
-              borderRadius: 4,
-              background: "#ffe6e6",
-              color: "#b00020",
-            }}
-          >
+          <div className="admin-alert admin-alert--error">
             {mapInviteError(invitesError)}
           </div>
         )}
         {inviteStatus && (
-          <div
-            style={{
-              marginTop: 10,
-              padding: 8,
-              borderRadius: 4,
-              ...(inviteStatusStyles[inviteStatus.type] || inviteStatusStyles.error),
-            }}
-          >
+          <div className={`admin-alert admin-alert--${inviteStatusVariant}`}>
             {inviteStatus.text}
           </div>
         )}
       </div>
 
-      {error && (
-        <div
-          style={{
-            marginTop: 12,
-            marginBottom: 12,
-            padding: 8,
-            borderRadius: 4,
-            background: "#ffe6e6",
-            color: "#b00020",
-          }}
-        >
-          {error}
-        </div>
-      )}
+      {error && <div className="admin-alert admin-alert--error">{error}</div>}
 
-      <div style={{ marginBottom: 16 }}>
-        <h3 style={{ marginBottom: 8 }}>Приглашения</h3>
+      <div className="admin-section">
+        <div className="admin-section__title">Приглашения</div>
         {invitesLoading ? (
-          <p>Загрузка...</p>
-        ) : invites.length === 0 ? (
-          <p>Приглашений пока нет.</p>
+          <div className="admin-muted">Загрузка...</div>
         ) : (
-          <table
-            style={{
-              width: "100%",
-              borderCollapse: "collapse",
-              background: "#fff",
-              borderRadius: 8,
-              overflow: "hidden",
-              boxShadow: "0 1px 3px rgba(0,0,0,0.1)",
-            }}
-          >
-            <thead>
-              <tr>
-                <th style={thStyle}>Эл. почта</th>
-                <th style={thStyle}>Роль</th>
-                <th style={thStyle}>Статус</th>
-                <th style={thStyle}>Создан</th>
-                <th style={thStyle}></th>
-              </tr>
-            </thead>
-            <tbody>
-              {invites.map((inv) => (
-                <tr key={inv.id}>
-                  <td style={tdStyle}>{inv.email}</td>
-                  <td style={tdStyle}>
-                    {roleLabel(inv.role)}
-                  </td>
-                  <td style={tdStyle}>{inviteStatusLabel(inv.status)}</td>
-                  <td style={tdStyle}>
-                    {inv.createdAt
-                      ? new Date(inv.createdAt).toLocaleString()
-                      : "-"}
-                  </td>
-                  <td style={tdStyle}>
-                    <button
-                      type="button"
-                      onClick={() => handleInviteResend(inv.id)}
-                      disabled={inviteResendId === inv.id}
-                    >
-                      {inviteResendId === inv.id ? "Отправляем..." : "Повторить"}
-                    </button>
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
+          <ResponsiveDataView
+            isMobile={isMobile}
+            cards={
+              <div className="responsive-cards">
+                {invites.map((inv) => (
+                  <div key={inv.id} className="responsive-card">
+                    <div className="responsive-card__title text-wrap">
+                      {inv.email}
+                    </div>
+                    <div className="responsive-card__meta">
+                      <span>{roleLabel(inv.role)}</span>
+                      <span>{inviteStatusLabel(inv.status)}</span>
+                    </div>
+                    <div className="responsive-card__row">
+                      <span className="responsive-card__label">Created</span>
+                      <span>
+                        {inv.createdAt
+                          ? new Date(inv.createdAt).toLocaleString()
+                          : "-"}
+                      </span>
+                    </div>
+                    <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+                      <button
+                        type="button"
+                        className="admin-btn admin-btn--secondary"
+                        onClick={() => handleInviteResend(inv.id)}
+                        disabled={inviteResendId === inv.id}
+                      >
+                        {inviteResendId === inv.id
+                          ? "Отправляем..."
+                          : "Повторить"}
+                      </button>
+                    </div>
+                  </div>
+                ))}
+                {!invites.length && (
+                  <div className="responsive-card">
+                    <div className="admin-muted">Приглашений нет.</div>
+                  </div>
+                )}
+              </div>
+            }
+            table={
+              <div className="admin-table-wrapper">
+                <table className="admin-table">
+                  <thead>
+                    <tr>
+                      <th>Эл. почта</th>
+                      <th>Роль</th>
+                      <th>Статус</th>
+                      <th>Создан</th>
+                      <th></th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {invites.map((inv) => (
+                      <tr key={inv.id}>
+                        <td>{inv.email}</td>
+                        <td>{roleLabel(inv.role)}</td>
+                        <td>{inviteStatusLabel(inv.status)}</td>
+                        <td>
+                          {inv.createdAt
+                            ? new Date(inv.createdAt).toLocaleString()
+                            : "-"}
+                        </td>
+                        <td className="admin-table__actions">
+                          <button
+                            type="button"
+                            className="admin-btn admin-btn--secondary"
+                            onClick={() => handleInviteResend(inv.id)}
+                            disabled={inviteResendId === inv.id}
+                          >
+                            {inviteResendId === inv.id
+                              ? "Отправляем..."
+                              : "Повторить"}
+                          </button>
+                        </td>
+                      </tr>
+                    ))}
+                    {!invites.length && (
+                      <tr>
+                        <td colSpan="5" className="admin-muted">
+                          Приглашений нет.
+                        </td>
+                      </tr>
+                    )}
+                  </tbody>
+                </table>
+              </div>
+            }
+          />
         )}
       </div>
 
-      {loading ? (
-        <p>Загрузка пользователей...</p>
-      ) : users.length === 0 ? (
-        <p>Пользователей пока нет.</p>
-      ) : (
-        <table
-          style={{
-            width: "100%",
-            borderCollapse: "collapse",
-            marginTop: 16,
-            background: "#fff",
-            borderRadius: 8,
-            overflow: "hidden",
-            boxShadow: "0 1px 3px rgba(0,0,0,0.1)",
-          }}
-        >
-          <thead>
-            <tr>
-              <th style={thStyle}>ID</th>
-              <th style={thStyle}>Имя</th>
-              <th style={thStyle}>Эл. почта</th>
-              <th style={thStyle}>Роль</th>
-              <th style={thStyle}>Создан</th>
-              <th style={thStyle}></th>
-            </tr>
-          </thead>
-          <tbody>
-            {users.map((u) => (
-              <tr key={u.id}>
-                <td style={tdStyle}>{u.id}</td>
-                <td style={tdStyle}>{u.name}</td>
-                <td style={tdStyle}>{u.email}</td>
-                <td style={tdStyle}>
-                  <select
-                    value={u.role}
-                    onChange={(e) => handleRoleChangeLocal(u.id, e.target.value)}
-                    style={{ padding: 4 }}
-                    disabled={savingId === u.id}
-                  >
-                    {ALL_ROLES.map((r) => (
-                      <option key={r} value={r}>
-                        {roleLabel(r)}
-                      </option>
+      <div className="admin-section">
+        <div className="admin-section__title">Пользователи</div>
+        {loading ? (
+          <div className="admin-muted">Загрузка пользователей...</div>
+        ) : (
+          <ResponsiveDataView
+            isMobile={isMobile}
+            cards={
+              <div className="responsive-cards">
+                {users.map((u) => (
+                  <div key={u.id} className="responsive-card">
+                    <div className="responsive-card__title text-wrap">
+                      {u.name || "-"}
+                    </div>
+                    <div className="responsive-card__meta">
+                      <span>{u.email}</span>
+                      <span>ID: {u.id}</span>
+                    </div>
+                    <div className="responsive-card__row">
+                      <span className="responsive-card__label">Role</span>
+                      <select
+                        className="admin-select"
+                        value={u.role}
+                        onChange={(e) =>
+                          handleRoleChangeLocal(u.id, e.target.value)
+                        }
+                        disabled={savingId === u.id}
+                      >
+                        {ALL_ROLES.map((r) => (
+                          <option key={r} value={r}>
+                            {roleLabel(r)}
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+                    <div className="responsive-card__row">
+                      <span className="responsive-card__label">Created</span>
+                      <span>
+                        {u.createdAt ? new Date(u.createdAt).toLocaleString() : "-"}
+                      </span>
+                    </div>
+                    <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+                      <button
+                        type="button"
+                        className="admin-btn admin-btn--primary"
+                        onClick={() => handleSaveRole(u.id)}
+                        disabled={savingId === u.id}
+                      >
+                        {savingId === u.id ? "Сохраняем..." : "Сохранить"}
+                      </button>
+                    </div>
+                  </div>
+                ))}
+                {!users.length && (
+                  <div className="responsive-card">
+                    <div className="admin-muted">Пользователей нет.</div>
+                  </div>
+                )}
+              </div>
+            }
+            table={
+              <div className="admin-table-wrapper">
+                <table className="admin-table">
+                  <thead>
+                    <tr>
+                      <th>ID</th>
+                      <th>Имя</th>
+                      <th>Эл. почта</th>
+                      <th>Роль</th>
+                      <th>Создан</th>
+                      <th></th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {users.map((u) => (
+                      <tr key={u.id}>
+                        <td>{u.id}</td>
+                        <td>{u.name}</td>
+                        <td>{u.email}</td>
+                        <td>
+                          <select
+                            className="admin-select"
+                            value={u.role}
+                            onChange={(e) =>
+                              handleRoleChangeLocal(u.id, e.target.value)
+                            }
+                            disabled={savingId === u.id}
+                          >
+                            {ALL_ROLES.map((r) => (
+                              <option key={r} value={r}>
+                                {roleLabel(r)}
+                              </option>
+                            ))}
+                          </select>
+                        </td>
+                        <td>
+                          {u.createdAt
+                            ? new Date(u.createdAt).toLocaleString()
+                            : "-"}
+                        </td>
+                        <td className="admin-table__actions">
+                          <button
+                            type="button"
+                            className="admin-btn admin-btn--secondary"
+                            onClick={() => handleSaveRole(u.id)}
+                            disabled={savingId === u.id}
+                          >
+                            {savingId === u.id ? "Сохраняем..." : "Сохранить"}
+                          </button>
+                        </td>
+                      </tr>
                     ))}
-                  </select>
-                </td>
-                <td style={tdStyle}>
-                  {u.createdAt ? new Date(u.createdAt).toLocaleString() : "-"}
-                </td>
-                <td style={tdStyle}>
-                  <button
-                    onClick={() => handleSaveRole(u.id)}
-                    disabled={savingId === u.id}
-                  >
-                    {savingId === u.id ? "Сохраняем..." : "Сохранить"}
-                  </button>
-                </td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-      )}
+                    {!users.length && (
+                      <tr>
+                        <td colSpan="6" className="admin-muted">
+                          Пользователей нет.
+                        </td>
+                      </tr>
+                    )}
+                  </tbody>
+                </table>
+              </div>
+            }
+          />
+        )}
+      </div>
     </div>
   );
 }
-
-const thStyle = {
-  textAlign: "left",
-  padding: 8,
-  borderBottom: "1px solid #e5e7eb",
-  background: "#f9fafb",
-};
-
-const tdStyle = {
-  padding: 8,
-  borderTop: "1px solid #e5e7eb",
-};
