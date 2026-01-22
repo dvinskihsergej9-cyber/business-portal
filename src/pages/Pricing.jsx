@@ -120,13 +120,26 @@ export default function Pricing() {
             <div style={{ fontSize: 20 }}>
               {formatPrice(plan.amount, plan.currency)} / {plan.period}
             </div>
-            <button
-              className="btn primary"
-              onClick={() => handlePay(plan.id)}
-              disabled={loading}
-            >
-              {loading ? "Переходим к оплате..." : "Оплатить"}
-            </button>
+            <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+              <button
+                className="btn primary"
+                onClick={() => handlePay(plan.id, "sbp")}
+                disabled={loading}
+              >
+                {loading && loadingMethod === "sbp"
+                  ? "?????????????????? ?? ????????????..."
+                  : "???????? ?? ???"}
+              </button>
+              <button
+                className="btn"
+                onClick={() => handlePay(plan.id, "default")}
+                disabled={loading}
+              >
+                {loading && loadingMethod === "default"
+                  ? "?????????????????? ?? ????????????..."
+                  : "???????? ??????"}
+              </button>
+            </div>
           </div>
         ))}
         {import.meta.env.DEV && (

@@ -86,3 +86,12 @@ ${APP_URL}/subscribe/return?paymentId=...
 - Return to `/subscribe/return`, verify status shows success.
 - Check `/api/me` for `subscription.isActive === true`.
 - Verify API returns 402 for paid routes without active subscription.
+
+
+## YooKassa SBP
+1) Enable payment method "???" in YooKassa cabinet for your shop.
+2) Keep webhook URL configured (payment.succeeded is enough):
+```
+POST https://your-api-domain/api/billing/yookassa/webhook
+```
+

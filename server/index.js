@@ -737,6 +737,14 @@ async function applyPaymentSuccess({ paymentRecord, providerPayment, plan }) {
     ? new Date(current.paidUntil)
     : now;
   const nextPaidUntil = addDays(baseDate, plan.days);
+  const existingMetadata = paymentRecord.metadata || {};
+  const processedProviderPaymentIds = Array.isArray(existingMetadata.processedProviderPaymentIds)
+    ? existingMetadata.processedProviderPaymentIds
+    : [];
+  const providerPaymentId = providerPayment?.id ? String(providerPayment.id) : null;
+  const nextProcessedProviderPaymentIds = providerPaymentId
+    ? Array.from(new Set([...processedProviderPaymentIds, providerPaymentId]))
+    : processedProviderPaymentIds;
 
   await prisma.subscription.upsert({
     where: { orgId },
@@ -764,9 +772,10 @@ async function applyPaymentSuccess({ paymentRecord, providerPayment, plan }) {
     data: {
       status: "succeeded",
       metadata: {
-        ...(paymentRecord.metadata || {}),
+        ...existingMetadata,
         providerStatus: providerPayment.status,
         providerPaid: providerPayment.paid,
+        processedProviderPaymentIds: nextProcessedProviderPaymentIds,
       },
     },
   });
@@ -3124,17 +3133,22 @@ function validatePlanMetadata(plan, metadata) {
 
 app.post("/api/billing/yookassa/create-payment", auth, async (req, res) => {
   try {
-    const { planId } = req.body || {};
+    const { planId, paymentMethod } = req.body || {};
     const plan = getPlan(planId);
     if (!plan) {
       return res.status(400).json({ message: "PLAN_NOT_FOUND" });
     }
+    if (paymentMethod && paymentMethod !== "sbp" && paymentMethod !== "default") {
+      return res.status(400).json({ message: "PAYMENT_METHOD_INVALID" });
+    }
+    const resolvedPaymentMethod = paymentMethod === "default" ? "default" : "sbp";
 
     logBilling("billing.create_payment.request", {
-      orgId: req.orgId,
-      userId: req.user.id,
-      planId: plan.id,
-    });
+        orgId: req.orgId,
+        userId: req.user.id,
+        planId: plan.id,
+        paymentMethod: resolvedPaymentMethod,
+      });
 
     const tempProviderId = `pending_${crypto.randomUUID()}`;
     const localPayment = await prisma.payment.create({
@@ -3149,31 +3163,38 @@ app.post("/api/billing/yookassa/create-payment", auth, async (req, res) => {
         metadata: {
           planId: plan.id,
           days: plan.days,
+          paymentMethod: resolvedPaymentMethod,
         },
       },
     });
 
+    const payload = {
+      amount: {
+        value: formatAmount(plan.amount),
+        currency: plan.currency,
+      },
+      capture: true,
+      confirmation: {
+        type: "redirect",
+        return_url: `${APP_URL}/subscribe/return?paymentId=${localPayment.id}`,
+      },
+      description: `Subscription ${plan.id}`,
+      metadata: {
+        orgId: String(req.orgId),
+        planId: plan.id,
+        days: String(plan.days),
+        localPaymentId: String(localPayment.id),
+      },
+    };
+
+    if (resolvedPaymentMethod === "sbp") {
+      payload.payment_method_data = { type: "sbp" };
+    }
+
     const payment = await yookassaRequest(
       "POST",
       "/payments",
-      {
-        amount: {
-          value: formatAmount(plan.amount),
-          currency: plan.currency,
-        },
-        capture: true,
-        confirmation: {
-          type: "redirect",
-          return_url: `${APP_URL}/subscribe/return?paymentId=${localPayment.id}`,
-        },
-        description: `Subscription ${plan.id}`,
-        metadata: {
-          orgId: String(req.orgId),
-          planId: plan.id,
-          days: String(plan.days),
-          localPaymentId: String(localPayment.id),
-        },
-      },
+      payload,
       crypto.randomUUID()
     );
 
@@ -3190,13 +3211,14 @@ app.post("/api/billing/yookassa/create-payment", auth, async (req, res) => {
     });
 
     logBilling("billing.create_payment.created", {
-      orgId: req.orgId,
-      userId: req.user.id,
-      planId: plan.id,
-      localPaymentId: localPayment.id,
-      providerPaymentId: payment.id,
-      status: payment.status || "pending",
-    });
+        orgId: req.orgId,
+        userId: req.user.id,
+        planId: plan.id,
+        localPaymentId: localPayment.id,
+        providerPaymentId: payment.id,
+        status: payment.status || "pending",
+        paymentMethod: resolvedPaymentMethod,
+      });
 
     return res.json({
       confirmationUrl: payment.confirmation?.confirmation_url || null,
@@ -3378,14 +3400,27 @@ app.post("/api/billing/yookassa/webhook", async (req, res) => {
     }
 
     if (paymentRecord.orgId !== metadata.orgId) {
-      return res.status(400).json({ message: "PAYMENT_ORG_MISMATCH" });
-    }
+        return res.status(400).json({ message: "PAYMENT_ORG_MISMATCH" });
+      }
 
-    if (paymentRecord.status === "succeeded") {
+      const processedProviderPaymentIds = Array.isArray(paymentRecord.metadata?.processedProviderPaymentIds)
+        ? paymentRecord.metadata.processedProviderPaymentIds
+        : [];
+      if (processedProviderPaymentIds.includes(String(providerPaymentId))) {
+        logBilling("billing.webhook.idempotent", {
+          paymentId: paymentRecord.id,
+          providerPaymentId,
+          reason: "processed_provider_payment_id",
+        });
+        return res.json({ ok: true });
+      }
+
+      if (paymentRecord.status === "succeeded") {
       logBilling("billing.webhook.idempotent", {
-        paymentId: paymentRecord.id,
-        providerPaymentId,
-      });
+          paymentId: paymentRecord.id,
+          providerPaymentId,
+          reason: "status_succeeded",
+        });
       return res.json({ ok: true });
     }
 
