@@ -1,6 +1,7 @@
-import { useEffect, useMemo, useState } from "react";
+﻿import { useEffect, useMemo, useState } from "react";
 import { NavLink, Outlet, useLocation } from "react-router-dom";
 import { useAuth } from "./context/AuthContext";
+import t from "./i18n/t";
 
 export default function Layout() {
   const { user, logout } = useAuth();
@@ -10,8 +11,8 @@ export default function Layout() {
 
   const menu = [
     {
-      label: "Главная",
-      to: "/dashboard",
+      label: "Склад",
+      to: "/warehouse",
       roles: ["EMPLOYEE", "HR", "ACCOUNTING", "ADMIN"],
     },
     {
@@ -20,40 +21,19 @@ export default function Layout() {
       roles: ["HR", "ADMIN"],
     },
     {
-      label: "Бухгалтерия",
-      to: "/accounting",
-      roles: ["ACCOUNTING", "ADMIN"],
-    },
-    {
-      label: "Документооборот",
-      to: "/documents",
-      roles: ["EMPLOYEE", "HR", "ACCOUNTING", "ADMIN"],
-    },
-    {
-      label: "Юрист",
-      to: "/legal",
-      roles: ["EMPLOYEE", "HR", "ACCOUNTING", "ADMIN"],
-    },
-    {
-      label: "Склад",
-      to: "/warehouse",
-      roles: ["EMPLOYEE", "HR", "ACCOUNTING", "ADMIN"],
-    },
-    {
-      label: "Техническая поддержка",
+      label: "Техподдержка",
       to: "/support",
       roles: ["EMPLOYEE", "HR", "ACCOUNTING", "ADMIN"],
     },
     {
-      label: "Billing",
+      label: "Оплата и тариф",
       to: "/billing",
       roles: ["EMPLOYEE", "HR", "ACCOUNTING", "ADMIN"],
     },
-    // вкладку "Профиль" убрали из меню
     {
       label: "Администрирование",
       to: "/admin",
-      roles: ["ADMIN"], // видно только ADMIN
+      roles: ["ADMIN"],
     },
   ];
 
@@ -61,13 +41,26 @@ export default function Layout() {
     ? menu.filter((item) => item.roles.includes(user.role))
     : [];
 
+  const roleLabel = (role) => {
+    switch (role) {
+      case "EMPLOYEE":
+        return t("roleEmployee");
+      case "HR":
+        return t("roleHr");
+      case "ACCOUNTING":
+        return t("roleAccounting");
+      case "WAREHOUSE":
+        return t("roleWarehouse");
+      case "ADMIN":
+        return t("roleAdmin");
+      default:
+        return role;
+    }
+  };
+
   const pageTitle = useMemo(() => {
-    const match = allowedMenu.find((item) =>
-      location.pathname === "/"
-        ? item.to === "/dashboard"
-        : location.pathname.startsWith(item.to)
-    );
-    return match?.label || "Business Portal";
+    const match = allowedMenu.find((item) => location.pathname.startsWith(item.to));
+    return match?.label || t("appName");
   }, [allowedMenu, location.pathname]);
 
   useEffect(() => {
@@ -150,12 +143,12 @@ export default function Layout() {
           <button
             type="button"
             className="layout-topbar__menu"
-            aria-label="Open navigation menu"
+            aria-label={t("openMenu")}
             aria-expanded={drawerOpen}
             aria-controls="mobile-drawer"
             onClick={() => setDrawerOpen(true)}
           >
-            {"\u2630"}
+            {"☰"}
           </button>
           <div className="layout-topbar__title">{pageTitle}</div>
         </div>
@@ -165,7 +158,7 @@ export default function Layout() {
         <button
           type="button"
           className="layout-overlay"
-          aria-label="Close navigation menu"
+          aria-label={t("closeMenu")}
           onClick={() => setDrawerOpen(false)}
         />
       )}
@@ -178,8 +171,8 @@ export default function Layout() {
           <div style={styles.logoBlock} className="layout-drawer__logo">
             <div style={styles.logoMark} />
             <div>
-              <div style={styles.logoTitle}>Business Portal</div>
-              <div style={styles.logoSubtitle}>Internal company portal</div>
+              <div style={styles.logoTitle}>{t("appName")}</div>
+              <div style={styles.logoSubtitle}>{t("appSubtitle")}</div>
             </div>
           </div>
 
@@ -187,7 +180,7 @@ export default function Layout() {
             <div style={styles.userCard}>
               <div style={styles.userName}>{user.name}</div>
               <div style={styles.userEmail}>{user.email}</div>
-              <div style={styles.userRole}>{user.role}</div>
+              <div style={styles.userRole}>{roleLabel(user.role)}</div>
             </div>
           )}
 
@@ -200,7 +193,7 @@ export default function Layout() {
               handleLogout();
             }}
           >
-            Logout
+            {t("logout")}
           </button>
         </aside>
       )}
@@ -211,8 +204,8 @@ export default function Layout() {
             <div style={styles.logoBlock}>
               <div style={styles.logoMark} />
               <div>
-                <div style={styles.logoTitle}>Business Portal</div>
-                <div style={styles.logoSubtitle}>Internal company portal</div>
+                <div style={styles.logoTitle}>{t("appName")}</div>
+                <div style={styles.logoSubtitle}>{t("appSubtitle")}</div>
               </div>
             </div>
 
@@ -220,33 +213,27 @@ export default function Layout() {
               <div style={styles.userCard}>
                 <div style={styles.userName}>{user.name}</div>
                 <div style={styles.userEmail}>{user.email}</div>
-                <div style={styles.userRole}>{user.role}</div>
+                <div style={styles.userRole}>{roleLabel(user.role)}</div>
               </div>
             )}
 
             {renderNavItems()}
 
             <button style={styles.logoutBtn} onClick={handleLogout}>
-              Logout
+              {t("logout")}
             </button>
           </aside>
         </>
       )}
 
-
-      {/* Правая часть: шапка + контент */}
       <div style={styles.main} className="layout-main">
         <header style={styles.header} className="portal-header layout-header">
           <div>
-            <div style={styles.headerTitle}>
-              {location.pathname === "/dashboard"
-                ? "Обзор"
-                : "Внутренний портал"}
-            </div>
+            <div style={styles.headerTitle}>{pageTitle}</div>
             <div style={styles.headerSubtitle}>
               {user
-                ? `Пользователь: ${user.name} (${user.role})`
-                : "Вы не авторизованы"}
+                ? `${t("roleUser")}: ${user.name} (${roleLabel(user.role)})`
+                : ""}
             </div>
           </div>
         </header>
@@ -341,14 +328,14 @@ const styles = {
     fontSize: 14,
     gap: 8,
     background: "transparent",
-    border: "1px solid #111827", // чёрная рамка всегда
+    border: "1px solid #111827",
     transition:
       "background 0.15s ease, color 0.15s ease, border 0.15s ease, box-shadow 0.15s ease",
   },
   navItemActive: {
     background: "#ffffff",
     color: "#1d4ed8",
-    borderColor: "#2563eb", // активный — синяя рамка
+    borderColor: "#2563eb",
     boxShadow: "0 0 0 1px rgba(37, 99, 235, 0.12)",
     fontWeight: 600,
   },

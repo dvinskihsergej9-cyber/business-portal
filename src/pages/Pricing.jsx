@@ -6,11 +6,11 @@ import { useAuth } from "../context/AuthContext";
 const PLANS = [
   {
     id: "basic-30",
-    title: "Basic",
+    title: "Базовый",
     amount: 1990,
     currency: "RUB",
-    period: "30 days",
-    description: "Full access to the portal features for 30 days.",
+    period: "30 дней",
+    description: "Полный доступ к возможностям портала на 30 дней.",
   },
 ];
 
@@ -41,7 +41,7 @@ export default function Pricing() {
 
       const data = await res.json();
       if (!res.ok) {
-        setError(data.message || "Payment init failed");
+        setError(data.message || "Не удалось инициировать оплату");
         return;
       }
 
@@ -50,10 +50,10 @@ export default function Pricing() {
         return;
       }
 
-      setError("Payment confirmation URL missing");
+      setError("Не удалось получить ссылку для оплаты");
     } catch (err) {
       console.error("create payment error:", err);
-      setError("Payment init failed");
+      setError("Не удалось инициировать оплату");
     } finally {
       setLoading(false);
     }
@@ -72,14 +72,14 @@ export default function Pricing() {
       });
       const data = await res.json();
       if (!res.ok) {
-        setError(data.message || "Test subscription failed");
+        setError(data.message || "Не удалось активировать тестовую подписку");
         return;
       }
       await refreshUser();
-      navigate("/dashboard");
+      navigate("/warehouse");
     } catch (err) {
       console.error("test subscription error:", err);
-      setError("Test subscription failed");
+      setError("Не удалось активировать тестовую подписку");
     } finally {
       setDevLoading(false);
     }
@@ -88,17 +88,17 @@ export default function Pricing() {
   return (
     <div className="page">
       <div className="page-header">
-        <h1 className="page-title">Pricing</h1>
+        <h1 className="page-title">Тарифы</h1>
         <p className="page-subtitle">
-          Choose a plan and activate your subscription.
+          Выберите тариф и активируйте подписку.
         </p>
       </div>
 
       {user?.subscription?.isActive && (
         <div className="card" style={{ marginBottom: 16 }}>
-          <strong>Subscription active</strong>
+          <strong>Подписка активна</strong>
           <div>
-            Paid until:{" "}
+            Оплачено до:{" "}
             {user.subscription.paidUntil
               ? new Date(user.subscription.paidUntil).toLocaleDateString()
               : "—"}
@@ -120,13 +120,26 @@ export default function Pricing() {
             <div style={{ fontSize: 20 }}>
               {formatPrice(plan.amount, plan.currency)} / {plan.period}
             </div>
-            <button
-              className="btn primary"
-              onClick={() => handlePay(plan.id)}
-              disabled={loading}
-            >
-              {loading ? "Redirecting..." : "Pay"}
-            </button>
+            <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+              <button
+                className="btn primary"
+                onClick={() => handlePay(plan.id, "sbp")}
+                disabled={loading}
+              >
+                {loading && loadingMethod === "sbp"
+                  ? "?????????????????? ?? ????????????..."
+                  : "???????? ?? ???"}
+              </button>
+              <button
+                className="btn"
+                onClick={() => handlePay(plan.id, "default")}
+                disabled={loading}
+              >
+                {loading && loadingMethod === "default"
+                  ? "?????????????????? ?? ????????????..."
+                  : "???????? ??????"}
+              </button>
+            </div>
           </div>
         ))}
         {import.meta.env.DEV && (
@@ -137,8 +150,8 @@ export default function Pricing() {
               disabled={devLoading}
             >
               {devLoading
-                ? "Activating..."
-                : "Activate test subscription (30 days)"}
+                ? "Активируем..."
+                : "Активировать тестовую подписку (30 дней)"}
             </button>
           </div>
         )}
