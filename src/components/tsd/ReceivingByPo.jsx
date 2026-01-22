@@ -621,7 +621,7 @@ export default function ReceivingByPo({ authHeaders, makeOpId, onBack }) {
               <div className="tsd-receiving-controls">
                 <input
                   className="tsd-input"
-                  placeholder="Поиск по названию, SKU или штрихкоду"
+                  placeholder="Поиск по названию, артикулу или штрихкоду"
                   value={itemSearch}
                   onChange={(event) => setItemSearch(event.target.value)}
                 />
@@ -679,12 +679,12 @@ export default function ReceivingByPo({ authHeaders, makeOpId, onBack }) {
                       {row.item?.name || `Товар #${row.itemId}`}
                     </div>
                     <div className="tsd-card__meta">
-                      {[row.item?.sku && `SKU: ${row.item.sku}`, row.item?.barcode]
+                      {[row.item?.sku && `Артикул: ${row.item.sku}`, row.item?.barcode]
                         .filter(Boolean)
                         .join(" ? ")}
                     </div>
                     <div className="tsd-card__meta">
-                      Заказано: {row.orderedQty} ? Принято: {row.acceptedTotal} ? Осталось: {row.remaining}
+                      Заказано: {row.orderedQty} • Принято: {row.acceptedTotal} • Осталось: {row.remaining}
                     </div>
                   </div>
                   <div
@@ -724,7 +724,7 @@ export default function ReceivingByPo({ authHeaders, makeOpId, onBack }) {
                 <div key={row.itemId} className="tsd-card">
                   <div className="tsd-card__body">
                     <div className="tsd-card__title">{row.item?.name || `Товар #${row.itemId}`}</div>
-                    <div className="tsd-card__meta">Заказано: {row.orderedQty} ? Принято: {row.acceptedTotal} ? Осталось: {row.remaining}</div>
+                    <div className="tsd-card__meta">Заказано: {row.orderedQty} • Принято: {row.acceptedTotal} • Осталось: {row.remaining}</div>
                   </div>
                 </div>
               ))}

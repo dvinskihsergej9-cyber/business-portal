@@ -1,4 +1,4 @@
-import { createContext, useContext, useEffect, useState } from "react";
+﻿import { createContext, useContext, useEffect, useState } from "react";
 import { apiFetch } from "../apiConfig";
 
 export const AuthContext = createContext(null);
@@ -11,7 +11,7 @@ export function AuthProvider({ children }) {
   });
   const [loading, setLoading] = useState(true);
 
-  // авто-подтягивание пользователя по токену
+  // Загружаем пользователя по токену, если он сохранен.
   useEffect(() => {
     const token = localStorage.getItem("token");
     if (!token) {
@@ -43,7 +43,7 @@ export function AuthProvider({ children }) {
           localStorage.setItem("user", JSON.stringify(nextUser));
         }
       } catch (e) {
-        console.error("Ошибка автоавторизации:", e);
+        console.error("Ошибка загрузки пользователя:", e);
         localStorage.removeItem("token");
         localStorage.removeItem("user");
         setUser(null);
@@ -54,115 +54,114 @@ export function AuthProvider({ children }) {
   }, []);
 
   const login = async (email, password) => {
-  try {
-    const res = await apiFetch("/login", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ email, password }),
-    });
+    try {
+      const res = await apiFetch("/login", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ email, password }),
+      });
 
-    const data = await res.json();
+      const data = await res.json();
 
-    if (!res.ok) {
-      return { ok: false, message: data.message || "?????? ?????" };
+      if (!res.ok) {
+        return { ok: false, message: data.message || "Ошибка входа" };
+      }
+
+      localStorage.setItem("token", data.token);
+
+      const meRes = await apiFetch("/me", {
+        headers: { Authorization: `Bearer ${data.token}` },
+      });
+      const meData = await meRes.json();
+      const nextUser = meRes.ok
+        ? {
+            ...meData.user,
+            org: meData.org || null,
+            memberships: meData.memberships || [],
+            subscription: meData.subscription || null,
+          }
+        : data.user;
+
+      localStorage.setItem("user", JSON.stringify(nextUser));
+      setUser(nextUser);
+
+      return { ok: true };
+    } catch (e) {
+      console.error("Login error:", e);
+      return { ok: false, message: "Ошибка сети" };
     }
+  };
 
-    localStorage.setItem("token", data.token);
-
-    const meRes = await apiFetch("/me", {
-      headers: { Authorization: `Bearer ${data.token}` },
-    });
-    const meData = await meRes.json();
-    const nextUser = meRes.ok
-      ? {
-          ...meData.user,
-          org: meData.org || null,
-          memberships: meData.memberships || [],
-          subscription: meData.subscription || null,
-        }
-      : data.user;
-
-    localStorage.setItem("user", JSON.stringify(nextUser));
-    setUser(nextUser);
-
-    return { ok: true };
-  } catch (e) {
-    console.error("Login error:", e);
-    return { ok: false, message: "?????? ????" };
-  }
-};
-
-  // РЕГИСТРАЦИЯ БЕЗ ROLE — роль ставит сервер
   const register = async (email, password, name) => {
-  try {
-    const res = await apiFetch("/register", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ email, password, name }),
-    });
+    try {
+      const res = await apiFetch("/register", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ email, password, name }),
+      });
 
-    const data = await res.json();
+      const data = await res.json();
 
-    if (!res.ok) {
-      return { ok: false, message: data.message || "?????? ???????????" };
+      if (!res.ok) {
+        return { ok: false, message: data.message || "Ошибка регистрации" };
+      }
+
+      localStorage.setItem("token", data.token);
+
+      const meRes = await apiFetch("/me", {
+        headers: { Authorization: `Bearer ${data.token}` },
+      });
+      const meData = await meRes.json();
+      const nextUser = meRes.ok
+        ? {
+            ...meData.user,
+            org: meData.org || null,
+            memberships: meData.memberships || [],
+            subscription: meData.subscription || null,
+          }
+        : data.user;
+
+      localStorage.setItem("user", JSON.stringify(nextUser));
+      setUser(nextUser);
+
+      return { ok: true };
+    } catch (e) {
+      console.error("Register error:", e);
+      return { ok: false, message: "Ошибка сети" };
     }
-
-    localStorage.setItem("token", data.token);
-
-    const meRes = await apiFetch("/me", {
-      headers: { Authorization: `Bearer ${data.token}` },
-    });
-    const meData = await meRes.json();
-    const nextUser = meRes.ok
-      ? {
-          ...meData.user,
-          org: meData.org || null,
-          memberships: meData.memberships || [],
-          subscription: meData.subscription || null,
-        }
-      : data.user;
-
-    localStorage.setItem("user", JSON.stringify(nextUser));
-    setUser(nextUser);
-
-    return { ok: true };
-  } catch (e) {
-    console.error("Register error:", e);
-    return { ok: false, message: "?????? ????" };
-  }
-};
+  };
 
   const updateProfile = async ({ name, password }) => {
-  try {
-    const token = localStorage.getItem("token");
-    const res = await apiFetch("/me", {
-      method: "PUT",
-      headers: {
-        "Content-Type": "application/json",
-        Authorization: `Bearer ${token}`,
-      },
-      body: JSON.stringify({ name, password }),
-    });
+    try {
+      const token = localStorage.getItem("token");
+      const res = await apiFetch("/me", {
+        method: "PUT",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify({ name, password }),
+      });
 
-    const data = await res.json();
+      const data = await res.json();
 
-    if (!res.ok) {
-      return { ok: false, message: data.message || "?????? ?????????? ???????" };
+      if (!res.ok) {
+        return { ok: false, message: data.message || "Ошибка обновления профиля" };
+      }
+
+      const nextUser = {
+        ...user,
+        ...data.user,
+      };
+      setUser(nextUser);
+      localStorage.setItem("user", JSON.stringify(nextUser));
+
+      return { ok: true };
+    } catch (e) {
+      console.error("Update profile error:", e);
+      return { ok: false, message: "Ошибка сети" };
     }
-
-    const nextUser = {
-      ...user,
-      ...data.user,
-    };
-    setUser(nextUser);
-    localStorage.setItem("user", JSON.stringify(nextUser));
-
-    return { ok: true };
-  } catch (e) {
-    console.error("Update profile error:", e);
-    return { ok: false, message: "?????? ????" };
-  }
-};
+  };
 
   const logout = () => {
     localStorage.removeItem("token");

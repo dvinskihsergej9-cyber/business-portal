@@ -1,14 +1,14 @@
-import { useState } from "react";
+﻿import { useState } from "react";
 import { apiFetch } from "../apiConfig";
 
 const T = {
   title: "Восстановление пароля",
-  email: "Почта",
-  send: "Отправить",
+  email: "Email",
+  send: "Отправить ссылку",
   success:
-    "Если аккаунт существует — мы отправили письмо. Если письма нет, проверьте Спам или подождите 1–2 минуты.",
+    "Если email существует в системе, мы отправим ссылку для сброса пароля.",
   placeholder: "name@domain.ru",
-  errEmail: "Укажите email",
+  errEmail: "Введите корректный email.",
 };
 
 export default function ForgotPassword() {
@@ -41,6 +41,9 @@ export default function ForgotPassword() {
     }
   };
 
+  const emailInvalid = (event) => event.target.setCustomValidity(T.errEmail);
+  const clearInvalid = (event) => event.target.setCustomValidity("");
+
   return (
     <div style={{ maxWidth: 420, margin: "60px auto", padding: "0 16px" }}>
       <h1 style={{ marginBottom: 12 }}>{T.title}</h1>
@@ -59,14 +62,15 @@ export default function ForgotPassword() {
       ) : (
         <form onSubmit={handleSubmit}>
           <div style={{ marginBottom: 10 }}>
-            <label style={{ display: "block", marginBottom: 6 }}>
-              {T.email}
-            </label>
+            <label style={{ display: "block", marginBottom: 6 }}>{T.email}</label>
             <input
               type="email"
               placeholder={T.placeholder}
               value={email}
               onChange={(e) => setEmail(e.target.value)}
+              onInvalid={emailInvalid}
+              onInput={clearInvalid}
+              title={T.errEmail}
               style={{ width: "100%", padding: 8, boxSizing: "border-box" }}
             />
             {error && (
