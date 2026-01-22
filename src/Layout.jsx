@@ -1,11 +1,12 @@
 ﻿import { useEffect, useMemo, useState } from "react";
-import { NavLink, Outlet, useLocation } from "react-router-dom";
+import { NavLink, Outlet, useLocation, useNavigate } from "react-router-dom";
 import { useAuth } from "./context/AuthContext";
 import t from "./i18n/t";
 
 export default function Layout() {
   const { user, logout } = useAuth();
   const location = useLocation();
+  const navigate = useNavigate();
   const [drawerOpen, setDrawerOpen] = useState(false);
   const [isMobile, setIsMobile] = useState(false);
 
@@ -35,11 +36,24 @@ export default function Layout() {
       to: "/admin",
       roles: ["ADMIN"],
     },
+    {
+      label: "Мобильный ТСД",
+      to: "/warehouse/tsd",
+      roles: ["EMPLOYEE", "HR", "ACCOUNTING", "ADMIN"],
+      onlyMobile: true,
+    },
   ];
 
   const allowedMenu = user
     ? menu.filter((item) => item.roles.includes(user.role))
     : [];
+
+  const navMenu = useMemo(() => {
+    if (isMobile) {
+      return allowedMenu.filter((item) => item.onlyMobile);
+    }
+    return allowedMenu.filter((item) => !item.onlyMobile);
+  }, [allowedMenu, isMobile]);
 
   const roleLabel = (role) => {
     switch (role) {
@@ -59,9 +73,9 @@ export default function Layout() {
   };
 
   const pageTitle = useMemo(() => {
-    const match = allowedMenu.find((item) => location.pathname.startsWith(item.to));
+    const match = navMenu.find((item) => location.pathname.startsWith(item.to));
     return match?.label || t("appName");
-  }, [allowedMenu, location.pathname]);
+  }, [navMenu, location.pathname]);
 
   useEffect(() => {
     if (!drawerOpen) return;
@@ -94,6 +108,12 @@ export default function Layout() {
   }, [location.pathname]);
 
   useEffect(() => {
+    if (!isMobile) return;
+    if (location.pathname.startsWith("/warehouse/tsd")) return;
+    navigate("/warehouse/tsd", { replace: true });
+  }, [isMobile, location.pathname, navigate]);
+
+  useEffect(() => {
     const media = window.matchMedia("(max-width: 768px)");
     const handleChange = (event) => {
       setIsMobile(event.matches);
@@ -115,7 +135,7 @@ export default function Layout() {
 
   const renderNavItems = () => (
     <nav style={styles.nav} className="sidebar-nav">
-      {allowedMenu.map((item) => (
+      {navMenu.map((item) => (
         <NavLink
           key={item.to}
           to={item.to}
