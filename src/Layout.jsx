@@ -1,9 +1,33 @@
-import { NavLink, Outlet, useLocation } from "react-router-dom";
+import { useEffect, useState } from "react";
+import { NavLink, Outlet, useLocation, useNavigate } from "react-router-dom";
 import { useAuth } from "./context/AuthContext";
 
 export default function Layout() {
   const { user, logout } = useAuth();
   const location = useLocation();
+  const navigate = useNavigate();
+  const [isMobile, setIsMobile] = useState(false);
+
+  useEffect(() => {
+    if (typeof window === "undefined" || !window.matchMedia) return undefined;
+    const media = window.matchMedia("(max-width: 768px)");
+    const update = () => setIsMobile(media.matches);
+    update();
+    if (media.addEventListener) {
+      media.addEventListener("change", update);
+      return () => media.removeEventListener("change", update);
+    }
+    media.addListener(update);
+    return () => media.removeListener(update);
+  }, []);
+
+  useEffect(() => {
+    if (!isMobile) return;
+    const path = location.pathname || "/";
+    if (!path.startsWith("/warehouse/tsd")) {
+      navigate("/warehouse/tsd", { replace: true });
+    }
+  }, [isMobile, location.pathname, navigate]);
 
   const menu = [
     {
@@ -37,6 +61,12 @@ export default function Layout() {
       roles: ["EMPLOYEE", "HR", "ACCOUNTING", "ADMIN"],
     },
     {
+      label: "Mobile TSD",
+      to: "/warehouse/tsd",
+      roles: ["EMPLOYEE", "HR", "ACCOUNTING", "ADMIN"],
+      onlyMobile: true,
+    },
+    {
       label: "Техническая поддержка",
       to: "/support",
       roles: ["EMPLOYEE", "HR", "ACCOUNTING", "ADMIN"],
@@ -52,6 +82,9 @@ export default function Layout() {
   const allowedMenu = user
     ? menu.filter((item) => item.roles.includes(user.role))
     : [];
+  const navMenu = isMobile
+    ? allowedMenu.filter((item) => item.onlyMobile)
+    : allowedMenu.filter((item) => !item.onlyMobile);
 
   const handleLogout = () => {
     logout();
@@ -81,7 +114,7 @@ export default function Layout() {
 
         {/* Навигация */}
         <nav style={styles.nav} className="sidebar-nav">
-          {allowedMenu.map((item) => (
+          {navMenu.map((item) => (
             <NavLink
               key={item.to}
               to={item.to}
