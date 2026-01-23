@@ -1,5 +1,5 @@
 import { createContext, useContext, useEffect, useState } from "react";
-import { API_BASE } from "../apiConfig";
+import { apiFetch } from "../apiConfig";
 
 export const AuthContext = createContext(null);
 export const useAuth = () => useContext(AuthContext);
@@ -21,7 +21,7 @@ export function AuthProvider({ children }) {
 
     (async () => {
       try {
-        const res = await fetch(`${API_BASE}/me`, {
+        const res = await apiFetch("/me", {
           headers: {
             Authorization: `Bearer ${token}`,
           },
@@ -49,7 +49,7 @@ export function AuthProvider({ children }) {
 
   const login = async (email, password) => {
     try {
-      const res = await fetch(`${API_BASE}/login`, {
+      const res = await apiFetch("/login", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ email, password }),
@@ -75,7 +75,7 @@ export function AuthProvider({ children }) {
   // РЕГИСТРАЦИЯ БЕЗ ROLE — роль ставит сервер
   const register = async (email, password, name) => {
     try {
-      const res = await fetch(`${API_BASE}/register`, {
+      const res = await apiFetch("/register", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ email, password, name }),
@@ -101,7 +101,7 @@ export function AuthProvider({ children }) {
   const updateProfile = async ({ name, password }) => {
     try {
       const token = localStorage.getItem("token");
-      const res = await fetch(`${API_BASE}/me`, {
+      const res = await apiFetch("/me", {
         method: "PUT",
         headers: {
           "Content-Type": "application/json",
@@ -136,7 +136,7 @@ export function AuthProvider({ children }) {
     const token = localStorage.getItem("token");
     if (!token) return;
     try {
-      const res = await fetch(`${API_BASE}/me`, {
+      const res = await apiFetch("/me", {
         headers: {
           Authorization: `Bearer ${token}`,
         },
