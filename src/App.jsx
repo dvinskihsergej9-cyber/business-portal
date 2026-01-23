@@ -19,6 +19,11 @@ import ForgotPassword from "./pages/ForgotPassword";
 import ResetPassword from "./pages/ResetPassword";
 import Pricing from "./pages/Pricing";
 import SubscribeReturn from "./pages/SubscribeReturn";
+import Landing from "./pages/Landing";
+import Offer from "./pages/Offer";
+import Privacy from "./pages/Privacy";
+import Contacts from "./pages/Contacts";
+import Refund from "./pages/Refund";
 import Dashboard from "./pages/Dashboard";
 import HrPanel from "./pages/HrPanel";          // ✅ вот так
 import Accounting from "./pages/Accounting";
@@ -50,6 +55,12 @@ function AppRoutesWithBackground() {
 
       <div className="app-shell">
         <Routes>
+          <Route path="/" element={<Landing />} />
+          <Route path="/offer" element={<Offer />} />
+          <Route path="/privacy" element={<Privacy />} />
+          <Route path="/contacts" element={<Contacts />} />
+          <Route path="/refund" element={<Refund />} />
+
           {/* публичные страницы */}
           <Route path="/login" element={<Login />} />
           <Route
@@ -84,7 +95,7 @@ function AppRoutesWithBackground() {
 
           {/* всё остальное под Layout и защитой */}
           <Route
-            path="/"
+            path="/*"
             element={
               <ProtectedRoute>
                 <Layout />
@@ -148,7 +159,7 @@ function AppRoutesWithBackground() {
           <Route path="/403" element={<Page403 />} />
 
           {/* фолбэк */}
-          <Route path="*" element={<Navigate to="/dashboard" replace />} />
+          <Route path="*" element={<Navigate to="/" replace />} />
         </Routes>
       </div>
     </>

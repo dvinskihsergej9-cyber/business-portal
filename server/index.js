@@ -381,7 +381,7 @@ async function getUserPayload(userId) {
   const now = new Date();
   const isActive =
     subscription &&
-    subscription.status === "active" &&
+    ["active", "trialing"].includes(subscription.status) &&
     subscription.paidUntil &&
     new Date(subscription.paidUntil) > now;
 
@@ -393,9 +393,11 @@ async function getUserPayload(userId) {
           plan: subscription.plan,
           status: subscription.status,
           paidUntil: subscription.paidUntil,
+          trialStartedAt: subscription.trialStartedAt,
+          trialUsed: subscription.trialUsed,
           isActive: Boolean(isActive),
         }
-      : { isActive: false },
+      : { isActive: false, trialUsed: false },
   };
 }
 
@@ -1855,6 +1857,60 @@ app.get("/api/profile", auth, async (req, res) => {
     }
   });
 
+
+
+  app.get("/api/billing/config", (req, res) => {
+    const enabled = Boolean(YOOKASSA_SHOP_ID && YOOKASSA_SECRET_KEY);
+    return res.json({ yookassaEnabled: enabled });
+  });
+
+  app.post("/api/billing/start-trial", auth, async (req, res) => {
+    try {
+      if (req.user?.role && req.user.role !== "EMPLOYEE") {
+        return res.status(403).json({ message: "TRIAL_B2C_ONLY" });
+      }
+
+      const TRIAL_DAYS = Number(process.env.TRIAL_DAYS || 30);
+      if (!Number.isFinite(TRIAL_DAYS) || TRIAL_DAYS <= 0) {
+        return res.status(500).json({ message: "TRIAL_CONFIG_INVALID" });
+      }
+
+      const existing = await prisma.subscription.findFirst({
+        where: { userId: req.user.id },
+      });
+      if (existing?.trialUsed || existing?.trialStartedAt) {
+        return res.status(400).json({ message: "TRIAL_ALREADY_USED" });
+      }
+
+      const now = new Date();
+      const paidUntil = addDays(now, TRIAL_DAYS);
+
+      await prisma.subscription.upsert({
+        where: { userId: req.user.id },
+        update: {
+          plan: "trial-30",
+          status: "trialing",
+          paidUntil,
+          trialStartedAt: now,
+          trialUsed: true,
+        },
+        create: {
+          userId: req.user.id,
+          plan: "trial-30",
+          status: "trialing",
+          paidUntil,
+          trialStartedAt: now,
+          trialUsed: true,
+        },
+      });
+
+      const userPayload = await getUserPayload(req.user.id);
+      return res.json({ subscription: userPayload?.subscription || null });
+    } catch (err) {
+      console.error("start trial error:", err);
+      return res.status(500).json({ message: "TRIAL_START_ERROR" });
+    }
+  });
   app.post("/api/billing/yookassa/create-payment", auth, async (req, res) => {
     try {
       const { planId, paymentMethod } = req.body || {};
