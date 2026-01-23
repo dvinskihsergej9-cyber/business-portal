@@ -4,13 +4,9 @@
   "private": true,
   "version": "0.0.0",
   "scripts": {
-    "dev": "node tools/run-dev.mjs",
-    "web": "vite",
-    "api": "node server/index.js",
+    "dev": "vite",
     "build": "vite build",
-    "preview": "vite preview",
-    "db:migrate": "prisma migrate deploy",
-    "smoke": "node tools/smoke-test.mjs"
+    "preview": "vite preview"
   },
   "dependencies": {
     "@prisma/client": "^6.19.0",
@@ -21,6 +17,7 @@
     "dotenv": "^17.2.3",
     "exceljs": "^4.4.0",
     "express": "^5.1.0",
+    "fast-xml-parser": "^4.5.3",
     "html5-qrcode": "^2.3.8",
     "jsonwebtoken": "^9.0.2",
     "multer": "^2.0.2",

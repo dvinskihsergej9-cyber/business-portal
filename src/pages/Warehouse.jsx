@@ -10,9 +10,8 @@ import StockDiscrepanciesTab from "../components/StockDiscrepanciesTab";
 import SupplierTrucksQueueTab from "../components/SupplierTrucksQueueTab";
 import MobileTsdTab from "../components/MobileTsdTab";
 import WarehouseLocationsPanel from "../components/WarehouseLocationsPanel";
-import ResponsiveDataView from "../components/ResponsiveDataView";
-import useIsMobile from "../hooks/useIsMobile";
-import { apiFetch } from "../apiConfig";
+
+const API = "http://localhost:3001/api";
 
 const TYPE_LABELS = {
   ISSUE: "Выдача расходных материалов (РМ)",
@@ -63,7 +62,6 @@ export default function Warehouse() {
   const { user } = useAuth();
   const isWarehouseManager =
     user?.role === "ADMIN" || user?.role === "ACCOUNTING";
-  const isMobile = useIsMobile();
 
   const [section, setSection] = useState("requests");
   const [requestsTab, setRequestsTab] = useState("new"); // 'new' | 'journal'
@@ -165,7 +163,7 @@ export default function Warehouse() {
       setError("");
       setPostMessage("");
 
-      const myRes = await apiFetch("/warehouse/requests/my", {
+      const myRes = await fetch(`${API}/warehouse/requests/my`, {
         headers: authHeaders,
       });
       const myData = await myRes.json();
@@ -175,7 +173,7 @@ export default function Warehouse() {
       setMyList(myData);
 
       if (isWarehouseManager) {
-        const allRes = await apiFetch("/warehouse/requests", {
+        const allRes = await fetch(`${API}/warehouse/requests`, {
           headers: { Authorization: authHeaders.Authorization },
         });
         const allData = await allRes.json();
@@ -202,7 +200,7 @@ export default function Warehouse() {
       setTasksLoading(true);
       setTaskError("");
 
-      const myRes = await apiFetch("/warehouse/tasks/my", {
+      const myRes = await fetch(`${API}/warehouse/tasks/my`, {
         headers: authHeaders,
       });
       const myData = await myRes.json();
@@ -212,7 +210,7 @@ export default function Warehouse() {
       setTaskMyList(myData);
 
       if (isWarehouseManager) {
-        const allRes = await apiFetch("/warehouse/tasks", {
+        const allRes = await fetch(`${API}/warehouse/tasks`, {
           headers: { Authorization: authHeaders.Authorization },
         });
         const allData = await allRes.json();
@@ -238,10 +236,10 @@ export default function Warehouse() {
       setInventoryError("");
 
       const [itemsRes, stockRes] = await Promise.all([
-        apiFetch("/inventory/items", {
+        fetch(`${API}/inventory/items`, {
           headers: { Authorization: authHeaders.Authorization },
         }),
-        apiFetch("/inventory/stock", {
+        fetch(`${API}/inventory/stock`, {
           headers: { Authorization: authHeaders.Authorization },
         }),
       ]);
@@ -271,7 +269,7 @@ export default function Warehouse() {
       setSuppliersLoading(true);
       setSuppliersError("");
 
-      const res = await apiFetch("/suppliers", {
+      const res = await fetch(`${API}/suppliers`, {
         headers: { Authorization: authHeaders.Authorization },
       });
       const data = await res.json();
@@ -294,7 +292,7 @@ export default function Warehouse() {
       setPurchaseOrdersLoading(true);
       setPurchaseOrdersError("");
 
-      const res = await apiFetch("/purchase-orders", {
+      const res = await fetch(`${API}/purchase-orders`, {
         headers: { Authorization: authHeaders.Authorization },
       });
       const data = await res.json();
@@ -325,7 +323,7 @@ export default function Warehouse() {
   useEffect(() => {
     const loadItemsForSuggestions = async () => {
       try {
-        const res = await apiFetch("/inventory/items", {
+        const res = await fetch(`${API}/inventory/items`, {
           headers: { Authorization: authHeaders.Authorization },
         });
         const data = await res.json();
@@ -406,7 +404,7 @@ export default function Warehouse() {
         ],
       };
 
-      const res = await apiFetch("/warehouse/requests", {
+      const res = await fetch(`${API}/warehouse/requests`, {
         method: "POST",
         headers: authHeaders,
         body: JSON.stringify(body),
@@ -450,7 +448,7 @@ export default function Warehouse() {
     setPostMessage("");
 
     try {
-      const res = await apiFetch(`/warehouse/requests/${id}/status`, {
+      const res = await fetch(`${API}/warehouse/requests/${id}/status`, {
         method: "PUT",
         headers: authHeaders,
         body: JSON.stringify({
@@ -537,7 +535,7 @@ export default function Warehouse() {
         executorChatId: taskForm.executorChatId?.trim() || null,
       };
 
-      const res = await apiFetch("/warehouse/tasks", {
+      const res = await fetch(`${API}/warehouse/tasks`, {
         method: "POST",
         headers: authHeaders,
         body: JSON.stringify(body),
@@ -579,7 +577,7 @@ export default function Warehouse() {
     setTaskError("");
 
     try {
-      const res = await apiFetch(`/warehouse/tasks/${id}/status`, {
+      const res = await fetch(`${API}/warehouse/tasks/${id}/status`, {
         method: "PUT",
         headers: authHeaders,
         body: JSON.stringify({ status: task.status }),
@@ -692,7 +690,7 @@ export default function Warehouse() {
         defaultPrice: priceVal,
       };
 
-      const res = await apiFetch("/inventory/items", {
+      const res = await fetch(`${API}/inventory/items`, {
         method: "POST",
         headers: authHeaders,
         body: JSON.stringify(body),
@@ -746,7 +744,7 @@ export default function Warehouse() {
           : 0;
       }
 
-      const res = await apiFetch("/inventory/movements", {
+      const res = await fetch(`${API}/inventory/movements`, {
         method: "POST",
         headers: authHeaders,
         body: JSON.stringify(body),
@@ -808,7 +806,7 @@ export default function Warehouse() {
 
     try {
       setInventoryError("");
-      const res = await apiFetch(`/inventory/items/${itemId}`, {
+      const res = await fetch(`${API}/inventory/items/${itemId}`, {
         method: "DELETE",
         headers: {
           Authorization: authHeaders.Authorization,
@@ -837,7 +835,7 @@ export default function Warehouse() {
     try {
       setInventoryError("");
 
-      const res = await apiFetch("/inventory/low-stock-order-file", {
+      const res = await fetch(`${API}/inventory/low-stock-order-file`, {
         headers: { Authorization: authHeaders.Authorization },
       });
 
@@ -916,7 +914,7 @@ export default function Warehouse() {
         comment: supplierForm.comment || null,
       };
 
-      const res = await apiFetch("/suppliers", {
+      const res = await fetch(`${API}/suppliers`, {
         method: "POST",
         headers: authHeaders,
         body: JSON.stringify(body),
@@ -988,7 +986,7 @@ export default function Warehouse() {
     try {
       setPurchaseOrdersError("");
 
-      const res = await apiFetch(`/purchase-orders/${orderId}/status`, {
+      const res = await fetch(`${API}/purchase-orders/${orderId}/status`, {
         method: "PUT",
         headers: authHeaders,
         body: JSON.stringify({ status: "RECEIVED" }),
@@ -1100,9 +1098,9 @@ export default function Warehouse() {
               <span className="warehouse-card__icon-symbol">🏷️</span>
             </div>
             <div className="warehouse-card__body">
-              <div className="warehouse-card__title">{"Ячейки / QR"}</div>
+              <div className="warehouse-card__title">{"\u042f\u0447\u0435\u0439\u043a\u0438 / QR"}</div>
               <div className="warehouse-card__subtitle">
-                {"Создание ячеек и печать QR-этикеток."}
+                {"\u0421\u043e\u0437\u0434\u0430\u043d\u0438\u0435 \u044f\u0447\u0435\u0435\u043a \u0438 \u043f\u0435\u0447\u0430\u0442\u044c QR-\u044d\u0442\u0438\u043a\u0435\u0442\u043e\u043a."}
               </div>
             </div>
           </button>
@@ -1308,12 +1306,25 @@ export default function Warehouse() {
                 ) : filteredRequests.length === 0 ? (
                   <p className="text-muted">Заявок не найдено.</p>
                 ) : (
-                  <ResponsiveDataView
-                    isMobile={isMobile}
-                    cards={
-                      <div className="responsive-cards">
+                  <div className="table-wrapper">
+                    <table className="table">
+                      <thead>
+                        <tr>
+                          <th style={{ width: 40 }}>№</th>
+                          <th style={{ width: 170 }}>Дата</th>
+                          <th style={{ width: 110 }}>Статус</th>
+                          <th style={{ width: 200 }}>Автор</th>
+                          <th>Товар / заявка</th>
+                          <th style={{ width: 70 }}>Кол-во</th>
+                          <th style={{ width: 220 }}>Комментарий</th>
+                        </tr>
+                      </thead>
+                      <tbody>
                         {filteredRequests.map((req, index) => {
+                          // автор (новые заявки: createdBy, старые: author)
                           const createdBy = req.createdBy || req.author;
+
+                          // общее количество по позициям заявки
                           const totalQty =
                             Array.isArray(req.items) && req.items.length
                               ? req.items.reduce(
@@ -1324,8 +1335,12 @@ export default function Warehouse() {
                               : req.quantity != null
                               ? req.quantity
                               : null;
+
+                          // комментарий пользователя
                           const requestComment =
                             req.comment ?? req.description;
+
+                          // заголовок/товар
                           const title =
                             req.title ||
                             (Array.isArray(req.items) &&
@@ -1334,133 +1349,40 @@ export default function Warehouse() {
                             "-";
 
                           return (
-                            <div key={req.id} className="responsive-card">
-                              <div className="responsive-card__title text-wrap">
-                                {title}
-                              </div>
-                              <div className="responsive-card__meta">
-                                <span>№ {index + 1}</span>
-                                <span>{statusLabel(req.status)}</span>
-                                <span>
-                                  {req.createdAt
-                                    ? new Date(
-                                        req.createdAt
-                                      ).toLocaleString("ru-RU", {
-                                        day: "2-digit",
-                                        month: "2-digit",
-                                        year: "numeric",
-                                        hour: "2-digit",
-                                        minute: "2-digit",
-                                      })
-                                    : "-"}
-                                </span>
-                              </div>
-                              <div className="responsive-card__row">
-                                <span className="responsive-card__label">
-                                  Автор
-                                </span>
-                                <span>
-                                  {createdBy?.name ||
-                                    createdBy?.email ||
-                                    "-"}
-                                </span>
-                              </div>
-                              <div className="responsive-card__row">
-                                <span className="responsive-card__label">
-                                  Кол-во
-                                </span>
-                                <span>
-                                  {totalQty != null && totalQty !== 0
-                                    ? totalQty
-                                    : "-"}
-                                </span>
-                              </div>
-                              <div className="responsive-card__row">
-                                <span className="responsive-card__label">
-                                  Комментарий
-                                </span>
-                                <span className="text-wrap">
-                                  {requestComment || "-"}
-                                </span>
-                              </div>
-                            </div>
+                            <tr key={req.id}>
+                              <td>{index + 1}</td>
+                              <td>
+                                {req.createdAt
+                                  ? new Date(
+                                      req.createdAt
+                                    ).toLocaleString("ru-RU", {
+                                      day: "2-digit",
+                                      month: "2-digit",
+                                      year: "numeric",
+                                      hour: "2-digit",
+                                      minute: "2-digit",
+                                    })
+                                  : "-"}
+                              </td>
+                              <td>{statusLabel(req.status)}</td>
+                              <td>
+                                {createdBy?.name ||
+                                  createdBy?.email ||
+                                  "-"}
+                              </td>
+                              <td>{title}</td>
+                              <td style={{ textAlign: "right" }}>
+                                {totalQty != null && totalQty !== 0
+                                  ? totalQty
+                                  : "-"}
+                              </td>
+                              <td>{requestComment || "-"}</td>
+                            </tr>
                           );
                         })}
-                      </div>
-                    }
-                    table={
-                      <div className="table-wrapper">
-                        <table className="table">
-                          <thead>
-                            <tr>
-                              <th style={{ width: 40 }}>№</th>
-                              <th style={{ width: 170 }}>Дата</th>
-                              <th style={{ width: 110 }}>Статус</th>
-                              <th style={{ width: 200 }}>Автор</th>
-                              <th>Товар / заявка</th>
-                              <th style={{ width: 70 }}>Кол-во</th>
-                              <th style={{ width: 220 }}>Комментарий</th>
-                            </tr>
-                          </thead>
-                          <tbody>
-                            {filteredRequests.map((req, index) => {
-                              const createdBy = req.createdBy || req.author;
-                              const totalQty =
-                                Array.isArray(req.items) && req.items.length
-                                  ? req.items.reduce(
-                                      (sum, it) =>
-                                        sum + (Number(it.quantity) || 0),
-                                      0
-                                    )
-                                  : req.quantity != null
-                                  ? req.quantity
-                                  : null;
-                              const requestComment =
-                                req.comment ?? req.description;
-                              const title =
-                                req.title ||
-                                (Array.isArray(req.items) &&
-                                  req.items[0] &&
-                                  req.items[0].name) ||
-                                "-";
-
-                              return (
-                                <tr key={req.id}>
-                                  <td>{index + 1}</td>
-                                  <td>
-                                    {req.createdAt
-                                      ? new Date(
-                                          req.createdAt
-                                        ).toLocaleString("ru-RU", {
-                                          day: "2-digit",
-                                          month: "2-digit",
-                                          year: "numeric",
-                                          hour: "2-digit",
-                                          minute: "2-digit",
-                                        })
-                                      : "-"}
-                                  </td>
-                                  <td>{statusLabel(req.status)}</td>
-                                  <td>
-                                    {createdBy?.name ||
-                                      createdBy?.email ||
-                                      "-"}
-                                  </td>
-                                  <td>{title}</td>
-                                  <td style={{ textAlign: "right" }}>
-                                    {totalQty != null && totalQty !== 0
-                                      ? totalQty
-                                      : "-"}
-                                  </td>
-                                  <td>{requestComment || "-"}</td>
-                                </tr>
-                              );
-                            })}
-                          </tbody>
-                        </table>
-                      </div>
-                    }
-                  />
+                      </tbody>
+                    </table>
+                  </div>
                 )}
               </div>
             </div>
@@ -1609,7 +1531,6 @@ export default function Warehouse() {
               <div className="card1c__body">
                 {/* Фильтры сверху, в стиле Истории движений */}
                 <div
-                  className="tasks-journal-filters"
                   style={{
                     display: "flex",
                     gap: 16,
@@ -1618,7 +1539,7 @@ export default function Warehouse() {
                     flexWrap: "wrap",
                   }}
                 >
-                  <div className="tasks-journal-filter">
+                  <div>
                     <label className="form__label">Статус</label>
                     <select
                       className="form__select"
@@ -1635,7 +1556,7 @@ export default function Warehouse() {
                   </div>
 
                   {isWarehouseManager && (
-                    <div className="tasks-journal-filter">
+                    <div>
                       <label className="form__label">Список задач</label>
                       <select
                         className="form__select"
@@ -1648,7 +1569,7 @@ export default function Warehouse() {
                     </div>
                   )}
 
-                  <div className="tasks-journal-filter" style={{ flex: 1, minWidth: 200 }}>
+                  <div style={{ flex: 1, minWidth: 200 }}>
                     <label className="form__label">Поиск</label>
                     <input
                       type="text"
@@ -1664,102 +1585,6 @@ export default function Warehouse() {
                   <p>Загрузка...</p>
                 ) : filteredTasks.length === 0 ? (
                   <p className="text-muted">Задач не найдено.</p>
-                ) : isMobile ? (
-                  <div className="tasks-journal-cards">
-                    {filteredTasks.map((t) => {
-                      const overdue = isTaskOverdue(t);
-                      const createdAt = t.createdAt
-                        ? new Date(t.createdAt).toLocaleString("ru-RU", {
-                            day: "2-digit",
-                            month: "2-digit",
-                            year: "numeric",
-                            hour: "2-digit",
-                            minute: "2-digit",
-                          })
-                        : "-";
-                      const dueAt = t.dueDate
-                        ? new Date(t.dueDate).toLocaleString("ru-RU", {
-                            day: "2-digit",
-                            month: "2-digit",
-                            year: "numeric",
-                            hour: "2-digit",
-                            minute: "2-digit",
-                          })
-                        : "-";
-                      const executor =
-                        t.executorName || t.executorChatId
-                          ? `${t.executorName || ""}${
-                              t.executorChatId ? ` (TG: ${t.executorChatId})` : ""
-                            }`
-                          : "-";
-                      const author = t.assigner?.name || t.assigner?.email || "-";
-
-                      return (
-                        <div key={t.id} className="card mobile-task-card">
-                          <div className="card__body">
-                            <div className="mobile-task-header">
-                              <div className="mobile-task-title">{t.title || "-"}</div>
-                              <span className={taskStatusBadgeClass(t.status)}>
-                                {TASK_STATUS_LABELS[t.status] || t.status}
-                              </span>
-                            </div>
-                            <div className="mobile-task-meta">
-                              <div>
-                                <div className="mobile-task-label">Дата создания</div>
-                                <div>{createdAt}</div>
-                              </div>
-                              <div>
-                                <div className="mobile-task-label">Срок</div>
-                                <div>
-                                  {dueAt}
-                                  {overdue && (
-                                    <span className="mobile-task-overdue">
-                                      (просрочено)
-                                    </span>
-                                  )}
-                                </div>
-                              </div>
-                            </div>
-                            <div className="mobile-task-meta">
-                              <div>
-                                <div className="mobile-task-label">Исполнитель</div>
-                                <div className="mobile-task-text">{executor}</div>
-                              </div>
-                              <div>
-                                <div className="mobile-task-label">Автор</div>
-                                <div className="mobile-task-text">{author}</div>
-                              </div>
-                            </div>
-                            {t.description && (
-                              <div className="mobile-task-description mobile-task-text">
-                                {t.description}
-                              </div>
-                            )}
-                            {isWarehouseManager && (
-                              <div className="mobile-task-actions">
-                                <label className="form__label">Статус</label>
-                                <select
-                                  className="form__select"
-                                  value={t.status}
-                                  onChange={(e) =>
-                                    handleTaskStatusChangeLocal(t.id, e.target.value)
-                                  }
-                                  onBlur={() => handleTaskStatusSave(t.id)}
-                                  disabled={taskStatusSavingId === t.id}
-                                >
-                                  {TASK_STATUS_OPTIONS.map((o) => (
-                                    <option key={o.value} value={o.value}>
-                                      {o.label}
-                                    </option>
-                                  ))}
-                                </select>
-                              </div>
-                            )}
-                          </div>
-                        </div>
-                      );
-                    })}
-                  </div>
                 ) : (
                   <div className="table-wrapper">
                     <table className="table">
@@ -2312,7 +2137,7 @@ export default function Warehouse() {
                     </div>
 
                     <div className="form__group">
-                      <label className="form__label">Эл. почта</label>
+                      <label className="form__label">Email</label>
                       <input
                         className="form__input"
                         value={supplierForm.email}
@@ -2360,7 +2185,7 @@ export default function Warehouse() {
                             <th>Название</th>
                             <th>ИНН</th>
                             <th>Телефон</th>
-                            <th>Эл. почта</th>
+                            <th>Email</th>
                           </tr>
                         </thead>
                         <tbody>
@@ -2388,7 +2213,14 @@ export default function Warehouse() {
               <div className="card card--1c" style={{ gridColumn: "span 2" }}>
                 <div className="card1c__header">Заказы поставщику</div>
                 <div className="card1c__body">
-                  <div className="orders-actions">
+                  <div
+                    style={{
+                      display: "flex",
+                      gap: 8,
+                      marginBottom: 12,
+                      flexWrap: "wrap",
+                    }}
+                  >
                     <button
                       className="btn btn--secondary"
                       onClick={handleOpenPurchaseOrder}
@@ -2416,57 +2248,6 @@ export default function Warehouse() {
                     <p>Загрузка заказов...</p>
                   ) : sortedPurchaseOrders.length === 0 ? (
                     <p className="text-muted">Заказов пока нет.</p>
-                  ) : isMobile ? (
-                    <div className="orders-cards">
-                      {sortedPurchaseOrders.map((po) => {
-                        const dateObj = po.createdAt
-                          ? new Date(po.createdAt)
-                          : null;
-                        const dateStr = dateObj
-                          ? dateObj.toLocaleDateString("ru-RU", {
-                              day: "2-digit",
-                              month: "2-digit",
-                              year: "numeric",
-                            })
-                          : "Без даты";
-                        const timeStr = dateObj
-                          ? dateObj.toLocaleTimeString("ru-RU", {
-                              hour: "2-digit",
-                              minute: "2-digit",
-                            })
-                          : "-";
-                        return (
-                          <div key={po.id} className="card mobile-order-card">
-                            <div className="card__body">
-                              <div className="mobile-order-header">
-                                <div className="mobile-order-title">
-                                  Заказ №{po.id}
-                                </div>
-                                <span className="badge badge--muted">
-                                  {PO_STATUS_LABELS[po.status] || po.status}
-                                </span>
-                              </div>
-                              <div className="mobile-order-meta">
-                                <div>
-                                  <div className="mobile-order-label">Поставщик</div>
-                                  <div className="mobile-order-text">
-                                    {po.supplier?.name || "-"}
-                                  </div>
-                                </div>
-                                <div>
-                                  <div className="mobile-order-label">Дата</div>
-                                  <div>{dateStr}</div>
-                                </div>
-                                <div>
-                                  <div className="mobile-order-label">Время</div>
-                                  <div>{timeStr}</div>
-                                </div>
-                              </div>
-                            </div>
-                          </div>
-                        );
-                      })}
-                    </div>
                   ) : (
                     <div className="table-wrapper">
                       <table className="table">

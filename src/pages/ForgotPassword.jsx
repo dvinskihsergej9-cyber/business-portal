@@ -1,14 +1,14 @@
-﻿import { useState } from "react";
-import { apiFetch } from "../apiConfig";
+import { useState } from "react";
+import { API_BASE } from "../apiConfig";
 
 const T = {
-  title: "Восстановление пароля",
-  email: "Email",
-  send: "Отправить ссылку",
+  title: "\u0412\u043e\u0441\u0441\u0442\u0430\u043d\u043e\u0432\u043b\u0435\u043d\u0438\u0435 \u043f\u0430\u0440\u043e\u043b\u044f",
+  email: "\u041f\u043e\u0447\u0442\u0430",
+  send: "\u041e\u0442\u043f\u0440\u0430\u0432\u0438\u0442\u044c",
   success:
-    "Если email существует в системе, мы отправим ссылку для сброса пароля.",
-  placeholder: "name@domain.ru",
-  errEmail: "Введите корректный email.",
+    "\u0415\u0441\u043b\u0438 \u0430\u043a\u043a\u0430\u0443\u043d\u0442 \u0441\u0443\u0449\u0435\u0441\u0442\u0432\u0443\u0435\u0442 \u2014 \u043c\u044b \u043e\u0442\u043f\u0440\u0430\u0432\u0438\u043b\u0438 \u043f\u0438\u0441\u044c\u043c\u043e.",
+  placeholder: "\u0438\u043c\u044f@\u0434\u043e\u043c\u0435\u043d.ru",
+  errEmail: "\u0423\u043a\u0430\u0436\u0438\u0442\u0435 email",
 };
 
 export default function ForgotPassword() {
@@ -28,7 +28,7 @@ export default function ForgotPassword() {
 
     try {
       setLoading(true);
-      await apiFetch("/auth/forgot-password", {
+      await fetch(`${API_BASE}/auth/forgot-password`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ email }),
@@ -40,9 +40,6 @@ export default function ForgotPassword() {
       setLoading(false);
     }
   };
-
-  const emailInvalid = (event) => event.target.setCustomValidity(T.errEmail);
-  const clearInvalid = (event) => event.target.setCustomValidity("");
 
   return (
     <div style={{ maxWidth: 420, margin: "60px auto", padding: "0 16px" }}>
@@ -62,15 +59,14 @@ export default function ForgotPassword() {
       ) : (
         <form onSubmit={handleSubmit}>
           <div style={{ marginBottom: 10 }}>
-            <label style={{ display: "block", marginBottom: 6 }}>{T.email}</label>
+            <label style={{ display: "block", marginBottom: 6 }}>
+              {T.email}
+            </label>
             <input
               type="email"
               placeholder={T.placeholder}
               value={email}
               onChange={(e) => setEmail(e.target.value)}
-              onInvalid={emailInvalid}
-              onInput={clearInvalid}
-              title={T.errEmail}
               style={{ width: "100%", padding: 8, boxSizing: "border-box" }}
             />
             {error && (

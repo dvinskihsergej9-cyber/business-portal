@@ -7,90 +7,6 @@ datasource db {
   url      = env("DATABASE_URL")
 }
 
-// ============ ORG / TENANT ============
-model Organization {
-  id        Int      @id @default(autoincrement())
-  name      String
-  createdAt DateTime @default(now())
-
-  memberships   Membership[]
-  subscriptions Subscription[]
-  payments      Payment[]
-  orgProfiles   OrgProfile[]
-
-  employees            Employee[]
-  hrLeaveApplications  HrLeaveApplication[]
-  safetyInstructions   SafetyInstruction[]
-  safetyAssignments    SafetyAssignment[]
-  leaveRequests        LeaveRequest[]
-  paymentRequests      PaymentRequest[]
-  warehouseRequests    WarehouseRequest[]
-  warehouseRequestItems WarehouseRequestItem[]
-  warehouseTasks       WarehouseTask[]
-  purchaseOrders       PurchaseOrder[]
-  purchaseOrderItems   PurchaseOrderItem[]
-  items                Item[]
-  warehouseLocations   WarehouseLocation[]
-  warehousePlacements  WarehousePlacement[]
-  stockMovements       StockMovement[]
-  binAuditSessions     BinAuditSession[]
-  binAuditEvents       BinAuditEvent[]
-  stockDiscrepancies   StockDiscrepancy[]
-  receivingDiscrepancies ReceivingDiscrepancy[]
-  suppliers            Supplier[]
-  supplierTrucks       SupplierTruck[]
-  inviteTokens         InviteToken[]
-  portalNews           PortalNews[]
-}
-
-model Membership {
-  id        Int      @id @default(autoincrement())
-  orgId     Int
-  userId    Int
-  role      String
-  createdAt DateTime @default(now())
-
-  org  Organization @relation(fields: [orgId], references: [id])
-  user User         @relation(fields: [userId], references: [id])
-
-  @@unique([orgId, userId])
-  @@unique([id, orgId])
-}
-
-model Subscription {
-  id        Int      @id @default(autoincrement())
-  orgId     Int
-  plan      String
-  status    String
-  paidUntil DateTime?
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
-
-  org Organization @relation(fields: [orgId], references: [id])
-
-  @@unique([orgId])
-  @@unique([id, orgId])
-}
-
-model Payment {
-  id                 Int      @id @default(autoincrement())
-  orgId     Int
-  userId             Int?
-  provider           String
-  providerPaymentId  String
-  amount             Float
-  currency           String
-  status             String
-  metadata           Json?
-  createdAt          DateTime @default(now())
-
-  org  Organization @relation(fields: [orgId], references: [id])
-  user User?        @relation(fields: [userId], references: [id])
-
-  @@unique([provider, providerPaymentId])
-  @@unique([id, orgId])
-}
-
 // ============ USERS ============
 model User {
   id        Int      @id @default(autoincrement())
@@ -105,8 +21,6 @@ model User {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  memberships      Membership[]
-  payments         Payment[]
   leaveRequests     LeaveRequest[]
   paymentRequests   PaymentRequest[]
   warehouseRequests WarehouseRequest[]
@@ -124,7 +38,6 @@ model User {
 
 model InviteToken {
   id               Int      @id @default(autoincrement())
-  orgId     Int
   email            String
   tokenHash        String   @unique
   role             String
@@ -133,10 +46,6 @@ model InviteToken {
   createdByUserId  Int
   createdBy        User     @relation("InviteCreatedBy", fields: [createdByUserId], references: [id])
   createdAt        DateTime @default(now())
-
-  org Organization @relation(fields: [orgId], references: [id])
-
-  @@unique([id, orgId])
 }
 
 
@@ -150,26 +59,9 @@ model PasswordResetToken {
   user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
 }
 
-model PortalNews {
-  id        Int      @id @default(autoincrement())
-  orgId     Int
-  title     String
-  body      String
-  tags      Json?
-  published Boolean  @default(true)
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
-
-  org Organization @relation(fields: [orgId], references: [id])
-
-  @@unique([id, orgId])
-  @@map("portal_news")
-}
-
 // ============ HR ============
 model Employee {
   id                Int                  @id @default(autoincrement())
-  orgId     Int
   fullName          String
   position          String
   department        String
@@ -184,15 +76,10 @@ model Employee {
   leaveOverrideDays Int?
   leaveApplications HrLeaveApplication[]
   safetyAssignments SafetyAssignment[]
-
-  org Organization @relation(fields: [orgId], references: [id])
-
-  @@unique([id, orgId])
 }
 
 model HrLeaveApplication {
   id         Int      @id @default(autoincrement())
-  orgId     Int
   employeeId Int
   type       String   // PAID / UNPAID / TERMINATION
   startDate  DateTime
@@ -204,29 +91,19 @@ model HrLeaveApplication {
   createdAt  DateTime @default(now())
   updatedAt  DateTime @updatedAt
   employee   Employee @relation(fields: [employeeId], references: [id])
-
-  org Organization @relation(fields: [orgId], references: [id])
-
-  @@unique([id, orgId])
 }
 
 model SafetyInstruction {
   id          Int                 @id @default(autoincrement())
-  orgId     Int
   title       String
   description String?
   role        String?
   createdAt   DateTime            @default(now())
   assignments SafetyAssignment[]
-
-  org Organization @relation(fields: [orgId], references: [id])
-
-  @@unique([id, orgId])
 }
 
 model SafetyAssignment {
   id             Int               @id @default(autoincrement())
-  orgId     Int
   employeeId     Int
   instructionId  Int
   status         String            @default("PENDING") // PENDING / COMPLETED
@@ -237,16 +114,11 @@ model SafetyAssignment {
   updatedAt      DateTime          @updatedAt
   employee       Employee          @relation(fields: [employeeId], references: [id])
   instruction    SafetyInstruction @relation(fields: [instructionId], references: [id])
-
-  org Organization @relation(fields: [orgId], references: [id])
-
-  @@unique([id, orgId])
 }
 
 // ============ LEAVE ============
 model LeaveRequest {
   id        Int      @id @default(autoincrement())
-  orgId     Int
   user      User     @relation(fields: [userId], references: [id])
   userId    Int
   type      String
@@ -256,16 +128,11 @@ model LeaveRequest {
   comment   String?
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
-
-  org Organization @relation(fields: [orgId], references: [id])
-
-  @@unique([id, orgId])
 }
 
 // ============ PAYMENTS ============
 model PaymentRequest {
   id          Int       @id @default(autoincrement())
-  orgId     Int
   user        User      @relation(fields: [userId], references: [id])
   userId      Int
   title       String
@@ -277,16 +144,11 @@ model PaymentRequest {
   comment     String?
   createdAt   DateTime  @default(now())
   updatedAt   DateTime  @updatedAt
-
-  org Organization @relation(fields: [orgId], references: [id])
-
-  @@unique([id, orgId])
 }
 
 // ============ WAREHOUSE REQUESTS ============
 model WarehouseRequest {
   id        Int      @id @default(autoincrement())
-  orgId     Int
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
@@ -306,29 +168,19 @@ model WarehouseRequest {
   relatedPaymentId Int?
   relatedDocument  String?
   targetEmployee   String?
-
-  org Organization @relation(fields: [orgId], references: [id])
-
-  @@unique([id, orgId])
 }
 
 model WarehouseRequestItem {
   id        Int              @id @default(autoincrement())
-  orgId     Int
   name      String
   quantity  Float
   unit      String?
   requestId Int
   request   WarehouseRequest @relation(fields: [requestId], references: [id])
-
-  org Organization @relation(fields: [orgId], references: [id])
-
-  @@unique([id, orgId])
 }
 
 model WarehouseTask {
   id           Int      @id @default(autoincrement())
-  orgId     Int
   createdAt    DateTime @default(now())
   updatedAt    DateTime @updatedAt
   title        String
@@ -340,10 +192,6 @@ model WarehouseTask {
   assignerId   Int
   assigner     User     @relation(fields: [assignerId], references: [id])
   lastReminderAt DateTime?
-
-  org Organization @relation(fields: [orgId], references: [id])
-
-  @@unique([id, orgId])
 }
 
 enum WarehouseRequestType {
@@ -362,7 +210,6 @@ enum WarehouseRequestStatus {
 // ============ PURCHASE ORDERS ============
 model PurchaseOrder {
   id          Int                 @id @default(autoincrement())
-  orgId     Int
   number      String?             @unique
   date        DateTime            @default(now())
   plannedDate DateTime?
@@ -381,15 +228,10 @@ model PurchaseOrder {
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
-
-  org Organization @relation(fields: [orgId], references: [id])
-
-  @@unique([id, orgId])
 }
 
 model PurchaseOrderItem {
   id      Int           @id @default(autoincrement())
-  orgId     Int
   orderId Int
   order   PurchaseOrder @relation(fields: [orderId], references: [id])
 
@@ -399,10 +241,6 @@ model PurchaseOrderItem {
   quantity Float
   receivedQty Float @default(0)
   price    Float
-
-  org Organization @relation(fields: [orgId], references: [id])
-
-  @@unique([id, orgId])
 }
 
 enum PurchaseOrderStatus {
@@ -416,7 +254,6 @@ enum PurchaseOrderStatus {
 // ============ STOCK ITEMS ============
 model Item {
   id          Int      @id @default(autoincrement())
-  orgId     Int
   name        String
   sku         String?  @unique
   barcode     String?  @unique
@@ -433,15 +270,10 @@ model Item {
   placements         WarehousePlacement[]
   discrepancies      StockDiscrepancy[]
   receivingDiscrepancies ReceivingDiscrepancy[]
-
-  org Organization @relation(fields: [orgId], references: [id])
-
-  @@unique([id, orgId])
 }
 
 model WarehouseLocation {
   id        Int      @id @default(autoincrement())
-  orgId     Int
   name      String
   zone      String?
   aisle     String?
@@ -455,15 +287,10 @@ model WarehouseLocation {
   placements WarehousePlacement[]
   auditEvents BinAuditEvent[]
   discrepancies StockDiscrepancy[]
-
-  org Organization @relation(fields: [orgId], references: [id])
-
-  @@unique([id, orgId])
 }
 
 model WarehousePlacement {
   id         Int      @id @default(autoincrement())
-  orgId     Int
   itemId     Int
   locationId Int
   qty        Int
@@ -474,15 +301,10 @@ model WarehousePlacement {
   location WarehouseLocation @relation(fields: [locationId], references: [id])
 
   @@unique([itemId, locationId])
-
-  org Organization @relation(fields: [orgId], references: [id])
-
-  @@unique([id, orgId])
 }
 
 model StockMovement {
   id           Int               @id @default(autoincrement())
-  orgId     Int
   opId         String?           @unique
   type         StockMovementType
   itemId       Int
@@ -498,15 +320,10 @@ model StockMovement {
   createdAt    DateTime          @default(now())
   createdById  Int?
   createdBy    User?             @relation(fields: [createdById], references: [id])
-
-  org Organization @relation(fields: [orgId], references: [id])
-
-  @@unique([id, orgId])
 }
 
 model BinAuditSession {
   id              Int                 @id @default(autoincrement())
-  orgId     Int
   startedByUserId Int?
   startedBy       User?               @relation(fields: [startedByUserId], references: [id])
   startedAt       DateTime            @default(now())
@@ -514,15 +331,10 @@ model BinAuditSession {
   status          BinAuditSessionStatus @default(ACTIVE)
   events          BinAuditEvent[]
   discrepancies   StockDiscrepancy[]
-
-  org Organization @relation(fields: [orgId], references: [id])
-
-  @@unique([id, orgId])
 }
 
 model BinAuditEvent {
   id         Int            @id @default(autoincrement())
-  orgId     Int
   sessionId  Int
   session    BinAuditSession @relation(fields: [sessionId], references: [id])
   locationId Int
@@ -530,15 +342,10 @@ model BinAuditEvent {
   checkedAt  DateTime       @default(now())
   result     BinAuditResult
   note       String?
-
-  org Organization @relation(fields: [orgId], references: [id])
-
-  @@unique([id, orgId])
 }
 
 model StockDiscrepancy {
   id            Int                 @id @default(autoincrement())
-  orgId     Int
   sessionId     Int?
   session       BinAuditSession?    @relation(fields: [sessionId], references: [id])
   locationId    Int
@@ -555,15 +362,10 @@ model StockDiscrepancy {
   closedByUser  User?               @relation("DiscrepancyClosedBy", fields: [closedByUserId], references: [id])
   closeNote     String?
   movementOpId  String?
-
-  org Organization @relation(fields: [orgId], references: [id])
-
-  @@unique([id, orgId])
 }
 
 model ReceivingDiscrepancy {
   id            Int      @id @default(autoincrement())
-  orgId     Int
   purchaseOrderId Int
   purchaseOrder PurchaseOrder @relation(fields: [purchaseOrderId], references: [id])
   itemId        Int?
@@ -579,15 +381,11 @@ model ReceivingDiscrepancy {
   closedByUser  User? @relation("ReceivingDiscrepancyClosedBy", fields: [closedByUserId], references: [id])
   closeNote     String?
   movementOpId  String?
-
-  org Organization @relation(fields: [orgId], references: [id])
-
-  @@unique([id, orgId])
 }
 
+
 model OrgProfile {
-  id            Int      @id @default(autoincrement())
-  orgId     Int
+  id            Int      @id @default(1)
   orgName       String
   legalAddress  String
   actualAddress String
@@ -595,11 +393,6 @@ model OrgProfile {
   kpp           String
   phone         String
   updatedAt     DateTime @updatedAt
-
-  org Organization @relation(fields: [orgId], references: [id])
-
-  @@unique([orgId])
-  @@unique([id, orgId])
 }
 
 enum StockMovementType {
@@ -639,7 +432,6 @@ enum LeaveRegionCategory {
 // ============ SUPPLIERS ============
 model Supplier {
   id        Int      @id @default(autoincrement())
-  orgId     Int
   name      String
   inn       String?
   phone     String?
@@ -649,15 +441,10 @@ model Supplier {
   updatedAt DateTime @updatedAt
 
   orders PurchaseOrder[]
-
-  org Organization @relation(fields: [orgId], references: [id])
-
-  @@unique([id, orgId])
 }
 
 model SupplierTruck {
   id            Int                 @id @default(autoincrement())
-  orgId     Int
   status        SupplierTruckStatus @default(IN_QUEUE)
 
   arrivalAt     DateTime            @default(now())
@@ -678,10 +465,6 @@ model SupplierTruck {
   directImport  Boolean             @default(false)
 
   createdAt     DateTime            @default(now())
-
-  org Organization @relation(fields: [orgId], references: [id])
-
-  @@unique([id, orgId])
 }
 
 enum SupplierTruckStatus {

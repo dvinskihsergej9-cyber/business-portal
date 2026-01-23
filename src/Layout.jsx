@@ -1,18 +1,14 @@
-﻿import { useEffect, useMemo, useState } from "react";
 import { NavLink, Outlet, useLocation } from "react-router-dom";
 import { useAuth } from "./context/AuthContext";
-import t from "./i18n/t";
 
 export default function Layout() {
   const { user, logout } = useAuth();
   const location = useLocation();
-  const [drawerOpen, setDrawerOpen] = useState(false);
-  const [isMobile, setIsMobile] = useState(false);
 
   const menu = [
     {
-      label: "Склад",
-      to: "/warehouse",
+      label: "Главная",
+      to: "/dashboard",
       roles: ["EMPLOYEE", "HR", "ACCOUNTING", "ADMIN"],
     },
     {
@@ -21,19 +17,35 @@ export default function Layout() {
       roles: ["HR", "ADMIN"],
     },
     {
-      label: "Техподдержка",
+      label: "Бухгалтерия",
+      to: "/accounting",
+      roles: ["ACCOUNTING", "ADMIN"],
+    },
+    {
+      label: "Документооборот",
+      to: "/documents",
+      roles: ["EMPLOYEE", "HR", "ACCOUNTING", "ADMIN"],
+    },
+    {
+      label: "Юрист",
+      to: "/legal",
+      roles: ["EMPLOYEE", "HR", "ACCOUNTING", "ADMIN"],
+    },
+    {
+      label: "Склад",
+      to: "/warehouse",
+      roles: ["EMPLOYEE", "HR", "ACCOUNTING", "ADMIN"],
+    },
+    {
+      label: "Техническая поддержка",
       to: "/support",
       roles: ["EMPLOYEE", "HR", "ACCOUNTING", "ADMIN"],
     },
-    {
-      label: "Оплата и тариф",
-      to: "/billing",
-      roles: ["EMPLOYEE", "HR", "ACCOUNTING", "ADMIN"],
-    },
+    // вкладку "Профиль" убрали из меню
     {
       label: "Администрирование",
       to: "/admin",
-      roles: ["ADMIN"],
+      roles: ["ADMIN"], // видно только ADMIN
     },
   ];
 
@@ -41,199 +53,68 @@ export default function Layout() {
     ? menu.filter((item) => item.roles.includes(user.role))
     : [];
 
-  const roleLabel = (role) => {
-    switch (role) {
-      case "EMPLOYEE":
-        return t("roleEmployee");
-      case "HR":
-        return t("roleHr");
-      case "ACCOUNTING":
-        return t("roleAccounting");
-      case "WAREHOUSE":
-        return t("roleWarehouse");
-      case "ADMIN":
-        return t("roleAdmin");
-      default:
-        return role;
-    }
-  };
-
-  const pageTitle = useMemo(() => {
-    const match = allowedMenu.find((item) => location.pathname.startsWith(item.to));
-    return match?.label || t("appName");
-  }, [allowedMenu, location.pathname]);
-
-  useEffect(() => {
-    if (!drawerOpen) return;
-    const handleKeyDown = (event) => {
-      if (event.key === "Escape") {
-        setDrawerOpen(false);
-      }
-    };
-    window.addEventListener("keydown", handleKeyDown);
-    return () => window.removeEventListener("keydown", handleKeyDown);
-  }, [drawerOpen]);
-
-  useEffect(() => {
-    document.body.classList.toggle("no-scroll", drawerOpen);
-    return () => document.body.classList.remove("no-scroll");
-  }, [drawerOpen]);
-
-  useEffect(() => {
-    const handleResize = () => {
-      if (window.innerWidth > 768 && drawerOpen) {
-        setDrawerOpen(false);
-      }
-    };
-    window.addEventListener("resize", handleResize);
-    return () => window.removeEventListener("resize", handleResize);
-  }, [drawerOpen]);
-
-  useEffect(() => {
-    setDrawerOpen(false);
-  }, [location.pathname]);
-
-  useEffect(() => {
-    const media = window.matchMedia("(max-width: 768px)");
-    const handleChange = (event) => {
-      setIsMobile(event.matches);
-    };
-    setIsMobile(media.matches);
-    if (media.addEventListener) {
-      media.addEventListener("change", handleChange);
-    } else {
-      media.addListener(handleChange);
-    }
-    return () => {
-      if (media.removeEventListener) {
-        media.removeEventListener("change", handleChange);
-      } else {
-        media.removeListener(handleChange);
-      }
-    };
-  }, []);
-
-  const renderNavItems = () => (
-    <nav style={styles.nav} className="sidebar-nav">
-      {allowedMenu.map((item) => (
-        <NavLink
-          key={item.to}
-          to={item.to}
-          onClick={() => setDrawerOpen(false)}
-          style={({ isActive }) =>
-            isActive
-              ? { ...styles.navItem, ...styles.navItemActive }
-              : styles.navItem
-          }
-        >
-          <span>{item.label}</span>
-        </NavLink>
-      ))}
-    </nav>
-  );
-
   const handleLogout = () => {
     logout();
   };
 
   return (
-    <div style={styles.root} className="layout-root">
-      {isMobile && (
-        <div className="layout-topbar">
-          <button
-            type="button"
-            className="layout-topbar__menu"
-            aria-label={t("openMenu")}
-            aria-expanded={drawerOpen}
-            aria-controls="mobile-drawer"
-            onClick={() => setDrawerOpen(true)}
-          >
-            {"☰"}
-          </button>
-          <div className="layout-topbar__title">{pageTitle}</div>
-        </div>
-      )}
-
-      {isMobile && drawerOpen && (
-        <button
-          type="button"
-          className="layout-overlay"
-          aria-label={t("closeMenu")}
-          onClick={() => setDrawerOpen(false)}
-        />
-      )}
-
-      {isMobile && (
-        <aside
-          id="mobile-drawer"
-          className={`layout-drawer${drawerOpen ? " is-open" : ""}`}
-        >
-          <div style={styles.logoBlock} className="layout-drawer__logo">
-            <div style={styles.logoMark} />
-            <div>
-              <div style={styles.logoTitle}>{t("appName")}</div>
-              <div style={styles.logoSubtitle}>{t("appSubtitle")}</div>
-            </div>
-          </div>
-
-          {user && (
-            <div style={styles.userCard}>
-              <div style={styles.userName}>{user.name}</div>
-              <div style={styles.userEmail}>{user.email}</div>
-              <div style={styles.userRole}>{roleLabel(user.role)}</div>
-            </div>
-          )}
-
-          {renderNavItems()}
-
-          <button
-            style={styles.logoutBtn}
-            onClick={() => {
-              setDrawerOpen(false);
-              handleLogout();
-            }}
-          >
-            {t("logout")}
-          </button>
-        </aside>
-      )}
-
-      {!isMobile && (
-        <>
-          <aside style={styles.sidebar} className="layout-sidebar">
-            <div style={styles.logoBlock}>
-              <div style={styles.logoMark} />
-              <div>
-                <div style={styles.logoTitle}>{t("appName")}</div>
-                <div style={styles.logoSubtitle}>{t("appSubtitle")}</div>
-              </div>
-            </div>
-
-            {user && (
-              <div style={styles.userCard}>
-                <div style={styles.userName}>{user.name}</div>
-                <div style={styles.userEmail}>{user.email}</div>
-                <div style={styles.userRole}>{roleLabel(user.role)}</div>
-              </div>
-            )}
-
-            {renderNavItems()}
-
-            <button style={styles.logoutBtn} onClick={handleLogout}>
-              {t("logout")}
-            </button>
-          </aside>
-        </>
-      )}
-
-      <div style={styles.main} className="layout-main">
-        <header style={styles.header} className="portal-header layout-header">
+    <div style={styles.root}>
+      {/* Сайдбар */}
+      <aside style={styles.sidebar}>
+        {/* Лого / название */}
+        <div style={styles.logoBlock}>
+          <div style={styles.logoMark} />
           <div>
-            <div style={styles.headerTitle}>{pageTitle}</div>
+            <div style={styles.logoTitle}>Business Portal</div>
+            <div style={styles.logoSubtitle}>Внутренний сервис компании</div>
+          </div>
+        </div>
+
+        {/* Карточка пользователя */}
+        {user && (
+          <div style={styles.userCard}>
+            <div style={styles.userName}>{user.name}</div>
+            <div style={styles.userEmail}>{user.email}</div>
+            <div style={styles.userRole}>{user.role}</div>
+          </div>
+        )}
+
+        {/* Навигация */}
+        <nav style={styles.nav} className="sidebar-nav">
+          {allowedMenu.map((item) => (
+            <NavLink
+              key={item.to}
+              to={item.to}
+              style={({ isActive }) =>
+                isActive
+                  ? { ...styles.navItem, ...styles.navItemActive }
+                  : styles.navItem
+              }
+            >
+              <span>{item.label}</span>
+            </NavLink>
+          ))}
+        </nav>
+
+        {/* Кнопка выхода */}
+        <button style={styles.logoutBtn} onClick={handleLogout}>
+          Выйти
+        </button>
+      </aside>
+
+      {/* Правая часть: шапка + контент */}
+      <div style={styles.main}>
+        <header style={styles.header} className="portal-header">
+          <div>
+            <div style={styles.headerTitle}>
+              {location.pathname === "/dashboard"
+                ? "Обзор"
+                : "Внутренний портал"}
+            </div>
             <div style={styles.headerSubtitle}>
               {user
-                ? `${t("roleUser")}: ${user.name} (${roleLabel(user.role)})`
-                : ""}
+                ? `Пользователь: ${user.name} (${user.role})`
+                : "Вы не авторизованы"}
             </div>
           </div>
         </header>
@@ -328,14 +209,14 @@ const styles = {
     fontSize: 14,
     gap: 8,
     background: "transparent",
-    border: "1px solid #111827",
+    border: "1px solid #111827", // чёрная рамка всегда
     transition:
       "background 0.15s ease, color 0.15s ease, border 0.15s ease, box-shadow 0.15s ease",
   },
   navItemActive: {
     background: "#ffffff",
     color: "#1d4ed8",
-    borderColor: "#2563eb",
+    borderColor: "#2563eb", // активный — синяя рамка
     boxShadow: "0 0 0 1px rgba(37, 99, 235, 0.12)",
     fontWeight: 600,
   },

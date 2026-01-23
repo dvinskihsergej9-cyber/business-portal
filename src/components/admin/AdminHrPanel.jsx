@@ -1,7 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
-import { apiFetch } from "../../apiConfig";
-import ResponsiveDataView from "../ResponsiveDataView";
-import useIsMobile from "../../hooks/useIsMobile";
+
+const API = "http://localhost:3001/api";
 
 const LEAVE_CATEGORIES = [
   { value: "STANDARD", label: "Стандартная" },
@@ -50,7 +49,6 @@ export default function AdminHrPanel() {
   const [query, setQuery] = useState("");
   const [statusFilter, setStatusFilter] = useState("ALL");
   const [departmentFilter, setDepartmentFilter] = useState("ALL");
-  const isMobile = useIsMobile();
   const [editEmployee, setEditEmployee] = useState(null);
   const [deleteEmployee, setDeleteEmployee] = useState(null);
   const [saving, setSaving] = useState(false);
@@ -81,7 +79,7 @@ export default function AdminHrPanel() {
     try {
       setLoading(true);
       setError("");
-      const res = await apiFetch("/admin/hr/employees", {
+      const res = await fetch(`${API}/admin/hr/employees`, {
         headers: authHeaders,
       });
       const data = await res.json();
@@ -169,8 +167,8 @@ export default function AdminHrPanel() {
             ? null
             : Number(form.leaveOverrideDays),
       };
-      const res = await apiFetch(
-        `/admin/hr/employees/${editEmployee.id}`,
+      const res = await fetch(
+        `${API}/admin/hr/employees/${editEmployee.id}`,
         {
           method: "PUT",
           headers: authHeaders,
@@ -199,8 +197,8 @@ export default function AdminHrPanel() {
     try {
       setDeleting(true);
       setError("");
-      const res = await apiFetch(
-        `/admin/hr/employees/${deleteEmployee.id}`,
+      const res = await fetch(
+        `${API}/admin/hr/employees/${deleteEmployee.id}`,
         {
           method: "DELETE",
           headers: authHeaders,
@@ -287,110 +285,57 @@ export default function AdminHrPanel() {
       {loading && <div className="admin-muted">Загрузка...</div>}
 
       {!loading && (
-        <ResponsiveDataView
-          isMobile={isMobile}
-          cards={
-            <div className="responsive-cards">
+        <div className="admin-table-wrapper">
+          <table className="admin-table">
+            <thead>
+              <tr>
+                <th>Сотрудник</th>
+                <th>Должность</th>
+                <th>Подразделение</th>
+                <th>Статус</th>
+                <th>Отпуск</th>
+                <th></th>
+              </tr>
+            </thead>
+            <tbody>
               {filtered.map((emp) => (
-                <div key={emp.id} className="responsive-card">
-                  <div className="responsive-card__title text-wrap">
-                    {emp.fullName}
-                  </div>
-                  <div className="responsive-card__meta">
-                    <span>ID: {emp.id}</span>
-                    <span>{emp.status}</span>
-                  </div>
-                  <div className="responsive-card__row">
-                    <span className="responsive-card__label">Position</span>
-                    <span className="text-wrap">{emp.position || "-"}</span>
-                  </div>
-                  <div className="responsive-card__row">
-                    <span className="responsive-card__label">Department</span>
-                    <span className="text-wrap">{emp.department || "-"}</span>
-                  </div>
-                  <div className="responsive-card__row">
-                    <span className="responsive-card__label">Leave</span>
-                    <span>{emp.annualLeaveDays ?? "-"} days</span>
-                  </div>
-                  <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+                <tr key={emp.id}>
+                  <td>
+                    <div className="admin-table__title">{emp.fullName}</div>
+                    <div className="admin-table__meta">ID: {emp.id}</div>
+                  </td>
+                  <td>{emp.position}</td>
+                  <td>{emp.department}</td>
+                  <td>{emp.status}</td>
+                  <td>{emp.annualLeaveDays ?? "-"} дн.</td>
+                  <td className="admin-table__actions">
                     <button
                       type="button"
                       className="admin-btn admin-btn--secondary"
                       onClick={() => setEditEmployee(emp)}
                     >
-                      Edit
+                      Редактировать
                     </button>
                     <button
                       type="button"
                       className="admin-btn admin-btn--danger"
                       onClick={() => setDeleteEmployee(emp)}
                     >
-                      Delete
+                      Удалить
                     </button>
-                  </div>
-                </div>
+                  </td>
+                </tr>
               ))}
               {!filtered.length && (
-                <div className="responsive-card">
-                  <div className="admin-muted">No employees found.</div>
-                </div>
+                <tr>
+                  <td colSpan="6" className="admin-muted">
+                    Нет данных по сотрудникам.
+                  </td>
+                </tr>
               )}
-            </div>
-          }
-          table={
-            <div className="admin-table-wrapper">
-              <table className="admin-table">
-                <thead>
-                  <tr>
-                    <th>Employee</th>
-                    <th>Position</th>
-                    <th>Department</th>
-                    <th>Status</th>
-                    <th>Leave</th>
-                    <th></th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {filtered.map((emp) => (
-                    <tr key={emp.id}>
-                      <td>
-                        <div className="admin-table__title">{emp.fullName}</div>
-                        <div className="admin-table__meta">ID: {emp.id}</div>
-                      </td>
-                      <td>{emp.position}</td>
-                      <td>{emp.department}</td>
-                      <td>{emp.status}</td>
-                      <td>{emp.annualLeaveDays ?? "-"} days</td>
-                      <td className="admin-table__actions">
-                        <button
-                          type="button"
-                          className="admin-btn admin-btn--secondary"
-                          onClick={() => setEditEmployee(emp)}
-                        >
-                          Edit
-                        </button>
-                        <button
-                          type="button"
-                          className="admin-btn admin-btn--danger"
-                          onClick={() => setDeleteEmployee(emp)}
-                        >
-                          Delete
-                        </button>
-                      </td>
-                    </tr>
-                  ))}
-                  {!filtered.length && (
-                    <tr>
-                      <td colSpan="6" className="admin-muted">
-                        No employees found.
-                      </td>
-                    </tr>
-                  )}
-                </tbody>
-              </table>
-            </div>
-          }
-        />
+            </tbody>
+          </table>
+        </div>
       )}
 
       {editEmployee && (
@@ -494,7 +439,7 @@ export default function AdminHrPanel() {
 
               <div className="admin-form__row">
                 <div>
-                  <label className="admin-label">ID чата Telegram</label>
+                  <label className="admin-label">Telegram chat ID</label>
                   <input
                     className="admin-input"
                     value={form.telegramChatId}

@@ -1,22 +1,30 @@
-﻿import { useEffect, useState } from "react";
-import useIsMobile from "../hooks/useIsMobile";
-import { apiFetch } from "../apiConfig";
+import { useEffect, useState } from "react";
 
+const API = "http://localhost:3001/api";
+
+/**
+ * Печатная форма инвентаризации (акт ревизионной проверки)
+ * includeZero = true  → печатать все позиции
+ * includeZero = false → печатать только позиции с остатком > 0
+ */
 function openInventoryAuditActWindow(items, includeZero) {
   if (!Array.isArray(items) || items.length === 0) return;
 
+  // 1. Фильтруем список в зависимости от галочки
   const itemsForPrint = items.filter((it) => {
     const stock = it.currentStock ?? 0;
     return includeZero ? true : stock > 0;
   });
 
+  // Если после фильтрации ничего не осталось — предупредим
   if (itemsForPrint.length === 0) {
-    alert("Нет остатков для печати акта.");
+    alert("Нет позиций для печати акта.");
     return;
   }
 
   const dateStr = new Date().toLocaleDateString("ru-RU");
 
+  // 2. Строки таблицы строим по itemsForPrint
   const rowsHtml = itemsForPrint
     .map((it, index) => {
       const stock = it.currentStock ?? "";
@@ -43,7 +51,7 @@ function openInventoryAuditActWindow(items, includeZero) {
 <html lang="ru">
 <head>
   <meta charset="utf-8" />
-  <title>Акт инвентаризации от ${dateStr}</title>
+  <title>Инвентаризационная ведомость от ${dateStr}</title>
   <style>
     * { box-sizing: border-box; }
     body {
@@ -105,9 +113,9 @@ function openInventoryAuditActWindow(items, includeZero) {
 </head>
 <body>
   <div class="a4">
-    <h1>Акт инвентаризации (по текущим остаткам)</h1>
+    <h1>Инвентаризационная ведомость (ревизионная проверка)</h1>
     <div class="meta">
-      Дата инвентаризации: ${dateStr}<br/>
+      Дата проведения инвентаризации: ${dateStr}<br/>
       Склад: ______________________________
     </div>
 
@@ -116,12 +124,12 @@ function openInventoryAuditActWindow(items, includeZero) {
         <tr>
           <th style="width:25px;">№</th>
           <th>Наименование товара</th>
-          <th style="width:60px;">Артикул</th>
+          <th style="width:60px;">SKU</th>
           <th style="width:40px;">Ед.</th>
-          <th style="width:70px;">Остаток</th>
+          <th style="width:70px;">Остаток по учёту</th>
           <th style="width:80px;">Фактический остаток</th>
           <th style="width:70px;">Разница</th>
-          <th style="width:110px;">Примечание</th>
+          <th style="width:110px;">Подпись</th>
         </tr>
       </thead>
       <tbody>
@@ -133,12 +141,12 @@ function openInventoryAuditActWindow(items, includeZero) {
       <div class="sign">
         <div>Материально ответственное лицо</div>
         <div class="sign-line"></div>
-        <div>(ФИО, подпись, дата)</div>
+        <div>(должность, подпись, Ф.И.О.)</div>
       </div>
       <div class="sign">
-        <div>Член комиссии</div>
+        <div>Члены комиссии</div>
         <div class="sign-line"></div>
-        <div>(ФИО, подпись, дата)</div>
+        <div>(подписи, Ф.И.О.)</div>
       </div>
     </div>
 
@@ -150,9 +158,7 @@ function openInventoryAuditActWindow(items, includeZero) {
 
   const win = window.open("", "_blank");
   if (!win) {
-    alert(
-      "Пожалуйста, разрешите всплывающие окна, чтобы распечатать акт инвентаризации."
-    );
+    alert("Разрешите всплывающие окна в браузере, чтобы распечатать ведомость.");
     return;
   }
   win.document.open();
@@ -160,16 +166,18 @@ function openInventoryAuditActWindow(items, includeZero) {
   win.document.close();
 }
 
+/**
+ * Таб “Текущие остатки”
+ */
 export default function StockAuditTab() {
   const token = localStorage.getItem("token");
   const authHeaders = { Authorization: `Bearer ${token}` };
-  const isMobile = useIsMobile();
 
   const [items, setItems] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [search, setSearch] = useState("");
-  const [includeZeroInPrint, setIncludeZeroInPrint] = useState(false);
+  const [includeZeroInPrint, setIncludeZeroInPrint] = useState(false); // ← галочка
 
   useEffect(() => {
     const load = async () => {
@@ -177,7 +185,7 @@ export default function StockAuditTab() {
         setLoading(true);
         setError("");
 
-        const res = await apiFetch("/inventory/stock", {
+        const res = await fetch(`${API}/inventory/stock`, {
           headers: authHeaders,
         });
 
@@ -185,7 +193,9 @@ export default function StockAuditTab() {
         try {
           data = await res.json();
         } catch {
-          throw new Error("Не удалось прочитать ответ от сервера.");
+          throw new Error(
+            "Ответ сервера не похож на JSON при загрузке остатков"
+          );
         }
 
         if (!res.ok) {
@@ -202,16 +212,19 @@ export default function StockAuditTab() {
     };
 
     load();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   const handlePrint = () => {
     if (!items.length) {
-      alert("Нет остатков для печати акта.");
+      alert("Нет данных по остаткам для печати.");
       return;
     }
+    // Передаём флаг includeZeroInPrint
     openInventoryAuditActWindow(items, includeZeroInPrint);
   };
 
+  // Фильтрация по коду (SKU) и названию для таблицы на экране
   const trimmedSearch = search.trim().toLowerCase();
   const visibleItems = trimmedSearch
     ? items.filter((it) => {
@@ -223,36 +236,64 @@ export default function StockAuditTab() {
 
   return (
     <div className="card card--1c">
-      <div className="card1c__header inventory-header">
-        <div className="inventory-header__left">
+      <div
+        className="card1c__header"
+        style={{
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "space-between",
+        }}
+      >
+        {/* Левая часть: заголовок + галочка */}
+        <div style={{ display: "flex", alignItems: "center", gap: 16 }}>
           <span>Текущие остатки</span>
-          <label className="inventory-header__checkbox">
+          <label
+            style={{
+              display: "inline-flex",
+              alignItems: "center",
+              fontSize: 13,
+              cursor: "pointer",
+              userSelect: "none",
+            }}
+          >
             <input
               type="checkbox"
               checked={includeZeroInPrint}
               onChange={(e) => setIncludeZeroInPrint(e.target.checked)}
+              style={{ marginRight: 4 }}
             />
-            Показывать нулевые остатки при печати
+            Нулевые остатки включить в акт
           </label>
         </div>
+
+        {/* Правая часть: кнопка печати */}
         <button
           type="button"
-          className="btn btn--secondary btn--sm inventory-header__btn"
+          className="btn btn--secondary btn--sm"
           onClick={handlePrint}
         >
-          Печать акта инвентаризации
+          Печать инвентаризационной ведомости
         </button>
       </div>
 
       <div className="card1c__body">
-        <div className="inventory-search">
-          <span>Поиск по артикулу или названию:</span>
+        {/* Поиск по коду / названию */}
+        <div
+          style={{
+            display: "flex",
+            gap: 8,
+            marginBottom: 8,
+            alignItems: "center",
+          }}
+        >
+          <span style={{ fontSize: 13 }}>Поиск по коду / названию:</span>
           <input
             type="text"
             className="form__input"
+            style={{ maxWidth: 240 }}
             value={search}
             onChange={(e) => setSearch(e.target.value)}
-            placeholder="Введите артикул или название товара"
+            placeholder="Введите SKU или часть названия..."
           />
         </div>
 
@@ -267,51 +308,9 @@ export default function StockAuditTab() {
         ) : !visibleItems.length ? (
           <p className="text-muted">
             {items.length === 0
-              ? "Остатков пока нет в системе."
-              : "Поиск не дал результатов."}
+              ? "Нет товаров в номенклатуре."
+              : "По вашему запросу ничего не найдено."}
           </p>
-        ) : isMobile ? (
-          <div className="mobile-inventory-cards">
-            {visibleItems.map((it, index) => (
-              <div key={it.id} className="card mobile-inventory-card">
-                <div className="card__body">
-                  <div className="mobile-inventory-title">
-                    {index + 1}. {it.name || "-"}
-                  </div>
-                  <div className="mobile-inventory-meta">
-                    <div>
-                      <div className="mobile-inventory-label">Артикул</div>
-                      <div className="mobile-inventory-text">{it.sku || "-"}</div>
-                    </div>
-                    <div>
-                      <div className="mobile-inventory-label">Ед.</div>
-                      <div>{it.unit || "-"}</div>
-                    </div>
-                  </div>
-                  <div className="mobile-inventory-meta">
-                    <div>
-                      <div className="mobile-inventory-label">Остаток</div>
-                      <div
-                        className={
-                          it.currentStock <= 0 ? "mobile-inventory-stock--low" : ""
-                        }
-                      >
-                        {it.currentStock ?? "-"}
-                      </div>
-                    </div>
-                    <div>
-                      <div className="mobile-inventory-label">Мин.</div>
-                      <div>{it.minStock ?? "-"}</div>
-                    </div>
-                    <div>
-                      <div className="mobile-inventory-label">Макс.</div>
-                      <div>{it.maxStock ?? "-"}</div>
-                    </div>
-                  </div>
-                </div>
-              </div>
-            ))}
-          </div>
         ) : (
           <div className="table-wrapper">
             <table
@@ -332,7 +331,12 @@ export default function StockAuditTab() {
                   >
                     №
                   </th>
-                  <th style={{ border: "1px solid #d4d4d4", padding: "4px 6px" }}>
+                  <th
+                    style={{
+                      border: "1px solid #d4d4d4",
+                      padding: "4px 6px",
+                    }}
+                  >
                     Наименование
                   </th>
                   <th
@@ -342,7 +346,7 @@ export default function StockAuditTab() {
                       width: 80,
                     }}
                   >
-                    Артикул
+                    SKU
                   </th>
                   <th
                     style={{

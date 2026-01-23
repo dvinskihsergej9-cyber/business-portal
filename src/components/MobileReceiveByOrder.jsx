@@ -2,7 +2,8 @@
 
 import { useEffect, useMemo, useRef, useState } from "react";
 import { BrowserMultiFormatReader } from "@zxing/browser";
-import { apiFetch } from "../apiConfig";
+
+const API = "http://localhost:3001/api";
 
 /**
  * Окно акта возврата/расхождений (мобильная версия с кнопкой "Отправить")
@@ -358,7 +359,11 @@ function OrganizationInfoModal({ onSave, onCancel }) {
 /**
  * Приёмка по заказу (мобильный ТСД)
  */
-export default function MobileReceiveByOrder({ authToken, onBack }) {
+export default function MobileReceiveByOrder({
+  apiBase = API,
+  authToken,
+  onBack,
+}) {
   const token = authToken || localStorage.getItem("token");
   const authHeaders = {
     Authorization: `Bearer ${token}`,
@@ -404,7 +409,7 @@ export default function MobileReceiveByOrder({ authToken, onBack }) {
         setLoading(true);
         setError("");
 
-        const res = await apiFetch("/purchase-orders", {
+        const res = await fetch(`${apiBase}/purchase-orders`, {
           headers: authHeaders,
         });
         let data;
@@ -436,7 +441,7 @@ export default function MobileReceiveByOrder({ authToken, onBack }) {
 
     load();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  }, [apiBase]);
 
   // --- запуск / остановка камеры ---
   useEffect(() => {
@@ -487,7 +492,7 @@ export default function MobileReceiveByOrder({ authToken, onBack }) {
       setError("");
       setLoading(true);
 
-      const res = await apiFetch(`/purchase-orders/${orderId}`, {
+      const res = await fetch(`${apiBase}/purchase-orders/${orderId}`, {
         headers: authHeaders,
       });
 
@@ -624,8 +629,8 @@ export default function MobileReceiveByOrder({ authToken, onBack }) {
         receivedQuantity: Number(r.receivedQty),
       }));
 
-      const res = await apiFetch(
-        `/purchase-orders/${selectedOrder.id}/receive`,
+      const res = await fetch(
+        `${apiBase}/purchase-orders/${selectedOrder.id}/receive`,
         {
           method: "POST",
           headers: {

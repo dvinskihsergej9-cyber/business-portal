@@ -1,42 +1,42 @@
 import { useEffect, useState } from "react";
 import { useNavigate, useSearchParams } from "react-router-dom";
-import { apiFetch } from "../apiConfig";
+import { API_BASE } from "../apiConfig";
 
 const T = {
-  title: "Завершение регистрации",
-  checking: "Проверяем приглашение...",
-  email: "Эл. почта",
-  role: "Роль",
-  fio: "ФИО",
-  pass: "Пароль",
-  pass2: "Повтор пароля",
-  create: "Создать аккаунт",
-  login: "Войти",
-  success: "Аккаунт создан.",
-  phFio: "Иванов Иван Иванович",
-  phPass: "Минимум 8 символов",
-  phPass2: "Введите пароль ещё раз",
-  errFio: "Укажите ФИО (минимум 2 слова).",
-  errPass: "Пароль минимум 8 символов.",
-  errPass2: "Пароли не совпадают.",
+  title: "\u0417\u0430\u0432\u0435\u0440\u0448\u0435\u043d\u0438\u0435 \u0440\u0435\u0433\u0438\u0441\u0442\u0440\u0430\u0446\u0438\u0438",
+  checking: "\u041f\u0440\u043e\u0432\u0435\u0440\u044f\u0435\u043c \u043f\u0440\u0438\u0433\u043b\u0430\u0448\u0435\u043d\u0438\u0435...",
+  email: "\u041f\u043e\u0447\u0442\u0430",
+  role: "\u0420\u043e\u043b\u044c",
+  fio: "\u0424\u0418\u041e",
+  pass: "\u041f\u0430\u0440\u043e\u043b\u044c",
+  pass2: "\u041f\u043e\u0432\u0442\u043e\u0440 \u043f\u0430\u0440\u043e\u043b\u044f",
+  create: "\u0421\u043e\u0437\u0434\u0430\u0442\u044c \u0430\u043a\u043a\u0430\u0443\u043d\u0442",
+  login: "\u0412\u043e\u0439\u0442\u0438",
+  success: "\u0410\u043a\u043a\u0430\u0443\u043d\u0442 \u0441\u043e\u0437\u0434\u0430\u043d.",
+  phFio: "\u0418\u0432\u0430\u043d\u043e\u0432 \u0418\u0432\u0430\u043d \u0418\u0432\u0430\u043d\u043e\u0432\u0438\u0447",
+  phPass: "\u041c\u0438\u043d\u0438\u043c\u0443\u043c 8 \u0441\u0438\u043c\u0432\u043e\u043b\u043e\u0432",
+  phPass2: "\u0412\u0432\u0435\u0434\u0438\u0442\u0435 \u043f\u0430\u0440\u043e\u043b\u044c \u0435\u0449\u0451 \u0440\u0430\u0437",
+  errFio: "\u0423\u043a\u0430\u0436\u0438\u0442\u0435 \u0424\u0418\u041e (\u043c\u0438\u043d\u0438\u043c\u0443\u043c 2 \u0441\u043b\u043e\u0432\u0430).",
+  errPass: "\u041f\u0430\u0440\u043e\u043b\u044c \u043c\u0438\u043d\u0438\u043c\u0443\u043c 8 \u0441\u0438\u043c\u0432\u043e\u043b\u043e\u0432.",
+  errPass2: "\u041f\u0430\u0440\u043e\u043b\u0438 \u043d\u0435 \u0441\u043e\u0432\u043f\u0430\u0434\u0430\u044e\u0442.",
 };
 
 function mapError(code) {
   switch (code) {
     case "INVITE_EXPIRED":
-      return "Ссылка устарела";
+      return "\u0421\u0441\u044b\u043b\u043a\u0430 \u0443\u0441\u0442\u0430\u0440\u0435\u043b\u0430";
     case "INVITE_USED":
-      return "Ссылка уже использована";
+      return "\u0421\u0441\u044b\u043b\u043a\u0430 \u0443\u0436\u0435 \u0438\u0441\u043f\u043e\u043b\u044c\u0437\u043e\u0432\u0430\u043d\u0430";
     case "INVITE_NOT_FOUND":
     case "BAD_TOKEN":
     case "INVITE_INVALID":
-      return "Неверная ссылка";
+      return "\u041d\u0435\u0432\u0435\u0440\u043d\u0430\u044f \u0441\u0441\u044b\u043b\u043a\u0430";
     case "WEAK_PASSWORD":
-      return "Пароль слишком короткий (минимум 8 символов)";
+      return "\u041f\u0430\u0440\u043e\u043b\u044c \u0441\u043b\u0438\u0448\u043a\u043e\u043c \u043a\u043e\u0440\u043e\u0442\u043a\u0438\u0439 (\u043c\u0438\u043d\u0438\u043c\u0443\u043c 8 \u0441\u0438\u043c\u0432\u043e\u043b\u043e\u0432)";
     case "PASSWORDS_NOT_MATCH":
-      return "Пароли не совпадают";
+      return "\u041f\u0430\u0440\u043e\u043b\u0438 \u043d\u0435 \u0441\u043e\u0432\u043f\u0430\u0434\u0430\u044e\u0442";
     case "EMAIL_ALREADY_EXISTS":
-      return "Аккаунт с этой почтой уже есть";
+      return "\u0410\u043a\u043a\u0430\u0443\u043d\u0442 \u0441 \u044d\u0442\u043e\u0439 \u043f\u043e\u0447\u0442\u043e\u0439 \u0443\u0436\u0435 \u0435\u0441\u0442\u044c";
     default:
       return code;
   }
@@ -86,8 +86,8 @@ export default function InviteAccept() {
       try {
         setInfoLoading(true);
         setInfoError("");
-        const res = await apiFetch(
-          `/auth/invite-info?token=${encodeURIComponent(token)}`
+        const res = await fetch(
+          `${API_BASE}/auth/invite-info?token=${encodeURIComponent(token)}`
         );
         const data = await res.json();
         if (!res.ok) {
@@ -114,7 +114,7 @@ export default function InviteAccept() {
 
     try {
       setSubmitLoading(true);
-      const res = await apiFetch("/auth/accept-invite", {
+      const res = await fetch(`${API_BASE}/auth/accept-invite`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -161,7 +161,7 @@ export default function InviteAccept() {
       {!infoLoading && inviteInfo && !done && (
         <form onSubmit={handleSubmit}>
           <div style={{ marginBottom: 12, color: "#6b7280", fontSize: 13 }}>
-            Эл. почта: {inviteInfo.email} · Роль: {inviteInfo.role || "-"}
+            {T.email}: {inviteInfo.email} ? {T.role}: {inviteInfo.role || "-"}
           </div>
 
           <div style={{ marginBottom: 10 }}>
@@ -246,7 +246,7 @@ export default function InviteAccept() {
               cursor: submitLoading || !isFormValid ? "not-allowed" : "pointer",
             }}
           >
-            {submitLoading ? "Создаём..." : T.create}
+            {submitLoading ? "\u0421\u043e\u0437\u0434\u0430\u0435\u043c..." : T.create}
           </button>
         </form>
       )}

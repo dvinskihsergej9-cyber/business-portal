@@ -1,5 +1,4 @@
 import { useState, useRef } from "react";
-import { apiFetch } from "../apiConfig";
 import * as XLSX from "xlsx";
 
 export default function ImportItemsModal({ onClose, onImportSuccess }) {
@@ -69,7 +68,7 @@ export default function ImportItemsModal({ onClose, onImportSuccess }) {
         setImporting(true);
         try {
             const token = localStorage.getItem("token");
-            const res = await apiFetch("/inventory/items/batch", {
+            const res = await fetch("http://localhost:3001/api/inventory/items/batch", {
                 method: "POST",
                 headers: {
                     "Content-Type": "application/json",
@@ -141,7 +140,7 @@ export default function ImportItemsModal({ onClose, onImportSuccess }) {
                                             <th style={{ padding: 8, borderBottom: "1px solid #ddd" }}>№</th>
                                             <th style={{ padding: 8, borderBottom: "1px solid #ddd" }}>Статус</th>
                                             <th style={{ padding: 8, borderBottom: "1px solid #ddd" }}>Название</th>
-                                            <th style={{ padding: 8, borderBottom: "1px solid #ddd" }}>Артикул (SKU)</th>
+                                            <th style={{ padding: 8, borderBottom: "1px solid #ddd" }}>SKU</th>
                                             <th style={{ padding: 8, borderBottom: "1px solid #ddd" }}>Штрихкод</th>
                                             <th style={{ padding: 8, borderBottom: "1px solid #ddd" }}>Ед.</th>
                                             <th style={{ padding: 8, borderBottom: "1px solid #ddd" }}>Цена</th>
@@ -153,7 +152,7 @@ export default function ImportItemsModal({ onClose, onImportSuccess }) {
                                                 <td style={{ padding: 6, borderBottom: "1px solid #eee" }}>{it.row}</td>
                                                 <td style={{ padding: 6, borderBottom: "1px solid #eee" }}>
                                                     {it.isValid ? (
-                                                        <span style={{ color: "green" }}>ОК</span>
+                                                        <span style={{ color: "green" }}>OK</span>
                                                     ) : (
                                                         <span style={{ color: "red" }}>{it.validationError}</span>
                                                     )}

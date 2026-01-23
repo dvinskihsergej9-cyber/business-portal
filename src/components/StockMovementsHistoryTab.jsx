@@ -1,6 +1,6 @@
-﻿import { useEffect, useState } from "react";
-import useIsMobile from "../hooks/useIsMobile";
-import { apiFetch } from "../apiConfig";
+import { useEffect, useState } from "react";
+
+const API = "http://localhost:3001/api";
 
 const MOVEMENT_TYPE_LABELS = {
   INCOME: "Приход",
@@ -8,10 +8,12 @@ const MOVEMENT_TYPE_LABELS = {
   ADJUSTMENT: "Корректировка",
 };
 
+/**
+ * История движений в стиле 1С
+ */
 export default function StockMovementsHistoryTab() {
   const token = localStorage.getItem("token");
   const authHeaders = { Authorization: `Bearer ${token}` };
-  const isMobile = useIsMobile();
 
   const [rows, setRows] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -25,7 +27,7 @@ export default function StockMovementsHistoryTab() {
         setLoading(true);
         setError("");
 
-        const res = await apiFetch("/inventory/movements?limit=200", {
+        const res = await fetch(`${API}/inventory/movements?limit=200`, {
           headers: authHeaders,
         });
 
@@ -33,7 +35,7 @@ export default function StockMovementsHistoryTab() {
         try {
           data = await res.json();
         } catch {
-          throw new Error("Не удалось прочитать ответ от сервера.");
+          throw new Error("Ответ сервера не похож на JSON при загрузке движений");
         }
 
         if (!res.ok) {
@@ -50,6 +52,7 @@ export default function StockMovementsHistoryTab() {
     };
 
     load();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   const trimmedSearch = search.trim().toLowerCase();
@@ -63,7 +66,8 @@ export default function StockMovementsHistoryTab() {
 
     const name = String(m.item?.name || "").toLowerCase();
     const comment = String(m.comment || "").toLowerCase();
-    const author = String(m.createdBy?.name || m.createdBy?.email || "").toLowerCase();
+    const author =
+  String(m.createdBy?.name || m.createdBy?.email || "").toLowerCase();
 
     return (
       name.includes(trimmedSearch) ||
@@ -77,30 +81,37 @@ export default function StockMovementsHistoryTab() {
       <div className="card1c__header">История движения товара</div>
 
       <div className="card1c__body">
-        <div className="movements-filters">
-          <div className="movements-filter">
-            <label className="form__label">Тип операции</label>
-            <select
-              className="form__select"
-              value={typeFilter}
-              onChange={(e) => setTypeFilter(e.target.value)}
-            >
-              <option value="ALL">Все типы</option>
-              <option value="INCOME">Приход</option>
-              <option value="ISSUE">Расход</option>
-              <option value="ADJUSTMENT">Корректировка</option>
-            </select>
-          </div>
-          <div className="movements-filter">
-            <label className="form__label">Поиск</label>
-            <input
-              type="text"
-              className="form__input"
-              value={search}
-              onChange={(e) => setSearch(e.target.value)}
-              placeholder="Товар, комментарий, автор..."
-            />
-          </div>
+        {/* Фильтры сверху */}
+        <div
+          style={{
+            display: "flex",
+            gap: 12,
+            alignItems: "center",
+            marginBottom: 8,
+          }}
+        >
+          <span style={{ fontSize: 13 }}>Тип операции:</span>
+          <select
+            className="form__select"
+            style={{ width: 160 }}
+            value={typeFilter}
+            onChange={(e) => setTypeFilter(e.target.value)}
+          >
+            <option value="ALL">Все</option>
+            <option value="INCOME">Приход</option>
+            <option value="ISSUE">Расход</option>
+            <option value="ADJUSTMENT">Корректировка</option>
+          </select>
+
+          <span style={{ fontSize: 13 }}>Поиск:</span>
+          <input
+            type="text"
+            className="form__input"
+            style={{ maxWidth: 260 }}
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+            placeholder="Товар, комментарий, автор..."
+          />
         </div>
 
         {error && (
@@ -110,66 +121,9 @@ export default function StockMovementsHistoryTab() {
         )}
 
         {loading ? (
-          <p>Загрузка истории движений...</p>
+          <p>Загрузка истории...</p>
         ) : !visibleRows.length ? (
-          <p className="text-muted">Записей не найдено.</p>
-        ) : isMobile ? (
-          <div className="movement-cards">
-            {visibleRows.map((m) => {
-              const dateStr = m.createdAt
-                ? new Date(m.createdAt).toLocaleString("ru-RU", {
-                    day: "2-digit",
-                    month: "2-digit",
-                    year: "numeric",
-                    hour: "2-digit",
-                    minute: "2-digit",
-                    second: "2-digit",
-                  })
-                : "-";
-              const typeLabel = MOVEMENT_TYPE_LABELS[m.type] || m.type;
-              return (
-                <div key={m.id} className="card movement-card">
-                  <div className="card__body">
-                    <div className="movement-card__title">
-                      {m.item?.name || "-"}
-                    </div>
-                    <div className="movement-card__meta">
-                      <span className="badge badge--muted">{typeLabel}</span>
-                      <span>{dateStr}</span>
-                    </div>
-                    <div className="movement-card__details">
-                      <div>
-                        <div className="movement-card__label">Количество</div>
-                        <div>{m.quantity}</div>
-                      </div>
-                      <div>
-                        <div className="movement-card__label">Ед.</div>
-                        <div>{m.item?.unit || "-"}</div>
-                      </div>
-                      <div>
-                        <div className="movement-card__label">Цена</div>
-                        <div>{m.pricePerUnit || "-"}</div>
-                      </div>
-                    </div>
-                    <div className="movement-card__details">
-                      <div>
-                        <div className="movement-card__label">Автор</div>
-                        <div className="movement-card__text">
-                          {m.createdBy?.name || m.createdBy?.email || "-"}
-                        </div>
-                      </div>
-                      {m.comment && (
-                        <div>
-                          <div className="movement-card__label">Комментарий</div>
-                          <div className="movement-card__text">{m.comment}</div>
-                        </div>
-                      )}
-                    </div>
-                  </div>
-                </div>
-              );
-            })}
-          </div>
+          <p className="text-muted">Движений не найдено.</p>
         ) : (
           <div className="table-wrapper">
             <table
@@ -208,7 +162,12 @@ export default function StockMovementsHistoryTab() {
                   >
                     Тип
                   </th>
-                  <th style={{ border: "1px solid #d4d4d4", padding: "4px 6px" }}>
+                  <th
+                    style={{
+                      border: "1px solid #d4d4d4",
+                      padding: "4px 6px",
+                    }}
+                  >
                     Товар
                   </th>
                   <th
@@ -247,7 +206,12 @@ export default function StockMovementsHistoryTab() {
                   >
                     Автор
                   </th>
-                  <th style={{ border: "1px solid #d4d4d4", padding: "4px 6px" }}>
+                  <th
+                    style={{
+                      border: "1px solid #d4d4d4",
+                      padding: "4px 6px",
+                    }}
+                  >
                     Комментарий
                   </th>
                 </tr>
@@ -326,14 +290,14 @@ export default function StockMovementsHistoryTab() {
                       {m.pricePerUnit || "-"}
                     </td>
                     <td
-                      style={{
-                        border: "1px solid #e0e0e0",
-                        padding: "3px 4px",
-                        whiteSpace: "nowrap",
-                      }}
-                    >
-                      {m.createdBy?.name || m.createdBy?.email || "-"}
-                    </td>
+  style={{
+    border: "1px solid #e0e0e0",
+    padding: "3px 4px",
+    whiteSpace: "nowrap",
+  }}
+>
+  {m.createdBy?.name || m.createdBy?.email || "-"}
+</td>
                     <td
                       style={{
                         border: "1px solid #e0e0e0",

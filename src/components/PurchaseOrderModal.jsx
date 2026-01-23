@@ -1,5 +1,6 @@
 import { useMemo, useState } from "react";
-import { apiFetch } from "../apiConfig";
+
+const API = "http://localhost:3001/api";
 
 export default function PurchaseOrderModal({
   items = [], // [{ id, name, unit, orderQty, price }]
@@ -170,7 +171,7 @@ export default function PurchaseOrderModal({
       setSaving(true);
 
       // ---------- 1. СОЗДАЁМ ЗАКАЗ В БАЗЕ ----------
-      const createRes = await apiFetch("/purchase-orders", {
+      const createRes = await fetch(`${API}/purchase-orders`, {
         method: "POST",
         headers: authHeaders,
         body: JSON.stringify({
@@ -189,7 +190,7 @@ export default function PurchaseOrderModal({
       }
 
       // ---------- 2. ФОРМИРУЕМ EXCEL-ФАЙЛ (как раньше) ----------
-      const excelRes = await apiFetch("/purchase-orders/excel-file", {
+      const excelRes = await fetch(`${API}/purchase-orders/excel-file`, {
         method: "POST",
         headers: authHeaders,
         body: JSON.stringify({

@@ -1,4 +1,4 @@
-﻿import { useState } from "react";
+import { useState } from "react";
 import { useNavigate, Link } from "react-router-dom";
 import { useAuth } from "../context/AuthContext";
 
@@ -21,17 +21,12 @@ export default function Login() {
     setLoading(false);
 
     if (!res.ok) {
-      setError(res.message || "Неверный email или пароль.");
+      setError(res.message || "Ошибка входа");
       return;
     }
 
-    navigate("/warehouse");
+    navigate("/dashboard");
   };
-
-  const emailInvalid = (event) =>
-    event.target.setCustomValidity("Введите корректный email");
-
-  const clearInvalid = (event) => event.target.setCustomValidity("");
 
   return (
     <div style={{ maxWidth: 400, margin: "60px auto", padding: "0 16px" }}>
@@ -55,12 +50,9 @@ export default function Login() {
         <div style={{ marginBottom: 8 }}>
           <input
             type="email"
-            placeholder="Напр. name@company.com"
+            placeholder="Email"
             value={email}
             onChange={(e) => setEmail(e.target.value)}
-            onInvalid={emailInvalid}
-            onInput={clearInvalid}
-            title="Введите корректный email"
             required
             style={{ width: "100%", padding: 6, boxSizing: "border-box" }}
           />
@@ -89,16 +81,16 @@ export default function Login() {
             cursor: "pointer",
           }}
         >
-          {loading ? "Входим..." : "Войти"}
+          {loading ? "Вхожу..." : "Войти"}
         </button>
       </form>
 
       <p style={{ marginTop: 12 }}>
-        <Link to="/forgot-password">Забыли пароль?</Link>
+        <Link to="/forgot-password">{"\u0417\u0430\u0431\u044b\u043b\u0438 \u043f\u0430\u0440\u043e\u043b\u044c?"}</Link>
       </p>
-      <p style={{ marginTop: 8, color: "#6b7280", fontSize: 13 }}>
-        Если у вас нет аккаунта, зарегистрируйтесь в системе.
-      </p>
+      <p style={{ marginTop: 8, color: "#6b7280", fontSize: 13 }}>{"\u0420\u0435\u0433\u0438\u0441\u0442\u0440\u0430\u0446\u0438\u044f \u0434\u043e\u0441\u0442\u0443\u043f\u043d\u0430 \u0442\u043e\u043b\u044c\u043a\u043e \u043f\u043e \u043f\u0440\u0438\u0433\u043b\u0430\u0448\u0435\u043d\u0438\u044e \u0430\u0434\u043c\u0438\u043d\u0438\u0441\u0442\u0440\u0430\u0442\u043e\u0440\u0430."}</p>
+
+      
     </div>
   );
 }

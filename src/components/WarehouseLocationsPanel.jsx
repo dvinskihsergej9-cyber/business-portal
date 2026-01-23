@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
-import { apiFetch } from "../apiConfig";
+
+const API = "http://localhost:3001/api";
 
 export default function WarehouseLocationsPanel() {
   const [locations, setLocations] = useState([]);
@@ -48,16 +49,16 @@ export default function WarehouseLocationsPanel() {
     try {
       setLoading(true);
       setError("");
-      const res = await apiFetch("/warehouse/locations", {
+      const res = await fetch(`${API}/warehouse/locations`, {
         headers: authHeaders,
       });
       const data = await res.json();
       if (!res.ok) {
-        throw new Error(data.message || "Ошибка загрузки ячеек");
+        throw new Error(data.message || "\u041e\u0448\u0438\u0431\u043a\u0430 \u0437\u0430\u0433\u0440\u0443\u0437\u043a\u0438 \u044f\u0447\u0435\u0435\u043a");
       }
       setLocations(data);
     } catch (err) {
-      setError(err.message || "Ошибка загрузки ячеек");
+      setError(err.message || "\u041e\u0448\u0438\u0431\u043a\u0430 \u0437\u0430\u0433\u0440\u0443\u0437\u043a\u0438 \u044f\u0447\u0435\u0435\u043a");
     } finally {
       setLoading(false);
     }
@@ -67,20 +68,20 @@ export default function WarehouseLocationsPanel() {
     try {
       setItemsLoading(true);
       setError("");
-      const res = await apiFetch("/inventory/items", {
+      const res = await fetch(`${API}/inventory/items`, {
         headers: authHeaders,
       });
       const data = await res.json();
       if (!res.ok) {
         throw new Error(
-          data.message || "Ошибка загрузки товаров"
+          data.message || "\u041e\u0448\u0438\u0431\u043a\u0430 \u0437\u0430\u0433\u0440\u0443\u0437\u043a\u0438 \u0442\u043e\u0432\u0430\u0440\u043e\u0432"
         );
       }
       setItems(data);
     } catch (err) {
       setError(
         err.message ||
-          "Ошибка загрузки товаров"
+          "\u041e\u0448\u0438\u0431\u043a\u0430 \u0437\u0430\u0433\u0440\u0443\u0437\u043a\u0438 \u0442\u043e\u0432\u0430\u0440\u043e\u0432"
       );
     } finally {
       setItemsLoading(false);
@@ -95,7 +96,7 @@ export default function WarehouseLocationsPanel() {
   const handleCreate = async () => {
     const name = form.name.trim();
     if (!name) {
-      setError("Введите название ячейки.");
+      setError("\u0412\u0432\u0435\u0434\u0438\u0442\u0435 \u043d\u0430\u0437\u0432\u0430\u043d\u0438\u0435 \u044f\u0447\u0435\u0439\u043a\u0438.");
       return;
     }
 
@@ -103,7 +104,7 @@ export default function WarehouseLocationsPanel() {
       setCreateLoading(true);
       setError("");
       setMessage("");
-      const res = await apiFetch("/warehouse/locations", {
+      const res = await fetch(`${API}/warehouse/locations`, {
         method: "POST",
         headers: authHeaders,
         body: JSON.stringify({
@@ -116,35 +117,35 @@ export default function WarehouseLocationsPanel() {
       });
       const data = await res.json();
       if (!res.ok) {
-        throw new Error(data.message || "Ошибка создания ячейки");
+        throw new Error(data.message || "\u041e\u0448\u0438\u0431\u043a\u0430 \u0441\u043e\u0437\u0434\u0430\u043d\u0438\u044f \u044f\u0447\u0435\u0439\u043a\u0438");
       }
       setForm({ name: "", zone: "", aisle: "", rack: "", level: "" });
-      setMessage(`Ячейка создана: ${data.name}`);
+      setMessage(`\u042f\u0447\u0435\u0439\u043a\u0430 \u0441\u043e\u0437\u0434\u0430\u043d\u0430: ${data.name}`);
       setSelectedId(String(data.id));
       await loadLocations();
     } catch (err) {
-      setError(err.message || "Ошибка создания ячейки");
+      setError(err.message || "\u041e\u0448\u0438\u0431\u043a\u0430 \u0441\u043e\u0437\u0434\u0430\u043d\u0438\u044f \u044f\u0447\u0435\u0439\u043a\u0438");
     } finally {
       setCreateLoading(false);
     }
   };
 
   const ensureLocationQr = async (locationId) => {
-    const res = await apiFetch(`/warehouse/locations/${locationId}/qr`, {
+    const res = await fetch(`${API}/warehouse/locations/${locationId}/qr`, {
       method: "POST",
       headers: authHeaders,
       body: JSON.stringify({}),
     });
     const data = await res.json();
     if (!res.ok) {
-      throw new Error(data.message || "Не удалось создать QR");
+      throw new Error(data.message || "\u041d\u0435 \u0443\u0434\u0430\u043b\u043e\u0441\u044c \u0441\u043e\u0437\u0434\u0430\u0442\u044c QR");
     }
     return data;
   };
 
   const handlePrint = async () => {
     if (!selectedId) {
-      setError("Выберите ячейку.");
+      setError("\u0412\u044b\u0431\u0435\u0440\u0438\u0442\u0435 \u044f\u0447\u0435\u0439\u043a\u0443.");
       return;
     }
 
@@ -154,7 +155,7 @@ export default function WarehouseLocationsPanel() {
       setMessage("");
       const locationId = Number(selectedId);
       await ensureLocationQr(locationId);
-      const res = await apiFetch("/warehouse/print/labels", {
+      const res = await fetch(`${API}/warehouse/print/labels`, {
         method: "POST",
         headers: authHeaders,
         body: JSON.stringify({
@@ -166,7 +167,7 @@ export default function WarehouseLocationsPanel() {
       });
       const html = await res.text();
       if (!res.ok) {
-        let messageText = "Ошибка печати";
+        let messageText = "\u041e\u0448\u0438\u0431\u043a\u0430 \u043f\u0435\u0447\u0430\u0442\u0438";
         try {
           const parsed = JSON.parse(html);
           messageText = parsed.message || messageText;
@@ -178,10 +179,10 @@ export default function WarehouseLocationsPanel() {
         printWindow.document.write(html);
         printWindow.document.close();
       } else {
-        throw new Error("Блокировщик всплывающих окон");
+        throw new Error("\u0411\u043b\u043e\u043a\u0438\u0440\u043e\u0432\u0449\u0438\u043a \u0432\u0441\u043f\u043b\u044b\u0432\u0430\u044e\u0449\u0438\u0445 \u043e\u043a\u043e\u043d");
       }
     } catch (err) {
-      setError(err.message || "Ошибка печати");
+      setError(err.message || "\u041e\u0448\u0438\u0431\u043a\u0430 \u043f\u0435\u0447\u0430\u0442\u0438");
     } finally {
       setActionLoading(false);
     }
@@ -189,11 +190,11 @@ export default function WarehouseLocationsPanel() {
 
   const handleUpdateLocation = async () => {
     if (!selectedId) {
-      setError("Выберите ячейку.");
+      setError("\u0412\u044b\u0431\u0435\u0440\u0438\u0442\u0435 \u044f\u0447\u0435\u0439\u043a\u0443.");
       return;
     }
     if (!editForm.name.trim()) {
-      setError("Укажите название ячейки.");
+      setError("\u0423\u043a\u0430\u0436\u0438\u0442\u0435 \u043d\u0430\u0437\u0432\u0430\u043d\u0438\u0435 \u044f\u0447\u0435\u0439\u043a\u0438.");
       return;
     }
 
@@ -201,7 +202,7 @@ export default function WarehouseLocationsPanel() {
       setEditLoading(true);
       setError("");
       setMessage("");
-      const res = await apiFetch(`/warehouse/locations/${selectedId}`, {
+      const res = await fetch(`${API}/warehouse/locations/${selectedId}`, {
         method: "PUT",
         headers: authHeaders,
         body: JSON.stringify({
@@ -216,17 +217,17 @@ export default function WarehouseLocationsPanel() {
       if (!res.ok) {
         throw new Error(
           data.message ||
-            "Ошибка обновления ячейки"
+            "\u041e\u0448\u0438\u0431\u043a\u0430 \u043e\u0431\u043d\u043e\u0432\u043b\u0435\u043d\u0438\u044f \u044f\u0447\u0435\u0439\u043a\u0438"
         );
       }
       setMessage(
-        `Ячейка обновлена: ${data.name}`
+        `\u042f\u0447\u0435\u0439\u043a\u0430 \u043e\u0431\u043d\u043e\u0432\u043b\u0435\u043d\u0430: ${data.name}`
       );
       await loadLocations();
     } catch (err) {
       setError(
         err.message ||
-          "Ошибка обновления ячейки"
+          "\u041e\u0448\u0438\u0431\u043a\u0430 \u043e\u0431\u043d\u043e\u0432\u043b\u0435\u043d\u0438\u044f \u044f\u0447\u0435\u0439\u043a\u0438"
       );
     } finally {
       setEditLoading(false);
@@ -235,17 +236,17 @@ export default function WarehouseLocationsPanel() {
 
   const handleDeleteLocation = async () => {
     if (!selectedId) {
-      setError("Выберите ячейку.");
+      setError("\u0412\u044b\u0431\u0435\u0440\u0438\u0442\u0435 \u044f\u0447\u0435\u0439\u043a\u0443.");
       return;
     }
-    if (!window.confirm("Удалить ячейку?")) {
+    if (!window.confirm("\u0423\u0434\u0430\u043b\u0438\u0442\u044c \u044f\u0447\u0435\u0439\u043a\u0443?")) {
       return;
     }
     try {
       setDeleteLoading(true);
       setError("");
       setMessage("");
-      const res = await apiFetch(`/warehouse/locations/${selectedId}`, {
+      const res = await fetch(`${API}/warehouse/locations/${selectedId}`, {
         method: "DELETE",
         headers: authHeaders,
       });
@@ -253,16 +254,16 @@ export default function WarehouseLocationsPanel() {
       if (!res.ok) {
         throw new Error(
           data.message ||
-            "Ошибка удаления ячейки"
+            "\u041e\u0448\u0438\u0431\u043a\u0430 \u0443\u0434\u0430\u043b\u0435\u043d\u0438\u044f \u044f\u0447\u0435\u0439\u043a\u0438"
         );
       }
-      setMessage("Ячейка удалена.");
+      setMessage("\u042f\u0447\u0435\u0439\u043a\u0430 \u0443\u0434\u0430\u043b\u0435\u043d\u0430.");
       setSelectedId("");
       await loadLocations();
     } catch (err) {
       setError(
         err.message ||
-          "Ошибка удаления ячейки"
+          "\u041e\u0448\u0438\u0431\u043a\u0430 \u0443\u0434\u0430\u043b\u0435\u043d\u0438\u044f \u044f\u0447\u0435\u0439\u043a\u0438"
       );
     } finally {
       setDeleteLoading(false);
@@ -271,14 +272,14 @@ export default function WarehouseLocationsPanel() {
 
   const handleResetQr = async () => {
     if (!selectedId) {
-      setError("Выберите ячейку.");
+      setError("\u0412\u044b\u0431\u0435\u0440\u0438\u0442\u0435 \u044f\u0447\u0435\u0439\u043a\u0443.");
       return;
     }
     try {
       setQrResetLoading(true);
       setError("");
       setMessage("");
-      const res = await apiFetch(`/warehouse/locations/${selectedId}/qr`, {
+      const res = await fetch(`${API}/warehouse/locations/${selectedId}/qr`, {
         method: "POST",
         headers: authHeaders,
         body: JSON.stringify({ force: true }),
@@ -286,13 +287,13 @@ export default function WarehouseLocationsPanel() {
       const data = await res.json();
       if (!res.ok) {
         throw new Error(
-          data.message || "Ошибка обновления QR"
+          data.message || "\u041e\u0448\u0438\u0431\u043a\u0430 \u043e\u0431\u043d\u043e\u0432\u043b\u0435\u043d\u0438\u044f QR"
         );
       }
-      setMessage("Код QR обновлен.");
+      setMessage("\u041a\u043e\u0434 QR \u043e\u0431\u043d\u043e\u0432\u043b\u0435\u043d.");
       await loadLocations();
     } catch (err) {
-      setError(err.message || "Ошибка обновления QR");
+      setError(err.message || "\u041e\u0448\u0438\u0431\u043a\u0430 \u043e\u0431\u043d\u043e\u0432\u043b\u0435\u043d\u0438\u044f QR");
     } finally {
       setQrResetLoading(false);
     }
@@ -313,7 +314,7 @@ export default function WarehouseLocationsPanel() {
   const handlePrintItems = async () => {
     if (!selectedItems.length) {
       setError(
-        "Выберите товары."
+        "\u0412\u044b\u0431\u0435\u0440\u0438\u0442\u0435 \u0442\u043e\u0432\u0430\u0440\u044b."
       );
       return;
     }
@@ -322,7 +323,7 @@ export default function WarehouseLocationsPanel() {
       setActionLoading(true);
       setError("");
       setMessage("");
-      const res = await apiFetch("/warehouse/print/labels", {
+      const res = await fetch(`${API}/warehouse/print/labels`, {
         method: "POST",
         headers: authHeaders,
         body: JSON.stringify({
@@ -335,7 +336,7 @@ export default function WarehouseLocationsPanel() {
       const html = await res.text();
       if (!res.ok) {
         let messageText =
-          "Ошибка печати";
+          "\u041e\u0448\u0438\u0431\u043a\u0430 \u043f\u0435\u0447\u0430\u0442\u0438";
         try {
           const parsed = JSON.parse(html);
           messageText = parsed.message || messageText;
@@ -348,12 +349,12 @@ export default function WarehouseLocationsPanel() {
         printWindow.document.close();
       } else {
         throw new Error(
-          "Блокировщик всплывающих окон"
+          "\u0411\u043b\u043e\u043a\u0438\u0440\u043e\u0432\u0449\u0438\u043a \u0432\u0441\u043f\u043b\u044b\u0432\u0430\u044e\u0449\u0438\u0445 \u043e\u043a\u043e\u043d"
         );
       }
     } catch (err) {
       setError(
-        err.message || "Ошибка печати"
+        err.message || "\u041e\u0448\u0438\u0431\u043a\u0430 \u043f\u0435\u0447\u0430\u0442\u0438"
       );
     } finally {
       setActionLoading(false);
@@ -397,7 +398,7 @@ export default function WarehouseLocationsPanel() {
           }
           onClick={() => setSubtab("location")}
         >
-          {"Ячейки / QR"}
+          {"\u042f\u0447\u0435\u0439\u043a\u0438 / QR"}
         </button>
         <button
           type="button"
@@ -406,19 +407,19 @@ export default function WarehouseLocationsPanel() {
           }
           onClick={() => setSubtab("item")}
         >
-          {"Товары / QR"}
+          {"\u0422\u043e\u0432\u0430\u0440\u044b / QR"}
         </button>
       </div>
 
       {subtab === "location" && (
         <div className="warehouse-locations__grid">
           <div className="card">
-            <h3 className="card__title">{`Создать ячейку`}</h3>
+            <h3 className="card__title">{`\u0421\u043e\u0437\u0434\u0430\u0442\u044c \u044f\u0447\u0435\u0439\u043a\u0443`}</h3>
             <p className="card__subtitle">
-              {`Название обязательно, остальные поля можно не заполнять.`}
+              {`\u041d\u0430\u0437\u0432\u0430\u043d\u0438\u0435 \u043e\u0431\u044f\u0437\u0430\u0442\u0435\u043b\u044c\u043d\u043e, \u043e\u0441\u0442\u0430\u043b\u044c\u043d\u044b\u0435 \u043f\u043e\u043b\u044f \u043c\u043e\u0436\u043d\u043e \u043d\u0435 \u0437\u0430\u043f\u043e\u043b\u043d\u044f\u0442\u044c.`}
             </p>
             <div className="warehouse-locations__form">
-              <label className="form__label">{`Название`}</label>
+              <label className="form__label">{`\u041d\u0430\u0437\u0432\u0430\u043d\u0438\u0435`}</label>
               <input
                 className="form__input"
                 value={form.name}
@@ -430,7 +431,7 @@ export default function WarehouseLocationsPanel() {
 
             <div className="warehouse-locations__row">
               <div>
-                <label className="form__label">{`Зона`}</label>
+                <label className="form__label">{`\u0417\u043e\u043d\u0430`}</label>
                 <input
                   className="form__input"
                   value={form.zone}
@@ -440,7 +441,7 @@ export default function WarehouseLocationsPanel() {
                 />
               </div>
               <div>
-                <label className="form__label">{`Ряд`}</label>
+                <label className="form__label">{`\u0420\u044f\u0434`}</label>
                 <input
                   className="form__input"
                   value={form.aisle}
@@ -453,7 +454,7 @@ export default function WarehouseLocationsPanel() {
 
             <div className="warehouse-locations__row">
               <div>
-                <label className="form__label">{`Стеллаж`}</label>
+                <label className="form__label">{`\u0421\u0442\u0435\u043b\u043b\u0430\u0436`}</label>
                 <input
                   className="form__input"
                   value={form.rack}
@@ -463,7 +464,7 @@ export default function WarehouseLocationsPanel() {
                 />
               </div>
               <div>
-                <label className="form__label">{`Уровень`}</label>
+                <label className="form__label">{`\u0423\u0440\u043e\u0432\u0435\u043d\u044c`}</label>
                 <input
                   className="form__input"
                   value={form.level}
@@ -481,29 +482,29 @@ export default function WarehouseLocationsPanel() {
               disabled={createLoading}
             >
               {createLoading
-                ? "Создание..."
-                : "Создать ячейку"}
+                ? "\u0421\u043e\u0437\u0434\u0430\u043d\u0438\u0435..."
+                : "\u0421\u043e\u0437\u0434\u0430\u0442\u044c \u044f\u0447\u0435\u0439\u043a\u0443"}
             </button>
           </div>
         </div>
 
           <div className="card">
-            <h3 className="card__title">{`QR для ячейки`}</h3>
+            <h3 className="card__title">{`QR \u0434\u043b\u044f \u044f\u0447\u0435\u0439\u043a\u0438`}</h3>
             <p className="card__subtitle">
-              {`Формат QR: BP:LOC:<id>`}
+              {`\u0424\u043e\u0440\u043c\u0430\u0442 QR: BP:LOC:<id>`}
             </p>
 
             <div className="warehouse-locations__form">
-              <label className="form__label">{`Ячейка`}</label>
+              <label className="form__label">{`\u042f\u0447\u0435\u0439\u043a\u0430`}</label>
               <select
                 className="form__select"
                 value={selectedId}
                 onChange={(event) => setSelectedId(event.target.value)}
               >
-                <option value="">{`Выберите ячейку`}</option>
+                <option value="">{`\u0412\u044b\u0431\u0435\u0440\u0438\u0442\u0435 \u044f\u0447\u0435\u0439\u043a\u0443`}</option>
                 {locations.map((loc) => (
                   <option key={loc.id} value={loc.id}>
-                    {loc.name || `Ячейка ${loc.id}`}
+                    {loc.name || `\u042f\u0447\u0435\u0439\u043a\u0430 ${loc.id}`}
                   </option>
                 ))}
               </select>
@@ -511,21 +512,21 @@ export default function WarehouseLocationsPanel() {
             {selectedLocation && (
               <div className="warehouse-locations__meta">
                 <div>
-                  {`Название: ${selectedLocation.name}`}
+                  {`\u041d\u0430\u0437\u0432\u0430\u043d\u0438\u0435: ${selectedLocation.name}`}
                 </div>
                 <div>
-                  {`QR: ${selectedLocation.qrCode ? "уже создан" : "не создан"}`}
+                  {`QR: ${selectedLocation.qrCode ? "\u0443\u0436\u0435 \u0441\u043e\u0437\u0434\u0430\u043d" : "\u043d\u0435 \u0441\u043e\u0437\u0434\u0430\u043d"}`}
                 </div>
               </div>
             )}
 
             <div className="warehouse-locations__edit">
               <div className="warehouse-locations__edit-title">
-                {"Редактировать ячейку"}
+                {"\u0420\u0435\u0434\u0430\u043a\u0442\u0438\u0440\u043e\u0432\u0430\u0442\u044c \u044f\u0447\u0435\u0439\u043a\u0443"}
               </div>
               <div className="warehouse-locations__row">
                 <div>
-                  <label className="form__label">{`Название`}</label>
+                  <label className="form__label">{`\u041d\u0430\u0437\u0432\u0430\u043d\u0438\u0435`}</label>
                   <input
                     className="form__input"
                     value={editForm.name}
@@ -539,7 +540,7 @@ export default function WarehouseLocationsPanel() {
                   />
                 </div>
                 <div>
-                  <label className="form__label">{`Зона`}</label>
+                  <label className="form__label">{`\u0417\u043e\u043d\u0430`}</label>
                   <input
                     className="form__input"
                     value={editForm.zone}
@@ -555,7 +556,7 @@ export default function WarehouseLocationsPanel() {
               </div>
               <div className="warehouse-locations__row">
                 <div>
-                  <label className="form__label">{`Ряд`}</label>
+                  <label className="form__label">{`\u0420\u044f\u0434`}</label>
                   <input
                     className="form__input"
                     value={editForm.aisle}
@@ -569,7 +570,7 @@ export default function WarehouseLocationsPanel() {
                   />
                 </div>
                 <div>
-                  <label className="form__label">{`Стеллаж`}</label>
+                  <label className="form__label">{`\u0421\u0442\u0435\u043b\u043b\u0430\u0436`}</label>
                   <input
                     className="form__input"
                     value={editForm.rack}
@@ -585,7 +586,7 @@ export default function WarehouseLocationsPanel() {
               </div>
               <div className="warehouse-locations__row">
                 <div>
-                  <label className="form__label">{`Уровень`}</label>
+                  <label className="form__label">{`\u0423\u0440\u043e\u0432\u0435\u043d\u044c`}</label>
                   <input
                     className="form__input"
                     value={editForm.level}
@@ -608,8 +609,8 @@ export default function WarehouseLocationsPanel() {
                   disabled={editLoading || !selectedId}
                 >
                   {editLoading
-                    ? "Сохранение..."
-                    : "Сохранить"}
+                    ? "\u0421\u043e\u0445\u0440\u0430\u043d\u0435\u043d\u0438\u0435..."
+                    : "\u0421\u043e\u0445\u0440\u0430\u043d\u0438\u0442\u044c"}
                 </button>
                 <button
                   type="button"
@@ -618,8 +619,8 @@ export default function WarehouseLocationsPanel() {
                   disabled={qrResetLoading || !selectedId}
                 >
                   {qrResetLoading
-                    ? "Обновление QR..."
-                    : "Сбросить QR"}
+                    ? "\u041e\u0431\u043d\u043e\u0432\u043b\u0435\u043d\u0438\u0435 QR..."
+                    : "\u0421\u0431\u0440\u043e\u0441\u0438\u0442\u044c QR"}
                 </button>
                 <button
                   type="button"
@@ -628,15 +629,15 @@ export default function WarehouseLocationsPanel() {
                   disabled={deleteLoading || !selectedId}
                 >
                   {deleteLoading
-                    ? "Удаление..."
-                    : "Удалить"}
+                    ? "\u0423\u0434\u0430\u043b\u0435\u043d\u0438\u0435..."
+                    : "\u0423\u0434\u0430\u043b\u0438\u0442\u044c"}
                 </button>
               </div>
             </div>
 
               <div className="warehouse-locations__row">
                 <div>
-                  <label className="form__label">{`Количество`}</label>
+                  <label className="form__label">{`\u041a\u043e\u043b\u0438\u0447\u0435\u0441\u0442\u0432\u043e`}</label>
                   <input
                     className="form__input"
                     type="number"
@@ -646,14 +647,14 @@ export default function WarehouseLocationsPanel() {
                   />
                 </div>
                 <div>
-                  <label className="form__label">{`Макет`}</label>
+                  <label className="form__label">{`\u041c\u0430\u043a\u0435\u0442`}</label>
                   <select
                     className="form__select"
                     value={layout}
                     onChange={(event) => setLayout(event.target.value)}
                   >
                     <option value="A4">A4</option>
-                    <option value="label">Этикетка</option>
+                    <option value="label">Label</option>
                   </select>
                 </div>
               </div>
@@ -665,7 +666,7 @@ export default function WarehouseLocationsPanel() {
                   onClick={loadLocations}
                   disabled={loading}
                 >
-                  {`Обновить список`}
+                  {`\u041e\u0431\u043d\u043e\u0432\u0438\u0442\u044c \u0441\u043f\u0438\u0441\u043e\u043a`}
                 </button>
                 <button
                   type="button"
@@ -674,8 +675,8 @@ export default function WarehouseLocationsPanel() {
                   disabled={actionLoading}
                 >
                   {actionLoading
-                    ? "Печать..."
-                    : "Создать QR и печатать"}
+                    ? "\u041f\u0435\u0447\u0430\u0442\u044c..."
+                    : "\u0421\u043e\u0437\u0434\u0430\u0442\u044c QR \u0438 \u043f\u0435\u0447\u0430\u0442\u0430\u0442\u044c"}
                 </button>
               </div>
             </div>
@@ -686,20 +687,20 @@ export default function WarehouseLocationsPanel() {
       {subtab === "item" && (
         <div className="warehouse-locations__grid warehouse-locations__grid--single">
           <div className="card">
-            <h3 className="card__title">{`QR для товара`}</h3>
+            <h3 className="card__title">{`QR \u0434\u043b\u044f \u0442\u043e\u0432\u0430\u0440\u0430`}</h3>
             <p className="card__subtitle">
-              {`QR формируется из BP:ITEM:<id>`}
+              {`QR \u0444\u043e\u0440\u043c\u0438\u0440\u0443\u0435\u0442\u0441\u044f \u0438\u0437 BP:ITEM:<id>`}
             </p>
 
             <div className="warehouse-locations__form">
-              <label className="form__label">{`Товар`}</label>
+              <label className="form__label">{`\u0422\u043e\u0432\u0430\u0440`}</label>
               <div className="warehouse-locations__row">
                 <select
                   className="form__select"
                   value={itemPick}
                   onChange={(event) => setItemPick(event.target.value)}
                 >
-                  <option value="">{`Выберите товар`}</option>
+                  <option value="">{`\u0412\u044b\u0431\u0435\u0440\u0438\u0442\u0435 \u0442\u043e\u0432\u0430\u0440`}</option>
                   {items.map((item) => (
                     <option key={item.id} value={item.id}>
                       {item.name} {item.sku ? `(${item.sku})` : ""}
@@ -711,7 +712,7 @@ export default function WarehouseLocationsPanel() {
                   className="btn btn--secondary"
                   onClick={handleAddItem}
                 >
-                  {`Добавить`}
+                  {`\u0414\u043e\u0431\u0430\u0432\u0438\u0442\u044c`}
                 </button>
               </div>
 
@@ -725,7 +726,7 @@ export default function WarehouseLocationsPanel() {
                         </div>
                         {item.sku && (
                           <div className="warehouse-locations__list-meta">
-                            Артикул: {item.sku}
+                            SKU: {item.sku}
                           </div>
                         )}
                       </div>
@@ -747,7 +748,7 @@ export default function WarehouseLocationsPanel() {
 
               <div className="warehouse-locations__row">
                 <div>
-                  <label className="form__label">{`Количество`}</label>
+                  <label className="form__label">{`\u041a\u043e\u043b\u0438\u0447\u0435\u0441\u0442\u0432\u043e`}</label>
                   <input
                     className="form__input"
                     type="number"
@@ -757,14 +758,14 @@ export default function WarehouseLocationsPanel() {
                   />
                 </div>
                 <div>
-                  <label className="form__label">{`Макет`}</label>
+                  <label className="form__label">{`\u041c\u0430\u043a\u0435\u0442`}</label>
                   <select
                     className="form__select"
                     value={layout}
                     onChange={(event) => setLayout(event.target.value)}
                   >
                     <option value="A4">A4</option>
-                    <option value="label">Этикетка</option>
+                    <option value="label">Label</option>
                   </select>
                 </div>
               </div>
@@ -777,8 +778,8 @@ export default function WarehouseLocationsPanel() {
                   disabled={actionLoading}
                 >
                   {actionLoading
-                    ? "Печать..."
-                    : "Печатать этикетки"}
+                    ? "\u041f\u0435\u0447\u0430\u0442\u044c..."
+                    : "\u041f\u0435\u0447\u0430\u0442\u0430\u0442\u044c \u044d\u0442\u0438\u043a\u0435\u0442\u043a\u0438"}
                 </button>
               </div>
             </div>
@@ -788,12 +789,12 @@ export default function WarehouseLocationsPanel() {
 
       {loading && (
         <div className="text-muted">
-          {`Загрузка ячеек...`}
+          {`\u0417\u0430\u0433\u0440\u0443\u0437\u043a\u0430 \u044f\u0447\u0435\u0435\u043a...`}
         </div>
       )}
       {itemsLoading && (
         <div className="text-muted">
-          {`Загрузка товаров...`}
+          {`\u0417\u0430\u0433\u0440\u0443\u0437\u043a\u0430 \u0442\u043e\u0432\u0430\u0440\u043e\u0432...`}
         </div>
       )}
     </div>

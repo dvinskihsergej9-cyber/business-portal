@@ -1,8 +1,9 @@
-﻿import { createContext, useContext, useEffect, useState } from "react";
-import { apiFetch } from "../apiConfig";
+import { createContext, useContext, useEffect, useState } from "react";
 
 export const AuthContext = createContext(null);
 export const useAuth = () => useContext(AuthContext);
+
+const API = "http://localhost:3001/api";
 
 export function AuthProvider({ children }) {
   const [user, setUser] = useState(() => {
@@ -11,7 +12,7 @@ export function AuthProvider({ children }) {
   });
   const [loading, setLoading] = useState(true);
 
-  // Загружаем пользователя по токену, если он сохранен.
+  // авто-подтягивание пользователя по токену
   useEffect(() => {
     const token = localStorage.getItem("token");
     if (!token) {
@@ -21,7 +22,7 @@ export function AuthProvider({ children }) {
 
     (async () => {
       try {
-        const res = await apiFetch("/me", {
+        const res = await fetch(`${API}/me`, {
           headers: {
             Authorization: `Bearer ${token}`,
           },
@@ -33,17 +34,11 @@ export function AuthProvider({ children }) {
           setUser(null);
         } else {
           const data = await res.json();
-          const nextUser = {
-            ...data.user,
-            org: data.org || null,
-            memberships: data.memberships || [],
-            subscription: data.subscription || null,
-          };
-          setUser(nextUser);
-          localStorage.setItem("user", JSON.stringify(nextUser));
+          setUser(data);
+          localStorage.setItem("user", JSON.stringify(data));
         }
       } catch (e) {
-        console.error("Ошибка загрузки пользователя:", e);
+        console.error("Ошибка автоавторизации:", e);
         localStorage.removeItem("token");
         localStorage.removeItem("user");
         setUser(null);
@@ -55,7 +50,7 @@ export function AuthProvider({ children }) {
 
   const login = async (email, password) => {
     try {
-      const res = await apiFetch("/login", {
+      const res = await fetch(`${API}/login`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ email, password }),
@@ -68,33 +63,20 @@ export function AuthProvider({ children }) {
       }
 
       localStorage.setItem("token", data.token);
-
-      const meRes = await apiFetch("/me", {
-        headers: { Authorization: `Bearer ${data.token}` },
-      });
-      const meData = await meRes.json();
-      const nextUser = meRes.ok
-        ? {
-            ...meData.user,
-            org: meData.org || null,
-            memberships: meData.memberships || [],
-            subscription: meData.subscription || null,
-          }
-        : data.user;
-
-      localStorage.setItem("user", JSON.stringify(nextUser));
-      setUser(nextUser);
+      localStorage.setItem("user", JSON.stringify(data.user));
+      setUser(data.user);
 
       return { ok: true };
     } catch (e) {
       console.error("Login error:", e);
-      return { ok: false, message: "Ошибка сети" };
+      return { ok: false, message: "Сетевая ошибка" };
     }
   };
 
+  // РЕГИСТРАЦИЯ БЕЗ ROLE — роль ставит сервер
   const register = async (email, password, name) => {
     try {
-      const res = await apiFetch("/register", {
+      const res = await fetch(`${API}/register`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ email, password, name }),
@@ -107,34 +89,20 @@ export function AuthProvider({ children }) {
       }
 
       localStorage.setItem("token", data.token);
-
-      const meRes = await apiFetch("/me", {
-        headers: { Authorization: `Bearer ${data.token}` },
-      });
-      const meData = await meRes.json();
-      const nextUser = meRes.ok
-        ? {
-            ...meData.user,
-            org: meData.org || null,
-            memberships: meData.memberships || [],
-            subscription: meData.subscription || null,
-          }
-        : data.user;
-
-      localStorage.setItem("user", JSON.stringify(nextUser));
-      setUser(nextUser);
+      localStorage.setItem("user", JSON.stringify(data.user));
+      setUser(data.user);
 
       return { ok: true };
     } catch (e) {
       console.error("Register error:", e);
-      return { ok: false, message: "Ошибка сети" };
+      return { ok: false, message: "Сетевая ошибка" };
     }
   };
 
   const updateProfile = async ({ name, password }) => {
     try {
       const token = localStorage.getItem("token");
-      const res = await apiFetch("/me", {
+      const res = await fetch(`${API}/me`, {
         method: "PUT",
         headers: {
           "Content-Type": "application/json",
@@ -146,20 +114,16 @@ export function AuthProvider({ children }) {
       const data = await res.json();
 
       if (!res.ok) {
-        return { ok: false, message: data.message || "Ошибка обновления профиля" };
+        return { ok: false, message: data.message || "Ошибка сохранения" };
       }
 
-      const nextUser = {
-        ...user,
-        ...data.user,
-      };
-      setUser(nextUser);
-      localStorage.setItem("user", JSON.stringify(nextUser));
+      setUser(data.user);
+      localStorage.setItem("user", JSON.stringify(data.user));
 
       return { ok: true };
     } catch (e) {
       console.error("Update profile error:", e);
-      return { ok: false, message: "Ошибка сети" };
+      return { ok: false, message: "Сетевая ошибка" };
     }
   };
 
@@ -169,38 +133,6 @@ export function AuthProvider({ children }) {
     setUser(null);
   };
 
-  const refreshUser = async () => {
-    const token = localStorage.getItem("token");
-    if (!token) {
-      setUser(null);
-      return null;
-    }
-    try {
-      const res = await apiFetch("/me", {
-        headers: { Authorization: `Bearer ${token}` },
-      });
-      const data = await res.json();
-      if (!res.ok) {
-        localStorage.removeItem("token");
-        localStorage.removeItem("user");
-        setUser(null);
-        return null;
-      }
-      const nextUser = {
-        ...data.user,
-        org: data.org || null,
-        memberships: data.memberships || [],
-        subscription: data.subscription || null,
-      };
-      setUser(nextUser);
-      localStorage.setItem("user", JSON.stringify(nextUser));
-      return nextUser;
-    } catch (e) {
-      console.error("Refresh user error:", e);
-      return null;
-    }
-  };
-
   const value = {
     user,
     loading,
@@ -208,7 +140,6 @@ export function AuthProvider({ children }) {
     register,
     updateProfile,
     logout,
-    refreshUser,
   };
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;

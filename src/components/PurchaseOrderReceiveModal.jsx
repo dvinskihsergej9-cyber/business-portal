@@ -1,7 +1,8 @@
 // C:\Users\dvinskikh.sergey\Desktop\business-portal\src\components\PurchaseOrderReceiveModal.jsx
 
 import { useEffect, useMemo, useState } from "react";
-import { apiFetch } from "../apiConfig";
+
+const API = "http://localhost:3001/api";
 
 /**
  * Открыть окно с печатной формой акта возврата/расхождений
@@ -366,7 +367,7 @@ export default function PurchaseOrderReceiveModal({ onClose }) {
         setLoading(true);
         setError("");
 
-        const res = await apiFetch("/purchase-orders", {
+        const res = await fetch(`${API}/purchase-orders`, {
           headers: authHeaders,
         });
 
@@ -412,7 +413,7 @@ export default function PurchaseOrderReceiveModal({ onClose }) {
       setError("");
       setLoading(true);
 
-      const res = await apiFetch(`/purchase-orders/${orderId}`, {
+      const res = await fetch(`${API}/purchase-orders/${orderId}`, {
         headers: authHeaders,
       });
 
@@ -524,8 +525,8 @@ export default function PurchaseOrderReceiveModal({ onClose }) {
         receivedQuantity: Number(r.receivedQty),
       }));
 
-      const res = await apiFetch(
-        `/purchase-orders/${selectedOrder.id}/receive`,
+      const res = await fetch(
+        `${API}/purchase-orders/${selectedOrder.id}/receive`,
         {
           method: "POST",
           headers: {

@@ -1,7 +1,6 @@
 ﻿import { useEffect, useMemo, useState } from "react";
-import { apiFetch } from "../apiConfig";
-import ResponsiveDataView from "../components/ResponsiveDataView";
-import useIsMobile from "../hooks/useIsMobile";
+
+const API = "http://localhost:3001/api";
 
 const STATUS_LABELS = {
   ACTIVE: "В штате",
@@ -192,14 +191,17 @@ function openPrintWindow(docText) {
       body { font-family: "Times New Roman", serif; font-size: 18px; margin: 0; color: #111; }
       .sheet { width: 100%; min-height: 60vh; display: flex; justify-content: center; }
       .paper { width: 70%; margin-top: 25mm; line-height: 1.6; }
-      pre { white-space: pre-wrap; font-family: "Times New Roman", serif; margin: 0; }
+      .doc-header { text-align: right; line-height: 1.7; margin-bottom: 24px; }
+      .doc-title { text-align: center; font-weight: 700; margin: 18px 0; font-size: 20px; }
+      .doc-body { margin: 0 0 18px 0; }
+      .doc-meta { margin-top: 6px; color: #444; }
+      .doc-date { margin: 16px 0 6px 0; }
+      .doc-note { font-size: 12px; color: #666; font-style: italic; }
+      .doc-sign { margin-top: 12px; }
     </style>
   `;
-  const safeText = String(docText || "").replace(/[&<>]/g, (ch) =>
-    ({ '&': '&amp;', '<': '&lt;', '>': '&gt;' }[ch])
-  );
   win.document.write(
-    `<html><head><title>Заявление</title>${styles}</head><body><div class="sheet"><div class="paper"><pre>${safeText}</pre></div></div><script>window.print();</script></body></html>`
+    `<html><head><title>Заявление</title>${styles}</head><body><div class="sheet"><div class="paper">${docText}</div></div><script>window.print();</script></body></html>`
   );
   win.document.close();
 }
@@ -207,7 +209,6 @@ function openPrintWindow(docText) {
 export default function HrPanel() {
   const [section, setSection] = useState("employees");
   const [employeeTab, setEmployeeTab] = useState("register");
-  const isMobile = useIsMobile();
   const [employees, setEmployees] = useState([]);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
@@ -289,7 +290,7 @@ export default function HrPanel() {
     try {
       setLoading(true);
       setError("");
-      const res = await apiFetch(`/hr/employees`, { headers: authHeaders });
+      const res = await fetch(`${API}/hr/employees`, { headers: authHeaders });
       const data = await res.json();
       if (!res.ok) throw new Error(data.message || "Не удалось загрузить сотрудников");
       setEmployees(data);
@@ -306,9 +307,9 @@ export default function HrPanel() {
       setSafetyLoading(true);
       setSafetyError("");
       const [instrRes, assignRes, resRes] = await Promise.all([
-        apiFetch(`/safety/instructions`, { headers: authHeaders }),
-        apiFetch(`/safety/assignments`, { headers: authHeaders }),
-        apiFetch(`/safety/resources`, { headers: authHeaders }),
+        fetch(`${API}/safety/instructions`, { headers: authHeaders }),
+        fetch(`${API}/safety/assignments`, { headers: authHeaders }),
+        fetch(`${API}/safety/resources`, { headers: authHeaders }),
       ]);
       const instrData = await instrRes.json();
       const assignData = await assignRes.json();
@@ -380,7 +381,7 @@ export default function HrPanel() {
       const hiredAt = normalizeDateInput(form.hiredAt);
 
       if (!fullName || !birthDate || !position || !department || !telegramChatId || !hiredAt) {
-        throw new Error("Заполните все поля, включая ID Telegram.");
+        throw new Error("Заполните все поля, включая Telegram ID.");
       }
 
       const body = {
@@ -392,7 +393,7 @@ export default function HrPanel() {
         status: "ACTIVE",
         hiredAt,
       };
-      const res = await apiFetch(`/hr/employees`, {
+      const res = await fetch(`${API}/hr/employees`, {
         method: "POST",
         headers: authHeaders,
         body: JSON.stringify(body),
@@ -454,10 +455,10 @@ export default function HrPanel() {
       const hiredAt = normalizeDateInput(editForm.hiredAt);
 
       if (!fullName || !birthDate || !position || !department || !telegramChatId || !hiredAt) {
-        throw new Error("Заполните все поля, включая ID Telegram.");
+        throw new Error("Заполните все поля, включая Telegram ID.");
       }
 
-      const res = await apiFetch(`/hr/employees/${id}`, {
+      const res = await fetch(`${API}/hr/employees/${id}`, {
         method: "PUT",
         headers: authHeaders,
         body: JSON.stringify({
@@ -513,7 +514,7 @@ export default function HrPanel() {
       return;
     }
     try {
-      const res = await apiFetch(`/hr/employees/${employeeId}/leave-balance`, {
+      const res = await fetch(`${API}/hr/employees/${employeeId}/leave-balance`, {
         headers: authHeaders,
       });
       const data = await res.json();
@@ -541,7 +542,7 @@ export default function HrPanel() {
       if (leaveTab === "TERMINATION") {
         if (!terminationForm.employeeId) throw new Error("Выберите сотрудника");
 
-        const res = await apiFetch(`/hr/leave-applications`, {
+        const res = await fetch(`${API}/hr/leave-applications`, {
           method: "POST",
           headers: authHeaders,
           body: JSON.stringify({
@@ -562,7 +563,7 @@ export default function HrPanel() {
       } else {
         if (!leaveForm.employeeId) throw new Error("Выберите сотрудника");
 
-        const res = await apiFetch(`/hr/leave-applications`, {
+        const res = await fetch(`${API}/hr/leave-applications`, {
           method: "POST",
           headers: authHeaders,
           body: JSON.stringify({
@@ -592,7 +593,7 @@ export default function HrPanel() {
   const handleCompleteInstruction = async (assignmentId) => {
     try {
       setSafetyError("");
-      const res = await apiFetch(`/safety/assignments/${assignmentId}/complete`, {
+      const res = await fetch(`${API}/safety/assignments/${assignmentId}/complete`, {
         method: "PUT",
         headers: authHeaders,
       });
@@ -610,7 +611,7 @@ export default function HrPanel() {
   const handleRemindInstruction = async (assignment) => {
     try {
       setSafetyError("");
-      const res = await apiFetch(`/safety/assignments/${assignment.id}/remind`, {
+      const res = await fetch(`${API}/safety/assignments/${assignment.id}/remind`, {
         method: "POST",
         headers: authHeaders,
       });
@@ -752,12 +753,12 @@ export default function HrPanel() {
                       required
                       value={form.department}
                       onChange={(e) => setForm((prev) => ({ ...prev, department: e.target.value }))}
-                      placeholder="Кадры / Склад / Офис"
+                      placeholder="HR / Склад / Офис"
                     />
                   </div>
 
                   <div className="form__group">
-                    <label className="form__label">ID Telegram</label>
+                    <label className="form__label">Telegram ID</label>
                     <input
                       className="form__input"
                       required
@@ -831,13 +832,26 @@ export default function HrPanel() {
                   ) : filteredEmployees.length === 0 ? (
                     <p className="text-muted">Сотрудников нет или не найдено по фильтру.</p>
                   ) : (
-                    <ResponsiveDataView
-                      isMobile={isMobile}
-                      cards={
-                        <div className="responsive-cards">
+                    <div className="table-wrapper">
+                      <table className="table">
+                        <thead>
+                          <tr>
+                            <th style={{ width: 70 }}>ID</th>
+                            <th>ФИО</th>
+                            <th>Должность</th>
+                            <th>Подразделение</th>
+                            <th style={{ width: 140 }}>Telegram ID</th>
+                            <th>Статус</th>
+                            <th>Принят</th>
+                            <th>ДР</th>
+                            <th style={{ width: 180 }}>Действия</th>
+                          </tr>
+                        </thead>
+                        <tbody>
                           {filteredEmployees.map((emp) => (
-                            <div key={emp.id} className="responsive-card">
-                              <div className="responsive-card__title text-wrap">
+                            <tr key={emp.id}>
+                              <td>{emp.id}</td>
+                              <td>
                                 {editEmployeeId === emp.id ? (
                                   <input
                                     className="form__input form__input--sm"
@@ -847,94 +861,84 @@ export default function HrPanel() {
                                 ) : (
                                   emp.fullName
                                 )}
-                              </div>
-                              <div className="responsive-card__meta">
-                                <span>ID: {emp.id}</span>
-                                <span>{STATUS_LABELS[emp.status] || emp.status}</span>
-                              </div>
-                              <div className="responsive-card__row">
-                                <span className="responsive-card__label">Должность</span>
-                                <span className="text-wrap">
-                                  {editEmployeeId === emp.id ? (
-                                    <input
-                                      className="form__input form__input--sm"
-                                      value={editForm.position}
-                                      onChange={(e) =>
-                                        setEditForm((prev) => ({ ...prev, position: e.target.value }))
-                                      }
-                                    />
-                                  ) : (
-                                    emp.position || "-"
-                                  )}
-                                </span>
-                              </div>
-                              <div className="responsive-card__row">
-                                <span className="responsive-card__label">Подразделение</span>
-                                <span className="text-wrap">
-                                  {editEmployeeId === emp.id ? (
-                                    <input
-                                      className="form__input form__input--sm"
-                                      value={editForm.department}
-                                      onChange={(e) =>
-                                        setEditForm((prev) => ({ ...prev, department: e.target.value }))
-                                      }
-                                    />
-                                  ) : (
-                                    emp.department || "-"
-                                  )}
-                                </span>
-                              </div>
-                              <div className="responsive-card__row">
-                                <span className="responsive-card__label">ID Telegram</span>
-                                <span>
-                                  {editEmployeeId === emp.id ? (
-                                    <input
-                                      className="form__input form__input--sm"
-                                      value={editForm.telegramChatId}
-                                      onChange={(e) =>
-                                        setEditForm((prev) => ({ ...prev, telegramChatId: e.target.value }))
-                                      }
-                                    />
-                                  ) : (
-                                    emp.telegramChatId || "-"
-                                  )}
-                                </span>
-                              </div>
-                              <div className="responsive-card__row">
-                                <span className="responsive-card__label">Принят</span>
-                                <span>
-                                  {editEmployeeId === emp.id ? (
-                                    <input
-                                      type="date"
-                                      className="form__input form__input--sm"
-                                      value={editForm.hiredAt}
-                                      onChange={(e) => setEditForm((prev) => ({ ...prev, hiredAt: e.target.value }))}
-                                    />
-                                  ) : (
-                                    formatDate(emp.hiredAt)
-                                  )}
-                                </span>
-                              </div>
-                              <div className="responsive-card__row">
-                                <span className="responsive-card__label">ДР</span>
-                                <span>
-                                  {editEmployeeId === emp.id ? (
-                                    <input
-                                      type="date"
-                                      className="form__input form__input--sm"
-                                      value={editForm.birthDate}
-                                      onChange={(e) =>
-                                        setEditForm((prev) => ({ ...prev, birthDate: e.target.value }))
-                                      }
-                                    />
-                                  ) : (
-                                    formatDate(emp.birthDate)
-                                  )}
-                                </span>
-                              </div>
-                              <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+                              </td>
+                              <td>
                                 {editEmployeeId === emp.id ? (
-                                  <>
+                                  <input
+                                    className="form__input form__input--sm"
+                                    value={editForm.position}
+                                    onChange={(e) => setEditForm((prev) => ({ ...prev, position: e.target.value }))}
+                                  />
+                                ) : (
+                                  emp.position || "-"
+                                )}
+                              </td>
+                              <td>
+                                {editEmployeeId === emp.id ? (
+                                  <input
+                                    className="form__input form__input--sm"
+                                    value={editForm.department}
+                                    onChange={(e) => setEditForm((prev) => ({ ...prev, department: e.target.value }))}
+                                  />
+                                ) : (
+                                  emp.department || "-"
+                                )}
+                              </td>
+                              <td>
+                                {editEmployeeId === emp.id ? (
+                                  <input
+                                    className="form__input form__input--sm"
+                                    value={editForm.telegramChatId}
+                                    onChange={(e) =>
+                                      setEditForm((prev) => ({ ...prev, telegramChatId: e.target.value }))
+                                    }
+                                  />
+                                ) : (
+                                  emp.telegramChatId || "-"
+                                )}
+                              </td>
+                              <td>
+                                <span
+                                  style={{
+                                    display: "inline-block",
+                                    padding: "2px 8px",
+                                    borderRadius: 999,
+                                    fontSize: 12,
+                                    background: statusPills[emp.status]?.background || "#e5e7eb",
+                                    color: statusPills[emp.status]?.color || "#374151",
+                                    border: `1px solid ${statusPills[emp.status]?.border || "#d1d5db"}`,
+                                  }}
+                                >
+                                  {STATUS_LABELS[emp.status] || emp.status}
+                                </span>
+                              </td>
+                              <td>
+                                {editEmployeeId === emp.id ? (
+                                  <input
+                                    type="date"
+                                    className="form__input form__input--sm"
+                                    value={editForm.hiredAt}
+                                    onChange={(e) => setEditForm((prev) => ({ ...prev, hiredAt: e.target.value }))}
+                                  />
+                                ) : (
+                                  formatDate(emp.hiredAt)
+                                )}
+                              </td>
+                              <td>
+                                {editEmployeeId === emp.id ? (
+                                  <input
+                                    type="date"
+                                    className="form__input form__input--sm"
+                                    value={editForm.birthDate}
+                                    onChange={(e) => setEditForm((prev) => ({ ...prev, birthDate: e.target.value }))}
+                                  />
+                                ) : (
+                                  formatDate(emp.birthDate)
+                                )}
+                              </td>
+                              <td>
+                                {editEmployeeId === emp.id ? (
+                                  <div style={{ display: "flex", gap: 8 }}>
                                     <button
                                       type="button"
                                       className="btn btn--primary btn--sm"
@@ -951,7 +955,7 @@ export default function HrPanel() {
                                     >
                                       Отмена
                                     </button>
-                                  </>
+                                  </div>
                                 ) : (
                                   <button
                                     type="button"
@@ -961,161 +965,12 @@ export default function HrPanel() {
                                     Редактировать
                                   </button>
                                 )}
-                              </div>
-                            </div>
+                              </td>
+                            </tr>
                           ))}
-                        </div>
-                      }
-                      table={
-                        <div className="table-wrapper">
-                          <table className="table">
-                            <thead>
-                              <tr>
-                                <th style={{ width: 70 }}>ID</th>
-                                <th>ФИО</th>
-                                <th>Должность</th>
-                                <th>Подразделение</th>
-                                <th style={{ width: 140 }}>ID Telegram</th>
-                                <th>Статус</th>
-                                <th>Принят</th>
-                                <th>ДР</th>
-                                <th style={{ width: 180 }}>Действия</th>
-                              </tr>
-                            </thead>
-                            <tbody>
-                              {filteredEmployees.map((emp) => (
-                                <tr key={emp.id}>
-                                  <td>{emp.id}</td>
-                                  <td>
-                                    {editEmployeeId === emp.id ? (
-                                      <input
-                                        className="form__input form__input--sm"
-                                        value={editForm.fullName}
-                                        onChange={(e) =>
-                                          setEditForm((prev) => ({ ...prev, fullName: e.target.value }))
-                                        }
-                                      />
-                                    ) : (
-                                      emp.fullName
-                                    )}
-                                  </td>
-                                  <td>
-                                    {editEmployeeId === emp.id ? (
-                                      <input
-                                        className="form__input form__input--sm"
-                                        value={editForm.position}
-                                        onChange={(e) =>
-                                          setEditForm((prev) => ({ ...prev, position: e.target.value }))
-                                        }
-                                      />
-                                    ) : (
-                                      emp.position || "-"
-                                    )}
-                                  </td>
-                                  <td>
-                                    {editEmployeeId === emp.id ? (
-                                      <input
-                                        className="form__input form__input--sm"
-                                        value={editForm.department}
-                                        onChange={(e) =>
-                                          setEditForm((prev) => ({ ...prev, department: e.target.value }))
-                                        }
-                                      />
-                                    ) : (
-                                      emp.department || "-"
-                                    )}
-                                  </td>
-                                  <td>
-                                    {editEmployeeId === emp.id ? (
-                                      <input
-                                        className="form__input form__input--sm"
-                                        value={editForm.telegramChatId}
-                                        onChange={(e) =>
-                                          setEditForm((prev) => ({ ...prev, telegramChatId: e.target.value }))
-                                        }
-                                      />
-                                    ) : (
-                                      emp.telegramChatId || "-"
-                                    )}
-                                  </td>
-                                  <td>
-                                    <span
-                                      style={{
-                                        display: "inline-block",
-                                        padding: "2px 8px",
-                                        borderRadius: 999,
-                                        fontSize: 12,
-                                        background: statusPills[emp.status]?.background || "#e5e7eb",
-                                        color: statusPills[emp.status]?.color || "#374151",
-                                        border: `1px solid ${statusPills[emp.status]?.border || "#d1d5db"}`,
-                                      }}
-                                    >
-                                      {STATUS_LABELS[emp.status] || emp.status}
-                                    </span>
-                                  </td>
-                                  <td>
-                                    {editEmployeeId === emp.id ? (
-                                      <input
-                                        type="date"
-                                        className="form__input form__input--sm"
-                                        value={editForm.hiredAt}
-                                        onChange={(e) => setEditForm((prev) => ({ ...prev, hiredAt: e.target.value }))}
-                                      />
-                                    ) : (
-                                      formatDate(emp.hiredAt)
-                                    )}
-                                  </td>
-                                  <td>
-                                    {editEmployeeId === emp.id ? (
-                                      <input
-                                        type="date"
-                                        className="form__input form__input--sm"
-                                        value={editForm.birthDate}
-                                        onChange={(e) =>
-                                          setEditForm((prev) => ({ ...prev, birthDate: e.target.value }))
-                                        }
-                                      />
-                                    ) : (
-                                      formatDate(emp.birthDate)
-                                    )}
-                                  </td>
-                                  <td>
-                                    {editEmployeeId === emp.id ? (
-                                      <div style={{ display: "flex", gap: 8 }}>
-                                        <button
-                                          type="button"
-                                          className="btn btn--primary btn--sm"
-                                          onClick={() => handleEditSave(emp.id)}
-                                          disabled={editSaving}
-                                        >
-                                          Сохранить
-                                        </button>
-                                        <button
-                                          type="button"
-                                          className="btn btn--secondary btn--sm"
-                                          onClick={handleEditCancel}
-                                          disabled={editSaving}
-                                        >
-                                          Отмена
-                                        </button>
-                                      </div>
-                                    ) : (
-                                      <button
-                                        type="button"
-                                        className="btn btn--secondary btn--sm"
-                                        onClick={() => handleEditStart(emp)}
-                                      >
-                                        Редактировать
-                                      </button>
-                                    )}
-                                  </td>
-                                </tr>
-                              ))}
-                            </tbody>
-                          </table>
-                        </div>
-                      }
-                    />
+                        </tbody>
+                      </table>
+                    </div>
                   )}
                 </div>
               </div>
@@ -1308,7 +1163,7 @@ export default function HrPanel() {
                                           Напомнить
                                         </button>
                                       ) : (
-                                        <span style={{ fontSize: 12, color: "#9ca3af" }}>Нет ID Telegram</span>
+                                        <span style={{ fontSize: 12, color: "#9ca3af" }}>Нет Telegram ID</span>
                                       )}
                                       <button
                                         type="button"
@@ -1708,7 +1563,16 @@ export default function HrPanel() {
                     Печать
                   </button>
                 </div>
-                <pre className="doc-preview">{leavePreview.docText}</pre>
+                <pre
+                  style={{
+                    whiteSpace: "pre-wrap",
+                    fontFamily: "Segoe UI, sans-serif",
+                    margin: 0,
+                    fontSize: 13,
+                  }}
+                >
+{leavePreview.docText}
+                </pre>
               </div>
             )}
           </div>

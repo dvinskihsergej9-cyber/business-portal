@@ -1,4 +1,3 @@
-import "dotenv/config";
 import express from "express";
 import cors from "cors";
 import bcrypt from "bcryptjs";
@@ -8,219 +7,27 @@ import ExcelJS from "exceljs";
 import multer from "multer";
 import crypto from "crypto";
 import nodemailer from "nodemailer";
+import { XMLParser } from "fast-xml-parser";
 import QRCode from "qrcode";
 import bwipjs from "bwip-js";
-import { AsyncLocalStorage } from "node:async_hooks";
-import fs from "node:fs";
-import path from "node:path";
-import { fileURLToPath } from "node:url";
 import { adminRoutes } from "./adminRoutes.js";
 import { createWarehouseStockService } from "./services/warehouseStockService.js";
 
-// ================== НЦАЛЗАЦЯ ==================
+// ================== ИНИЦИАЛИЗАЦИЯ ==================
 
 const app = express();
-const basePrisma = new PrismaClient();
-const prisma = basePrisma.$extends({
-  query: {
-    $allModels: {
-      async $allOperations({ model, operation, args, query }) {
-        const orgId = getOrgIdFromContext();
-        if (!orgId || !model || !ORG_SCOPED_MODELS.has(model)) {
-          return query(args);
-        }
-
-        const nextArgs = { ...(args || {}) };
-        const where = nextArgs.where || {};
-
-        if ([
-          "findMany",
-          "findFirst",
-          "findFirstOrThrow",
-          "count",
-          "aggregate",
-          "groupBy"
-        ].includes(operation)) {
-          nextArgs.where = { ...where, orgId };
-          return query(nextArgs);
-        }
-
-        if (["findUnique", "findUniqueOrThrow"].includes(operation)) {
-          if (where?.id && !where?.id_orgId) {
-            nextArgs.where = { id_orgId: { id: where.id, orgId } };
-            return query(nextArgs);
-          }
-          const result = await basePrisma[model].findFirst({
-            where: { ...where, orgId },
-            select: nextArgs.select,
-            include: nextArgs.include,
-          });
-          if (!result && operation === "findUniqueOrThrow") {
-            throw new Error("Record not found");
-          }
-          return result;
-        }
-
-        if (operation === "create") {
-          if (nextArgs.data && nextArgs.data.orgId == null) {
-            nextArgs.data.orgId = orgId;
-          }
-          if (nextArgs.data) {
-            nextArgs.data = normalizeDeep(nextArgs.data);
-          }
-          return query(nextArgs);
-        }
-
-        if (operation === "createMany") {
-          if (Array.isArray(nextArgs.data)) {
-            nextArgs.data = nextArgs.data.map((row) => {
-              const normalized = normalizeDeep(row);
-              return normalized.orgId == null ? { ...normalized, orgId } : normalized;
-            });
-          } else if (nextArgs.data) {
-            nextArgs.data = normalizeDeep(nextArgs.data);
-          }
-          return query(nextArgs);
-        }
-
-        if (["update", "delete"].includes(operation)) {
-          if (where?.id && !where?.id_orgId) {
-            nextArgs.where = { id_orgId: { id: where.id, orgId } };
-          } else if (!where?.id_orgId && nextArgs.where && nextArgs.where.orgId == null) {
-            nextArgs.where = { ...where, orgId };
-          }
-          if (operation === "update" && nextArgs.data) {
-            nextArgs.data = normalizeDeep(nextArgs.data);
-          }
-          return query(nextArgs);
-        }
-
-        if (operation === "upsert") {
-          if (where?.id && !where?.id_orgId) {
-            nextArgs.where = { id_orgId: { id: where.id, orgId } };
-          }
-          if (nextArgs.create && nextArgs.create.orgId == null) {
-            nextArgs.create.orgId = orgId;
-          }
-          if (nextArgs.create) {
-            nextArgs.create = normalizeDeep(nextArgs.create);
-          }
-          if (nextArgs.update) {
-            nextArgs.update = normalizeDeep(nextArgs.update);
-          }
-          return query(nextArgs);
-        }
-
-        return query(nextArgs);
-      }
-    }
-  }
-});
+const prisma = new PrismaClient();
 const stockService = createWarehouseStockService(prisma);
-
-const orgContext = new AsyncLocalStorage();
-const ORG_SCOPED_MODELS = new Set([
-  "Employee",
-  "HrLeaveApplication",
-  "SafetyInstruction",
-  "SafetyAssignment",
-  "LeaveRequest",
-  "PaymentRequest",
-  "WarehouseRequest",
-  "WarehouseRequestItem",
-  "WarehouseTask",
-  "PurchaseOrder",
-  "PurchaseOrderItem",
-  "Item",
-  "WarehouseLocation",
-  "WarehousePlacement",
-  "StockMovement",
-  "BinAuditSession",
-  "BinAuditEvent",
-  "StockDiscrepancy",
-  "ReceivingDiscrepancy",
-  "OrgProfile",
-  "Supplier",
-  "SupplierTruck",
-  "PortalNews",
-  "InviteToken",
-  "Membership",
-  "Subscription",
-  "Payment"
-]);
-
-function getOrgIdFromContext() {
-  return orgContext.getStore()?.orgId || null;
-}
 
 // для загрузки файлов в память (будем читать Excel из буфера)
 const upload = multer({ storage: multer.memoryStorage() });
 
 app.use(cors());
 app.use(express.json());
-app.use((req, res, next) => {
-  if (req.body) {
-    req.body = normalizeDeep(req.body);
-  }
-  if (req.query) {
-    Object.assign(req.query, normalizeDeep(req.query));
-  }
-  if (req.params) {
-    Object.assign(req.params, normalizeDeep(req.params));
-  }
-  const originalJson = res.json.bind(res);
-  res.json = (body) => {
-    res.setHeader("Content-Type", "application/json; charset=utf-8");
-    const normalizeErrors = res.statusCode >= 400;
-    return originalJson(normalizeDeep(body, { normalizeErrors }));
-  };
-  next();
-});
-app.get("/api/health", async (req, res) => {
-  try {
-    await prisma.$queryRaw`SELECT 1`;
-    return res.json({
-      ok: true,
-      version: APP_VERSION,
-      env: process.env.NODE_ENV || "development",
-      commit: BUILD_COMMIT,
-      buildTime: BUILD_TIME,
-      db: "ok",
-      dbType: DB_INFO.type,
-      dbHost: DB_INFO.host,
-    });
-  } catch (err) {
-    console.error("health db error:", err?.message || err);
-    return res.json({
-      ok: false,
-      version: APP_VERSION,
-      env: process.env.NODE_ENV || "development",
-      commit: BUILD_COMMIT,
-      buildTime: BUILD_TIME,
-      db: "error",
-      dbType: DB_INFO.type,
-      dbHost: DB_INFO.host,
-    });
-  }
-});
 
-app.get("/api/encoding-check", (req, res) => {
-  res.setHeader("Content-Type", "application/json; charset=utf-8");
-  const payload = {
-    text: "Проверка кодировки: Привет, Ёжик",
-    headers: res.getHeaders(),
-  };
-  return res.json(payload);
-});
+// ================== JWT / АВТОРИЗАЦИЯ ==================
 
-
-// ================== JWT / АВТОРЗАЦЯ ==================
-
-const JWT_SECRET = process.env.JWT_SECRET;
-if (!JWT_SECRET) {
-  console.error("JWT_SECRET is not set");
-  process.exit(1);
-}
+const JWT_SECRET = "super-secret-key"; // в .env в бою
 const JWT_EXPIRES_IN = "7d";
 
 function createToken(user) {
@@ -239,181 +46,55 @@ function createToken(user) {
 async function auth(req, res, next) {
   const header = req.headers["authorization"];
   if (!header) {
-    return res.status(401).json({ message: "Отсутствует токен авторизации" });
+    return res.status(401).json({ message: "Нет токена авторизации" });
   }
 
   const [type, token] = header.split(" ");
   if (type !== "Bearer" || !token) {
-    return res.status(401).json({ message: "Некорректный заголовок авторизации" });
+    return res.status(401).json({ message: "Неверный формат токена" });
   }
 
   try {
     const payload = jwt.verify(token, JWT_SECRET);
     const user = await prisma.user.findUnique({ where: { id: payload.id } });
     if (!user) {
-      return res.status(401).json({ message: "Недействительный токен" });
+      return res.status(401).json({ message: "TOKEN_INVALID" });
     }
     if (user.isActive === false) {
-      return res.status(401).json({ message: "Пользователь заблокирован" });
+      return res.status(401).json({ message: "USER_INACTIVE" });
     }
     if ((payload.tokenVersion || 0) !== (user.tokenVersion || 0)) {
-      return res.status(401).json({ message: "Недействительный токен" });
+      return res.status(401).json({ message: "TOKEN_INVALID" });
     }
-    const existingRoles = req.user?.roles;
     req.user = {
       id: user.id,
       email: user.email,
       role: user.role,
-      roles: existingRoles,
     };
     next();
   } catch (err) {
     console.error("auth error:", err);
-    return res.status(401).json({ message: "Недействительный или истекший токен" });
+    return res.status(401).json({ message: "Недействительный токен" });
   }
-}
-
-function getRequestRoles(req) {
-  const roles = new Set();
-  if (req.user?.role) roles.add(req.user.role);
-  if (Array.isArray(req.user?.roles)) {
-    req.user.roles.forEach((r) => roles.add(r));
-  }
-  if (Array.isArray(req.roles)) {
-    req.roles.forEach((r) => roles.add(r));
-  }
-  return Array.from(roles);
 }
 
 function requireAdmin(req, res, next) {
-  const roles = getRequestRoles(req);
-  if (!roles.includes("ADMIN")) {
-    return res.status(403).json({ message: "ADMIN_REQUIRED" });
+  if (req.user?.role !== "ADMIN") {
+    return res.status(403).json({ message: "Нужны права администратора" });
   }
   next();
 }
 
 function requireHr(req, res, next) {
-  const roles = getRequestRoles(req);
-  if (!roles.includes("HR") && !roles.includes("ADMIN")) {
-    return res.status(403).json({ message: "HR_REQUIRED" });
+  if (!["HR", "ADMIN"].includes(req.user?.role)) {
+    return res
+      .status(403)
+      .json({ message: "HR or admin role required" });
   }
   next();
 }
 
 
-
-const AUTH_EXEMPT_PATHS = [
-  /^\/api\/health$/,
-  /^\/api\/login$/,
-  /^\/api\/register$/,
-  /^\/api\/auth\/invite-info$/,
-  /^\/api\/auth\/accept-invite$/,
-  /^\/api\/auth\/forgot-password$/,
-  /^\/api\/auth\/reset-password$/,
-  /^\/api\/billing\/yookassa\/webhook$/
-];
-
-const ORG_EXEMPT_PATHS = [
-  ...AUTH_EXEMPT_PATHS
-];
-
-const PAYWALL_EXEMPT_PATHS = [
-  /^\/api\/health$/,
-  /^\/api\/me$/,
-  /^\/api\/billing\//,
-  /^\/api\/auth\//,
-  /^\/api\/login$/,
-  /^\/api\/register$/,
-  /^\/api\/dev\//
-];
-
-function isPathMatch(req, patterns) {
-  const fullPath = `${req.baseUrl || ""}${req.path || ""}`;
-  return patterns.some((pattern) => pattern.test(fullPath));
-}
-
-function isPublicPortalNewsRequest(req) {
-  return req.method === "GET" && req.path === "/portal-news";
-}
-
-function resolveOrgContext(req, res, next) {
-  (async () => {
-    try {
-      const memberships = await prisma.membership.findMany({
-        where: { userId: req.user.id },
-        include: { org: true }
-      });
-      if (!memberships.length) {
-        return res.status(403).json({ message: "Нет доступа к организации" });
-      }
-
-      const rawOrgId = req.headers["x-org-id"];
-      const requestedOrgId = rawOrgId ? Number(rawOrgId) : null;
-      let membership = memberships[0];
-      if (requestedOrgId && !Number.isNaN(requestedOrgId)) {
-        const found = memberships.find((m) => m.orgId === requestedOrgId);
-        if (!found) {
-          return res.status(403).json({ message: "Нет доступа к организации" });
-        }
-        membership = found;
-      }
-
-      req.orgId = membership.orgId;
-      req.org = membership.org;
-      req.membershipRole = membership.role;
-      req.roles = [req.user?.role, membership.role].filter(Boolean);
-      if (req.user) {
-        req.user.roles = req.roles;
-      }
-
-      return orgContext.run({ orgId: req.orgId }, () => next());
-    } catch (err) {
-      console.error("resolveOrgContext error:", err);
-      return res.status(500).json({ message: "Ошибка контекста организации" });
-    }
-  })();
-}
-
-async function requirePaidSubscription(req, res, next) {
-  try {
-    const subscription = await prisma.subscription.findFirst({
-      where: { orgId: req.orgId }
-    });
-    req.subscription = subscription;
-    const now = new Date();
-    const isActive =
-      subscription &&
-      subscription.status === "active" &&
-      subscription.paidUntil &&
-      new Date(subscription.paidUntil) > now;
-    if (!isActive) {
-      return res.status(402).json({ message: "Требуется активная подписка" });
-    }
-    return next();
-  } catch (err) {
-    console.error("subscription check error:", err);
-    return res.status(500).json({ message: "Ошибка проверки подписки" });
-  }
-}
-
-app.use("/api", (req, res, next) => {
-  if (isPublicPortalNewsRequest(req)) return next();
-  if (isPathMatch(req, AUTH_EXEMPT_PATHS)) return next();
-  return auth(req, res, next);
-});
-
-app.use("/api", (req, res, next) => {
-  if (isPublicPortalNewsRequest(req)) return next();
-  if (isPathMatch(req, ORG_EXEMPT_PATHS)) return next();
-  return resolveOrgContext(req, res, next);
-});
-
-app.use("/api", (req, res, next) => {
-  if (isPublicPortalNewsRequest(req)) return next();
-  if (isPathMatch(req, PAYWALL_EXEMPT_PATHS)) return next();
-  return requirePaidSubscription(req, res, next);
-});
 
 const INVITE_TTL_MS = 24 * 60 * 60 * 1000;
 const INVITE_EMAIL_COOLDOWN_MS = 60 * 1000;
@@ -426,132 +107,26 @@ const RESET_GLOBAL_LIMIT = 30;
 const resetEmailRate = new Map();
 const resetGlobalRate = [];
 
-const __filename = fileURLToPath(import.meta.url);
-const __dirname = path.dirname(__filename);
-const APP_VERSION = (() => {
-  if (process.env.APP_VERSION) return process.env.APP_VERSION;
-  try {
-    const pkg = JSON.parse(
-      fs.readFileSync(path.resolve(__dirname, "../package.json"), "utf-8")
-    );
-    return pkg.version || "unknown";
-  } catch {
-    return "unknown";
-  }
-})();
-const BUILD_COMMIT =
-  process.env.APP_COMMIT ||
-  process.env.GIT_COMMIT ||
-  process.env.VERCEL_GIT_COMMIT_SHA ||
-  process.env.RENDER_GIT_COMMIT ||
-  "unknown";
-const BUILD_TIME =
-  process.env.BUILD_TIME ||
-  process.env.VERCEL_BUILD_TIME ||
-  process.env.RENDER_BUILD_TIME ||
-  null;
-
-function getDbInfo() {
-  const url = process.env.DATABASE_URL || "";
-  if (!url) return { type: "unknown", host: "unknown" };
-  if (url.startsWith("file:")) {
-    return { type: "sqlite", host: url.replace("file:", "") || "local" };
-  }
-  try {
-    const parsed = new URL(url);
-    return { type: parsed.protocol.replace(":", ""), host: parsed.host || "unknown" };
-  } catch {
-    return { type: "unknown", host: "unknown" };
-  }
-}
-
-const DB_INFO = getDbInfo();
-
 const FRONTEND_URL = process.env.FRONTEND_URL || "http://localhost:5173";
-const APP_URL = process.env.APP_URL || FRONTEND_URL;
-const YOOKASSA_SHOP_ID = process.env.YOOKASSA_SHOP_ID;
-const YOOKASSA_SECRET_KEY = process.env.YOOKASSA_SECRET_KEY;
-
-const PLANS = {
-  "basic-30": {
-    id: "basic-30",
-    title: "Basic 30 days",
-    amount: 1990,
-    currency: "RUB",
-    days: 30
-  }
-};
 
 let mailTransport = null;
-let mailReady = false;
-const isDevEnv = process.env.NODE_ENV !== "production";
 
 function getMailTransport() {
   if (mailTransport) return mailTransport;
-  const host = process.env.MAIL_HOST || "smtp.mail.ru";
+  const host = process.env.MAIL_HOST;
   const user = process.env.MAIL_USER;
   const pass = process.env.MAIL_PASS;
   if (!host || !user || !pass) return null;
 
   const port = Number(process.env.MAIL_PORT || 465);
   const secure = String(process.env.MAIL_SECURE || "true") === "true";
-  const requireTLS =
-    process.env.MAIL_REQUIRE_TLS !== undefined
-      ? String(process.env.MAIL_REQUIRE_TLS) === "true"
-      : !secure;
   mailTransport = nodemailer.createTransport({
     host,
     port,
     secure,
-    requireTLS,
     auth: { user, pass },
   });
   return mailTransport;
-}
-
-async function initMailer() {
-  const host = process.env.MAIL_HOST || "smtp.mail.ru";
-  const user = process.env.MAIL_USER;
-  const pass = process.env.MAIL_PASS;
-  const port = Number(process.env.MAIL_PORT || 465);
-  const secure = String(process.env.MAIL_SECURE || "true") === "true";
-  const from = process.env.MAIL_FROM || `Бизнес-портал <${user || ""}>`;
-  const requireTLS =
-    process.env.MAIL_REQUIRE_TLS !== undefined
-      ? String(process.env.MAIL_REQUIRE_TLS) === "true"
-      : !secure;
-
-  if (!user || !pass) {
-    mailReady = false;
-    console.log("[MAIL] disabled (missing env)");
-    return;
-  }
-
-  console.log(
-    `[MAIL] config: host=${host} port=${port} secure=${secure} requireTLS=${requireTLS} user=${user} from=${from}`
-  );
-
-  try {
-    const transport = getMailTransport();
-    if (!transport) {
-      mailReady = false;
-      console.log("[MAIL] disabled (missing env)");
-      return;
-    }
-    await transport.verify();
-    mailReady = true;
-    console.log("[MAIL] verify OK");
-  } catch (err) {
-    mailReady = false;
-    console.log(
-      `[MAIL] verify FAIL: code=${err?.code || "-"} message=${err?.message || err}`
-    );
-    if (err?.code === "EAUTH") {
-      console.log(
-        "[MAIL] AUTH failed — для mail.ru нужен пароль приложения (если включена 2FA) или включите SMTP-доступ"
-      );
-    }
-  }
 }
 
 function hashInviteToken(token) {
@@ -570,90 +145,70 @@ async function sendInviteEmail(email, token) {
   const link = `${FRONTEND_URL}/invite?token=${token}`;
   const transport = getMailTransport();
   if (!transport) {
-    if (isDevEnv) {
-      console.log(`[DEV ONLY][INVITE] ${email}: ${link}`);
-    } else {
-      console.log(`[MAIL] invite skipped (mailer disabled) to=${email}`);
-    }
-    return { sent: false, link, error: "MAIL_DISABLED" };
+    console.log(`[INVITE] ${email}: ${link}`);
+    return { sent: false, link };
   }
 
-  const from = process.env.MAIL_FROM || `Бизнес-портал <${process.env.MAIL_USER}>`;
-  const subject = "Приглашение в Бизнес-портал";
-  const text = `Вы приглашены в Бизнес-портал. Перейдите по ссылке для завершения регистрации: ${link}`;
+  const from = process.env.MAIL_FROM || `Business Portal <${process.env.MAIL_USER}>`;
+  const subject = "\u041f\u0440\u0438\u0433\u043b\u0430\u0448\u0435\u043d\u0438\u0435 \u0432 Business Portal";
+  const text = `\u0412\u044b \u043f\u0440\u0438\u0433\u043b\u0430\u0448\u0435\u043d\u044b \u0432 Business Portal. \u041f\u0435\u0440\u0435\u0439\u0434\u0438\u0442\u0435 \u043f\u043e \u0441\u0441\u044b\u043b\u043a\u0435 \u0434\u043b\u044f \u0437\u0430\u0432\u0435\u0440\u0448\u0435\u043d\u0438\u044f \u0440\u0435\u0433\u0438\u0441\u0442\u0440\u0430\u0446\u0438\u0438: ${link}`;
   const html = `
     <div style="font-family:Arial,sans-serif;font-size:14px;">
-      <p>Вы приглашены в Бизнес-портал.</p>
-      <p>Ссылка для завершения регистрации:</p>
+      <p>\u0412\u044b \u043f\u0440\u0438\u0433\u043b\u0430\u0448\u0435\u043d\u044b \u0432 Business Portal.</p>
+      <p>\u0421\u0441\u044b\u043b\u043a\u0430 \u0434\u043b\u044f \u0437\u0430\u0432\u0435\u0440\u0448\u0435\u043d\u0438\u044f \u0440\u0435\u0433\u0438\u0441\u0442\u0440\u0430\u0446\u0438\u0438:</p>
       <p><a href="${link}">${link}</a></p>
-      <p>Если вы не ожидали это письмо, просто игнорируйте его.</p>
+      <p>\u0415\u0441\u043b\u0438 \u0432\u044b \u043d\u0435 \u043e\u0436\u0438\u0434\u0430\u043b\u0438 \u044d\u0442\u043e \u043f\u0438\u0441\u044c\u043c\u043e, \u043f\u0440\u043e\u0441\u0442\u043e \u0438\u0433\u043d\u043e\u0440\u0438\u0440\u0443\u0439\u0442\u0435 \u0435\u0433\u043e.</p>
     </div>
   `;
 
   try {
     await transport.sendMail({ from, to: email, subject, text, html });
-    console.log(`[MAIL] invite sent to=${email}`);
     return { sent: true, link };
   } catch (err) {
-    console.log(
-      `[MAIL] invite failed to=${email} code=${err?.code || "-"} message=${err?.message || err}`
-    );
-    if (isDevEnv) {
-      console.log(`[DEV ONLY][INVITE] ${email}: ${link}`);
-    }
-    return { sent: false, link, error: err?.code || err?.message || "MAIL_SEND_FAILED" };
+    console.error("Invite email send error:", err);
+    console.log(`[INVITE] ${email}: ${link}`);
+    return { sent: false, link, error: err.message };
   }
 }
+
+
 
 async function sendPasswordResetEmail(email, token) {
   const link = `${FRONTEND_URL}/reset-password?token=${token}`;
   const transport = getMailTransport();
   if (!transport) {
-    if (isDevEnv) {
-      console.log(`[DEV ONLY][RESET] ${email}: ${link}`);
-    } else {
-      console.log(`[MAIL] reset skipped (mailer disabled) to=${email}`);
-    }
-    return { sent: false, link, error: "MAIL_DISABLED" };
+    console.log(`[RESET] ${email}: ${link}`);
+    return { sent: false, link };
   }
 
-  const from = process.env.MAIL_FROM || `Бизнес-портал <${process.env.MAIL_USER}>`;
-  const subject = "Сброс пароля в Бизнес-портале";
-  const text = `Кто-то запросил сброс пароля для вашего аккаунта. Если это были вы, перейдите по ссылке: ${link}`;
+  const from = process.env.MAIL_FROM || `Business Portal <${process.env.MAIL_USER}>`;
+  const subject = "Сброс пароля в Business Portal";
+  const text = `Для сброса пароля перейдите по ссылке: ${link}`;
   const html = `
     <div style="font-family:Arial,sans-serif;font-size:14px;">
-      <p>Кто-то запросил сброс пароля для вашего аккаунта.</p>
-      <p>Перейдите по ссылке:</p>
+      <p>Для сброса пароля перейдите по ссылке:</p>
       <p><a href="${link}">${link}</a></p>
-      <p>Если вы не запрашивали сброс, просто проигнорируйте письмо.</p>
+      <p>Если вы не запрашивали сброс, просто игнорируйте это письмо.</p>
     </div>
   `;
 
   try {
     await transport.sendMail({ from, to: email, subject, text, html });
-    console.log(`[MAIL] reset sent to=${email}`);
     return { sent: true, link };
   } catch (err) {
-    console.log(
-      `[MAIL] reset failed to=${email} code=${err?.code || "-"} message=${err?.message || err}`
-    );
-    if (isDevEnv) {
-      console.log(`[DEV ONLY][RESET] ${email}: ${link}`);
-    }
-    return { sent: false, link, error: err?.code || err?.message || "MAIL_SEND_FAILED" };
+    console.error("Reset email send error:", err);
+    console.log(`[RESET] ${email}: ${link}`);
+    return { sent: false, link, error: err.message };
   }
 }
 
 async function sendPasswordChangedEmail(email) {
   const transport = getMailTransport();
-  if (!transport) {
-    return { sent: false, error: "MAIL_DISABLED" };
-  }
+  if (!transport) return { sent: false };
 
-  const from = process.env.MAIL_FROM || `Бизнес-портал <${process.env.MAIL_USER}>`;
+  const from = process.env.MAIL_FROM || `Business Portal <${process.env.MAIL_USER}>`;
   const subject = "Пароль изменён";
-  const text =
-    "Пароль в Бизнес-портале был изменён. Если это были не вы, обратитесь к администратору.";
+  const text = "Пароль в Business Portal был изменён. Если это были не вы, свяжитесь с администратором.";
   const html = `
     <div style="font-family:Arial,sans-serif;font-size:14px;">
       <p>${text}</p>
@@ -662,117 +217,13 @@ async function sendPasswordChangedEmail(email) {
 
   try {
     await transport.sendMail({ from, to: email, subject, text, html });
-    console.log(`[MAIL] password changed notice sent to=${email}`);
     return { sent: true };
   } catch (err) {
-    console.log(
-      `[MAIL] password changed notice failed to=${email} code=${err?.code || "-"} message=${err?.message || err}`
-    );
-    return { sent: false, error: err?.code || err?.message || "MAIL_SEND_FAILED" };
+    console.error("Password changed email error:", err);
+    return { sent: false, error: err.message };
   }
 }
 
-
-function getPlan(planId) {
-  return PLANS[planId] || null;
-}
-
-function getYookassaAuthHeader() {
-  if (!YOOKASSA_SHOP_ID || !YOOKASSA_SECRET_KEY) return null;
-  const token = Buffer.from(`${YOOKASSA_SHOP_ID}:${YOOKASSA_SECRET_KEY}`).toString("base64");
-  return `Basic ${token}`;
-}
-
-async function yookassaRequest(method, path, body, idempotenceKey) {
-  const auth = getYookassaAuthHeader();
-  if (!auth) {
-    throw new Error("YOOKASSA_CONFIG_MISSING");
-  }
-
-  const headers = {
-    Authorization: auth,
-    "Content-Type": "application/json"
-  };
-  if (idempotenceKey) {
-    headers["Idempotence-Key"] = idempotenceKey;
-  }
-
-  const res = await fetch(`https://api.yookassa.ru/v3${path}`, {
-    method,
-    headers,
-    body: body ? JSON.stringify(body) : undefined,
-  });
-
-  const data = await res.json().catch(() => ({}));
-  if (!res.ok) {
-    const error = new Error("YOOKASSA_REQUEST_FAILED");
-    error.details = data;
-    throw error;
-  }
-  return data;
-}
-
-function formatAmount(value) {
-  return Number(value).toFixed(2);
-}
-
-async function fetchYookassaPayment(providerPaymentId) {
-  return yookassaRequest("GET", `/payments/${providerPaymentId}`);
-}
-
-function logBilling(event, payload = {}) {
-  const safePayload = {
-    event,
-    ts: new Date().toISOString(),
-    ...payload,
-  };
-  console.log(JSON.stringify(safePayload));
-}
-
-async function applyPaymentSuccess({ paymentRecord, providerPayment, plan }) {
-  const orgId = paymentRecord.orgId;
-  const now = new Date();
-  const current = await prisma.subscription.findFirst({ where: { orgId } });
-  const baseDate = current?.paidUntil && new Date(current.paidUntil) > now
-    ? new Date(current.paidUntil)
-    : now;
-  const nextPaidUntil = addDays(baseDate, plan.days);
-
-  await prisma.subscription.upsert({
-    where: { orgId },
-    update: {
-      plan: plan.id,
-      status: "active",
-      paidUntil: nextPaidUntil,
-    },
-    create: {
-      orgId,
-      plan: plan.id,
-      status: "active",
-      paidUntil: nextPaidUntil,
-    },
-  });
-
-  logBilling("billing.subscription.update", {
-    orgId,
-    planId: plan.id,
-    paidUntil: nextPaidUntil.toISOString(),
-  });
-
-  await prisma.payment.update({
-    where: { id: paymentRecord.id },
-    data: {
-      status: "succeeded",
-      metadata: {
-        ...(paymentRecord.metadata || {}),
-        providerStatus: providerPayment.status,
-        providerPaid: providerPayment.paid,
-      },
-    },
-  });
-
-  return nextPaidUntil;
-}
 
 app.use("/api/admin", adminRoutes({ prisma, auth, requireAdmin }));
 
@@ -835,149 +286,7 @@ function formatDateLong(date) {
   ];
   const month = monthNames[d.getMonth()] || "";
   const yyyy = d.getFullYear();
-  return `«${dd}» ${month} ${yyyy} г.`;
-}
-
-function decodeUnicodeEscapes(input) {
-  if (!input || typeof input !== "string") return input;
-  if (!/\\u[0-9a-fA-F]{4}/.test(input)) return input;
-  return input.replace(/\\u([0-9a-fA-F]{4})/g, (_, code) => String.fromCharCode(parseInt(code, 16)));
-}
-
-function normalizeRuText(value) {
-  if (!value || typeof value !== "string") return value;
-  let s = value;
-  s = s.replace(/\u00A0/g, " ");
-  s = s
-    .replace(/&amp;/g, "&")
-    .replace(/&lt;/g, "<")
-    .replace(/&gt;/g, ">")
-    .replace(/&quot;/g, "\"")
-    .replace(/&#34;/g, "\"")
-    .replace(/&#39;/g, "'")
-    .replace(/&apos;/g, "'")
-    .replace(/&nbsp;/g, " ");
-  s = s.replace(/\\n/g, "\n").replace(/\r\n/g, "\n").replace(/\r/g, "\n");
-  s = decodeUnicodeEscapes(s);
-
-  const hasMojibake = /[ÐÑ][\u0080-\u00BF]/.test(s) || /Р[А-яЁё]/.test(s);
-  if (hasMojibake) {
-    try {
-      const fixed = Buffer.from(s, "latin1").toString("utf8");
-      const cyr = (fixed.match(/[А-Яа-яЁё]/g) || []).length;
-      const cyrOld = (s.match(/[А-Яа-яЁё]/g) || []).length;
-      s = cyr >= cyrOld ? fixed : s;
-    } catch {
-      // keep as-is
-    }
-  }
-
-  s = s.replace(/\s+\n/g, "\n").replace(/\n{3,}/g, "\n\n");
-  return s.trim();
-}
-
-function normalizeErrorMessage(message) {
-  const normalized = normalizeRuText(message);
-  if (!normalized) return normalized;
-  const manyQuestions = /\?{3,}/.test(normalized) || /^[\?\s]+$/.test(normalized);
-  const hasLatin = /[A-Za-z]/.test(normalized);
-  const hasCyrillic = /[А-Яа-яЁё]/.test(normalized);
-  const hasControl = /[\u0080-\u009F]/.test(normalized) || /\uFFFD/.test(normalized);
-  if (manyQuestions || hasControl || (hasLatin && !hasCyrillic)) {
-    return "Произошла ошибка. Попробуйте еще раз.";
-  }
-  return normalized;
-}
-
-function normalizeDeep(value, options = {}) {
-  const { normalizeErrors = false, key } = options;
-  if (value == null) return value;
-  if (typeof value === "string") {
-    if (normalizeErrors && (key === "message" || key === "error")) {
-      return normalizeErrorMessage(value);
-    }
-    return normalizeRuText(value);
-  }
-  if (Array.isArray(value)) {
-    return value.map((item) => normalizeDeep(item, { normalizeErrors }));
-  }
-  if (value instanceof Date) return value;
-  if (Buffer.isBuffer(value)) return value;
-  if (typeof value === "object") {
-    const result = Array.isArray(value) ? [] : {};
-    for (const [k, v] of Object.entries(value)) {
-      result[k] = normalizeDeep(v, { normalizeErrors, key: k });
-    }
-    return result;
-  }
-  return value;
-}
-
-function isHtmlLike(text) {
-  if (!text || typeof text !== "string") return false;
-  return /<\s*\/?\s*[a-z][^>]*>/i.test(text) || /&lt;.+&gt;/.test(text);
-}
-
-function isMojibakeLike(text) {
-  if (!text || typeof text !== "string") return false;
-  return /[ÐÑ][\u0080-\u00BF]/.test(text) || /Р[А-яЁё]/.test(text) || /\?{3,}/.test(text);
-}
-
-function shouldRebuildDocText(docText) {
-  if (!docText) return true;
-  if (isHtmlLike(docText) || isMojibakeLike(docText)) return true;
-  const normalized = normalizeRuText(docText);
-  return normalized !== docText;
-}
-
-function buildLeaveApplicationText({ employee, application, today }) {
-  const birth = employee.birthDate ? formatDateRu(employee.birthDate) : "___";
-  const hired = employee.hiredAt ? formatDateRu(employee.hiredAt) : "___";
-  const isUnpaid = application.type === "UNPAID";
-  const isTermination = application.type === "TERMINATION";
-  const fromLong = formatDateLong(application.startDate);
-  const toLong = formatDateLong(application.endDate);
-
-  const titleLine = "Заявление";
-
-  const body = isTermination
-    ? `Прошу уволить меня по собственному желанию с ${fromLong}.`
-    : isUnpaid
-      ? `Прошу предоставить отпуск без сохранения заработной платы с ${fromLong} по ${toLong} продолжительностью ${application.days} календарных дней.`
-      : `Прошу предоставить ежегодный оплачиваемый отпуск с ${fromLong} по ${toLong} продолжительностью ${application.days} календарных дней.`;
-
-  const reasonLine = application.reason
-    ? `Причина / комментарий: ${application.reason}`
-    : "";
-
-  const noteLine = isUnpaid || isTermination
-    ? ""
-    : "(не более 14 календарных дней за свой счет)";
-
-  const lines = [
-    "Директору: ____________________________________________",
-    "_____________________________________________________",
-    `От: ${employee.fullName}`,
-    `Должность: ${employee.position || ""}${employee.position ? ", " : ""}${employee.department || ""}`,
-    "",
-    titleLine,
-    "",
-    body,
-    reasonLine,
-    "",
-    `Дата приема: ${hired}    Дата рождения: ${birth}`,
-    `Дата заявления: «____» __________ 20____ г. ${noteLine}`,
-    "Подпись ________________",
-    `Сформировано: ${today}`
-  ];
-
-  return lines.filter((line) => line !== "").join("\n");
-}
-
-function shouldRegenerateLeaveDoc(docText) {
-  if (!docText) return true;
-  const fixed = normalizeRuText(docText);
-  return fixed !== docText;
+  return `«${dd}» ${month} ${yyyy} года`;
 }
 
 function parseDateInput(value) {
@@ -997,6 +306,58 @@ function parseDateInput(value) {
   return null;
 }
 
+function buildLeaveDoc(employee, application) {
+  const birth = employee.birthDate ? formatDateRu(employee.birthDate) : "___";
+  const hired = employee.hiredAt ? formatDateRu(employee.hiredAt) : "___";
+  const from = formatDateBook(application.startDate);
+  const to = formatDateBook(application.endDate);
+  const isUnpaid = application.type === "UNPAID";
+  const isTermination = application.type === "TERMINATION";
+  const fromLong = formatDateLong(application.startDate);
+  const toLong = formatDateLong(application.endDate);
+  const today = formatDateRu(new Date());
+
+  const titleLine = "ЗАЯВЛЕНИЕ";
+
+  const body = isTermination
+    ? `Прошу уволить меня по собственному желанию ${fromLong}. Прошу произвести окончательный расчет, выдать трудовую книжку (или сведения о трудовой деятельности) и справки установленной формы в день увольнения.`
+    : isUnpaid
+      ? `В соответствии со статьей 128 Трудового кодекса РФ прошу предоставить мне отпуск без сохранения заработной платы с ${fromLong} по ${toLong} продолжительностью ${application.days} календарных дней.`
+      : `В соответствии со статьей 115 Трудового кодекса РФ прошу предоставить мне ежегодный оплачиваемый отпуск с ${fromLong} по ${toLong} продолжительностью ${application.days} календарных дней.`;
+
+  const reasonLine = application.reason
+    ? `<div class="doc-reason">Основание / комментарий: ${application.reason}</div>`
+    : "";
+
+  const noteSpan = isUnpaid
+    ? ""
+    : isTermination
+      ? ""
+      : `<span class="doc-note">(подается за 14 календарных дней до первого дня отпуска)</span>`;
+
+  return `
+<div class="doc-header">
+  <div>КОМУ: ________________________________________________</div>
+  <div>_____________________________________________________</div>
+  <div style="margin-top: 8px;">ОТ КОГО: ${employee.fullName}</div>
+  <div>Должность: ${employee.position || ""}${employee.position ? ", " : ""}${employee.department || ""}</div>
+</div>
+
+<div class="doc-title">${titleLine}</div>
+
+<div class="doc-body">${body}</div>
+${reasonLine}
+
+<div class="doc-meta">Дата приема: ${hired} &nbsp;&nbsp; Дата рождения: ${birth}</div>
+
+<div class="doc-date">Дата заявления: «____» __________ 20____ года ${noteSpan}</div>
+<div class="doc-sign">Подпись ________________</div>
+
+<div class="doc-meta" style="margin-top: 8px;">Фактически: ${today}</div>
+`.trim();
+}
+
+
 const DEFAULT_SAFETY_INSTRUCTIONS = [
   {
     title: "Вводный инструктаж для склада",
@@ -1005,7 +366,7 @@ const DEFAULT_SAFETY_INSTRUCTIONS = [
     role: "WAREHOUSE",
   },
   {
-    title: "нструктаж для грузчиков",
+    title: "Инструктаж для грузчиков",
     description:
       "Безопасное перемещение и штабелирование грузов, фиксация паллет, работа с стропами и захватами, отдых для спины.",
     role: "LOADER",
@@ -1102,39 +463,278 @@ async function renderQrPng(value) {
   });
 }
 
+// ================== Новости (RSS агрегатор) ==================
+const NEWS_SOURCES = [
+  { name: "Ведомости", type: "rss", url: "https://www.vedomosti.ru/rss/rubric/business", defaultCategory: "business" },
+  { name: "Ведомости", type: "rss", url: "https://www.vedomosti.ru/rss/rubric/economics/taxes", defaultCategory: "tax" },
+  { name: "Ведомости", type: "rss", url: "https://www.vedomosti.ru/rss/rubric/economics/regulations", defaultCategory: "tax" },
+  { name: "Коммерсантъ", type: "rss", url: "https://www.kommersant.ru/rss/news.xml", defaultCategory: "business" },
+  {
+    name: "РБК",
+    type: "rss",
+    url: "https://rssexport.rbc.ru/rbcnews/news/30/full.rss",
+    fallbackUrls: [
+      "https://rss.rbc.ru/rbcnews/news/30/full.rss",
+      "https://static.feed.rbc.ru/rbc/internal/rss.rbc.ru/rbc.ru/economics.rss",
+    ],
+    defaultCategory: "business",
+  },
+  { name: "Минтруд", type: "rss", url: "https://mintrud.gov.ru/news/rss/official", defaultCategory: "hr" },
+];
+
+const NEWS_CATEGORIES = {
+  tax: ["ндс", "налог", "фнс", "вычет", "счет-фактур", "упд", "камеральн", "провер", "акциз"],
+  hr: ["труд", "кадры", "увольнен", "прием", "договор", "минтруд", "страхов", "взнос", "отпуск", "больничн", "самозанят", "штраф"],
+};
+
+const NEWS_REFRESH_MS = 15 * 60 * 1000; // 15 минут
+const NEWS_REQUEST_TIMEOUT = 10000; // 10 секунд
+const NEWS_FETCH_HEADERS = {
+  "User-Agent": "business-portal/1.0",
+  Accept: "application/rss+xml, application/xml;q=0.9, text/xml;q=0.8, */*;q=0.5",
+  "Accept-Language": "ru-RU,ru;q=0.9,en;q=0.8",
+};
+
+let newsCache = {
+  items: [],
+  fetchedAt: 0,
+};
+const newsSourceCache = {};
+
+function classifyCategory(title = "", description = "", fallback = "business") {
+  const text = `${title} ${description}`.toLowerCase();
+  if (NEWS_CATEGORIES.tax?.some((k) => text.includes(k))) return "tax";
+  if (NEWS_CATEGORIES.hr?.some((k) => text.includes(k))) return "hr";
+  return fallback;
+}
+
+function hashId(value) {
+  return crypto.createHash("md5").update(value).digest("hex");
+}
+
+const RSS_PARSER = new XMLParser({
+  ignoreAttributes: false,
+  attributeNamePrefix: "@_",
+  textNodeName: "text",
+  cdataPropName: "text",
+  removeNSPrefix: true,
+  trimValues: true,
+});
+
+function normalizeText(value) {
+  if (value === null || value === undefined) return "";
+  if (typeof value === "string" || typeof value === "number") return String(value);
+  if (typeof value === "object") return value.text || value["#text"] || "";
+  return "";
+}
+
+function cleanText(value) {
+  return normalizeText(value).replace(/<[^>]+>/g, " ").replace(/\s+/g, " ").trim();
+}
+
+function extractLink(linkField) {
+  if (!linkField) return "";
+  if (typeof linkField === "string") return linkField;
+  if (Array.isArray(linkField)) {
+    const alt = linkField.find((l) => l?.["@_rel"] === "alternate") || linkField[0];
+    return alt?.["@_href"] || normalizeText(alt?.text);
+  }
+  return linkField["@_href"] || normalizeText(linkField.text);
+}
+
+function pickTag(block, tag) {
+  const regexCdata = new RegExp(`<${tag}>\\s*<!\\[CDATA\\[(.*?)\\]\\]>\\s*<\\/${tag}>`, "is");
+  const regexSimple = new RegExp(`<${tag}[^>]*>(.*?)<\\/${tag}>`, "is");
+  const mC = block.match(regexCdata);
+  if (mC) return mC[1].trim();
+  const m = block.match(regexSimple);
+  return m ? m[1].replace(/<[^>]+>/g, " ").replace(/\s+/g, " ").trim() : "";
+}
+
+function parseRssFallback(xml, source) {
+  const items = [];
+  const parts = xml.split(/<item[^>]*>/i).slice(1);
+  for (const raw of parts) {
+    const block = raw.split(/<\/item>/i)[0];
+    const title = pickTag(block, "title");
+    const link = pickTag(block, "link") || pickTag(block, "guid");
+    const pubDate = pickTag(block, "pubDate") || pickTag(block, "dc:date");
+    const desc = pickTag(block, "description");
+    const summary = desc ? desc.replace(/\s+/g, " ").trim().slice(0, 300) : undefined;
+    if (!title || !link) continue;
+    items.push({
+      id: hashId(link || title),
+      title,
+      source: source.name,
+      link,
+      publishedAt: pubDate ? new Date(pubDate).toISOString() : new Date().toISOString(),
+      summary,
+      category: classifyCategory(title, desc, source.defaultCategory || "business"),
+    });
+  }
+  return items;
+}
+
+function parseRss(xml, source) {
+  const items = [];
+  const data = RSS_PARSER.parse(xml);
+  const rss = data?.rss;
+  const feed = data?.feed;
+  const channel = rss ? (Array.isArray(rss.channel) ? rss.channel[0] : rss.channel) : feed;
+  const rawItems = channel?.item || channel?.entry || [];
+  const list = Array.isArray(rawItems) ? rawItems : rawItems ? [rawItems] : [];
+
+  for (const item of list) {
+    const title = cleanText(item?.title);
+    const link = extractLink(item?.link) || normalizeText(item?.guid);
+    const pubDate =
+      normalizeText(item?.pubDate) || normalizeText(item?.published) || normalizeText(item?.updated);
+    const descRaw = normalizeText(item?.description) || normalizeText(item?.summary) || normalizeText(item?.content);
+    const summary = descRaw ? cleanText(descRaw).slice(0, 300) : undefined;
+    if (!title || !link) continue;
+    items.push({
+      id: hashId(link || title),
+      title,
+      source: source.name,
+      link,
+      publishedAt: pubDate ? new Date(pubDate).toISOString() : new Date().toISOString(),
+      summary,
+      category: classifyCategory(title, descRaw, source.defaultCategory || "business"),
+    });
+  }
+  if (items.length === 0) {
+    return parseRssFallback(xml, source);
+  }
+  return items;
+}
+
+async function fetchWithTimeout(url, timeoutMs) {
+  const controller = new AbortController();
+  const t = setTimeout(() => controller.abort(), timeoutMs);
+  try {
+    const res = await fetch(url, {
+      signal: controller.signal,
+      headers: NEWS_FETCH_HEADERS,
+      redirect: "follow",
+    });
+    if (!res.ok) throw new Error(`Status ${res.status}`);
+    return await res.text();
+  } finally {
+    clearTimeout(t);
+  }
+}
+
+async function refreshNewsCache() {
+  try {
+    const now = Date.now();
+    if (newsCache.items.length && now - newsCache.fetchedAt < NEWS_REFRESH_MS) return newsCache.items;
+
+    const tasks = NEWS_SOURCES.map(async (src) => {
+      const cacheKey = src.url;
+      const tryFetch = async (url, label) => {
+        const xml = await fetchWithTimeout(url, NEWS_REQUEST_TIMEOUT);
+        const items = parseRss(xml, src);
+        if (items.length === 0) {
+          console.log(`[News] fetched 0 items from ${src.name}${label ? ` (${label})` : ""}`);
+        } else {
+          console.log(`[News] fetched ${items.length} items from ${src.name}${label ? ` (${label})` : ""}`);
+        }
+        return items;
+      };
+
+      try {
+        let items = await tryFetch(src.url, "primary");
+        if (items.length === 0 && Array.isArray(src.fallbackUrls)) {
+          for (const fallbackUrl of src.fallbackUrls) {
+            try {
+              items = await tryFetch(fallbackUrl, "fallback");
+              if (items.length) break;
+            } catch (fallbackErr) {
+              console.log("[News] source error", src.name, fallbackErr.message, fallbackErr.cause?.code, fallbackErr.cause?.message);
+            }
+          }
+        }
+        if (items.length) {
+          newsSourceCache[cacheKey] = items;
+          return items;
+        }
+        return newsSourceCache[cacheKey] || [];
+      } catch (err) {
+        console.log("[News] source error", src.name, err.message, err.cause?.code, err.cause?.message);
+        if (Array.isArray(src.fallbackUrls)) {
+          for (const fallbackUrl of src.fallbackUrls) {
+            try {
+              const items = await tryFetch(fallbackUrl, "fallback");
+              if (items.length) {
+                newsSourceCache[cacheKey] = items;
+                return items;
+              }
+            } catch (fallbackErr) {
+              console.log("[News] source error", src.name, fallbackErr.message, fallbackErr.cause?.code, fallbackErr.cause?.message);
+            }
+          }
+        }
+        return newsSourceCache[cacheKey] || [];
+      }
+    });
+
+    const results = await Promise.allSettled(tasks);
+    const collected = results.flatMap((r) => (r.status === "fulfilled" ? r.value : []));
+
+    const seen = new Set();
+    const unique = [];
+    for (const item of collected) {
+      const key = item.link || item.title;
+      if (!seen.has(key)) {
+        seen.add(key);
+        unique.push(item);
+      }
+    }
+
+    unique.sort((a, b) => new Date(b.publishedAt).getTime() - new Date(a.publishedAt).getTime());
+    newsCache = { items: unique.slice(0, 50), fetchedAt: now };
+    return newsCache.items;
+  } catch (err) {
+    console.error("[News] refresh error:", err);
+    return newsCache.items;
+  }
+}
+
+setInterval(refreshNewsCache, NEWS_REFRESH_MS);
+refreshNewsCache();
 const SAFETY_RESOURCES = {
   instructions: [
     {
-      title: "нструкция ОТ: кладовщик (склад)",
-      description: "нструкция по охране труда для кладовщиков склада.",
-      file: "/templates/нструкция_ОТ_Кладовщик_Склад.docx",
+      title: "Инструкция ОТ: кладовщик (склад)",
+      description: "Инструкция по охране труда для кладовщиков склада.",
+      file: "/templates/Инструкция_ОТ_Кладовщик_Склад.docx",
     note: "",
     },
     {
-      title: "нструкция ОТ: грузчик (склад)",
-      description: "нструкция по охране труда для грузчиков склада.",
-      file: "/templates/нструкция_ОТ_Грузчик_Склад.docx",
+      title: "Инструкция ОТ: грузчик (склад)",
+      description: "Инструкция по охране труда для грузчиков склада.",
+      file: "/templates/Инструкция_ОТ_Грузчик_Склад.docx",
     note: "",
     },
   ],
   journals: [
     {
       title: "Журнал регистрации вводного инструктажа",
-      description: "Пустой журнал для фиксации вводного инструктажа (ФО, дата, подписи).",
-      file: "/templates/Журнал_Вводный_нструктаж_ОТ.docx",
+      description: "Пустой журнал для фиксации вводного инструктажа (ФИО, дата, подписи).",
+      file: "/templates/Журнал_Вводный_Инструктаж_ОТ.docx",
     note: "",
     },
     {
       title: "Журнал инструктажей на рабочем месте",
       description: "Учет первичных и повторных инструктажей на складе и в погрузочно-разгрузочной зоне.",
       file: "/templates/Журнал_Инструктаж_На_Рабочем_Месте_ОТ.docx",
-      note: "",
+    note: "",
     },
     {
       title: "Журнал регистрации целевых инструктажей",
       description: "Используется для целевых инструктажей при внеплановых работах и ПРР.",
       file: "/templates/Журнал_Целевой_Инструктаж_ОТ.docx",
-      note: "",
+    note: "",
     },
   ],
 };
@@ -1240,307 +840,22 @@ app.get("/api/safety/resources", auth, requireHr, async (req, res) => {
   }
 });
 
-
-const PORTAL_NEWS_SEED = [
-  {
-    title: "Переезд на новый портал",
-    body:
-      "Мы обновили интерфейс и добавили раздел с новостями портала. Здесь будут важные обновления, регламенты и изменения в процессах.",
-    tags: ["портал", "обновления"],
-    published: true,
-  },
-  {
-    title: "Единый регламент заявок",
-    body:
-      "С этого месяца заявки оформляются только через портал. Проверьте роли и права доступа, чтобы видеть нужные разделы.",
-    tags: ["регламент", "заявки"],
-    published: true,
-  },
-  {
-    title: "Контакты поддержки",
-    body:
-      "Если вы столкнулись с ошибками или не видите нужный раздел, напишите в поддержку портала и укажите номер организации.",
-    tags: ["поддержка"],
-    published: true,
-  },
-];
-
-const decodeEscapedUnicode = (value) => {
-  if (typeof value !== "string") return value;
-  if (!value.includes("\\u")) return value;
-  return value.replace(/\\u([0-9a-fA-F]{4})/g, (_, hex) =>
-    String.fromCharCode(parseInt(hex, 16))
-  );
-};
-
-const normalizePortalNewsText = (value) =>
-  decodeEscapedUnicode(String(value || "").trim());
-
-const normalizePortalNewsTags = (value) => {
-  if (!Array.isArray(value)) return value;
-  return value
-    .map((tag) => decodeEscapedUnicode(String(tag).trim()))
-    .filter(Boolean);
-};
-
-async function resolvePortalNewsContext(req) {
-  const header = req.headers["authorization"];
-  if (!header) {
-    return { user: null, orgId: null, isAdmin: false, authError: "missing" };
-  }
-
-  const [type, token] = header.split(" ");
-  if (type !== "Bearer" || !token) {
-    return {
-      user: null,
-      orgId: null,
-      isAdmin: false,
-      authError: "invalid",
-    };
-  }
-
-  try {
-    const payload = jwt.verify(token, JWT_SECRET);
-    const user = await basePrisma.user.findUnique({
-      where: { id: payload.id },
-    });
-    if (!user || user.isActive === false) {
-      return {
-        user: null,
-        orgId: null,
-        isAdmin: false,
-        authError: "invalid",
-      };
-    }
-    if ((payload.tokenVersion || 0) !== (user.tokenVersion || 0)) {
-      return {
-        user: null,
-        orgId: null,
-        isAdmin: false,
-        authError: "invalid",
-      };
-    }
-
-    const memberships = await basePrisma.membership.findMany({
-      where: { userId: user.id },
-      include: { org: true },
-    });
-    const rawOrgId = req.headers["x-org-id"];
-    const requestedOrgId = rawOrgId ? Number(rawOrgId) : null;
-    let orgId = memberships[0]?.orgId || null;
-    if (requestedOrgId && !Number.isNaN(requestedOrgId)) {
-      const found = memberships.find((m) => m.orgId === requestedOrgId);
-      if (found) orgId = found.orgId;
-    }
-
-    return {
-      user,
-      orgId,
-      isAdmin: user.role === "ADMIN",
-      hasMembership: memberships.length > 0,
-    };
-  } catch (err) {
-    return { user: null, orgId: null, isAdmin: false, authError: "invalid" };
-  }
-}
-
-app.get("/api/portal-news", async (req, res) => {
-  try {
-    const wantsAll = req.query?.all === "1";
-    const { orgId, isAdmin, user, hasMembership, authError } =
-      await resolvePortalNewsContext(req);
-    if (wantsAll && !user) {
-      const message =
-        authError === "invalid"
-          ? "Недействительный или истекший токен"
-          : "Отсутствует токен авторизации";
-      return res.status(401).json({ message });
-    }
-    if (wantsAll && !isAdmin) {
-      return res.status(403).json({ message: "Недостаточно прав" });
-    }
-    if (wantsAll && !hasMembership) {
-      return res.status(403).json({ message: "Нет доступа к организации" });
-    }
-    let effectiveOrgId = orgId;
-    if (!effectiveOrgId) {
-      const defaultOrg = await basePrisma.organization.findFirst({
-        orderBy: { id: "asc" },
-      });
-      effectiveOrgId = defaultOrg?.id || null;
-    }
-
-    const where = {};
-    if (!wantsAll) {
-      where.published = true;
-    }
-    if (effectiveOrgId) {
-      where.orgId = effectiveOrgId;
-    }
-
-    let items = await basePrisma.portalNews.findMany({
-      where,
-      orderBy: { createdAt: "desc" },
-    });
-
-    if (items.length === 0 && effectiveOrgId) {
-      await basePrisma.portalNews.createMany({
-        data: PORTAL_NEWS_SEED.map((item) => ({
-          title: item.title,
-          body: item.body,
-          tags: item.tags,
-          published: item.published,
-          orgId: effectiveOrgId,
-        })),
-        skipDuplicates: true,
-      });
-      items = await basePrisma.portalNews.findMany({
-        where,
-        orderBy: { createdAt: "desc" },
-      });
-    }
-    const normalized = items.map((item) => ({
-      ...item,
-      title: decodeEscapedUnicode(item.title),
-      body: decodeEscapedUnicode(item.body),
-      tags: normalizePortalNewsTags(item.tags),
-    }));
-    const updates = normalized
-      .map((item, index) => {
-        const original = items[index];
-        if (
-          item.title === original.title &&
-          item.body === original.body &&
-          JSON.stringify(item.tags ?? null) === JSON.stringify(original.tags ?? null)
-        ) {
-          return null;
-        }
-        return prisma.portalNews.update({
-          where: { id: item.id },
-          data: {
-            title: item.title,
-            body: item.body,
-            tags: item.tags,
-          },
-        });
-      })
-      .filter(Boolean);
-
-    if (updates.length) {
-      await Promise.allSettled(updates);
-    }
-    res.json({ items: normalized });
-  } catch (err) {
-    console.error("portal news list error:", err);
-    res
-      .status(500)
-      .json({ items: [], message: "Не удалось загрузить новости портала" });
-  }
-});
-
-app.post("/api/portal-news", auth, requireAdmin, async (req, res) => {
-  try {
-    const title = normalizePortalNewsText(req.body?.title);
-    const body = normalizePortalNewsText(req.body?.body);
-    const published = req.body?.published !== false;
-    const rawTags = req.body?.tags;
-    const tags = Array.isArray(rawTags)
-      ? rawTags.map((t) => String(t).trim()).filter(Boolean)
-      : typeof rawTags === "string"
-      ? rawTags
-          .split(",")
-          .map((t) => t.trim())
-          .filter(Boolean)
-      : [];
-    const normalizedTags = normalizePortalNewsTags(tags);
-
-    if (!title || !body) {
-      return res
-        .status(400)
-        .json({ message: "Заполните заголовок и текст новости" });
-    }
-
-    const created = await prisma.portalNews.create({
-      data: {
-        title,
-        body,
-        tags: normalizedTags,
-        published,
-      },
-    });
-    res.status(201).json(created);
-  } catch (err) {
-    console.error("portal news create error:", err);
-    res.status(500).json({ message: "Не удалось создать новость" });
-  }
-});
-
-app.put("/api/portal-news/:id", auth, requireAdmin, async (req, res) => {
-  try {
-    const id = Number(req.params.id);
-    if (!id || Number.isNaN(id)) {
-      return res.status(400).json({ message: "Некорректный идентификатор" });
-    }
-
-    const title = normalizePortalNewsText(req.body?.title);
-    const body = normalizePortalNewsText(req.body?.body);
-    const published = req.body?.published !== false;
-    const rawTags = req.body?.tags;
-    const tags = Array.isArray(rawTags)
-      ? rawTags.map((t) => String(t).trim()).filter(Boolean)
-      : typeof rawTags === "string"
-      ? rawTags
-          .split(",")
-          .map((t) => t.trim())
-          .filter(Boolean)
-      : [];
-    const normalizedTags = normalizePortalNewsTags(tags);
-
-    if (!title || !body) {
-      return res
-        .status(400)
-        .json({ message: "Заполните заголовок и текст новости" });
-    }
-
-    const updated = await prisma.portalNews.update({
-      where: { id },
-      data: {
-        title,
-        body,
-        tags: normalizedTags,
-        published,
-      },
-    });
-    res.json(updated);
-  } catch (err) {
-    console.error("portal news update error:", err);
-    if (err?.code === "P2025") {
-      return res.status(404).json({ message: "Новость не найдена" });
-    }
-    res.status(500).json({ message: "Не удалось обновить новость" });
-  }
-});
-
-app.delete("/api/portal-news/:id", auth, requireAdmin, async (req, res) => {
-  try {
-    const id = Number(req.params.id);
-    if (!id || Number.isNaN(id)) {
-      return res.status(400).json({ message: "Некорректный идентификатор" });
-    }
-
-    await prisma.portalNews.delete({ where: { id } });
-    res.json({ ok: true });
-  } catch (err) {
-    console.error("portal news delete error:", err);
-    if (err?.code === "P2025") {
-      return res.status(404).json({ message: "Новость не найдена" });
-    }
-    res.status(500).json({ message: "Не удалось удалить новость" });
-  }
-});
-
-
 // ---------- Новости ----------
+app.get("/api/news", auth, async (req, res) => {
+  try {
+    const category = String(req.query.category || "").toLowerCase();
+    const limit = Math.min(Number(req.query.limit) || 20, 50);
+    const items = await refreshNewsCache();
+    let list = items || [];
+    if (["business", "tax", "hr"].includes(category)) {
+      list = list.filter((item) => item.category === category);
+    }
+    res.json({ items: list.slice(0, limit) });
+  } catch (err) {
+    console.error("news endpoint error:", err);
+    res.status(500).json({ items: [], message: "Не удалось загрузить новости" });
+  }
+});
 
 app.put(
   "/api/safety/assignments/:id/complete",
@@ -1610,14 +925,14 @@ app.post("/api/safety/assignments/:id/remind", auth, requireHr, async (req, res)
     }
 
     if (!assignment.employee?.telegramChatId) {
-      return res.status(400).json({ message: "У сотрудника не указан Telegram ID" });
+      return res.status(400).json({ message: "??? ?????????? ?? ?????? Telegram ID" });
     }
     if (!assignment.dueDate) {
-      return res.status(400).json({ message: "Не указана дата напоминания" });
+      return res.status(400).json({ message: "??? ???? ??????????? ???????????" });
     }
 
     await sendSafetyReminderForAssignment(assignment, true);
-    return res.json({ message: "Напоминание отправлено" });
+    return res.json({ message: "??????????? ??????????" });
   } catch (err) {
     console.error("manual remind error:", err);
     return res.status(500).json({ message: "Failed to send reminder" });
@@ -1625,12 +940,8 @@ app.post("/api/safety/assignments/:id/remind", auth, requireHr, async (req, res)
 });
 
 function isWarehouseManager(user) {
-  const roles = new Set();
-  if (user?.role) roles.add(user.role);
-  if (Array.isArray(user?.roles)) {
-    user.roles.forEach((r) => roles.add(r));
-  }
-  return roles.has("WAREHOUSE") || roles.has("ADMIN");
+  // кто имеет права управлять складом / закупками
+  return user?.role === "ADMIN" || user?.role === "ACCOUNTING";
 }
 
 async function getOrCreateReceivingLocation() {
@@ -1768,7 +1079,7 @@ function buildReceiveActHtml(order, rows, orgInfo) {
       <tr><td>${safeOrg.name}</td></tr>
       <tr><td>Юридический адрес: ${safeOrg.legalAddress}</td></tr>
       <tr><td>Фактический адрес: ${safeOrg.actualAddress}</td></tr>
-      <tr><td>НН ${safeOrg.inn}&nbsp;&nbsp;&nbsp;&nbsp;КПП ${safeOrg.kpp}</td></tr>
+      <tr><td>ИНН ${safeOrg.inn}&nbsp;&nbsp;&nbsp;&nbsp;КПП ${safeOrg.kpp}</td></tr>
       ${phoneRow}
     </table>
 
@@ -1798,7 +1109,7 @@ function buildReceiveActHtml(order, rows, orgInfo) {
       </tr>
       ${rowsHtml}
       <tr>
-        <td colspan="2" style="text-align:right;font-weight:bold;">того:</td>
+        <td colspan="2" style="text-align:right;font-weight:bold;">Итого:</td>
         <td style="text-align:center;font-weight:bold;">${totalOrdered}</td>
         <td style="text-align:center;font-weight:bold;">${totalReceived}</td>
         <td style="text-align:center;font-weight:bold;">${totalDiff}</td>
@@ -1814,13 +1125,13 @@ function buildReceiveActHtml(order, rows, orgInfo) {
       <div class="sign">
         <div>Получатель</div>
         <div class="line"></div>
-        <div class="small">должность / подпись / Ф..О.</div>
+        <div class="small">должность / подпись / Ф.И.О.</div>
         <div class="small" style="margin-top:6px;">М.П.</div>
       </div>
       <div class="sign">
         <div>Представитель поставщика (экспедитор)</div>
         <div class="line"></div>
-        <div class="small">должность / подпись / Ф..О.</div>
+        <div class="small">должность / подпись / Ф.И.О.</div>
       </div>
     </div>
 
@@ -2057,7 +1368,7 @@ async function startTelegramPolling() {
   }
 }
 
-// ================== НАПОМНАНЯ ПО ЗАДАЧАМ СКЛАДА ==================
+// ================== НАПОМИНАНИЯ ПО ЗАДАЧАМ СКЛАДА ==================
 
 async function checkWarehouseTaskNotifications() {
   try {
@@ -2098,7 +1409,7 @@ async function checkWarehouseTaskNotifications() {
           "⏰ <b>Скоро срок по задаче склада</b>\n\n" +
           `📝 <b>Задача:</b> ${task.title}\n` +
           (task.executorName
-            ? `👷 <b>сполнитель:</b> ${task.executorName}\n`
+            ? `👷 <b>Исполнитель:</b> ${task.executorName}\n`
             : "") +
           `⏰ <b>Срок:</b> ${dueStr}`;
 
@@ -2134,7 +1445,7 @@ async function checkWarehouseTaskNotifications() {
           "⚠️ <b>Просрочена задача склада</b>\n\n" +
           `📝 <b>Задача:</b> ${task.title}\n` +
           (task.executorName
-            ? `👷 <b>сполнитель:</b> ${task.executorName}\n`
+            ? `👷 <b>Исполнитель:</b> ${task.executorName}\n`
             : "") +
           `⏰ <b>Срок был:</b> ${dueStr}`;
 
@@ -2229,16 +1540,17 @@ async function sendDailyLowStockSummary() {
   }
 }
 
-// ================== АУТЕНТФКАЦЯ ==================
+// ================== АУТЕНТИФИКАЦИЯ ==================
 
 // регистрация
 app.post("/api/register", async (req, res) => {
 
   if (process.env.DISABLE_PUBLIC_REGISTER !== "false") {
     return res.status(403).json({
-      message: "PUBLIC_REGISTER_DISABLED"
+      message: "\u041f\u0443\u0431\u043b\u0438\u0447\u043d\u0430\u044f \u0440\u0435\u0433\u0438\u0441\u0442\u0440\u0430\u0446\u0438\u044f \u043e\u0442\u043a\u043b\u044e\u0447\u0435\u043d\u0430. \u0420\u0435\u0433\u0438\u0441\u0442\u0440\u0430\u0446\u0438\u044f \u0434\u043e\u0441\u0442\u0443\u043f\u043d\u0430 \u0442\u043e\u043b\u044c\u043a\u043e \u043f\u043e \u043f\u0440\u0438\u0433\u043b\u0430\u0448\u0435\u043d\u0438\u044e \u0430\u0434\u043c\u0438\u043d\u0438\u0441\u0442\u0440\u0430\u0442\u043e\u0440\u0430."
     });
   }
+
 
   try {
     const { email, password, name } = req.body;
@@ -2246,70 +1558,43 @@ app.post("/api/register", async (req, res) => {
     if (!email || !password || !name) {
       return res
         .status(400)
-        .json({ message: "EMAIL_PASSWORD_NAME_REQUIRED" });
+        .json({ message: "email, пароль и имя обязательны" });
     }
 
     const existing = await prisma.user.findUnique({ where: { email } });
     if (existing) {
       return res
         .status(400)
-        .json({ message: "EMAIL_ALREADY_EXISTS" });
+        .json({ message: "Пользователь с таким email уже существует" });
     }
 
     const hash = await bcrypt.hash(password, 10);
-    const orgName = `${name} Organization`;
 
-    const result = await prisma.$transaction(async (tx) => {
-      const user = await tx.user.create({
-        data: {
-          email,
-          password: hash,
-          passwordHash: hash,
-          name,
-          role: "EMPLOYEE",
-        },
-      });
-
-      const org = await tx.organization.create({
-        data: { name: orgName },
-      });
-
-      await tx.membership.create({
-        data: {
-          orgId: org.id,
-          userId: user.id,
-          role: user.role,
-        },
-      });
-
-      await tx.subscription.create({
-        data: {
-          orgId: org.id,
-          plan: "basic-30",
-          status: "inactive",
-          paidUntil: null,
-        },
-      });
-
-      return { user, org };
+    const user = await prisma.user.create({
+      data: {
+        email,
+        password: hash,
+        passwordHash: hash,
+        name,
+        role: "EMPLOYEE",
+      },
     });
 
-    const token = createToken(result.user);
+    const token = createToken(user);
 
     res.status(201).json({
-      message: "REGISTERED",
+      message: "Пользователь создан",
       token,
       user: {
-        id: result.user.id,
-        email: result.user.email,
-        name: result.user.name,
-        role: result.user.role,
+        id: user.id,
+        email: user.email,
+        name: user.name,
+        role: user.role,
       },
-      orgId: result.org.id
     });
   } catch (err) {
     console.error("register error:", err);
-    res.status(500).json({ message: "REGISTER_ERROR" });
+    res.status(500).json({ message: "Ошибка сервера при регистрации" });
   }
 });
 
@@ -2344,14 +1629,8 @@ app.post("/api/login", async (req, res) => {
 
     const token = createToken(user);
 
-    const memberships = await prisma.membership.findMany({
-      where: { userId: user.id },
-      include: { org: true }
-    });
-    const activeOrgId = memberships[0]?.orgId || null;
-
     res.json({
-      message: "LOGIN_OK",
+      message: "Успешный вход",
       token,
       user: {
         id: user.id,
@@ -2359,7 +1638,6 @@ app.post("/api/login", async (req, res) => {
         name: user.name,
         role: user.role,
       },
-      orgId: activeOrgId
     });
   } catch (err) {
     console.error("login error:", err);
@@ -2368,7 +1646,7 @@ app.post("/api/login", async (req, res) => {
 });
 
 // профиль текущего пользователя
-const getMeResponse = async (req, res) => {
+app.get("/api/profile", auth, async (req, res) => {
   try {
     const user = await prisma.user.findUnique({
       where: { id: req.user.id },
@@ -2377,120 +1655,33 @@ const getMeResponse = async (req, res) => {
         email: true,
         name: true,
         role: true,
-        createdAt: true
-      }
+        createdAt: true,
+      },
     });
 
     if (!user) {
-      return res.status(404).json({ message: "USER_NOT_FOUND" });
+      if (user && user.isActive === false) {
+        return res.status(403).json({ message: "USER_INACTIVE" });
+      }
+
+      return res.status(404).json({ message: "Пользователь не найден" });
     }
 
-    const memberships = await prisma.membership.findMany({
-      where: { userId: req.user.id },
-      include: { org: true }
-    });
-
-    const activeOrgId = req.orgId || memberships[0]?.orgId || null;
-    const activeMembership = memberships.find((m) => m.orgId === activeOrgId) || null;
-    const subscription = activeOrgId
-      ? await prisma.subscription.findFirst({ where: { orgId: activeOrgId } })
-      : null;
-    const now = new Date();
-    const isActive =
-      subscription &&
-      subscription.status === "active" &&
-      subscription.paidUntil &&
-      new Date(subscription.paidUntil) > now;
-
-    const roles = [user.role, activeMembership?.role].filter(Boolean);
-
-    return res.json({
-      user: { ...user, roles },
-      org: activeMembership?.org || null,
-      memberships: memberships.map((m) => ({
-        orgId: m.orgId,
-        orgName: m.org?.name || null,
-        role: m.role
-      })),
-      subscription: subscription
-        ? {
-            id: subscription.id,
-            plan: subscription.plan,
-            status: subscription.status,
-            paidUntil: subscription.paidUntil,
-            isActive
-          }
-        : { isActive: false }
-    });
+    res.json(user);
   } catch (err) {
-    console.error("me error:", err);
-    return res.status(500).json({ message: "ME_ERROR" });
-  }
-};
-
-app.get("/api/me", auth, getMeResponse);
-app.get("/api/profile", auth, getMeResponse);
-
-app.put("/api/me", auth, async (req, res) => {
-  try {
-    const { name, password } = req.body || {};
-    const data = {};
-    let changedPassword = false;
-
-    if (name !== undefined) {
-      const trimmed = String(name || "").trim();
-      if (!trimmed) {
-        return res.status(400).json({ message: "NAME_REQUIRED" });
-      }
-      data.name = trimmed;
-    }
-
-    if (password) {
-      if (String(password).length < 6) {
-        return res.status(400).json({ message: "PASSWORD_TOO_SHORT" });
-      }
-      const hash = await bcrypt.hash(password, 10);
-      data.password = hash;
-      data.passwordHash = hash;
-      data.tokenVersion = { increment: 1 };
-      changedPassword = true;
-    }
-
-    if (!Object.keys(data).length) {
-      return res.status(400).json({ message: "NO_CHANGES" });
-    }
-
-    const updated = await prisma.user.update({
-      where: { id: req.user.id },
-      data
-    });
-
-    if (changedPassword) {
-      await sendPasswordChangedEmail(updated.email);
-    }
-
-    return res.json({
-      user: {
-        id: updated.id,
-        email: updated.email,
-        name: updated.name,
-        role: updated.role
-      }
-    });
-  } catch (err) {
-    console.error("me update error:", err);
-    return res.status(500).json({ message: "ME_UPDATE_ERROR" });
+    console.error("profile error:", err);
+    res.status(500).json({ message: "Ошибка сервера при загрузке профиля" });
   }
 });
 
 
-
 // ===== ORG PROFILE SETTINGS =====
-app.get("/api/settings/org-profile", auth, requireAdmin, async (req, res) => {
+app.get("/api/settings/org-profile", auth, async (req, res) => {
   try {
-    const profile = await prisma.orgProfile.findFirst({
-      where: { orgId: req.orgId }
-    });
+    if (req.user?.role != "ADMIN") {
+      return res.status(403).json({ message: "NO_ACCESS" });
+    }
+    const profile = await prisma.orgProfile.findUnique({ where: { id: 1 } });
     res.json({ profile: profile || null });
   } catch (err) {
     console.error("org profile get error:", err);
@@ -2498,8 +1689,11 @@ app.get("/api/settings/org-profile", auth, requireAdmin, async (req, res) => {
   }
 });
 
-app.put("/api/settings/org-profile", auth, requireAdmin, async (req, res) => {
+app.put("/api/settings/org-profile", auth, async (req, res) => {
   try {
+    if (req.user?.role != "ADMIN") {
+      return res.status(403).json({ message: "NO_ACCESS" });
+    }
     const {
       orgName,
       legalAddress,
@@ -2514,7 +1708,7 @@ app.put("/api/settings/org-profile", auth, requireAdmin, async (req, res) => {
     }
 
     const profile = await prisma.orgProfile.upsert({
-      where: { orgId: req.orgId },
+      where: { id: 1 },
       update: {
         orgName,
         legalAddress,
@@ -2524,7 +1718,7 @@ app.put("/api/settings/org-profile", auth, requireAdmin, async (req, res) => {
         phone: phone || "",
       },
       create: {
-        orgId: req.orgId,
+        id: 1,
         orgName,
         legalAddress,
         actualAddress,
@@ -2537,7 +1731,7 @@ app.put("/api/settings/org-profile", auth, requireAdmin, async (req, res) => {
     res.json({ profile });
   } catch (err) {
     console.error("org profile put error:", err);
-    res.status(500).json({ message: "ORG_PROFILE_PUT_ERROR" });
+    res.status(500).json({ message: "ORG_PROFILE_SAVE_ERROR" });
   }
 });
 
@@ -2565,58 +1759,7 @@ app.post("/api/dev/make-me-admin", auth, async (req, res) => {
   }
 });
 
-app.post("/api/dev/activate-test-subscription", auth, async (req, res) => {
-  try {
-    if (process.env.NODE_ENV === "production") {
-      return res.status(403).json({ message: "DEV_ONLY" });
-    }
-
-    const orgId = req.orgId;
-    if (!orgId) {
-      return res.status(400).json({ message: "ORG_REQUIRED" });
-    }
-
-    const now = new Date();
-    const existing = await prisma.subscription.findFirst({ where: { orgId } });
-    const baseDate =
-      existing?.paidUntil && new Date(existing.paidUntil) > now
-        ? new Date(existing.paidUntil)
-        : now;
-    const nextPaidUntil = addDays(baseDate, 30);
-    const planId = existing?.plan || "basic-30";
-
-    const subscription = await prisma.subscription.upsert({
-      where: { orgId },
-      update: {
-        status: "active",
-        plan: planId,
-        paidUntil: nextPaidUntil,
-      },
-      create: {
-        orgId,
-        plan: planId,
-        status: "active",
-        paidUntil: nextPaidUntil,
-      },
-    });
-
-    return res.json({
-      subscription: {
-        id: subscription.id,
-        plan: subscription.plan,
-        status: subscription.status,
-        paidUntil: subscription.paidUntil,
-        isActive: true,
-      },
-    });
-  } catch (err) {
-    console.error("activate test subscription error:", err);
-    return res.status(500).json({ message: "TEST_SUBSCRIPTION_ERROR" });
-  }
-});
-
-
-// ================== АДМНКА ПОЛЬЗОВАТЕЛЕЙ ==================
+// ================== АДМИНКА ПОЛЬЗОВАТЕЛЕЙ ==================
 
 app.get("/api/users", auth, requireAdmin, async (req, res) => {
   try {
@@ -2744,7 +1887,7 @@ app.post("/api/admin/invites", auth, requireAdmin, async (req, res) => {
       },
     });
 
-    const mail = await sendInviteEmail(email, rawToken);
+    await sendInviteEmail(email, rawToken);
 
     res.json({
       ok: true,
@@ -2753,13 +1896,8 @@ app.post("/api/admin/invites", auth, requireAdmin, async (req, res) => {
         email: invite.email,
         role: invite.role,
         expiresAt: invite.expiresAt,
-      orgName: invite.org?.name || null,
         createdAt: invite.createdAt,
         status: "PENDING",
-      },
-      mail: {
-        sent: !!mail.sent,
-        error: mail.sent ? null : mail.error || "MAIL_SEND_FAILED",
       },
     });
   } catch (err) {
@@ -2824,7 +1962,7 @@ app.post("/api/admin/invites/:id/resend", auth, requireAdmin, async (req, res) =
       },
     });
 
-    const mail = await sendInviteEmail(invite.email, rawToken);
+    await sendInviteEmail(invite.email, rawToken);
 
     res.json({
       ok: true,
@@ -2836,43 +1974,10 @@ app.post("/api/admin/invites/:id/resend", auth, requireAdmin, async (req, res) =
         createdAt: nextInvite.createdAt,
         status: "PENDING",
       },
-      mail: {
-        sent: !!mail.sent,
-        error: mail.sent ? null : mail.error || "MAIL_SEND_FAILED",
-      },
     });
   } catch (err) {
     console.error("admin invite resend error:", err);
     res.status(500).json({ message: "INVITE_RESEND_ERROR" });
-  }
-});
-
-app.post("/api/debug/mail-test", auth, requireAdmin, async (req, res) => {
-  try {
-    const { email } = req.body || {};
-    const target = String(email || "").trim();
-    if (!target) {
-      return res.status(400).json({ message: "BAD_EMAIL" });
-    }
-
-    const transport = getMailTransport();
-    if (!transport) {
-      console.log(`[MAIL] test skipped (mailer disabled) to=${target}`);
-      return res.json({ sent: false, error: "MAIL_DISABLED" });
-    }
-
-    const from = process.env.MAIL_FROM || `Бизнес-портал <${process.env.MAIL_USER}>`;
-    const subject = "Тестовое письмо Бизнес-портала";
-    const text = "Это тестовое письмо. Если вы его получили, SMTP настроен корректно.";
-
-    await transport.sendMail({ from, to: target, subject, text });
-    console.log(`[MAIL] test sent to=${target}`);
-    return res.json({ sent: true });
-  } catch (err) {
-    console.log(
-      `[MAIL] test failed: code=${err?.code || "-"} message=${err?.message || err}`
-    );
-    return res.json({ sent: false, error: err?.code || err?.message || "MAIL_SEND_FAILED" });
   }
 });
 
@@ -2885,7 +1990,6 @@ app.get("/api/auth/invite-info", async (req, res) => {
     const tokenHash = hashInviteToken(token);
     const invite = await prisma.inviteToken.findUnique({
       where: { tokenHash },
-      include: { org: true },
     });
     if (!invite) {
       return res.status(404).json({ message: "INVITE_NOT_FOUND" });
@@ -2901,7 +2005,6 @@ app.get("/api/auth/invite-info", async (req, res) => {
       email: invite.email,
       role: invite.role,
       expiresAt: invite.expiresAt,
-      orgName: invite.org?.name || null,
     });
   } catch (err) {
     console.error("invite info error:", err);
@@ -2922,7 +2025,6 @@ app.post("/api/auth/accept-invite", async (req, res) => {
     const tokenHash = hashInviteToken(token);
     const invite = await prisma.inviteToken.findUnique({
       where: { tokenHash },
-      include: { org: true }
     });
     if (!invite) {
       return res.status(404).json({ message: "INVITE_NOT_FOUND" });
@@ -2937,59 +2039,42 @@ app.post("/api/auth/accept-invite", async (req, res) => {
     const passwordHash = await bcrypt.hash(password, 10);
     const now = new Date();
 
-    await prisma.$transaction(async (tx) => {
-      const existingUser = await tx.user.findUnique({
-        where: { email: invite.email },
-      });
+    const existingUser = await prisma.user.findUnique({
+      where: { email: invite.email },
+    });
 
-      let user = existingUser;
-      if (existingUser) {
-        if (!existingUser.isActive) {
-          user = await tx.user.update({
-            where: { id: existingUser.id },
-            data: {
-              name: name || existingUser.name,
-              role: invite.role,
-              password: passwordHash,
-              passwordHash,
-              isActive: true,
-              emailVerifiedAt: now,
-            },
-          });
-        }
-      } else {
-        user = await tx.user.create({
-          data: {
-            email: invite.email,
-            name: name || invite.email,
-            role: invite.role,
-            password: passwordHash,
-            passwordHash,
-            isActive: true,
-            emailVerifiedAt: now,
-          },
-        });
+    if (existingUser) {
+      if (existingUser.isActive) {
+        return res.status(400).json({ message: "EMAIL_ALREADY_EXISTS" });
       }
-
-      await tx.membership.upsert({
-        where: {
-          orgId_userId: {
-            orgId: invite.orgId,
-            userId: user.id,
-          },
-        },
-        update: { role: invite.role },
-        create: {
-          orgId: invite.orgId,
-          userId: user.id,
+      await prisma.user.update({
+        where: { id: existingUser.id },
+        data: {
+          name: name || existingUser.name,
           role: invite.role,
+          password: passwordHash,
+          passwordHash,
+          isActive: true,
+          emailVerifiedAt: now,
         },
       });
-
-      await tx.inviteToken.update({
-        where: { id: invite.id },
-        data: { usedAt: now },
+    } else {
+      await prisma.user.create({
+        data: {
+          email: invite.email,
+          name: name || invite.email,
+          role: invite.role,
+          password: passwordHash,
+          passwordHash,
+          isActive: true,
+          emailVerifiedAt: now,
+        },
       });
+    }
+
+    await prisma.inviteToken.update({
+      where: { id: invite.id },
+      data: { usedAt: now },
     });
 
     res.json({ ok: true });
@@ -3053,11 +2138,12 @@ app.post("/api/auth/forgot-password", async (req, res) => {
 });
 
 app.post("/api/auth/reset-password", async (req, res) => {
-  const invalidMessage = "Ссылка недействительна или истекла.";
   try {
     const { token, newPassword } = req.body || {};
     if (!token || !newPassword || String(newPassword).length < 8) {
-      return res.status(400).json({ message: invalidMessage });
+      return res
+        .status(400)
+        .json({ message: "Ссылка недействительна или истекла." });
     }
 
     const tokenHash = hashResetToken(String(token));
@@ -3073,7 +2159,9 @@ app.post("/api/auth/reset-password", async (req, res) => {
     });
 
     if (!resetToken || !resetToken.user) {
-      return res.status(400).json({ message: invalidMessage });
+      return res
+        .status(400)
+        .json({ message: "Ссылка недействительна или истекла." });
     }
 
     const hash = await bcrypt.hash(String(newPassword), 10);
@@ -3099,337 +2187,19 @@ app.post("/api/auth/reset-password", async (req, res) => {
     res.json({ ok: true });
   } catch (err) {
     console.error("reset password error:", err);
-    res.status(500).json({ message: invalidMessage });
+    res
+      .status(500)
+      .json({ message: "Ссылка недействительна или истекла." });
   }
 });
 
-// ===== BILLING / YOOKASSA =====
-function parseYookassaMetadata(metadata) {
-  const orgId = Number(metadata?.orgId || 0);
-  const planId = metadata?.planId ? String(metadata.planId) : null;
-  const days = Number(metadata?.days || 0);
-  const localPaymentId = Number(metadata?.localPaymentId || 0) || null;
-  return {
-    orgId: Number.isFinite(orgId) && orgId > 0 ? orgId : null,
-    planId,
-    days: Number.isFinite(days) && days > 0 ? days : null,
-    localPaymentId,
-  };
-}
-
-function validatePlanMetadata(plan, metadata) {
-  if (!plan || !metadata.planId || !metadata.days) return false;
-  return plan.id === metadata.planId && Number(plan.days) === Number(metadata.days);
-}
-
-app.post("/api/billing/yookassa/create-payment", auth, async (req, res) => {
-  try {
-    const { planId } = req.body || {};
-    const plan = getPlan(planId);
-    if (!plan) {
-      return res.status(400).json({ message: "PLAN_NOT_FOUND" });
-    }
-
-    logBilling("billing.create_payment.request", {
-      orgId: req.orgId,
-      userId: req.user.id,
-      planId: plan.id,
-    });
-
-    const tempProviderId = `pending_${crypto.randomUUID()}`;
-    const localPayment = await prisma.payment.create({
-      data: {
-        orgId: req.orgId,
-        userId: req.user.id,
-        provider: "yookassa",
-        providerPaymentId: tempProviderId,
-        amount: plan.amount,
-        currency: plan.currency,
-        status: "pending",
-        metadata: {
-          planId: plan.id,
-          days: plan.days,
-        },
-      },
-    });
-
-    const payment = await yookassaRequest(
-      "POST",
-      "/payments",
-      {
-        amount: {
-          value: formatAmount(plan.amount),
-          currency: plan.currency,
-        },
-        capture: true,
-        confirmation: {
-          type: "redirect",
-          return_url: `${APP_URL}/subscribe/return?paymentId=${localPayment.id}`,
-        },
-        description: `Subscription ${plan.id}`,
-        metadata: {
-          orgId: String(req.orgId),
-          planId: plan.id,
-          days: String(plan.days),
-          localPaymentId: String(localPayment.id),
-        },
-      },
-      crypto.randomUUID()
-    );
-
-    await prisma.payment.update({
-      where: { id: localPayment.id },
-      data: {
-        providerPaymentId: payment.id,
-        status: payment.status || "pending",
-        metadata: {
-          ...(localPayment.metadata || {}),
-          providerStatus: payment.status,
-        },
-      },
-    });
-
-    logBilling("billing.create_payment.created", {
-      orgId: req.orgId,
-      userId: req.user.id,
-      planId: plan.id,
-      localPaymentId: localPayment.id,
-      providerPaymentId: payment.id,
-      status: payment.status || "pending",
-    });
-
-    return res.json({
-      confirmationUrl: payment.confirmation?.confirmation_url || null,
-      paymentId: payment.id,
-      localPaymentId: localPayment.id,
-    });
-  } catch (err) {
-    logBilling("billing.create_payment.error", {
-      orgId: req.orgId,
-      error: err?.message || String(err),
-    });
-    console.error("create payment error:", err);
-    return res.status(500).json({ message: "PAYMENT_CREATE_ERROR" });
-  }
-});
-
-app.get("/api/billing/yookassa/payment-status", auth, async (req, res) => {
-  try {
-    const paymentId = String(req.query.paymentId || "").trim();
-    if (!paymentId) {
-      return res.status(400).json({ message: "PAYMENT_ID_REQUIRED" });
-    }
-
-    let paymentRecord = null;
-    if (/^\d+$/.test(paymentId)) {
-      paymentRecord = await prisma.payment.findUnique({
-        where: { id: Number(paymentId) },
-      });
-    }
-    if (!paymentRecord) {
-      paymentRecord = await prisma.payment.findFirst({
-        where: { providerPaymentId: paymentId },
-      });
-    }
-    if (!paymentRecord) {
-      return res.status(404).json({ message: "PAYMENT_NOT_FOUND" });
-    }
-    if (paymentRecord.orgId !== req.orgId) {
-      return res.status(403).json({ message: "PAYMENT_FORBIDDEN" });
-    }
-
-    logBilling("billing.status.check", {
-      orgId: req.orgId,
-      paymentId: paymentRecord.id,
-      providerPaymentId: paymentRecord.providerPaymentId,
-    });
-
-    const providerPaymentId = paymentRecord.providerPaymentId;
-    const providerPayment = await fetchYookassaPayment(providerPaymentId);
-    const metadata = parseYookassaMetadata(providerPayment.metadata || {});
-    const plan = getPlan(metadata.planId || paymentRecord.metadata?.planId);
-    if (!plan) {
-      return res.status(400).json({ message: "PLAN_NOT_FOUND" });
-    }
-
-    if (!validatePlanMetadata(plan, metadata)) {
-      return res.status(400).json({ message: "PAYMENT_METADATA_MISMATCH" });
-    }
-
-    if (metadata.orgId && metadata.orgId !== paymentRecord.orgId) {
-      return res.status(400).json({ message: "PAYMENT_ORG_MISMATCH" });
-    }
-
-    const expectedAmount = formatAmount(plan.amount);
-    if (providerPayment.amount?.currency !== plan.currency || providerPayment.amount?.value !== expectedAmount) {
-      return res.status(400).json({ message: "PAYMENT_AMOUNT_MISMATCH" });
-    }
-
-    logBilling("billing.status.provider", {
-      orgId: req.orgId,
-      paymentId: paymentRecord.id,
-      providerPaymentId,
-      status: providerPayment.status,
-      paid: providerPayment.paid || false,
-    });
-
-    if (providerPayment.status === "succeeded" && providerPayment.paid) {
-      if (paymentRecord.status !== "succeeded") {
-        await applyPaymentSuccess({ paymentRecord, providerPayment, plan });
-      }
-    } else if (providerPayment.status === "canceled") {
-      await prisma.payment.update({
-        where: { id: paymentRecord.id },
-        data: { status: "canceled" },
-      });
-    } else {
-      await prisma.payment.update({
-        where: { id: paymentRecord.id },
-        data: { status: providerPayment.status || "pending" },
-      });
-    }
-
-    return res.json({
-      status: providerPayment.status,
-      paid: providerPayment.paid || false,
-    });
-  } catch (err) {
-    logBilling("billing.status.error", {
-      error: err?.message || String(err),
-    });
-    console.error("payment status error:", err);
-    return res.status(500).json({ message: "PAYMENT_STATUS_ERROR" });
-  }
-});
-
-app.post("/api/billing/yookassa/webhook", async (req, res) => {
-  try {
-    const providerPaymentId =
-      req.body?.object?.id || req.body?.payment?.id || req.body?.id;
-    if (!providerPaymentId) {
-      return res.status(400).json({ message: "PAYMENT_ID_REQUIRED" });
-    }
-
-    logBilling("billing.webhook.received", { providerPaymentId });
-
-    const providerPayment = await fetchYookassaPayment(providerPaymentId);
-    const metadata = parseYookassaMetadata(providerPayment.metadata || {});
-    const plan = getPlan(metadata.planId);
-    if (!plan) {
-      return res.status(400).json({ message: "PLAN_NOT_FOUND" });
-    }
-
-    if (!validatePlanMetadata(plan, metadata) || !metadata.orgId) {
-      return res.status(400).json({ message: "PAYMENT_METADATA_MISMATCH" });
-    }
-
-    const org = await prisma.organization.findUnique({
-      where: { id: metadata.orgId },
-    });
-    if (!org) {
-      return res.status(400).json({ message: "ORG_NOT_FOUND" });
-    }
-
-    const expectedAmount = formatAmount(plan.amount);
-    if (providerPayment.amount?.currency !== plan.currency || providerPayment.amount?.value !== expectedAmount) {
-      return res.status(400).json({ message: "PAYMENT_AMOUNT_MISMATCH" });
-    }
-
-    logBilling("billing.webhook.verified", {
-      providerPaymentId,
-      orgId: metadata.orgId,
-      planId: plan.id,
-      status: providerPayment.status,
-      paid: providerPayment.paid || false,
-      amount: providerPayment.amount?.value,
-      currency: providerPayment.amount?.currency,
-    });
-
-    let paymentRecord = null;
-    if (metadata.localPaymentId) {
-      paymentRecord = await prisma.payment.findUnique({
-        where: { id: metadata.localPaymentId },
-      });
-    }
-    if (!paymentRecord) {
-      paymentRecord = await prisma.payment.findFirst({
-        where: { providerPaymentId },
-      });
-    }
-
-    if (!paymentRecord) {
-      paymentRecord = await prisma.payment.create({
-        data: {
-          orgId: metadata.orgId,
-          userId: null,
-          provider: "yookassa",
-          providerPaymentId,
-          amount: Number(providerPayment.amount?.value || plan.amount),
-          currency: providerPayment.amount?.currency || plan.currency,
-          status: providerPayment.status || "pending",
-          metadata: {
-            planId: plan.id,
-            days: plan.days,
-            providerStatus: providerPayment.status,
-            providerPaid: providerPayment.paid,
-          },
-        },
-      });
-    }
-
-    if (paymentRecord.orgId !== metadata.orgId) {
-      return res.status(400).json({ message: "PAYMENT_ORG_MISMATCH" });
-    }
-
-    if (paymentRecord.status === "succeeded") {
-      logBilling("billing.webhook.idempotent", {
-        paymentId: paymentRecord.id,
-        providerPaymentId,
-      });
-      return res.json({ ok: true });
-    }
-
-    const subscription = await prisma.subscription.findFirst({
-      where: { orgId: metadata.orgId },
-    });
-    if (!subscription) {
-      await prisma.subscription.create({
-        data: {
-          orgId: metadata.orgId,
-          plan: plan.id,
-          status: "inactive",
-          paidUntil: null,
-        },
-      });
-    }
-
-    if (providerPayment.status === "succeeded" && providerPayment.paid) {
-      await applyPaymentSuccess({ paymentRecord, providerPayment, plan });
-    } else if (providerPayment.status === "canceled") {
-      await prisma.payment.update({
-        where: { id: paymentRecord.id },
-        data: { status: "canceled" },
-      });
-    } else {
-      await prisma.payment.update({
-        where: { id: paymentRecord.id },
-        data: { status: providerPayment.status || "pending" },
-      });
-    }
-
-    return res.json({ ok: true });
-  } catch (err) {
-    logBilling("billing.webhook.error", {
-      error: err?.message || String(err),
-    });
-    console.error("yookassa webhook error:", err);
-    return res.status(500).json({ message: "WEBHOOK_ERROR" });
 
 
-  }
-});
+// ================== СКЛАД: ЗАЯВКИ ==================
 
-// ================== HR: ÑÐ¾ÑÑÑÐ´Ð½Ð¸ÐºÐ¸ ==================
+// создать заявку на склад
+
+// ================== HR: employees ==================
 
 app.get("/api/hr/employees", auth, requireHr, async (req, res) => {
   try {
@@ -3453,11 +2223,10 @@ app.get("/api/hr/employees", auth, requireHr, async (req, res) => {
         ...params
       )) || [];
 
-    const healed = await Promise.all(employees.map((employee) => healEmployeeRecord(employee)));
-    res.json(healed);
+    res.json(employees);
   } catch (err) {
     console.error("employees list error:", err);
-    res.status(500).json({ message: "ÐÐµ ÑÐ´Ð°Ð»Ð¾ÑÑ Ð¿Ð¾Ð»ÑÑÐ¸ÑÑ ÑÐ¿Ð¸ÑÐ¾Ðº ÑÐ¾ÑÑÑÐ´Ð½Ð¸ÐºÐ¾Ð²" });
+    res.status(500).json({ message: "Failed to load employees" });
   }
 });
 
@@ -3518,7 +2287,7 @@ app.put("/api/hr/employees/:id", auth, requireHr, async (req, res) => {
   try {
     const id = Number(req.params.id);
     if (!id || Number.isNaN(id)) {
-      return res.status(400).json({ message: "ÐÐµÐºÐ¾ÑÑÐµÐºÑÐ½ÑÐ¹ Ð¸Ð´ÐµÐ½ÑÐ¸ÑÐ¸ÐºÐ°ÑÐ¾Ñ" });
+      return res.status(400).json({ message: "Invalid employee id" });
     }
 
     const { fullName, position, department, telegramChatId, hiredAt, birthDate } = req.body || {};
@@ -3556,7 +2325,7 @@ app.put("/api/hr/employees/:id", auth, requireHr, async (req, res) => {
     console.error("update employee error:", err);
 
     if (err?.code === "P2025") {
-      return res.status(404).json({ message: "Ð¡Ð¾ÑÑÑÐ´Ð½Ð¸Ðº Ð½Ðµ Ð½Ð°Ð¹Ð´ÐµÐ½" });
+      return res.status(404).json({ message: "Employee not found" });
     }
 
     res.status(500).json({ message: "Failed to update employee" });
@@ -3569,7 +2338,7 @@ app.put("/api/hr/employees/:id/status", auth, requireHr, async (req, res) => {
     const { status } = req.body || {};
 
     if (!id || Number.isNaN(id)) {
-      return res.status(400).json({ message: "ÐÐµÐºÐ¾ÑÑÐµÐºÑÐ½ÑÐ¹ Ð¸Ð´ÐµÐ½ÑÐ¸ÑÐ¸ÐºÐ°ÑÐ¾Ñ" });
+      return res.status(400).json({ message: "Invalid employee id" });
     }
 
     const allowedStatuses = ["ACTIVE", "FIRED"];
@@ -3587,7 +2356,7 @@ app.put("/api/hr/employees/:id/status", auth, requireHr, async (req, res) => {
     console.error("update employee status error:", err);
 
     if (err?.code === "P2025") {
-      return res.status(404).json({ message: "Ð¡Ð¾ÑÑÑÐ´Ð½Ð¸Ðº Ð½Ðµ Ð½Ð°Ð¹Ð´ÐµÐ½" });
+      return res.status(404).json({ message: "Employee not found" });
     }
 
     res
@@ -3605,12 +2374,12 @@ app.get(
     try {
       const id = Number(req.params.id);
       if (!id || Number.isNaN(id)) {
-        return res.status(400).json({ message: "ÐÐµÐºÐ¾ÑÑÐµÐºÑÐ½ÑÐ¹ Ð¸Ð´ÐµÐ½ÑÐ¸ÑÐ¸ÐºÐ°ÑÐ¾Ñ" });
+        return res.status(400).json({ message: "Invalid employee id" });
       }
 
       const employee = await prisma.employee.findUnique({ where: { id } });
       if (!employee) {
-        return res.status(404).json({ message: "Ð¡Ð¾ÑÑÑÐ´Ð½Ð¸Ðº Ð½Ðµ Ð½Ð°Ð¹Ð´ÐµÐ½" });
+        return res.status(404).json({ message: "Employee not found" });
       }
 
       const accruedDays = calcAccruedLeaveDays(employee.hiredAt);
@@ -3626,7 +2395,7 @@ app.get(
       res.json({ accruedDays, usedDays, availableDays });
     } catch (err) {
       console.error("leave balance error:", err);
-      res.status(500).json({ message: "ÐÐµ ÑÐ´Ð°Ð»Ð¾ÑÑ Ð¿Ð¾Ð»ÑÑÐ¸ÑÑ Ð±Ð°Ð»Ð°Ð½Ñ Ð¾ÑÐ¿ÑÑÐºÐ°" });
+      res.status(500).json({ message: "Failed to get leave balance" });
     }
   }
 );
@@ -3639,14 +2408,13 @@ app.post(
     try {
       const { employeeId, type, startDate, endDate, reason } = req.body || {};
       const id = Number(employeeId);
-      const cleanReason = normalizeRuText(reason);
 
       if (!id || Number.isNaN(id)) {
-        return res.status(400).json({ message: "Некорректный идентификатор сотрудника" });
+        return res.status(400).json({ message: "Invalid employee id" });
       }
 
       if (!["PAID", "UNPAID", "TERMINATION"].includes(type)) {
-        return res.status(400).json({ message: "Некорректный тип отпуска" });
+        return res.status(400).json({ message: "Invalid leave type" });
       }
 
       const parsedStart = parseDateInput(startDate);
@@ -3658,13 +2426,13 @@ app.post(
 
       if (type !== "TERMINATION") {
         if (!days || days < 1) {
-          return res.status(400).json({ message: "Некорректное количество дней" });
+          return res.status(400).json({ message: "Invalid dates range" });
         }
       }
 
       const employee = await prisma.employee.findUnique({ where: { id } });
       if (!employee) {
-        return res.status(404).json({ message: "Сотрудник не найден" });
+        return res.status(404).json({ message: "Employee not found" });
       }
 
       const accruedDays = calcAccruedLeaveDays(employee.hiredAt);
@@ -3681,10 +2449,8 @@ app.post(
       if (type === "PAID" && days > availableDays) {
         return res
           .status(400)
-          .json({ message: "Недостаточно доступных дней отпуска" });
+          .json({ message: "Not enough leave balance" });
       }
-
-      const today = formatDateRu(new Date());
 
       const application = await prisma.hrLeaveApplication.create({
         data: {
@@ -3694,22 +2460,11 @@ app.post(
           endDate: type === "TERMINATION" ? parsedStart : parsedEnd,
           days,
           status: "GENERATED",
-          reason: cleanReason?.trim() || null,
+          reason: reason?.trim() || null,
         },
       });
 
-      const docText = normalizeRuText(
-        buildLeaveApplicationText({
-          employee: {
-            ...employee,
-            fullName: normalizeRuText(employee.fullName),
-            position: normalizeRuText(employee.position),
-            department: normalizeRuText(employee.department),
-          },
-          application: { ...application, reason: cleanReason },
-          today,
-        })
-      );
+      const docText = buildLeaveDoc(employee, application);
 
       const withDoc = await prisma.hrLeaveApplication.update({
         where: { id: application.id },
@@ -3732,7 +2487,9 @@ app.post(
       });
     } catch (err) {
       console.error("create leave application error:", err);
-      res.status(500).json({ message: "Не удалось создать заявление" });
+      res
+        .status(500)
+        .json({ message: "Failed to create leave application" });
     }
   }
 );
@@ -3744,7 +2501,7 @@ app.get(
     try {
       const id = Number(req.params.id);
       if (!id || Number.isNaN(id)) {
-        return res.status(400).json({ message: "Некорректный идентификатор заявления" });
+        return res.status(400).json({ message: "Invalid application id" });
       }
 
       const application = await prisma.hrLeaveApplication.findUnique({
@@ -3753,36 +2510,21 @@ app.get(
       });
 
       if (!application) {
-        return res.status(404).json({ message: "Заявление не найдено" });
+        return res.status(404).json({ message: "Application not found" });
       }
 
-      const baseEmployee = {
-        fullName: normalizeRuText(application.employee.fullName),
-        position: normalizeRuText(application.employee.position),
-        department: normalizeRuText(application.employee.department),
-        birthDate: application.employee.birthDate,
-        hiredAt: application.employee.hiredAt,
-      };
-      const today = formatDateRu(new Date());
-      const rawDocText = application.docText || "";
-      const safeStored = normalizeRuText(rawDocText);
-      const needsRebuild =
-        !rawDocText || safeStored !== rawDocText || shouldRegenerateLeaveDoc(rawDocText);
-
-      let docText = safeStored;
-      if (needsRebuild) {
-        docText = normalizeRuText(
-          buildLeaveApplicationText({
-            employee: baseEmployee,
-            application: { ...application, reason: normalizeRuText(application.reason) },
-            today,
-          })
+      const docText =
+        application.docText ||
+        buildLeaveDoc(
+          {
+            fullName: application.fullName,
+            position: application.position,
+            department: application.department,
+            birthDate: application.birthDate,
+            hiredAt: application.hiredAt,
+          },
+          application
         );
-        await prisma.hrLeaveApplication.update({
-          where: { id: application.id },
-          data: { docText },
-        });
-      }
 
       res.json({
         id: application.id,
@@ -3795,110 +2537,7 @@ app.get(
       });
     } catch (err) {
       console.error("leave doc error:", err);
-      res.status(500).json({ message: "Не удалось получить документ заявления" });
-    }
-  }
-);
-
-app.get(
-  "/api/hr/leave-applications/:id/doc/debug",
-  auth,
-  requireHr,
-  async (req, res) => {
-    try {
-      const id = Number(req.params.id);
-      if (!id || Number.isNaN(id)) {
-        return res.status(400).json({ message: "Некорректный идентификатор заявления" });
-      }
-
-      const application = await prisma.hrLeaveApplication.findUnique({
-        where: { id },
-        include: { employee: true },
-      });
-
-      if (!application) {
-        return res.status(404).json({ message: "Заявление не найдено" });
-      }
-
-      const baseEmployee = {
-        fullName: normalizeRuText(application.employee.fullName),
-        position: normalizeRuText(application.employee.position),
-        department: normalizeRuText(application.employee.department),
-        birthDate: application.employee.birthDate,
-        hiredAt: application.employee.hiredAt,
-      };
-
-      const today = formatDateRu(new Date());
-      const normalizedDocText = normalizeRuText(
-        buildLeaveApplicationText({
-          employee: baseEmployee,
-          application: { ...application, reason: normalizeRuText(application.reason) },
-          today,
-        })
-      );
-
-      const rawDocText = application.docText || "";
-      const storedNormalized = normalizeRuText(rawDocText);
-      const wasFixed = storedNormalized !== rawDocText || shouldRegenerateLeaveDoc(rawDocText);
-
-      res.json({
-        rawDocText,
-        normalizedDocText,
-        wasFixed,
-      });
-    } catch (err) {
-      console.error("leave doc debug error:", err);
-      res.status(500).json({ message: "ÐÐµ ÑÐ´Ð°Ð»Ð¾ÑÑ Ð¿Ð¾Ð»ÑÑÐ¸ÑÑ Ð´Ð¸Ð°Ð³Ð½Ð¾ÑÑÐ¸ÐºÑ Ð´Ð¾ÐºÑÐ¼ÐµÐ½ÑÐ°" });
-    }
-  }
-);
-
-app.post(
-  "/api/admin/hr/leave-applications/fix-docs",
-  auth,
-  requireAdmin,
-  async (req, res) => {
-    try {
-      const list = await prisma.hrLeaveApplication.findMany({
-        include: { employee: true },
-      });
-
-      let checked = 0;
-      let fixed = 0;
-
-      for (const application of list) {
-        checked += 1;
-        if (!shouldRebuildDocText(application.docText)) {
-          continue;
-        }
-
-        const baseEmployee = {
-          fullName: normalizeRuText(application.employee.fullName),
-          position: normalizeRuText(application.employee.position),
-          department: normalizeRuText(application.employee.department),
-          birthDate: application.employee.birthDate,
-          hiredAt: application.employee.hiredAt,
-        };
-        const today = formatDateRu(new Date());
-        const docText = normalizeRuText(
-          buildLeaveApplicationText({
-            employee: baseEmployee,
-            application: { ...application, reason: normalizeRuText(application.reason) },
-            today,
-          })
-        );
-
-        await prisma.hrLeaveApplication.update({
-          where: { id: application.id },
-          data: { docText },
-        });
-        fixed += 1;
-      }
-
-      res.json({ checked, fixed });
-    } catch (err) {
-      console.error("leave doc bulk fix error:", err);
-      res.status(500).json({ message: "Не удалось выполнить массовую правку заявлений" });
+      res.status(500).json({ message: "Failed to get leave document" });
     }
   }
 );
@@ -4033,8 +2672,7 @@ app.get("/api/warehouse/requests/my", auth, async (req, res) => {
       },
     });
 
-    const healed = await Promise.all(list.map((item) => healWarehouseRequestRecord(item)));
-    res.json(healed);
+    res.json(list);
   } catch (err) {
     console.error("warehouse my-requests error:", err);
     res
@@ -4060,8 +2698,7 @@ app.get("/api/warehouse/requests", auth, async (req, res) => {
       },
     });
 
-    const healed = await Promise.all(list.map((item) => healWarehouseRequestRecord(item)));
-    res.json(healed);
+    res.json(list);
   } catch (err) {
     console.error("warehouse all-requests error:", err);
     res
@@ -4131,7 +2768,7 @@ async function autoPostRequestToStock(requestId, userId) {
       continue;
     }
 
-    // щем товар в номенклатуре по точному имени
+    // Ищем товар в номенклатуре по точному имени
     const invItem = await prisma.item.findFirst({
       where: { name: item.name },
     });
@@ -4186,69 +2823,6 @@ async function autoPostRequestToStock(requestId, userId) {
   );
 
   return createdCount;
-}
-
-async function healWarehouseRequestRecord(request) {
-  if (!request || !request.id) return request;
-  const normalized = normalizeDeep(request);
-  const fields = ["title", "comment", "relatedDocument", "targetEmployee"];
-  const updateData = {};
-  fields.forEach((field) => {
-    const original = request[field] ?? null;
-    const fixed = normalized[field] ?? null;
-    if (original !== fixed) {
-      updateData[field] = fixed;
-    }
-  });
-
-  if (Object.keys(updateData).length) {
-    await prisma.warehouseRequest.update({
-      where: { id: request.id },
-      data: updateData,
-    });
-  }
-
-  if (Array.isArray(request.items)) {
-    for (const item of request.items) {
-      const normalizedItem = normalizeDeep(item);
-      const itemUpdate = {};
-      if ((item.name ?? null) !== (normalizedItem.name ?? null)) {
-        itemUpdate.name = normalizedItem.name;
-      }
-      if ((item.unit ?? null) !== (normalizedItem.unit ?? null)) {
-        itemUpdate.unit = normalizedItem.unit;
-      }
-      if (Object.keys(itemUpdate).length) {
-        await prisma.warehouseRequestItem.update({
-          where: { id: item.id },
-          data: itemUpdate,
-        });
-      }
-    }
-  }
-
-  return normalized;
-}
-
-async function healEmployeeRecord(employee) {
-  if (!employee || !employee.id) return employee;
-  const normalized = normalizeDeep(employee);
-  const fields = ["fullName", "position", "department", "telegramChatId"];
-  const updateData = {};
-  fields.forEach((field) => {
-    const original = employee[field] ?? null;
-    const fixed = normalized[field] ?? null;
-    if (original !== fixed) {
-      updateData[field] = fixed;
-    }
-  });
-  if (Object.keys(updateData).length) {
-    await prisma.employee.update({
-      where: { id: employee.id },
-      data: updateData,
-    });
-  }
-  return normalized;
 }
 
 // смена статуса заявки + автопроведение по складу при DONE
@@ -4313,7 +2887,7 @@ app.put("/api/warehouse/requests/:id/status", auth, async (req, res) => {
   }
 });
 
-// ================== СКЛАД: ЗАДАЧ ==================
+// ================== СКЛАД: ЗАДАЧИ ==================
 
 // Вспомогательная функция: создать задачу склада по заявке
 async function createWarehouseTaskFromRequest(request, assignerId) {
@@ -4331,7 +2905,7 @@ async function createWarehouseTaskFromRequest(request, assignerId) {
 
       for (const it of request.items) {
         lines.push(
-          `- ${it.name} вЂ” ${it.quantity} ${it.unit || ""}`.trim()
+          `- ${it.name} — ${it.quantity} ${it.unit || ""}`.trim()
         );
       }
     }
@@ -4356,7 +2930,7 @@ async function createWarehouseTaskFromRequest(request, assignerId) {
     });
 
     console.log(
-      `[Warehouse] Создана задача ${task.id} по заявке ${request.id}`
+      `[Warehouse] создана задача ${task.id} по заявке ${request.id}`
     );
 
     // Сообщение в складской Telegram-чат
@@ -4428,7 +3002,7 @@ app.post("/api/warehouse/tasks", auth, async (req, res) => {
     }
 
     if (task.executorName) {
-      parts.push(`👷 <b>сполнитель:</b> ${task.executorName}`);
+      parts.push(`👷 <b>Исполнитель:</b> ${task.executorName}`);
     }
 
     if (task.dueDate) {
@@ -4615,7 +3189,7 @@ app.put("/api/warehouse/tasks/:id/status", auth, async (req, res) => {
   }
 });
 
-// ================== СКЛАД: НОМЕНКЛАТУРА  ОСТАТК ==================
+// ================== СКЛАД: НОМЕНКЛАТУРА И ОСТАТКИ ==================
 
 // Создать товар (номенклатура)
 app.post("/api/inventory/items", auth, async (req, res) => {
@@ -4806,7 +3380,7 @@ app.delete("/api/inventory/items/:id", auth, async (req, res) => {
   }
 });
 
-// ===== СКЛАД: ЛОКАЦ =====
+// ===== СКЛАД: ЛОКАЦИИ =====
 app.get("/api/warehouse/locations", auth, async (req, res) => {
   try {
     const locations = await prisma.warehouseLocation.findMany({
@@ -4964,7 +3538,7 @@ app.post("/api/warehouse/products/:id/codes", auth, async (req, res) => {
   }
 });
 
-// ===== КОДЫ: ЛОКАЦ =====
+// ===== КОДЫ: ЛОКАЦИИ =====
 app.post("/api/warehouse/locations/:id/codes", auth, async (req, res) => {
   try {
     const id = Number(req.params.id);
@@ -5052,7 +3626,7 @@ app.post("/api/warehouse/products/:id/qr", auth, async (req, res) => {
   }
 });
 
-// ===== QR: ЛОКАЦ =====
+// ===== QR: ЛОКАЦИИ =====
 app.post("/api/warehouse/locations/:id/qr", auth, async (req, res) => {
   try {
     const id = Number(req.params.id);
@@ -6125,7 +4699,7 @@ app.post("/api/warehouse/qr/print", auth, async (req, res) => {
     } else {
       const location = await prisma.warehouseLocation.findUnique({ where: { id: Number(id) } });
       if (!location) return res.status(404).json({ message: "Локация не найдена" });
-      title = `ЛОКАЦЯ: ${location.name}`;
+      title = `ЛОКАЦИЯ: ${location.name}`;
       subtitle = [location.zone, location.aisle, location.rack, location.level].filter(Boolean).join(" / ");
       qrValue = location.qrCode || `BP:LOCATION:${location.id}`;
     }
@@ -6178,7 +4752,7 @@ app.post("/api/warehouse/qr/print", auth, async (req, res) => {
   }
 });
 
-// ===== РАЗМЕЩЕНЯ =====
+// ===== РАЗМЕЩЕНИЯ =====
 app.post("/api/warehouse/placements", auth, async (req, res) => {
   try {
     const { itemId, locationId, qty } = req.body || {};
@@ -6277,7 +4851,7 @@ app.put("/api/warehouse/placements/pick", auth, async (req, res) => {
   }
 });
 
-// ===== ПЕЧАТЬ ЭТКЕТОК =====
+// ===== ПЕЧАТЬ ЭТИКЕТОК =====
 app.post("/api/warehouse/labels/print", auth, async (req, res) => {
   try {
     const { items = [], format = "A4", labelSize = "58x40" } = req.body || {};
@@ -6647,7 +5221,7 @@ app.get("/api/inventory/low-stock-order-file", auth, async (req, res) => {
       const row = worksheet.getRow(rowIndex);
 
       row.values = [
-        index + 1,          // A: в„–
+        index + 1,          // A: №
         it.name,            // B: Номенклатура
         it.orderQty,        // C: Кол-во
         it.unit || "шт",    // D: Ед.
@@ -6667,7 +5241,7 @@ app.get("/api/inventory/low-stock-order-file", auth, async (req, res) => {
     const totalRowIndex = lastDataRow + 1;
     const totalRow = worksheet.getRow(totalRowIndex);
 
-    totalRow.getCell(5).value = "ТОГО:";
+    totalRow.getCell(5).value = "ИТОГО:";
     totalRow.getCell(5).font = { bold: true };
     totalRow.getCell(5).alignment = { horizontal: "right", vertical: "middle" };
 
@@ -6710,7 +5284,7 @@ app.get("/api/inventory/low-stock-order-file", auth, async (req, res) => {
       });
     }
 
-    // тоговая строка (границы для суммы)
+    // Итоговая строка (границы для суммы)
     totalRow.getCell(6).border = {
       top: { style: "thin" },
       left: { style: "thin" },
@@ -6740,7 +5314,7 @@ app.get("/api/inventory/low-stock-order-file", auth, async (req, res) => {
   }
 });
 
-// мпорт товаров из Excel (шаблон "мпорт.xlsx")
+// Импорт товаров из Excel (шаблон "Импорт.xlsx")
 app.post(
   "/api/inventory/items/import",
   auth,
@@ -6763,7 +5337,7 @@ app.post(
           .json({ message: "Не удалось прочитать первый лист файла" });
       }
 
-      // Предполагаем структуру файла "мпорт.xlsx":
+      // Предполагаем структуру файла "Импорт.xlsx":
       // 1-я строка — заголовки, дальше — данные
       // A: Наименование
       // B: Артикул (SKU)
@@ -6838,7 +5412,7 @@ app.post(
         };
 
         try {
-          // щем по SKU (он у тебя уникальный)
+          // Ищем по SKU (он у тебя уникальный)
           const existing = await prisma.item.findUnique({
             where: { sku },
           });
@@ -6864,7 +5438,7 @@ app.post(
       }
 
       return res.json({
-        message: "мпорт завершён",
+        message: "Импорт завершён",
         created,
         updated,
         skipped,
@@ -7039,7 +5613,7 @@ app.post("/api/inventory/movements", auth, async (req, res) => {
       normalizedQty = qtyNum; // > 0
     }
 
-    // Для ПРХОДА нужна цена за единицу
+    // Для ПРИХОДА нужна цена за единицу
     let priceValue = null;
     if (type === "INCOME") {
       if (
@@ -7063,7 +5637,7 @@ app.post("/api/inventory/movements", auth, async (req, res) => {
       priceValue = p;
     }
 
-    // ===== ПРОВЕРКА ОСТАТКА ПЕРЕД СОЗДАНЕМ ДВЖЕНЯ =====
+    // ===== ПРОВЕРКА ОСТАТКА ПЕРЕД СОЗДАНИЕМ ДВИЖЕНИЯ =====
     let stockInfo;
     try {
       stockInfo = await calculateStockAfterMovement(
@@ -7086,7 +5660,7 @@ app.post("/api/inventory/movements", auth, async (req, res) => {
         message: `Недостаточно остатка. На складе ${stockInfo.current} шт., вы пытаетесь списать ${normalizedQty} шт.`,
       });
     }
-    // ===== КОНЕЦ ПРОВЕРК ОСТАТКА =====
+    // ===== КОНЕЦ ПРОВЕРКИ ОСТАТКА =====
 
     const movement = await prisma.stockMovement.create({
       data: {
@@ -7139,7 +5713,7 @@ app.get("/api/inventory/movements", auth, async (req, res) => {
   }
 });
 
-// ================== ПОСТАВЩК ==================
+// ================== ПОСТАВЩИКИ ==================
 
 // Список поставщиков
 app.get("/api/suppliers", auth, async (req, res) => {
@@ -7262,7 +5836,7 @@ app.delete("/api/suppliers/:id", auth, async (req, res) => {
   }
 });
 
-// ================== ЗАКАЗЫ ПОСТАВЩКУ ==================
+// ================== ЗАКАЗЫ ПОСТАВЩИКУ ==================
 
 // Создать заказ поставщику (запись в БД)
 app.post("/api/purchase-orders", auth, async (req, res) => {
@@ -7613,7 +6187,7 @@ app.get("/api/purchase-orders/:id/excel-file", auth, async (req, res) => {
     // Шапка таблицы
     const headerRowIndex = 4;
     worksheet.getRow(headerRowIndex).values = [
-      "в„–",
+      "№",
       "Номенклатура",
       "Кол-во",
       "Ед.",
@@ -7656,10 +6230,10 @@ app.get("/api/purchase-orders/:id/excel-file", auth, async (req, res) => {
 
     const lastDataRow = firstDataRow + order.items.length - 1;
 
-    // тог
+    // Итог
     const totalRowIndex = lastDataRow + 1;
     const totalRow = worksheet.getRow(totalRowIndex);
-    totalRow.getCell(5).value = "ТОГО:";
+    totalRow.getCell(5).value = "ИТОГО:";
     totalRow.getCell(5).font = { bold: true };
     totalRow.getCell(5).alignment = {
       horizontal: "right",
@@ -8411,11 +6985,11 @@ app.post("/api/purchase-orders/excel-file", auth, async (req, res) => {
 
     const lastDataRow = firstDataRow + cleanedItems.length - 1;
 
-    // тоговая строка
+    // Итоговая строка
     const totalRowIndex = lastDataRow + 1;
     const totalRow = worksheet.getRow(totalRowIndex);
 
-    totalRow.getCell(5).value = "того:";
+    totalRow.getCell(5).value = "Итого:";
     totalRow.getCell(5).font = { bold: true };
     totalRow.getCell(5).alignment = {
       horizontal: "right",
@@ -8471,7 +7045,7 @@ app.post("/api/purchase-orders/excel-file", auth, async (req, res) => {
   }
 });
 
-// ================== ОЧЕРЕДЬ МАШН ПОСТАВЩКОВ ==================
+// ================== ОЧЕРЕДЬ МАШИН ПОСТАВЩИКОВ ==================
 
 // список машин в очереди (с фильтрами)
 app.get("/api/supplier-trucks", auth, async (req, res) => {
@@ -8629,7 +7203,7 @@ app.put("/api/supplier-trucks/:id/status", auth, async (req, res) => {
   }
 });
 
-// ================== ПЕРОДЧЕСКЕ ЗАДАЧ ==================
+// ================== ПЕРИОДИЧЕСКИЕ ЗАДАЧИ ==================
 
 // дата, за которую уже отправлен ежедневный отчёт по остаткам (формат "YYYY-MM-DD")
 let lastLowStockReportDate = null;
@@ -8663,15 +7237,8 @@ startTelegramPolling().catch((err) =>
 
 // ================== ЗАПУСК СЕРВЕРА ==================
 
-initMailer().catch((err) => console.error("[MAIL] init error:", err));
-
 const PORT = process.env.PORT || 3001;
 
 app.listen(PORT, () => {
   console.log(`🚀 API запущен: http://localhost:${PORT}`);
 });
-
-
-
-
-

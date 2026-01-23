@@ -1,14 +1,9 @@
 import { useEffect, useState } from "react";
 import { useAuth } from "../context/AuthContext";
-import { apiFetch } from "../apiConfig";
+
+const API = "http://localhost:3001/api";
 
 const ALL_ROLES = ["EMPLOYEE", "HR", "ACCOUNTING", "WAREHOUSE", "ADMIN"];
-
-const inviteStatusStyles = {
-  success: { background: "#e6ffed", color: "#146c2e" },
-  warning: { background: "#fff4e5", color: "#8a5a00" },
-  error: { background: "#ffe6e6", color: "#b00020" },
-};
 
 export default function UserManagement() {
   const { user } = useAuth();
@@ -24,7 +19,7 @@ export default function UserManagement() {
   const [invitesError, setInvitesError] = useState("");
   const [inviteSending, setInviteSending] = useState(false);
   const [inviteResendId, setInviteResendId] = useState(null);
-  const [inviteStatus, setInviteStatus] = useState(null);
+
 
   const token = localStorage.getItem("token");
   const headers = {
@@ -36,11 +31,12 @@ export default function UserManagement() {
     try {
       setLoading(true);
       setError("");
-      const res = await apiFetch("/users", { headers });
+      const res = await fetch(`${API}/users`, { headers });
       const data = await res.json();
       if (!res.ok) {
         throw new Error(
-          data.message || "Ошибка загрузки списка пользователей"
+          data.message ||
+            "Ошибка загрузки пользователей"
         );
       }
       setUsers(data);
@@ -56,7 +52,7 @@ export default function UserManagement() {
     try {
       setInvitesLoading(true);
       setInvitesError("");
-      const res = await apiFetch("/admin/invites", { headers });
+      const res = await fetch(`${API}/admin/invites`, { headers });
       const data = await res.json();
       if (!res.ok) {
         throw new Error(data.message || "INVITES_LOAD_ERROR");
@@ -69,6 +65,7 @@ export default function UserManagement() {
       setInvitesLoading(false);
     }
   };
+
 
   useEffect(() => {
     loadUsers();
@@ -90,14 +87,16 @@ export default function UserManagement() {
     setError("");
 
     try {
-      const res = await apiFetch(`/users/${id}/role`, {
+      const res = await fetch(`${API}/users/${id}/role`, {
         method: "PUT",
         headers,
         body: JSON.stringify({ role: userToUpdate.role }),
       });
       const data = await res.json();
       if (!res.ok) {
-        throw new Error(data.message || "Ошибка сохранения роли");
+        throw new Error(
+          data.message || "Ошибка изменения роли"
+        );
       }
 
       setUsers((prev) =>
@@ -111,25 +110,6 @@ export default function UserManagement() {
     }
   };
 
-  const formatInviteStatus = (mail) => {
-    if (!mail) return null;
-    if (mail.sent) {
-      return { type: "success", text: "Письмо отправлено." };
-    }
-    if (mail.error === "MAIL_DISABLED") {
-      return { type: "warning", text: "SMTP не настроен. Письмо не отправлено." };
-    }
-    if (mail.error === "MAIL_SEND_FAILED") {
-      return { type: "error", text: "Не удалось отправить письмо." };
-    }
-    if (typeof mail.error === "string" && /^[A-Z0-9_]+$/.test(mail.error)) {
-      return { type: "error", text: "Не удалось отправить письмо." };
-    }
-    return {
-      type: "error",
-      text: `Ошибка отправки: ${mail.error || "неизвестная ошибка"}`,
-    };
-  };
 
   const handleInviteSubmit = async () => {
     if (!inviteEmail) {
@@ -137,10 +117,9 @@ export default function UserManagement() {
       return;
     }
     setInvitesError("");
-    setInviteStatus(null);
     setInviteSending(true);
     try {
-      const res = await apiFetch("/admin/invites", {
+      const res = await fetch(`${API}/admin/invites`, {
         method: "POST",
         headers,
         body: JSON.stringify({ email: inviteEmail, role: inviteRole }),
@@ -151,7 +130,6 @@ export default function UserManagement() {
       }
       setInviteEmail("");
       setInviteRole("EMPLOYEE");
-      setInviteStatus(formatInviteStatus(data.mail));
       await loadInvites();
     } catch (e) {
       console.error(e);
@@ -164,9 +142,8 @@ export default function UserManagement() {
   const handleInviteResend = async (id) => {
     setInviteResendId(id);
     setInvitesError("");
-    setInviteStatus(null);
     try {
-      const res = await apiFetch(`/admin/invites/${id}/resend`, {
+      const res = await fetch(`${API}/admin/invites/${id}/resend`, {
         method: "POST",
         headers,
       });
@@ -174,7 +151,6 @@ export default function UserManagement() {
       if (!res.ok) {
         throw new Error(data.message || "INVITE_RESEND_ERROR");
       }
-      setInviteStatus(formatInviteStatus(data.mail));
       await loadInvites();
     } catch (e) {
       console.error(e);
@@ -184,46 +160,23 @@ export default function UserManagement() {
     }
   };
 
+
   const mapInviteError = (code) => {
     switch (code) {
-      case "INVITES_LOAD_ERROR":
-        return "Не удалось загрузить приглашения";
       case "INVITE_EMAIL_REQUIRED":
-        return "Укажите адрес эл. почты";
+        return "Укажите email";
       case "BAD_INVITE":
-        return "Некорректные данные";
+        return "Неверные данные";
       case "EMAIL_ALREADY_EXISTS":
-        return "Аккаунт с этой почтой уже существует";
+        return "Почта уже занята";
       case "INVITE_RATE_LIMIT":
-        return "Слишком часто. Попробуйте позже";
+        return "Превышена частота отправки";
       case "INVITE_GLOBAL_LIMIT":
-        return "Превышен общий лимит отправки";
+        return "Превышен общий лимит отправок";
       case "INVITE_NOT_FOUND":
         return "Приглашение не найдено";
-      case "INVITE_SEND_ERROR":
-        return "Не удалось отправить приглашение";
-      case "INVITE_RESEND_ERROR":
-        return "Не удалось отправить приглашение повторно";
       default:
-        if (typeof code === "string" && /^[A-Z0-9_]+$/.test(code)) {
-          return "Неизвестная ошибка";
-        }
         return code;
-    }
-  };
-
-  const inviteStatusLabel = (status) => {
-    switch (status) {
-      case "PENDING":
-        return "Ожидает";
-      case "SENT":
-        return "Отправлено";
-      case "ACCEPTED":
-        return "Принято";
-      case "EXPIRED":
-        return "Просрочено";
-      default:
-        return status || "-";
     }
   };
 
@@ -232,13 +185,11 @@ export default function UserManagement() {
       case "EMPLOYEE":
         return "Сотрудник";
       case "HR":
-        return "Кадры";
+        return "HR";
       case "ACCOUNTING":
         return "Бухгалтерия";
       case "ADMIN":
-        return "Администратор";
-      case "WAREHOUSE":
-        return "Склад";
+        return "Админ";
       default:
         return role;
     }
@@ -247,7 +198,7 @@ export default function UserManagement() {
   if (user?.role !== "ADMIN") {
     return (
       <div style={{ padding: 24 }}>
-        Нет доступа. Этот раздел доступен только для роли администратора.
+        Нет доступа. Эта страница только для ADMIN.
       </div>
     );
   }
@@ -255,9 +206,9 @@ export default function UserManagement() {
   return (
     <div style={{ padding: 24 }}>
       <h1>Управление пользователями</h1>
-      <div style={{ marginBottom: 12, color: "#475569" }}>
+      <p>
         Здесь администратор может просматривать пользователей и менять их роли.
-      </div>
+      
 
       <div
         style={{
@@ -271,12 +222,12 @@ export default function UserManagement() {
         }}
       >
         <div style={{ fontWeight: 600, marginBottom: 8 }}>
-          Пригласить пользователя
+          {"Пригласить пользователя"}
         </div>
         <div style={{ display: "grid", gap: 8, gridTemplateColumns: "1fr 220px auto" }}>
           <input
             type="email"
-            placeholder="Эл. почта"
+            placeholder="Email"
             value={inviteEmail}
             onChange={(e) => setInviteEmail(e.target.value)}
             style={{ padding: 8 }}
@@ -288,7 +239,7 @@ export default function UserManagement() {
           >
             {ALL_ROLES.map((r) => (
               <option key={r} value={r}>
-                {roleLabel(r)}
+                {roleLabel(r)} ({r})
               </option>
             ))}
           </select>
@@ -304,7 +255,9 @@ export default function UserManagement() {
               cursor: "pointer",
             }}
           >
-            {inviteSending ? "Отправляем..." : "Отправить"}
+            {inviteSending
+              ? "Отправка..."
+              : "Пригласить"}
           </button>
         </div>
         {invitesError && (
@@ -320,19 +273,9 @@ export default function UserManagement() {
             {mapInviteError(invitesError)}
           </div>
         )}
-        {inviteStatus && (
-          <div
-            style={{
-              marginTop: 10,
-              padding: 8,
-              borderRadius: 4,
-              ...(inviteStatusStyles[inviteStatus.type] || inviteStatusStyles.error),
-            }}
-          >
-            {inviteStatus.text}
-          </div>
-        )}
       </div>
+
+</p>
 
       {error && (
         <div
@@ -349,12 +292,14 @@ export default function UserManagement() {
         </div>
       )}
 
+      
+
       <div style={{ marginBottom: 16 }}>
-        <h3 style={{ marginBottom: 8 }}>Приглашения</h3>
+        <h3 style={{ marginBottom: 8 }}>{"Приглашения"}</h3>
         {invitesLoading ? (
-          <p>Загрузка...</p>
+          <p>{"Загрузка..."}</p>
         ) : invites.length === 0 ? (
-          <p>Приглашений пока нет.</p>
+          <p>{"Приглашений пока нет."}</p>
         ) : (
           <table
             style={{
@@ -368,10 +313,10 @@ export default function UserManagement() {
           >
             <thead>
               <tr>
-                <th style={thStyle}>Эл. почта</th>
-                <th style={thStyle}>Роль</th>
-                <th style={thStyle}>Статус</th>
-                <th style={thStyle}>Создан</th>
+                <th style={thStyle}>Email</th>
+                <th style={thStyle}>{"Роль"}</th>
+                <th style={thStyle}>{"Статус"}</th>
+                <th style={thStyle}>{"Создан"}</th>
                 <th style={thStyle}></th>
               </tr>
             </thead>
@@ -379,10 +324,8 @@ export default function UserManagement() {
               {invites.map((inv) => (
                 <tr key={inv.id}>
                   <td style={tdStyle}>{inv.email}</td>
-                  <td style={tdStyle}>
-                    {roleLabel(inv.role)}
-                  </td>
-                  <td style={tdStyle}>{inviteStatusLabel(inv.status)}</td>
+                  <td style={tdStyle}>{roleLabel(inv.role)} ({inv.role})</td>
+                  <td style={tdStyle}>{inv.status}</td>
                   <td style={tdStyle}>
                     {inv.createdAt
                       ? new Date(inv.createdAt).toLocaleString()
@@ -394,7 +337,9 @@ export default function UserManagement() {
                       onClick={() => handleInviteResend(inv.id)}
                       disabled={inviteResendId === inv.id}
                     >
-                      {inviteResendId === inv.id ? "Отправляем..." : "Повторить"}
+                      {inviteResendId === inv.id
+                        ? "Отправка..."
+                        : "Переотправить"}
                     </button>
                   </td>
                 </tr>
@@ -404,7 +349,7 @@ export default function UserManagement() {
         )}
       </div>
 
-      {loading ? (
+{loading ? (
         <p>Загрузка пользователей...</p>
       ) : users.length === 0 ? (
         <p>Пользователей пока нет.</p>
@@ -424,7 +369,7 @@ export default function UserManagement() {
             <tr>
               <th style={thStyle}>ID</th>
               <th style={thStyle}>Имя</th>
-              <th style={thStyle}>Эл. почта</th>
+              <th style={thStyle}>Email</th>
               <th style={thStyle}>Роль</th>
               <th style={thStyle}>Создан</th>
               <th style={thStyle}></th>
@@ -445,20 +390,24 @@ export default function UserManagement() {
                   >
                     {ALL_ROLES.map((r) => (
                       <option key={r} value={r}>
-                        {roleLabel(r)}
+                        {roleLabel(r)} ({r})
                       </option>
                     ))}
                   </select>
                 </td>
                 <td style={tdStyle}>
-                  {u.createdAt ? new Date(u.createdAt).toLocaleString() : "-"}
+                  {u.createdAt
+                    ? new Date(u.createdAt).toLocaleString()
+                    : "-"}
                 </td>
                 <td style={tdStyle}>
                   <button
                     onClick={() => handleSaveRole(u.id)}
                     disabled={savingId === u.id}
                   >
-                    {savingId === u.id ? "Сохраняем..." : "Сохранить"}
+                    {savingId === u.id
+                      ? "Сохранение..."
+                      : "Сохранить"}
                   </button>
                 </td>
               </tr>
