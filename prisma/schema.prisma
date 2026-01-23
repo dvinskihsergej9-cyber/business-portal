@@ -23,6 +23,8 @@ model User {
 
   leaveRequests     LeaveRequest[]
   paymentRequests   PaymentRequest[]
+  payments          Payment[]
+  subscription      Subscription?
   warehouseRequests WarehouseRequest[]
   warehouseTasks    WarehouseTask[]
   stockMovements    StockMovement[]
@@ -32,6 +34,19 @@ model User {
   receivingDiscrepanciesClosed ReceivingDiscrepancy[] @relation("ReceivingDiscrepancyClosedBy")
   invitesCreated InviteToken[] @relation("InviteCreatedBy")
   passwordResetTokens PasswordResetToken[]
+}
+
+// ============ SUBSCRIPTION ============
+model Subscription {
+  id        Int      @id @default(autoincrement())
+  userId    Int      @unique
+  plan      String
+  status    String
+  paidUntil DateTime?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
 }
 
 
@@ -144,6 +159,22 @@ model PaymentRequest {
   comment     String?
   createdAt   DateTime  @default(now())
   updatedAt   DateTime  @updatedAt
+}
+
+model Payment {
+  id                Int      @id @default(autoincrement())
+  userId            Int
+  provider          String
+  providerPaymentId String
+  amount            Float
+  currency          String
+  status            String
+  metadata          Json?
+  createdAt         DateTime @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([provider, providerPaymentId])
 }
 
 // ============ WAREHOUSE REQUESTS ============

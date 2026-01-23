@@ -17,6 +17,8 @@ import Register from "./pages/Register";
 import InviteAccept from "./pages/InviteAccept";
 import ForgotPassword from "./pages/ForgotPassword";
 import ResetPassword from "./pages/ResetPassword";
+import Pricing from "./pages/Pricing";
+import SubscribeReturn from "./pages/SubscribeReturn";
 import Dashboard from "./pages/Dashboard";
 import HrPanel from "./pages/HrPanel";          // ✅ вот так
 import Accounting from "./pages/Accounting";
@@ -63,6 +65,22 @@ function AppRoutesWithBackground() {
           <Route path="/invite" element={<InviteAccept />} />
           <Route path="/forgot-password" element={<ForgotPassword />} />
           <Route path="/reset-password" element={<ResetPassword />} />
+          <Route
+            path="/pricing"
+            element={
+              <ProtectedRoute requirePaid={false}>
+                <Pricing />
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/subscribe/return"
+            element={
+              <ProtectedRoute requirePaid={false}>
+                <SubscribeReturn />
+              </ProtectedRoute>
+            }
+          />
 
           {/* всё остальное под Layout и защитой */}
           <Route

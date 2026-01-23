@@ -1,9 +1,8 @@
 import { createContext, useContext, useEffect, useState } from "react";
+import { API_BASE } from "../apiConfig";
 
 export const AuthContext = createContext(null);
 export const useAuth = () => useContext(AuthContext);
-
-const API = "http://localhost:3001/api";
 
 export function AuthProvider({ children }) {
   const [user, setUser] = useState(() => {
@@ -22,7 +21,7 @@ export function AuthProvider({ children }) {
 
     (async () => {
       try {
-        const res = await fetch(`${API}/me`, {
+        const res = await fetch(`${API_BASE}/me`, {
           headers: {
             Authorization: `Bearer ${token}`,
           },
@@ -50,7 +49,7 @@ export function AuthProvider({ children }) {
 
   const login = async (email, password) => {
     try {
-      const res = await fetch(`${API}/login`, {
+      const res = await fetch(`${API_BASE}/login`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ email, password }),
@@ -76,7 +75,7 @@ export function AuthProvider({ children }) {
   // РЕГИСТРАЦИЯ БЕЗ ROLE — роль ставит сервер
   const register = async (email, password, name) => {
     try {
-      const res = await fetch(`${API}/register`, {
+      const res = await fetch(`${API_BASE}/register`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ email, password, name }),
@@ -102,7 +101,7 @@ export function AuthProvider({ children }) {
   const updateProfile = async ({ name, password }) => {
     try {
       const token = localStorage.getItem("token");
-      const res = await fetch(`${API}/me`, {
+      const res = await fetch(`${API_BASE}/me`, {
         method: "PUT",
         headers: {
           "Content-Type": "application/json",
@@ -133,6 +132,24 @@ export function AuthProvider({ children }) {
     setUser(null);
   };
 
+  const refreshUser = async () => {
+    const token = localStorage.getItem("token");
+    if (!token) return;
+    try {
+      const res = await fetch(`${API_BASE}/me`, {
+        headers: {
+          Authorization: `Bearer ${token}`,
+        },
+      });
+      if (!res.ok) return;
+      const data = await res.json();
+      setUser(data);
+      localStorage.setItem("user", JSON.stringify(data));
+    } catch (err) {
+      console.error("Refresh user error:", err);
+    }
+  };
+
   const value = {
     user,
     loading,
@@ -140,6 +157,7 @@ export function AuthProvider({ children }) {
     register,
     updateProfile,
     logout,
+    refreshUser,
   };
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;

@@ -27,7 +27,7 @@ app.use(express.json());
 
 // ================== JWT / АВТОРИЗАЦИЯ ==================
 
-const JWT_SECRET = "super-secret-key"; // в .env в бою
+const JWT_SECRET = process.env.JWT_SECRET || "super-secret-key"; // в .env в бою
 const JWT_EXPIRES_IN = "7d";
 
 function createToken(user) {
@@ -222,6 +222,181 @@ async function sendPasswordChangedEmail(email) {
     console.error("Password changed email error:", err);
     return { sent: false, error: err.message };
   }
+}
+
+
+const APP_URL = process.env.APP_URL || FRONTEND_URL;
+const YOOKASSA_SHOP_ID = process.env.YOOKASSA_SHOP_ID;
+const YOOKASSA_SECRET_KEY = process.env.YOOKASSA_SECRET_KEY;
+
+const PLANS = {
+  "basic-30": {
+    id: "basic-30",
+    title: "Basic 30 days",
+    amount: 1990,
+    currency: "RUB",
+    days: 30,
+  },
+};
+
+function getPlan(planId) {
+  return PLANS[planId] || null;
+}
+
+function addDays(date, days) {
+  const base = new Date(date);
+  const value = Number(days || 0);
+  if (!Number.isFinite(value)) return base;
+  base.setDate(base.getDate() + value);
+  return base;
+}
+
+function formatAmount(amount) {
+  const value = Number(amount || 0);
+  return value.toFixed(2);
+}
+
+function getYookassaAuthHeader() {
+  if (!YOOKASSA_SHOP_ID || !YOOKASSA_SECRET_KEY) return null;
+  const token = Buffer.from(`${YOOKASSA_SHOP_ID}:${YOOKASSA_SECRET_KEY}`).toString("base64");
+  return `Basic ${token}`;
+}
+
+async function yookassaRequest(method, path, body, idempotenceKey) {
+  const authHeader = getYookassaAuthHeader();
+  if (!authHeader) {
+    throw new Error("YOOKASSA_CONFIG_MISSING");
+  }
+
+  const headers = {
+    Authorization: authHeader,
+    "Content-Type": "application/json",
+  };
+  if (idempotenceKey) {
+    headers["Idempotence-Key"] = idempotenceKey;
+  }
+
+  const res = await fetch(`https://api.yookassa.ru/v3${path}`, {
+    method,
+    headers,
+    body: body ? JSON.stringify(body) : undefined,
+  });
+
+  const payload = await res.json().catch(() => ({}));
+  if (!res.ok) {
+    const error = new Error(payload?.description || payload?.message || "YOOKASSA_REQUEST_FAILED");
+    error.status = res.status;
+    error.payload = payload;
+    throw error;
+  }
+  return payload;
+}
+
+async function fetchYookassaPayment(providerPaymentId) {
+  return yookassaRequest("GET", `/payments/${providerPaymentId}`);
+}
+
+function parseYookassaMetadata(metadata) {
+  const userId = Number(metadata?.userId || 0);
+  const planId = metadata?.planId ? String(metadata.planId) : null;
+  const days = Number(metadata?.days || 0);
+  const localPaymentId = Number(metadata?.localPaymentId || 0) || null;
+  return {
+    userId: Number.isFinite(userId) && userId > 0 ? userId : null,
+    planId,
+    days: Number.isFinite(days) && days > 0 ? days : null,
+    localPaymentId,
+  };
+}
+
+function validatePlanMetadata(plan, metadata) {
+  if (!plan || !metadata.planId || !metadata.days) return false;
+  return plan.id === metadata.planId && Number(plan.days) === Number(metadata.days);
+}
+
+async function applyPaymentSuccess({ paymentRecord, providerPayment, plan }) {
+  const userId = paymentRecord.userId;
+  const now = new Date();
+  const current = await prisma.subscription.findFirst({ where: { userId } });
+  const baseDate = current?.paidUntil && new Date(current.paidUntil) > now
+    ? new Date(current.paidUntil)
+    : now;
+  const nextPaidUntil = addDays(baseDate, plan.days);
+
+  const existingMetadata = paymentRecord.metadata || {};
+  const processedProviderPaymentIds = Array.isArray(existingMetadata.processedProviderPaymentIds)
+    ? existingMetadata.processedProviderPaymentIds
+    : [];
+  const providerPaymentId = providerPayment?.id ? String(providerPayment.id) : null;
+  const nextProcessedProviderPaymentIds = providerPaymentId
+    ? Array.from(new Set([...processedProviderPaymentIds, providerPaymentId]))
+    : processedProviderPaymentIds;
+
+  await prisma.subscription.upsert({
+    where: { userId },
+    update: {
+      plan: plan.id,
+      status: "active",
+      paidUntil: nextPaidUntil,
+    },
+    create: {
+      userId,
+      plan: plan.id,
+      status: "active",
+      paidUntil: nextPaidUntil,
+    },
+  });
+
+  await prisma.payment.update({
+    where: { id: paymentRecord.id },
+    data: {
+      status: "succeeded",
+      metadata: {
+        ...existingMetadata,
+        providerStatus: providerPayment.status,
+        providerPaid: providerPayment.paid,
+        processedProviderPaymentIds: nextProcessedProviderPaymentIds,
+      },
+    },
+  });
+
+  return nextPaidUntil;
+}
+
+async function getUserPayload(userId) {
+  const user = await prisma.user.findUnique({
+    where: { id: userId },
+    select: {
+      id: true,
+      email: true,
+      name: true,
+      role: true,
+      createdAt: true,
+    },
+  });
+
+  if (!user) return null;
+
+  const subscription = await prisma.subscription.findFirst({ where: { userId } });
+  const now = new Date();
+  const isActive =
+    subscription &&
+    subscription.status === "active" &&
+    subscription.paidUntil &&
+    new Date(subscription.paidUntil) > now;
+
+  return {
+    ...user,
+    roles: [user.role],
+    subscription: subscription
+      ? {
+          plan: subscription.plan,
+          status: subscription.status,
+          paidUntil: subscription.paidUntil,
+          isActive: Boolean(isActive),
+        }
+      : { isActive: false },
+  };
 }
 
 
@@ -1582,16 +1757,20 @@ app.post("/api/register", async (req, res) => {
 
     const token = createToken(user);
 
-    res.status(201).json({
-      message: "Пользователь создан",
-      token,
-      user: {
-        id: user.id,
-        email: user.email,
-        name: user.name,
-        role: user.role,
-      },
-    });
+      const userPayload = await getUserPayload(user.id);
+
+      res.status(201).json({
+        message: "???????????????????????? ????????????",
+        token,
+        user: userPayload || {
+          id: user.id,
+          email: user.email,
+          name: user.name,
+          role: user.role,
+          roles: [user.role],
+          subscription: { isActive: false },
+        },
+      });
   } catch (err) {
     console.error("register error:", err);
     res.status(500).json({ message: "Ошибка сервера при регистрации" });
@@ -1629,16 +1808,20 @@ app.post("/api/login", async (req, res) => {
 
     const token = createToken(user);
 
-    res.json({
-      message: "Успешный вход",
-      token,
-      user: {
-        id: user.id,
-        email: user.email,
-        name: user.name,
-        role: user.role,
-      },
-    });
+      const userPayload = await getUserPayload(user.id);
+
+      res.json({
+        message: "???????????????? ????????",
+        token,
+        user: userPayload || {
+          id: user.id,
+          email: user.email,
+          name: user.name,
+          role: user.role,
+          roles: [user.role],
+          subscription: { isActive: false },
+        },
+      });
   } catch (err) {
     console.error("login error:", err);
     res.status(500).json({ message: "Ошибка сервера при входе" });
@@ -1647,17 +1830,262 @@ app.post("/api/login", async (req, res) => {
 
 // профиль текущего пользователя
 app.get("/api/profile", auth, async (req, res) => {
-  try {
-    const user = await prisma.user.findUnique({
-      where: { id: req.user.id },
-      select: {
-        id: true,
-        email: true,
-        name: true,
-        role: true,
-        createdAt: true,
-      },
-    });
+    try {
+      const userPayload = await getUserPayload(req.user.id);
+      if (!userPayload) {
+        return res.status(404).json({ message: "???????????????????????? ???? ????????????" });
+      }
+      res.json(userPayload);
+    } catch (err) {
+      console.error("profile error:", err);
+      res.status(500).json({ message: "???????????? ?????????????? ?????? ???????????????? ??????????????" });
+    }
+  });
+
+  app.get("/api/me", auth, async (req, res) => {
+    try {
+      const userPayload = await getUserPayload(req.user.id);
+      if (!userPayload) {
+        return res.status(404).json({ message: "USER_NOT_FOUND" });
+      }
+      res.json(userPayload);
+    } catch (err) {
+      console.error("me error:", err);
+      res.status(500).json({ message: "ME_LOAD_ERROR" });
+    }
+  });
+
+  app.post("/api/billing/yookassa/create-payment", auth, async (req, res) => {
+    try {
+      const { planId, paymentMethod } = req.body || {};
+      const plan = getPlan(planId);
+      if (!plan) {
+        return res.status(400).json({ message: "PLAN_NOT_FOUND" });
+      }
+      if (paymentMethod && paymentMethod !== "sbp" && paymentMethod !== "default") {
+        return res.status(400).json({ message: "PAYMENT_METHOD_INVALID" });
+      }
+      const resolvedPaymentMethod = paymentMethod === "default" ? "default" : "sbp";
+
+      const tempProviderId = `pending_${crypto.randomUUID()}`;
+      const localPayment = await prisma.payment.create({
+        data: {
+          userId: req.user.id,
+          provider: "yookassa",
+          providerPaymentId: tempProviderId,
+          amount: plan.amount,
+          currency: plan.currency,
+          status: "pending",
+          metadata: {
+            planId: plan.id,
+            days: plan.days,
+            paymentMethod: resolvedPaymentMethod,
+          },
+        },
+      });
+
+      const payload = {
+        amount: {
+          value: formatAmount(plan.amount),
+          currency: plan.currency,
+        },
+        capture: true,
+        confirmation: {
+          type: "redirect",
+          return_url: `${APP_URL}/subscribe/return?paymentId=${localPayment.id}`,
+        },
+        description: `Subscription ${plan.id}`,
+        metadata: {
+          userId: String(req.user.id),
+          planId: plan.id,
+          days: String(plan.days),
+          localPaymentId: String(localPayment.id),
+        },
+      };
+
+      if (resolvedPaymentMethod === "sbp") {
+        payload.payment_method_data = { type: "sbp" };
+      }
+
+      const payment = await yookassaRequest(
+        "POST",
+        "/payments",
+        payload,
+        crypto.randomUUID()
+      );
+
+      await prisma.payment.update({
+        where: { id: localPayment.id },
+        data: {
+          providerPaymentId: payment.id,
+          status: payment.status || "pending",
+          metadata: {
+            ...(localPayment.metadata || {}),
+            providerStatus: payment.status,
+          },
+        },
+      });
+
+      return res.json({
+        confirmationUrl: payment.confirmation?.confirmation_url || null,
+        paymentId: payment.id,
+        localPaymentId: localPayment.id,
+      });
+    } catch (err) {
+      console.error("create payment error:", err);
+      return res.status(500).json({ message: "PAYMENT_CREATE_ERROR" });
+    }
+  });
+
+  app.get("/api/billing/yookassa/payment-status", auth, async (req, res) => {
+    try {
+      const paymentId = String(req.query.paymentId || "").trim();
+      if (!paymentId) {
+        return res.status(400).json({ message: "PAYMENT_ID_REQUIRED" });
+      }
+
+      let paymentRecord = null;
+      if (/^\d+$/.test(paymentId)) {
+        paymentRecord = await prisma.payment.findUnique({
+          where: { id: Number(paymentId) },
+        });
+      }
+      if (!paymentRecord) {
+        paymentRecord = await prisma.payment.findFirst({
+          where: { providerPaymentId: paymentId },
+        });
+      }
+      if (!paymentRecord) {
+        return res.status(404).json({ message: "PAYMENT_NOT_FOUND" });
+      }
+      if (paymentRecord.userId !== req.user.id) {
+        return res.status(403).json({ message: "PAYMENT_FORBIDDEN" });
+      }
+
+      const providerPayment = await fetchYookassaPayment(paymentRecord.providerPaymentId);
+      const metadata = parseYookassaMetadata(providerPayment.metadata || {});
+      const plan = getPlan(metadata.planId || paymentRecord.metadata?.planId);
+      if (!plan) {
+        return res.status(400).json({ message: "PLAN_NOT_FOUND" });
+      }
+
+      if (providerPayment.status === "succeeded" && providerPayment.paid) {
+        if (paymentRecord.status !== "succeeded") {
+          await applyPaymentSuccess({ paymentRecord, providerPayment, plan });
+        }
+      } else if (providerPayment.status === "canceled") {
+        await prisma.payment.update({
+          where: { id: paymentRecord.id },
+          data: { status: "canceled" },
+        });
+      } else {
+        await prisma.payment.update({
+          where: { id: paymentRecord.id },
+          data: { status: providerPayment.status || "pending" },
+        });
+      }
+
+      return res.json({
+        status: providerPayment.status,
+        paid: providerPayment.paid || false,
+      });
+    } catch (err) {
+      console.error("payment status error:", err);
+      return res.status(500).json({ message: "PAYMENT_STATUS_ERROR" });
+    }
+  });
+
+  app.post("/api/billing/yookassa/webhook", async (req, res) => {
+    try {
+      const providerPaymentId =
+        req.body?.object?.id || req.body?.payment?.id || req.body?.id;
+      if (!providerPaymentId) {
+        return res.status(400).json({ message: "PAYMENT_ID_REQUIRED" });
+      }
+
+      const providerPayment = await fetchYookassaPayment(providerPaymentId);
+      const metadata = parseYookassaMetadata(providerPayment.metadata || {});
+      const plan = getPlan(metadata.planId);
+      if (!plan) {
+        return res.status(400).json({ message: "PLAN_NOT_FOUND" });
+      }
+      if (!validatePlanMetadata(plan, metadata) || !metadata.userId) {
+        return res.status(400).json({ message: "PAYMENT_METADATA_MISMATCH" });
+      }
+
+      const expectedAmount = formatAmount(plan.amount);
+      if (providerPayment.amount?.currency !== plan.currency || providerPayment.amount?.value !== expectedAmount) {
+        return res.status(400).json({ message: "PAYMENT_AMOUNT_MISMATCH" });
+      }
+
+      let paymentRecord = null;
+      if (metadata.localPaymentId) {
+        paymentRecord = await prisma.payment.findUnique({
+          where: { id: metadata.localPaymentId },
+        });
+      }
+      if (!paymentRecord) {
+        paymentRecord = await prisma.payment.findFirst({
+          where: { providerPaymentId },
+        });
+      }
+
+      if (!paymentRecord) {
+        paymentRecord = await prisma.payment.create({
+          data: {
+            userId: metadata.userId,
+            provider: "yookassa",
+            providerPaymentId,
+            amount: Number(providerPayment.amount?.value || plan.amount),
+            currency: providerPayment.amount?.currency || plan.currency,
+            status: providerPayment.status || "pending",
+            metadata: {
+              planId: plan.id,
+              days: plan.days,
+              providerStatus: providerPayment.status,
+              providerPaid: providerPayment.paid,
+            },
+          },
+        });
+      }
+
+      if (paymentRecord.userId !== metadata.userId) {
+        return res.status(400).json({ message: "PAYMENT_USER_MISMATCH" });
+      }
+
+      const processedProviderPaymentIds = Array.isArray(paymentRecord.metadata?.processedProviderPaymentIds)
+        ? paymentRecord.metadata.processedProviderPaymentIds
+        : [];
+      if (processedProviderPaymentIds.includes(String(providerPaymentId))) {
+        return res.json({ ok: true });
+      }
+
+      if (paymentRecord.status === "succeeded") {
+        return res.json({ ok: true });
+      }
+
+      if (providerPayment.status === "succeeded" && providerPayment.paid) {
+        await applyPaymentSuccess({ paymentRecord, providerPayment, plan });
+      } else if (providerPayment.status === "canceled") {
+        await prisma.payment.update({
+          where: { id: paymentRecord.id },
+          data: { status: "canceled" },
+        });
+      } else {
+        await prisma.payment.update({
+          where: { id: paymentRecord.id },
+          data: { status: providerPayment.status || "pending" },
+        });
+      }
+
+      return res.json({ ok: true });
+    } catch (err) {
+      console.error("yookassa webhook error:", err);
+      return res.status(500).json({ message: "WEBHOOK_ERROR" });
+    }
+  });
+
+
 
     if (!user) {
       if (user && user.isActive === false) {
