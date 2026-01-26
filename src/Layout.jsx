@@ -54,7 +54,9 @@ export default function Layout() {
   ];
 
   const allowedMenu = user
-    ? menu.filter((item) => item.roles.includes(user.role))
+    ? user.role === "ADMIN"
+      ? menu
+      : menu.filter((item) => item.to !== "/admin")
     : [];
 
   const handleLogout = () => {

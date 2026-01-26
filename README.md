@@ -70,3 +70,13 @@ Option 2 (admin API):
 - POST /api/admin/create-employee (ADMIN only)
 - Or use Admin -> Settings -> Create test EMPLOYEE button.
 
+## Smoke check
+```
+SMOKE_API_BASE=http://localhost:3001/api \
+SMOKE_ADMIN_EMAIL=admin@example.com \
+SMOKE_ADMIN_PASSWORD=adminpass \
+SMOKE_EMPLOYEE_EMAIL=employee@test.local \
+SMOKE_EMPLOYEE_PASSWORD=Test12345! \
+npm run smoke
+```
+

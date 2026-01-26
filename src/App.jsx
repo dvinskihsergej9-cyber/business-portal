@@ -115,7 +115,7 @@ function AppRoutesWithBackground() {
             <Route
               path="hr"                          // можно без /*, вложенных роутов нет
               element={
-                <ProtectedRoute roles={["HR", "ADMIN"]}>
+                <ProtectedRoute roles={["EMPLOYEE", "HR", "ADMIN"]}>
                   <HrPanel />
                 </ProtectedRoute>
               }
@@ -124,7 +124,7 @@ function AppRoutesWithBackground() {
             <Route
               path="accounting"
               element={
-                <ProtectedRoute roles={["ACCOUNTING", "ADMIN"]}>
+                <ProtectedRoute roles={["EMPLOYEE", "ACCOUNTING", "ADMIN"]}>
                   <Accounting />
                 </ProtectedRoute>
               }

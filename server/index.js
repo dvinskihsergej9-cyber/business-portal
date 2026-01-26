@@ -86,7 +86,7 @@ function requireAdmin(req, res, next) {
 }
 
 function requireHr(req, res, next) {
-  if (!["HR", "ADMIN"].includes(req.user?.role)) {
+  if (!["EMPLOYEE", "HR", "ADMIN"].includes(req.user?.role)) {
     return res
       .status(403)
       .json({ message: "HR or admin role required" });
@@ -3143,7 +3143,7 @@ app.get("/api/warehouse/requests/my", auth, async (req, res) => {
 // все заявки (ADMIN/ACCOUNTING)
 app.get("/api/warehouse/requests", auth, async (req, res) => {
   try {
-    if (req.user.role !== "ADMIN" && req.user.role !== "ACCOUNTING") {
+    if (!["ADMIN", "ACCOUNTING", "EMPLOYEE"].includes(req.user.role)) {
       return res.status(403).json({ message: "Нет прав" });
     }
 
@@ -3290,7 +3290,7 @@ app.put("/api/warehouse/requests/:id/status", auth, async (req, res) => {
     const id = Number(req.params.id);
     const { status, statusComment } = req.body;
 
-    if (req.user.role !== "ADMIN" && req.user.role !== "ACCOUNTING") {
+    if (!["ADMIN", "ACCOUNTING", "EMPLOYEE"].includes(req.user.role)) {
       return res.status(403).json({ message: "Нет прав" });
     }
 
@@ -3578,7 +3578,7 @@ app.get("/api/warehouse/tasks/my", auth, async (req, res) => {
 // все задачи склада (ADMIN/ACCOUNTING)
 app.get("/api/warehouse/tasks", auth, async (req, res) => {
   try {
-    if (req.user.role !== "ADMIN" && req.user.role !== "ACCOUNTING") {
+    if (!["ADMIN", "ACCOUNTING", "EMPLOYEE"].includes(req.user.role)) {
       return res.status(403).json({ message: "Нет прав" });
     }
 
@@ -3606,7 +3606,7 @@ app.put("/api/warehouse/tasks/:id/status", auth, async (req, res) => {
     const id = Number(req.params.id);
     const { status } = req.body;
 
-    if (req.user.role !== "ADMIN" && req.user.role !== "ACCOUNTING") {
+    if (!["ADMIN", "ACCOUNTING", "EMPLOYEE"].includes(req.user.role)) {
       return res.status(403).json({ message: "Нет прав" });
     }
 

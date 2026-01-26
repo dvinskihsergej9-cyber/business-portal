@@ -1,6 +1,15 @@
 ﻿import { useEffect, useMemo, useState } from "react";
+import { API_BASE } from "../apiConfig";
 
-const API = "http://localhost:3001/api";
+const API = API_BASE;
+
+const normalizeError = (err) => {
+  if (!err) return "??????";
+  if (err.message === "Failed to fetch") {
+    return "?? ??????? ???????????? ? API. ????????? ??????????? ???????.";
+  }
+  return err.message || "??????";
+};
 
 const STATUS_LABELS = {
   ACTIVE: "В штате",
@@ -296,7 +305,7 @@ export default function HrPanel() {
       setEmployees(data);
     } catch (e) {
       console.error(e);
-      setError(e.message);
+      setError(normalizeError(e));
     } finally {
       setLoading(false);
     }
@@ -412,7 +421,7 @@ export default function HrPanel() {
       loadSafetyData();
     } catch (e) {
       console.error(e);
-      setError(e.message);
+      setError(normalizeError(e));
     } finally {
       setSaving(false);
     }
@@ -490,7 +499,7 @@ export default function HrPanel() {
       handleEditCancel();
     } catch (e) {
       console.error(e);
-      setError(e.message);
+      setError(normalizeError(e));
     } finally {
       setEditSaving(false);
     }
