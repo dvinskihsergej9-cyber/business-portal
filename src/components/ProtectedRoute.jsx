@@ -26,7 +26,8 @@ export default function ProtectedRoute({
 
   if (requirePaid) {
     const active = Boolean(user.subscription?.isActive);
-    if (!active) {
+    const isAdmin = (user.roles || []).includes("ADMIN") || user.role === "ADMIN";
+    if (!active && !isAdmin) {
       return <Navigate to="/pricing" replace />;
     }
   }
