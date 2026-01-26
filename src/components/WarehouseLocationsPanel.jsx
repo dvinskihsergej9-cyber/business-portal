@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
+import { API_BASE } from "../apiConfig";
 
-const API = "http://localhost:3001/api";
+const API = API_BASE;
 
 export default function WarehouseLocationsPanel() {
   const [locations, setLocations] = useState([]);
@@ -800,3 +801,6 @@ export default function WarehouseLocationsPanel() {
     </div>
   );
 }
+
+
+

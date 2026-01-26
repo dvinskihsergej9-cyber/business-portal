@@ -1,7 +1,8 @@
 import { useState } from "react";
+import { API_BASE } from "../apiConfig";
 import { useAuth } from "../context/AuthContext";
 
-const API = "http://localhost:3001/api";
+const API = API_BASE;
 
 export default function Profile() {
   const { user, updateProfile } = useAuth();
@@ -186,3 +187,6 @@ export default function Profile() {
     </div>
   );
 }
+
+
+

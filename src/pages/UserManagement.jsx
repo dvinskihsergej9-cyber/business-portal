@@ -1,7 +1,16 @@
 import { useEffect, useState } from "react";
+import { API_BASE } from "../apiConfig";
 import { useAuth } from "../context/AuthContext";
 
-const API = "http://localhost:3001/api";
+const API = API_BASE;
+
+const normalizeError = (err) => {
+  if (!err) return "Ошибка";
+  if (err.message === "Failed to fetch") {
+    return "Не удалось подключиться к API. Проверьте доступность сервера.";
+  }
+  return err.message || "Ошибка";
+};
 
 const ALL_ROLES = ["EMPLOYEE", "HR", "ACCOUNTING", "WAREHOUSE", "ADMIN"];
 
@@ -42,7 +51,7 @@ export default function UserManagement() {
       setUsers(data);
     } catch (e) {
       console.error(e);
-      setError(e.message);
+      setError(normalizeError(e));
     } finally {
       setLoading(false);
     }
@@ -60,7 +69,7 @@ export default function UserManagement() {
       setInvites(Array.isArray(data.items) ? data.items : []);
     } catch (e) {
       console.error(e);
-      setInvitesError(e.message);
+      setInvitesError(normalizeError(e));
     } finally {
       setInvitesLoading(false);
     }
@@ -430,3 +439,6 @@ const tdStyle = {
   padding: 8,
   borderTop: "1px solid #e5e7eb",
 };
+
+
+

@@ -2,8 +2,9 @@
 
 import { useEffect, useMemo, useRef, useState } from "react";
 import { BrowserMultiFormatReader } from "@zxing/browser";
+import { API_BASE } from "../apiConfig";
 
-const API = "http://localhost:3001/api";
+const API = API_BASE;
 
 /**
  * Окно акта возврата/расхождений (мобильная версия с кнопкой "Отправить")
@@ -887,3 +888,6 @@ export default function MobileReceiveByOrder({
     </div>
   );
 }
+
+
+

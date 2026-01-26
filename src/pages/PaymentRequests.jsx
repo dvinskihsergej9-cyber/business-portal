@@ -1,7 +1,8 @@
 import { useEffect, useMemo, useState } from "react";
+import { API_BASE } from "../apiConfig";
 import { useAuth } from "../context/AuthContext";
 
-const API = "http://localhost:3001/api";
+const API = API_BASE;
 
 const STATUS_LABELS = {
   NEW: "Новая",
@@ -652,3 +653,6 @@ function StatCard({ label, count, sum }) {
     </div>
   );
 }
+
+
+

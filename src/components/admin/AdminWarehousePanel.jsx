@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
+import { API_BASE } from "../../apiConfig";
 
-const API = "http://localhost:3001/api";
+const API = API_BASE;
 
 const REQUEST_STATUS_OPTIONS = [
   { value: "NEW", label: "Новая" },
@@ -953,3 +954,6 @@ export default function AdminWarehousePanel() {
     </div>
   );
 }
+
+
+

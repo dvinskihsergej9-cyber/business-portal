@@ -5,6 +5,7 @@ const ADMIN_EMAIL = process.env.SMOKE_ADMIN_EMAIL || "";
 const ADMIN_PASSWORD = process.env.SMOKE_ADMIN_PASSWORD || "";
 const EMPLOYEE_EMAIL = process.env.SMOKE_EMPLOYEE_EMAIL || "employee@test.local";
 const EMPLOYEE_PASSWORD = process.env.SMOKE_EMPLOYEE_PASSWORD || "Test12345!";
+const INVITE_EMAIL = process.env.SMOKE_INVITE_EMAIL || "invite@test.local";
 
 const results = [];
 
@@ -89,6 +90,65 @@ async function run() {
       headers: { Authorization: `Bearer ${adminToken}` },
     });
     results.push({ name: "ADMIN /me", ok: me.ok, status: me.status });
+
+    const users = await request("/users", {
+      headers: { Authorization: `Bearer ${adminToken}` },
+    });
+    results.push({
+      name: "ADMIN list users",
+      ok: users.ok,
+      status: users.status,
+      message: users.data?.message,
+    });
+
+    const invites = await request("/admin/invites", {
+      headers: { Authorization: `Bearer ${adminToken}` },
+    });
+    results.push({
+      name: "ADMIN list invites",
+      ok: invites.ok,
+      status: invites.status,
+      message: invites.data?.message,
+    });
+
+    const createInvite = await request("/admin/invites", {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${adminToken}`,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({ email: INVITE_EMAIL, role: "EMPLOYEE" }),
+    });
+    results.push({
+      name: "ADMIN create invite",
+      ok: createInvite.ok,
+      status: createInvite.status,
+      message: createInvite.data?.message,
+    });
+
+    if (users.ok && Array.isArray(users.data) && users.data.length > 0) {
+      const target = users.data.find((u) => u.role !== "ADMIN") || users.data[0];
+      const changeRole = await request(`/users/${target.id}/role`, {
+        method: "PUT",
+        headers: {
+          Authorization: `Bearer ${adminToken}`,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({ role: target.role || "EMPLOYEE" }),
+      });
+      results.push({
+        name: "ADMIN update user role",
+        ok: changeRole.ok,
+        status: changeRole.status,
+        message: changeRole.data?.message,
+      });
+    } else {
+      results.push({
+        name: "ADMIN update user role",
+        ok: true,
+        message: "SKIPPED (no users list)",
+      });
+    }
 
     const hrCreate = await request("/hr/employees", {
       method: "POST",

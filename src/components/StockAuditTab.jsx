@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
+import { API_BASE } from "../apiConfig";
 
-const API = "http://localhost:3001/api";
+const API = API_BASE;
 
 /**
  * Печатная форма инвентаризации (акт ревизионной проверки)
@@ -468,3 +469,6 @@ export default function StockAuditTab() {
     </div>
   );
 }
+
+
+

@@ -1,6 +1,7 @@
 import { useMemo, useState } from "react";
+import { API_BASE } from "../apiConfig";
 
-const API = "http://localhost:3001/api";
+const API = API_BASE;
 
 export default function PurchaseOrderModal({
   items = [], // [{ id, name, unit, orderQty, price }]
@@ -478,3 +479,6 @@ export default function PurchaseOrderModal({
     </div>
   );
 }
+
+
+

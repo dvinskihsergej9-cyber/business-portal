@@ -1,8 +1,9 @@
 // C:\Users\dvinskikh.sergey\Desktop\business-portal\src\components\PurchaseOrderReceiveModal.jsx
 
 import { useEffect, useMemo, useState } from "react";
+import { API_BASE } from "../apiConfig";
 
-const API = "http://localhost:3001/api";
+const API = API_BASE;
 
 /**
  * Открыть окно с печатной формой акта возврата/расхождений
@@ -777,3 +778,6 @@ export default function PurchaseOrderReceiveModal({ onClose }) {
     </div>
   );
 }
+
+
+

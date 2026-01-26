@@ -1,7 +1,8 @@
 import axios from "axios";
+import { API_BASE } from "../apiConfig";
 
 const api = axios.create({
-  baseURL: "http://localhost:3001/api",
+  baseURL: API_BASE,
 });
 
 // Автоматически вставляет токен в каждый запрос

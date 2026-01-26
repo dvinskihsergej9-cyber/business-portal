@@ -1,4 +1,5 @@
 import { useState, useRef } from "react";
+import { API_BASE } from "../apiConfig";
 import * as XLSX from "xlsx";
 
 export default function ImportItemsModal({ onClose, onImportSuccess }) {
@@ -68,7 +69,7 @@ export default function ImportItemsModal({ onClose, onImportSuccess }) {
         setImporting(true);
         try {
             const token = localStorage.getItem("token");
-            const res = await fetch("http://localhost:3001/api/inventory/items/batch", {
+            const res = await fetch(`${API_BASE}/inventory/items/batch`, {
                 method: "POST",
                 headers: {
                     "Content-Type": "application/json",

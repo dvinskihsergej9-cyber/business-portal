@@ -1,7 +1,8 @@
 import { useEffect, useMemo, useState } from "react";
+import { API_BASE } from "../apiConfig";
 import portalNews from "../data/portalNews";
 
-const API = "http://localhost:3001/api";
+const API = API_BASE;
 
 const CATEGORY_LABELS = {
   business: "Бизнес",
@@ -387,3 +388,6 @@ export default function Dashboard() {
     </div>
   );
 }
+
+
+

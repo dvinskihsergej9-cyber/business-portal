@@ -3,10 +3,11 @@
 
 
 import { useEffect, useState } from "react";
+import { API_BASE } from "../apiConfig";
 
 
 
-const API = "http://localhost:3001/api";
+const API = API_BASE;
 
 
 
@@ -1508,3 +1509,6 @@ export default function SupplierTrucksQueueTab() {
   );
 
 }
+
+
+

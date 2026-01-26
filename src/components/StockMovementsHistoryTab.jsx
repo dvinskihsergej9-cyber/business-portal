@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
+import { API_BASE } from "../apiConfig";
 
-const API = "http://localhost:3001/api";
+const API = API_BASE;
 
 const MOVEMENT_TYPE_LABELS = {
   INCOME: "Приход",
@@ -316,3 +317,6 @@ export default function StockMovementsHistoryTab() {
     </div>
   );
 }
+
+
+
