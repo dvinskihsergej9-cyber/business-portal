@@ -55,3 +55,18 @@ ${APP_URL}/subscribe/return?paymentId=...
 ```
 POST https://your-api-domain/api/billing/yookassa/webhook
 ```
+
+## Test EMPLOYEE (trial)
+Option 1 (seed):
+```
+npm run seed
+```
+Creates or updates:
+- email: employee@test.local
+- password: Test12345!
+- role: EMPLOYEE
+
+Option 2 (admin API):
+- POST /api/admin/create-employee (ADMIN only)
+- Or use Admin -> Settings -> Create test EMPLOYEE button.
+

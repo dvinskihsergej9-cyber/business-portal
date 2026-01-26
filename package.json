@@ -6,6 +6,7 @@
   "scripts": {
     "dev": "vite",
     "api": "node server/index.js",
+    "seed": "node tools/seed-employee.mjs",
     "build": "vite build",
     "preview": "vite preview",
     "db:deploy": "prisma db push && prisma generate"

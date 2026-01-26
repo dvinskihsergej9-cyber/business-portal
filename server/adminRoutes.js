@@ -1,4 +1,5 @@
 import express from "express";
+import bcrypt from "bcryptjs";
 
 function getLeaveDaysByCategory(category) {
   switch (category) {
@@ -19,6 +20,51 @@ export function adminRoutes({ prisma, auth, requireAdmin }) {
 
   router.use(auth, requireAdmin);
   const REQUEST_STATUSES = ["NEW", "IN_PROGRESS", "DONE", "REJECTED"];
+
+  router.post("/create-employee", async (req, res) => {
+    try {
+      const email = String(req.body?.email || "employee@test.local").trim();
+      const password = String(req.body?.password || "Test12345!").trim();
+      if (!email || !password) {
+        return res.status(400).json({ message: "EMAIL_PASSWORD_REQUIRED" });
+      }
+
+      const hash = await bcrypt.hash(password, 10);
+      const existing = await prisma.user.findUnique({ where: { email } });
+      let user = null;
+      if (existing) {
+        user = await prisma.user.update({
+          where: { email },
+          data: {
+            password: hash,
+            passwordHash: hash,
+            role: "EMPLOYEE",
+            isActive: true,
+          },
+        });
+      } else {
+        user = await prisma.user.create({
+          data: {
+            email,
+            password: hash,
+            passwordHash: hash,
+            name: "Test Employee",
+            role: "EMPLOYEE",
+            isActive: true,
+          },
+        });
+      }
+
+      return res.json({
+        id: user.id,
+        email: user.email,
+        role: user.role,
+      });
+    } catch (err) {
+      console.error("admin create employee error:", err);
+      return res.status(500).json({ message: "CREATE_EMPLOYEE_ERROR" });
+    }
+  });
 
   router.get("/hr/employees", async (req, res) => {
     try {
