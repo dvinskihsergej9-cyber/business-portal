@@ -1,4 +1,4 @@
-import express from "express";
+﻿import express from "express";
 import cors from "cors";
 import bcrypt from "bcryptjs";
 import jwt from "jsonwebtoken";
@@ -558,12 +558,6 @@ const DEFAULT_SAFETY_INSTRUCTIONS = [
 
 const SAFETY_PERIODICITY_DAYS = 180; // раз в полгода
 const SAFETY_FIRST_DUE_DAYS = 3; // первичный контроль через 3 дня
-
-function addDays(date, days) {
-  const d = new Date(date);
-  d.setDate(d.getDate() + days);
-  return d;
-}
 
 function padNumber(value, size = 6) {
   return String(value).padStart(size, "0");
@@ -2140,25 +2134,7 @@ app.get("/api/profile", auth, async (req, res) => {
       return res.status(500).json({ message: "WEBHOOK_ERROR" });
     }
   });
-
-
-
-    if (!user) {
-      if (user && user.isActive === false) {
-        return res.status(403).json({ message: "USER_INACTIVE" });
-      }
-
-      return res.status(404).json({ message: "Пользователь не найден" });
-    }
-
-    res.json(user);
-  } catch (err) {
-    console.error("profile error:", err);
-    res.status(500).json({ message: "Ошибка сервера при загрузке профиля" });
-  }
-});
-
-
+ 
 // ===== ORG PROFILE SETTINGS =====
 app.get("/api/settings/org-profile", auth, async (req, res) => {
   try {
