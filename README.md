@@ -11,6 +11,17 @@ npm run dev
 npm run build
 ```
 
+## Render deploy (MVP)
+Build Command:
+```
+npm install && npm run db:deploy
+```
+
+Start Command:
+```
+npm run api
+```
+
 ## ENV (обязательные)
 - `DATABASE_URL`
 - `JWT_SECRET`

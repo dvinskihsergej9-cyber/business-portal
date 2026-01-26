@@ -1404,8 +1404,7 @@ async function sendSafetyReminders() {
   }
 }
 
-setInterval(sendSafetyReminders, 1000 * 60 * 60); // раз в час
-sendSafetyReminders();
+// старт фоновых задач переносим после проверки готовности БД
 
 // обработка callback_query (кнопка "✅ Выполнено")
 async function handleTelegramUpdate(update) {
@@ -7669,26 +7668,56 @@ app.put("/api/supplier-trucks/:id/status", auth, async (req, res) => {
 let lastLowStockReportDate = null;
 
 // проверка каждые 60 секунд
-setInterval(() => {
-  // 1) напоминания по задачам склада
-  checkWarehouseTaskNotifications().catch((err) =>
-    console.error("Ошибка в checkWarehouseTaskNotifications:", err)
-  );
+let backgroundTasksStarted = false;
 
-  // 2) раз в день в 18:00 отправляем отчёт по минимальным остаткам
-  const now = new Date();
-  const hours = now.getHours(); // 0..23
-  const minutes = now.getMinutes(); // 0..59
-  const todayKey = now.toISOString().slice(0, 10); // "YYYY-MM-DD"
-
-  if (hours === 18 && minutes === 0 && lastLowStockReportDate !== todayKey) {
-    lastLowStockReportDate = todayKey;
-
-    sendDailyLowStockSummary().catch((err) =>
-      console.error("Ошибка в sendDailyLowStockSummary:", err)
-    );
+async function checkDbReadyForBackground() {
+  try {
+    await prisma.$queryRaw`SELECT "orgId" FROM "SafetyAssignment" LIMIT 1`;
+    await prisma.$queryRaw`SELECT "orgId" FROM "WarehouseTask" LIMIT 1`;
+    return true;
+  } catch (err) {
+    console.error("[DB ready check] ??????:", err?.message || err);
+    return false;
   }
-}, 60 * 1000);
+}
+
+async function startBackgroundTasks() {
+  if (backgroundTasksStarted) return;
+  const ready = await checkDbReadyForBackground();
+  if (!ready) {
+    console.error(
+      "[DB ready check] ?? ?? ?????? ? ??????? ?????? ?? ???????? (????????? db:deploy)."
+    );
+    return;
+  }
+
+  backgroundTasksStarted = true;
+  console.log("[DB ready check] OK, ????????? ??????? ??????.");
+
+  setInterval(sendSafetyReminders, 1000 * 60 * 60); // ??? ? ???
+  sendSafetyReminders();
+
+  setInterval(() => {
+    // 1) ??????????? ?? ??????? ??????
+    checkWarehouseTaskNotifications().catch((err) =>
+      console.error("?????? ? checkWarehouseTaskNotifications:", err)
+    );
+
+    // 2) ??? ? ???? ? 18:00 ?????????? ????? ?? ??????????? ????????
+    const now = new Date();
+    const hours = now.getHours(); // 0..23
+    const minutes = now.getMinutes(); // 0..59
+    const todayKey = now.toISOString().slice(0, 10); // "YYYY-MM-DD"
+
+    if (hours === 18 && minutes === 0 && lastLowStockReportDate !== todayKey) {
+      lastLowStockReportDate = todayKey;
+
+      sendDailyLowStockSummary().catch((err) =>
+        console.error("?????? ? sendDailyLowStockSummary:", err)
+      );
+    }
+  }, 60 * 1000);
+}
 
 // запуск long polling Telegram (один экземпляр)
 startTelegramPolling().catch((err) =>
@@ -7702,3 +7731,7 @@ const PORT = process.env.PORT || 3001;
 app.listen(PORT, () => {
   console.log(`🚀 API запущен: http://localhost:${PORT}`);
 });
+
+startBackgroundTasks().catch((err) =>
+  console.error("[DB ready check] ошибка запуска фоновых задач:", err)
+);
