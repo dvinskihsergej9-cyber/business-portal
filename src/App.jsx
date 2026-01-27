@@ -24,21 +24,11 @@ import Offer from "./pages/Offer";
 import Privacy from "./pages/Privacy";
 import Contacts from "./pages/Contacts";
 import Refund from "./pages/Refund";
-import Dashboard from "./pages/Dashboard";
-import HrPanel from "./pages/HrPanel";          // ✅ вот так
-import Accounting from "./pages/Accounting";
 import Page403 from "./pages/Page403";
-import Profile from "./pages/Profile";
-import LeaveRequests from "./pages/LeaveRequests";
-import PaymentRequests from "./pages/PaymentRequests";
-import UserManagement from "./pages/UserManagement";
 import AdminConsole from "./pages/AdminConsole";
 
-import DocFlow from "./pages/DocFlow";
-import Legal from "./pages/Legal";
 import Warehouse from "./pages/Warehouse";
 import MobileTsd from "./pages/MobileTsd";
-import Support from "./pages/Support";
 
 function AppRoutesWithBackground() {
   const location = useLocation();
@@ -102,40 +92,22 @@ function AppRoutesWithBackground() {
               </ProtectedRoute>
             }
           >
-            <Route index element={<Navigate to="/dashboard" replace />} />
+            <Route index element={<Navigate to="/warehouse" replace />} />
 
-            <Route path="dashboard" element={<Dashboard />} />
-            <Route path="profile" element={<Profile />} />
+            {/* главная больше не отдельный раздел */}
+            <Route path="dashboard" element={<Navigate to="/warehouse" replace />} />
+            <Route path="profile" element={<Navigate to="/warehouse" replace />} />
+            <Route path="leave" element={<Navigate to="/warehouse" replace />} />
+            <Route path="payments" element={<Navigate to="/warehouse" replace />} />
 
-            {/* существующие модули */}
-            <Route path="leave" element={<LeaveRequests />} />
-            <Route path="payments" element={<PaymentRequests />} />
-
-            {/* КАДРЫ / HR */}
-            <Route
-              path="hr"                          // можно без /*, вложенных роутов нет
-              element={
-                <ProtectedRoute roles={["EMPLOYEE", "HR", "ADMIN"]}>
-                  <HrPanel />
-                </ProtectedRoute>
-              }
-            />
-
-            <Route
-              path="accounting"
-              element={
-                <ProtectedRoute roles={["EMPLOYEE", "ACCOUNTING", "ADMIN"]}>
-                  <Accounting />
-                </ProtectedRoute>
-              }
-            />
-
-            {/* новые разделы-отделы */}
-            <Route path="documents" element={<DocFlow />} />
-            <Route path="legal" element={<Legal />} />
+            {/* отключенные разделы редиректим в склад */}
+            <Route path="hr" element={<Navigate to="/warehouse" replace />} />
+            <Route path="accounting" element={<Navigate to="/warehouse" replace />} />
+            <Route path="documents" element={<Navigate to="/warehouse" replace />} />
+            <Route path="legal" element={<Navigate to="/warehouse" replace />} />
+            <Route path="support" element={<Navigate to="/warehouse" replace />} />
             <Route path="warehouse" element={<Warehouse />} />
             <Route path="warehouse/tsd" element={<MobileTsd />} />
-            <Route path="support" element={<Support />} />
 
             {/* админка пользователей */}
             <Route
@@ -154,6 +126,9 @@ function AppRoutesWithBackground() {
                 </ProtectedRoute>
               }
             />
+
+            {/* фолбэк внутри защищенной части */}
+            <Route path="*" element={<Navigate to="/warehouse" replace />} />
           </Route>
 
           <Route path="/403" element={<Page403 />} />

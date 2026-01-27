@@ -83,6 +83,24 @@ async function run() {
       status: trial.status,
       message: trial.data?.message,
     });
+
+    const empLocations = await request("/warehouse/locations", {
+      headers: { Authorization: `Bearer ${empToken}` },
+    });
+    results.push({
+      name: "EMPLOYEE warehouse locations",
+      ok: empLocations.ok,
+      status: empLocations.status,
+    });
+
+    const empRequests = await request("/warehouse/requests/my", {
+      headers: { Authorization: `Bearer ${empToken}` },
+    });
+    results.push({
+      name: "EMPLOYEE warehouse requests",
+      ok: empRequests.ok,
+      status: empRequests.status,
+    });
   }
 
   if (adminToken) {
@@ -150,26 +168,6 @@ async function run() {
       });
     }
 
-    const hrCreate = await request("/hr/employees", {
-      method: "POST",
-      headers: {
-        Authorization: `Bearer ${adminToken}`,
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify({
-        fullName: "Smoke Test",
-        position: "QA",
-        department: "QA",
-        hiredAt: new Date().toISOString().slice(0, 10),
-      }),
-    });
-    results.push({
-      name: "ADMIN create HR employee",
-      ok: hrCreate.ok,
-      status: hrCreate.status,
-      message: hrCreate.data?.message,
-    });
-
     const locations = await request("/warehouse/locations", {
       headers: { Authorization: `Bearer ${adminToken}` },
     });
@@ -177,6 +175,15 @@ async function run() {
       name: "ADMIN warehouse locations",
       ok: locations.ok,
       status: locations.status,
+    });
+
+    const adminRequests = await request("/warehouse/requests", {
+      headers: { Authorization: `Bearer ${adminToken}` },
+    });
+    results.push({
+      name: "ADMIN warehouse requests",
+      ok: adminRequests.ok,
+      status: adminRequests.status,
     });
   }
 

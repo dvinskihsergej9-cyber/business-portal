@@ -1,14 +1,12 @@
 import { useMemo, useState } from "react";
 import { useAuth } from "../context/AuthContext";
 import UserManagement from "./UserManagement";
-import AdminHrPanel from "../components/admin/AdminHrPanel";
 import AdminWarehousePanel from "../components/admin/AdminWarehousePanel";
 import AdminSettingsPanel from "../components/admin/AdminSettingsPanel";
 import "../components/admin/admin.css";
 
 const TABS = [
   { id: "users", label: "Пользователи" },
-  { id: "hr", label: "Кадры" },
   { id: "warehouse", label: "Склад" },
   { id: "settings", label: "Настройки" },
 ];
@@ -16,9 +14,12 @@ const TABS = [
 export default function AdminConsole({ initialTab = "users" }) {
   const { user } = useAuth();
   const isAdmin = user?.role === "ADMIN";
-  const [activeTab, setActiveTab] = useState(initialTab);
 
   const tabs = useMemo(() => TABS, []);
+  const initialTabId = tabs.some((tab) => tab.id === initialTab)
+    ? initialTab
+    : "users";
+  const [activeTab, setActiveTab] = useState(initialTabId);
 
   if (!isAdmin) {
     return (
@@ -53,7 +54,7 @@ export default function AdminConsole({ initialTab = "users" }) {
             Администрирование
           </div>
           <div className="admin-console__subtitle">
-            Управление пользователями, кадрами и складом.
+            Управление пользователями и складом.
           </div>
         </div>
       </div>
@@ -76,7 +77,6 @@ export default function AdminConsole({ initialTab = "users" }) {
 
       <div className="admin-console__body">
         {activeTab === "users" && <UserManagement />}
-        {activeTab === "hr" && <AdminHrPanel />}
         {activeTab === "warehouse" && <AdminWarehousePanel />}
         {activeTab === "settings" && <AdminSettingsPanel />}
       </div>

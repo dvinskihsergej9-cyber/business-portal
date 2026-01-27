@@ -6,38 +6,8 @@ export default function Layout() {
   const location = useLocation();
   const menu = [
     {
-      label: "Главная",
-      to: "/dashboard",
-      roles: ["EMPLOYEE", "HR", "ACCOUNTING", "ADMIN"],
-    },
-    {
-      label: "Кадры",
-      to: "/hr",
-      roles: ["HR", "ADMIN"],
-    },
-    {
-      label: "Бухгалтерия",
-      to: "/accounting",
-      roles: ["ACCOUNTING", "ADMIN"],
-    },
-    {
-      label: "Документооборот",
-      to: "/documents",
-      roles: ["EMPLOYEE", "HR", "ACCOUNTING", "ADMIN"],
-    },
-    {
-      label: "Юрист",
-      to: "/legal",
-      roles: ["EMPLOYEE", "HR", "ACCOUNTING", "ADMIN"],
-    },
-    {
       label: "Склад",
       to: "/warehouse",
-      roles: ["EMPLOYEE", "HR", "ACCOUNTING", "ADMIN"],
-    },
-    {
-      label: "Техническая поддержка",
-      to: "/support",
       roles: ["EMPLOYEE", "HR", "ACCOUNTING", "ADMIN"],
     },
     // вкладку "Профиль" убрали из меню
@@ -49,9 +19,7 @@ export default function Layout() {
   ];
 
   const allowedMenu = user
-    ? user.role === "ADMIN"
-      ? menu
-      : menu.filter((item) => item.to !== "/admin")
+    ? menu.filter((item) => item.roles.includes(user.role))
     : [];
 
   const handleLogout = () => {
