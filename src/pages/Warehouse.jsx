@@ -1,4 +1,4 @@
-
+﻿
 import { useEffect, useMemo, useState, Fragment } from "react";
 import { API_BASE } from "../apiConfig";
 import { useAuth } from "../context/AuthContext";
@@ -7,7 +7,6 @@ import PurchaseOrderModal from "../components/PurchaseOrderModal";
 import PurchaseOrderReceiveModal from "../components/PurchaseOrderReceiveModal";
 import StockAuditTab from "../components/StockAuditTab";
 import StockMovementsHistoryTab from "../components/StockMovementsHistoryTab";
-import StockDiscrepanciesTab from "../components/StockDiscrepanciesTab";
 import SupplierTrucksQueueTab from "../components/SupplierTrucksQueueTab";
 import MobileTsdTab from "../components/MobileTsdTab";
 import WarehouseLocationsPanel from "../components/WarehouseLocationsPanel";
@@ -167,7 +166,9 @@ export default function Warehouse() {
   const [inventoryLoading, setInventoryLoading] = useState(true);
   const [inventoryError, setInventoryError] = useState("");
   const [showImportModal, setShowImportModal] = useState(false);
-  const [inventoryTab, setInventoryTab] = useState("items"); // items | stock | movements | movementsHistory | suppliers | orders
+  const [inventoryTab, setInventoryTab] = useState("stock"); // stock | items | movement | suppliers
+  const [movementTab, setMovementTab] = useState("movements"); // movements | movementsHistory
+  const [suppliersTab, setSuppliersTab] = useState("suppliers"); // suppliers | orders
 
   const [itemForm, setItemForm] = useState({
     name: "",
@@ -1136,7 +1137,7 @@ export default function Warehouse() {
               <WarehouseTileIcon name="inventory" />
             </div>
             <div className="warehouse-card__body">
-              <div className="warehouse-card__title">Остатки / закупки</div>
+              <div className="warehouse-card__title">Остатки</div>
               <div className="warehouse-card__subtitle">
                 Номенклатура, инвентаризация и заказы поставщику.
               </div>
@@ -1228,8 +1229,7 @@ export default function Warehouse() {
             >
               Журнал заявок
             </button>
-          </div>
-
+          </div>
           {/* Вкладка: Новая заявка */}
           {requestsTab === "new" && (
             <div className="card card--1c">
@@ -1802,61 +1802,77 @@ export default function Warehouse() {
               }
               onClick={() => setInventoryTab("stock")}
             >
-              Текущие остатки
+              Остатки
             </button>
             <button
               type="button"
               className={
                 "tabs__btn " +
-                (inventoryTab === "movements" ? "tabs__btn--active" : "")
+                (inventoryTab === "movement" ? "tabs__btn--active" : "")
               }
-              onClick={() => setInventoryTab("movements")}
+              onClick={() => { setInventoryTab("movement"); setMovementTab("movements"); }}
             >
               Движение товара
             </button>
-            <button
-              type="button"
-              className={
-                "tabs__btn " +
-                (inventoryTab === "movementsHistory"
-                  ? "tabs__btn--active"
-                  : "")
-              }
-              onClick={() => setInventoryTab("movementsHistory")}
-            >
-              История движений
-            </button>
-            <button
-              type="button"
-              className={
-                "tabs__btn " +
-                (inventoryTab === "discrepancies" ? "tabs__btn--active" : "")
-              }
-              onClick={() => setInventoryTab("discrepancies")}
-            >
-              Косяки
-            </button>
+            
+            
             <button
               type="button"
               className={
                 "tabs__btn " +
                 (inventoryTab === "suppliers" ? "tabs__btn--active" : "")
               }
-              onClick={() => setInventoryTab("suppliers")}
+              onClick={() => { setInventoryTab("suppliers"); setSuppliersTab("suppliers"); }}
             >
               Поставщики
             </button>
-            <button
-              type="button"
-              className={
-                "tabs__btn " +
-                (inventoryTab === "orders" ? "tabs__btn--active" : "")
-              }
-              onClick={() => setInventoryTab("orders")}
-            >
-              Заказы поставщику
-            </button>
-          </div>
+            
+          </div>
+          {inventoryTab === "movement" && (
+            <div className="tabs tabs--sm inventory-subtabs" style={{ marginBottom: 12 }}>
+              <button
+                type="button"
+                className={
+                  "tabs__btn " + (movementTab === "movements" ? "tabs__btn--active" : "")
+                }
+                onClick={() => setMovementTab("movements")}
+              >
+                Движение товара
+              </button>
+              <button
+                type="button"
+                className={
+                  "tabs__btn " + (movementTab === "movementsHistory" ? "tabs__btn--active" : "")
+                }
+                onClick={() => setMovementTab("movementsHistory")}
+              >
+                История движений
+              </button>
+            </div>
+          )}
+
+          {inventoryTab === "suppliers" && (
+            <div className="tabs tabs--sm inventory-subtabs" style={{ marginBottom: 12 }}>
+              <button
+                type="button"
+                className={
+                  "tabs__btn " + (suppliersTab === "suppliers" ? "tabs__btn--active" : "")
+                }
+                onClick={() => setSuppliersTab("suppliers")}
+              >
+                Поставщики
+              </button>
+              <button
+                type="button"
+                className={
+                  "tabs__btn " + (suppliersTab === "orders" ? "tabs__btn--active" : "")
+                }
+                onClick={() => setSuppliersTab("orders")}
+              >
+                Заказы поставщику
+              </button>
+            </div>
+          )}
 
           {/* ===== Вкладка 1: Номенклатура ===== */}
 {inventoryTab === "items" && (
@@ -2000,11 +2016,11 @@ export default function Warehouse() {
   </div>
 )}
 
-          {/* ===== Вкладка 2: Текущие остатки (1С + печать акта ревизии) ===== */}
+          {/* ===== Вкладка 2: Остатки (1С + печать акта ревизии) ===== */}
           {inventoryTab === "stock" && <StockAuditTab />}
 
           {/* ===== Вкладка 3: Движение товара (только форма) ===== */}
-          {inventoryTab === "movements" && (
+          {inventoryTab === "movement" && movementTab === "movements" && (
             <div className="grid-2">
               <div className="card card--1c" style={{ gridColumn: "span 2" }}>
                 <div
@@ -2127,11 +2143,10 @@ export default function Warehouse() {
           )}
 
           {/* ===== Вкладка 4: История движений (1С) ===== */}
-          {inventoryTab === "movementsHistory" && <StockMovementsHistoryTab />}
-          {inventoryTab === "discrepancies" && <StockDiscrepanciesTab />}
+          {inventoryTab === "movement" && movementTab === "movementsHistory" && <StockMovementsHistoryTab />}
 
           {/* ===== Вкладка 5: Поставщики ===== */}
-          {inventoryTab === "suppliers" && (
+          {inventoryTab === "suppliers" && suppliersTab === "suppliers" && (
             <div className="grid-2">
               <div className="card card--1c" style={{ gridColumn: "span 2" }}>
                 <div className="card1c__header">Поставщики</div>
@@ -2265,7 +2280,7 @@ export default function Warehouse() {
           )}
 
                     {/* ===== Вкладка 6: Заказы поставщику ===== */}
-          {inventoryTab === "orders" && (
+          {inventoryTab === "suppliers" && suppliersTab === "orders" && (
             <div className="grid-2">
               <div className="card card--1c" style={{ gridColumn: "span 2" }}>
                 <div className="card1c__header">Заказы поставщику</div>
@@ -2422,3 +2437,20 @@ export default function Warehouse() {
 
 
 
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+

@@ -7,6 +7,7 @@ import Scanner from "../components/tsd/Scanner";
 import ItemCard from "../components/tsd/ItemCard";
 import LocationCard from "../components/tsd/LocationCard";
 import ReceivingByPo from "../components/tsd/ReceivingByPo";
+import StockDiscrepanciesTab from "../components/StockDiscrepanciesTab";
 import "../components/tsd/tsd.css";
 
 const MODES = [
@@ -57,6 +58,12 @@ const MODES = [
     title: "QR/Этикетки",
     subtitle: "Печать кодов",
     icon: "QR",
+  },
+  {
+    id: "discrepancies",
+    title: "Косяки",
+    subtitle: "Расхождения и проблемы",
+    icon: "ERR",
   },
 ];
 
@@ -2159,6 +2166,18 @@ export default function MobileTsd() {
       </div>
     </>
   );
+  const renderDiscrepancies = () => (
+    <>
+      <TsdHeader
+        title="Косяки"
+        subtitle="Расхождения и проблемные места"
+        onBack={() => setMode(null)}
+      />
+      <div className="tsd-section">
+        <StockDiscrepanciesTab />
+      </div>
+    </>
+  );
   const content = () => {
     if (!mode) {
       return <TsdHome modes={MODES} onSelect={setMode} />;
@@ -2171,6 +2190,7 @@ export default function MobileTsd() {
     if (mode === "replenish") return renderReplenish();
     if (mode === "pick") return renderPick();
     if (mode === "labels") return renderLabels();
+    if (mode === "discrepancies") return renderDiscrepancies();
     return null;
   };
 
