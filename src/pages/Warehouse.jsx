@@ -1643,7 +1643,7 @@ export default function Warehouse() {
                 ) : filteredTasks.length === 0 ? (
                   <p className="text-muted">Задач не найдено.</p>
                 ) : (
-                  <div className="table-wrapper">
+                  <div className="table-wrapper tasks-journal-table">
                     <table className="table">
                       <thead>
                         <tr>
@@ -1664,7 +1664,7 @@ export default function Warehouse() {
                         {filteredTasks.map((t, index) => {
                           const overdue = isTaskOverdue(t);
                           return (
-                            <tr key={t.id}>
+                            <tr key={t.id} className="tasks-journal-row">
                               <td data-label="index">{index + 1}</td>
                               <td>
                                 {t.createdAt
@@ -1710,7 +1710,7 @@ export default function Warehouse() {
                                   </span>
                                 )}
                               </td>
-                              <td>{t.title}</td>
+                              <td data-label="title">{t.title}</td>
                               <td>
                                 {t.executorName || t.executorChatId
                                   ? `${t.executorName || ""}${
@@ -1725,7 +1725,7 @@ export default function Warehouse() {
                                   t.assigner?.email ||
                                   "-"}
                               </td>
-                              <td>{t.description || "-"}</td>
+                              <td data-label="desc">{t.description || "-"}</td>
                               {isWarehouseManager && (
   <td>
     <select

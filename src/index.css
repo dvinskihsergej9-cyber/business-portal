@@ -1335,6 +1335,98 @@ input[type="number"] {
     text-align: left !important;
     justify-items: start;
   }
+
+  .tasks-journal-table {
+    border: none;
+    background: transparent;
+    overflow: visible;
+  }
+
+  .tasks-journal-table .table {
+    min-width: 0;
+    width: 100%;
+    border-spacing: 0;
+  }
+
+  .tasks-journal-table thead {
+    display: none;
+  }
+
+  .tasks-journal-table tbody {
+    display: grid;
+    gap: 10px;
+  }
+
+  .tasks-journal-table .tasks-journal-row {
+    display: grid;
+    gap: 6px;
+    border: 1px solid rgba(15, 23, 42, 0.12);
+    border-radius: 14px;
+    padding: 12px 14px;
+    background: #ffffff;
+    box-shadow: 0 8px 18px rgba(15, 23, 42, 0.06);
+  }
+
+  .tasks-journal-table .tasks-journal-row td {
+    display: grid;
+    grid-template-columns: 110px minmax(0, 1fr);
+    align-items: baseline;
+    gap: 8px;
+    padding: 0;
+    border: none;
+    background: transparent;
+    font-weight: 600;
+  }
+
+  .tasks-journal-table .tasks-journal-row td::before {
+    content: attr(data-label);
+    font-size: 12px;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+    color: #64748b;
+    font-weight: 700;
+  }
+
+  .tasks-journal-table .tasks-journal-row td[data-label="index"]::before {
+    content: "№";
+  }
+
+  .tasks-journal-table .tasks-journal-row td[data-label="date"]::before {
+    content: "Дата";
+  }
+
+  .tasks-journal-table .tasks-journal-row td[data-label="status"]::before {
+    content: "Статус";
+  }
+
+  .tasks-journal-table .tasks-journal-row td[data-label="due"]::before {
+    content: "Срок";
+  }
+
+  .tasks-journal-table .tasks-journal-row td[data-label="title"]::before {
+    content: "Задача";
+  }
+
+  .tasks-journal-table .tasks-journal-row td[data-label="executor"]::before {
+    content: "Исполнитель";
+  }
+
+  .tasks-journal-table .tasks-journal-row td[data-label="author"]::before {
+    content: "Автор";
+  }
+
+  .tasks-journal-table .tasks-journal-row td[data-label="desc"]::before {
+    content: "Описание";
+  }
+
+  .tasks-journal-table .tasks-journal-row td[data-label="actions"]::before {
+    content: "Действия";
+  }
+
+  .tasks-journal-table .tasks-journal-row td[data-label="actions"] {
+    grid-template-columns: 1fr;
+    justify-items: stretch;
+  }
 }
 
 @media (prefers-reduced-motion: reduce) {
