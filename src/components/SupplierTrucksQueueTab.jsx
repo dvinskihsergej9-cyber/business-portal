@@ -1,4 +1,4 @@
-// C:\Users\dvinskikh.sergey\Desktop\business-portal\src\components\SupplierTrucksQueueTab.jsx
+﻿// C:\Users\dvinskikh.sergey\Desktop\business-portal\src\components\SupplierTrucksQueueTab.jsx
 
 
 
@@ -1049,147 +1049,45 @@ export default function SupplierTrucksQueueTab() {
             <>
 
               {/* фильтры над таблицей */}
-
-              <div
-
-                style={{
-
-                  display: "flex",
-
-                  flexWrap: "wrap",
-
-                  justifyContent: "flex-end",
-
-                  gap: 16,
-
-                  alignItems: "center",
-
-                  marginBottom: 12,
-
-                }}
-
-              >
-
-                <label
-
-                  style={{
-
-                    fontSize: 13,
-
-                    display: "flex",
-
-                    alignItems: "center",
-
-                    gap: 6,
-
-                  }}
-
-                >
-
+              <div className="queue-filters">
+                <label className="queue-filters__toggle">
                   <input
-
                     type="checkbox"
-
                     checked={onlyActive}
-
                     onChange={(e) => setOnlyActive(e.target.checked)}
-
                   />
-
                   Показывать только в очереди / на разгрузке
-
                 </label>
 
-
-
-                <div
-
-                  style={{
-
-                    display: "flex",
-
-                    alignItems: "center",
-
-                    gap: 6,
-
-                    fontSize: 13,
-
-                    flexWrap: "wrap",
-
-                  }}
-
-                >
-
+                <div className="queue-filters__dates">
                   <span>Прибытие с</span>
-
                   <input
-
                     type="date"
-
                     value={dateFrom}
-
                     onChange={(e) => setDateFrom(e.target.value)}
-
-                    style={{ fontSize: 13 }}
-
+                    className="queue-filters__date"
                   />
-
                   <span>по</span>
-
                   <input
-
                     type="date"
-
                     value={dateTo}
-
                     onChange={(e) => setDateTo(e.target.value)}
-
-                    style={{ fontSize: 13 }}
-
+                    className="queue-filters__date"
                   />
-
                   {(dateFrom || dateTo) && (
-
                     <button
-
                       type="button"
-
                       onClick={() => {
-
                         setDateFrom("");
-
                         setDateTo("");
-
                       }}
-
-                      style={{
-
-                        border: "none",
-
-                        background: "transparent",
-
-                        textDecoration: "underline",
-
-                        cursor: "pointer",
-
-                        padding: 0,
-
-                      }}
-
+                      className="queue-filters__reset"
                     >
-
                       Сбросить
-
                     </button>
-
                   )}
-
                 </div>
-
               </div>
-
-
-
               {loading ? (
 
                 <p>Загрузка очереди...</p>
@@ -1202,7 +1100,7 @@ export default function SupplierTrucksQueueTab() {
 
                 <div
 
-                  className="table-wrapper"
+                  className="table-wrapper queue-table"
 
                   style={{ width: "100%", overflowX: "auto" }}
 
@@ -1336,6 +1234,8 @@ export default function SupplierTrucksQueueTab() {
 
                           <td
 
+                            data-label="status"
+
                             style={{ whiteSpace: "nowrap", fontSize: 13 }}
 
                             title={
@@ -1355,6 +1255,8 @@ export default function SupplierTrucksQueueTab() {
                           </td>
 
                           <td
+
+                            data-label="arrival"
 
                             title={
 
@@ -1377,6 +1279,8 @@ export default function SupplierTrucksQueueTab() {
                           </td>
 
                           <td
+
+                            data-label="unloadStart"
 
                             title={
 
@@ -1408,6 +1312,8 @@ export default function SupplierTrucksQueueTab() {
 
                           <td
 
+                            data-label="unloadEnd"
+
                             title={
 
                               t.unloadEndAt
@@ -1436,11 +1342,13 @@ export default function SupplierTrucksQueueTab() {
 
                           </td>
 
-                          <td title={t.supplier || "-"}>{t.supplier || "-"}</td>
+                          <td data-label="supplier" title={t.supplier || "-"}>{t.supplier || "-"}</td>
 
-                          <td title={t.orderNumber || "-"}>{t.orderNumber || "-"}</td>
+                          <td data-label="order" title={t.orderNumber || "-"}>{t.orderNumber || "-"}</td>
 
                           <td
+
+                            data-label="delivery"
 
                             title={
 
@@ -1470,19 +1378,19 @@ export default function SupplierTrucksQueueTab() {
 
                           </td>
 
-                          <td title={t.gate || "-"}>{t.gate || "-"}</td>
+                          <td data-label="gate" title={t.gate || "-"}>{t.gate || "-"}</td>
 
-                          <td title={t.vehicleBrand || "-"}>{t.vehicleBrand || "-"}</td>
+                          <td data-label="brand" title={t.vehicleBrand || "-"}>{t.vehicleBrand || "-"}</td>
 
-                          <td title={t.truckNumber || "-"}>{t.truckNumber || "-"}</td>
+                          <td data-label="truck" title={t.truckNumber || "-"}>{t.truckNumber || "-"}</td>
 
-                          <td title={t.driverName || "-"}>{t.driverName || "-"}</td>
+                          <td data-label="driver" title={t.driverName || "-"}>{t.driverName || "-"}</td>
 
-                          <td title={t.driverPhone || "-"}>{t.driverPhone || "-"}</td>
+                          <td data-label="phone" title={t.driverPhone || "-"}>{t.driverPhone || "-"}</td>
 
-                          <td title={t.cargo || "-"}>{t.cargo || "-"}</td>
+                          <td data-label="cargo" title={t.cargo || "-"}>{t.cargo || "-"}</td>
 
-                          <td title={t.note || "-"}>{t.note || "-"}</td>
+                          <td data-label="note" title={t.note || "-"}>{t.note || "-"}</td>
 
                         </tr>
 
@@ -1509,6 +1417,9 @@ export default function SupplierTrucksQueueTab() {
   );
 
 }
+
+
+
 
 
 

@@ -1563,6 +1563,162 @@ input[type="number"] {
     content: "Макс.";
   }
 
+  .queue-filters {
+    display: flex;
+    flex-direction: column;
+    align-items: stretch;
+    gap: 10px;
+    margin-bottom: 12px;
+  }
+
+  .queue-filters__toggle {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    font-size: 13px;
+    font-weight: 600;
+    color: #0f172a;
+  }
+
+  .queue-filters__dates {
+    display: flex;
+    flex-direction: column;
+    align-items: stretch;
+    gap: 6px;
+    font-size: 13px;
+    color: #475569;
+  }
+
+  .queue-filters__date {
+    width: 100%;
+    max-width: none;
+  }
+
+  .queue-filters__reset {
+    border: none;
+    background: transparent;
+    text-decoration: underline;
+    cursor: pointer;
+    padding: 0;
+    color: #0f172a;
+    font-weight: 600;
+    text-align: left;
+  }
+
+  .queue-table {
+    border: none;
+    background: transparent;
+    overflow: visible;
+  }
+
+  .queue-table table {
+    min-width: 0;
+    width: 100%;
+    border-spacing: 0;
+  }
+
+  .queue-table thead {
+    display: none;
+  }
+
+  .queue-table tbody {
+    display: grid;
+    gap: 10px;
+  }
+
+  .queue-table .queue-row {
+    display: grid;
+    gap: 6px;
+    border: 1px solid rgba(15, 23, 42, 0.12);
+    border-radius: 14px;
+    padding: 12px 14px;
+    background: #ffffff;
+    box-shadow: 0 8px 18px rgba(15, 23, 42, 0.06);
+    cursor: pointer;
+  }
+
+  .queue-table .queue-row--active {
+    border-color: rgba(37, 99, 235, 0.45);
+    box-shadow: 0 10px 22px rgba(37, 99, 235, 0.12);
+  }
+
+  .queue-table .queue-row td {
+    display: grid;
+    grid-template-columns: 120px minmax(0, 1fr);
+    align-items: baseline;
+    gap: 8px;
+    padding: 0;
+    border: none !important;
+    background: transparent;
+    font-weight: 600;
+    text-align: left !important;
+  }
+
+  .queue-table .queue-row td::before {
+    content: attr(data-label);
+    font-size: 12px;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+    color: #64748b;
+    font-weight: 700;
+  }
+
+  .queue-table .queue-row td[data-label="status"]::before {
+    content: "Статус";
+  }
+
+  .queue-table .queue-row td[data-label="arrival"]::before {
+    content: "Прибытие";
+  }
+
+  .queue-table .queue-row td[data-label="unloadStart"]::before {
+    content: "Заезд";
+  }
+
+  .queue-table .queue-row td[data-label="unloadEnd"]::before {
+    content: "Выезд";
+  }
+
+  .queue-table .queue-row td[data-label="supplier"]::before {
+    content: "Поставщик";
+  }
+
+  .queue-table .queue-row td[data-label="order"]::before {
+    content: "№ заказа";
+  }
+
+  .queue-table .queue-row td[data-label="delivery"]::before {
+    content: "Дата дост.";
+  }
+
+  .queue-table .queue-row td[data-label="gate"]::before {
+    content: "Ворота";
+  }
+
+  .queue-table .queue-row td[data-label="brand"]::before {
+    content: "Марка";
+  }
+
+  .queue-table .queue-row td[data-label="truck"]::before {
+    content: "Номер авто";
+  }
+
+  .queue-table .queue-row td[data-label="driver"]::before {
+    content: "Водитель";
+  }
+
+  .queue-table .queue-row td[data-label="phone"]::before {
+    content: "Телефон";
+  }
+
+  .queue-table .queue-row td[data-label="cargo"]::before {
+    content: "Товар";
+  }
+
+  .queue-table .queue-row td[data-label="note"]::before {
+    content: "Примечание";
+  }
+
   .movements-history-filters {
     display: flex;
     gap: 8px;
