@@ -126,7 +126,7 @@ export default function StockMovementsHistoryTab() {
         ) : !visibleRows.length ? (
           <p className="text-muted">Движений не найдено.</p>
         ) : (
-          <div className="table-wrapper">
+          <div className="table-wrapper movements-history-table">
             <table
               style={{
                 width: "100%",
@@ -219,8 +219,9 @@ export default function StockMovementsHistoryTab() {
               </thead>
               <tbody>
                 {visibleRows.map((m, index) => (
-                  <tr key={m.id}>
+                  <tr key={m.id} className="movements-history-row">
                     <td
+                      data-label="index"
                       style={{
                         border: "1px solid #e0e0e0",
                         padding: "3px 4px",
@@ -230,6 +231,7 @@ export default function StockMovementsHistoryTab() {
                       {index + 1}
                     </td>
                     <td
+                      data-label="date"
                       style={{
                         border: "1px solid #e0e0e0",
                         padding: "3px 4px",
@@ -246,6 +248,7 @@ export default function StockMovementsHistoryTab() {
                       })}
                     </td>
                     <td
+                      data-label="type"
                       style={{
                         border: "1px solid #e0e0e0",
                         padding: "3px 4px",
@@ -255,6 +258,7 @@ export default function StockMovementsHistoryTab() {
                       {MOVEMENT_TYPE_LABELS[m.type] || m.type}
                     </td>
                     <td
+                      data-label="item"
                       style={{
                         border: "1px solid #e0e0e0",
                         padding: "3px 4px",
@@ -264,6 +268,7 @@ export default function StockMovementsHistoryTab() {
                       {m.item?.name || "-"}
                     </td>
                     <td
+                      data-label="qty"
                       style={{
                         border: "1px solid #e0e0e0",
                         padding: "3px 4px",
@@ -273,6 +278,7 @@ export default function StockMovementsHistoryTab() {
                       {m.quantity}
                     </td>
                     <td
+                      data-label="unit"
                       style={{
                         border: "1px solid #e0e0e0",
                         padding: "3px 4px",
@@ -282,6 +288,7 @@ export default function StockMovementsHistoryTab() {
                       {m.item?.unit || ""}
                     </td>
                     <td
+                      data-label="price"
                       style={{
                         border: "1px solid #e0e0e0",
                         padding: "3px 4px",
@@ -291,15 +298,17 @@ export default function StockMovementsHistoryTab() {
                       {m.pricePerUnit || "-"}
                     </td>
                     <td
-  style={{
-    border: "1px solid #e0e0e0",
-    padding: "3px 4px",
-    whiteSpace: "nowrap",
-  }}
->
-  {m.createdBy?.name || m.createdBy?.email || "-"}
-</td>
+                      data-label="author"
+                      style={{
+                        border: "1px solid #e0e0e0",
+                        padding: "3px 4px",
+                        whiteSpace: "nowrap",
+                      }}
+                    >
+                      {m.createdBy?.name || m.createdBy?.email || "-"}
+                    </td>
                     <td
+                      data-label="comment"
                       style={{
                         border: "1px solid #e0e0e0",
                         padding: "3px 4px",
