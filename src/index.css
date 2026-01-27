@@ -409,6 +409,7 @@ tr:last-child td {
 .warehouse-card__title {
   font-size: 14px;
   font-weight: 600;
+  color: var(--text);
 }
 
 .warehouse-card__subtitle {
