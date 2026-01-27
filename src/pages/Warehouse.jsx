@@ -1407,8 +1407,8 @@ export default function Warehouse() {
 
                           return (
                             <tr key={req.id} className="requests-journal-row">
-                              <td data-label="?">{index + 1}</td>
-                              <td data-label="Дата">
+                              <td data-label="index">{index + 1}</td>
+                              <td data-label="date">
                                 {req.createdAt
                                   ? new Date(
                                       req.createdAt
@@ -1421,19 +1421,19 @@ export default function Warehouse() {
                                     })
                                   : "-"}
                               </td>
-                              <td data-label="??????">{statusLabel(req.status)}</td>
-                              <td data-label="Автор">
+                              <td data-label="status">{statusLabel(req.status)}</td>
+                              <td data-label="author">
                                 {createdBy?.name ||
                                   createdBy?.email ||
                                   "-"}
                               </td>
-                              <td data-label="????? / ??????">{title}</td>
-                              <td data-label="???-??" style={{ textAlign: "right" }}>
+                              <td data-label="title">{title}</td>
+                              <td data-label="qty" style={{ textAlign: "right" }}>
                                 {totalQty != null && totalQty !== 0
                                   ? totalQty
                                   : "-"}
                               </td>
-                              <td data-label="???????????">{requestComment || "-"}</td>
+                              <td data-label="comment">{requestComment || "-"}</td>
                             </tr>
                           );
                         })}
@@ -1665,7 +1665,7 @@ export default function Warehouse() {
                           const overdue = isTaskOverdue(t);
                           return (
                             <tr key={t.id}>
-                              <td data-label="?">{index + 1}</td>
+                              <td data-label="index">{index + 1}</td>
                               <td>
                                 {t.createdAt
                                   ? new Date(

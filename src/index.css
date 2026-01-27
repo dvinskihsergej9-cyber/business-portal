@@ -1302,6 +1302,34 @@ input[type="number"] {
     color: #64748b;
     font-weight: 700;
   }
+
+  .requests-journal-table .requests-journal-row td[data-label="index"]::before {
+    content: "№";
+  }
+
+  .requests-journal-table .requests-journal-row td[data-label="date"]::before {
+    content: "Дата";
+  }
+
+  .requests-journal-table .requests-journal-row td[data-label="status"]::before {
+    content: "Статус";
+  }
+
+  .requests-journal-table .requests-journal-row td[data-label="author"]::before {
+    content: "Автор";
+  }
+
+  .requests-journal-table .requests-journal-row td[data-label="title"]::before {
+    content: "Товар / заявка";
+  }
+
+  .requests-journal-table .requests-journal-row td[data-label="qty"]::before {
+    content: "Кол-во";
+  }
+
+  .requests-journal-table .requests-journal-row td[data-label="comment"]::before {
+    content: "Комментарий";
+  }
 }
 
 @media (prefers-reduced-motion: reduce) {
