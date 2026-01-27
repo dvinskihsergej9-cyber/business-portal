@@ -1294,28 +1294,7 @@ export default function Warehouse() {
       {section === "requests" && (
         <div className="requests-section">
           {/* Вкладки внутри раздела заявок */}
-          <div className="tabs tabs--sm" style={{ marginBottom: 16 }}>
-            <button
-              type="button"
-              className={
-                "tabs__btn " +
-                (requestsTab === "new" ? "tabs__btn--active" : "")
-              }
-              onClick={() => setRequestsTab("new")}
-            >
-              Новая заявка
-            </button>
-            <button
-              type="button"
-              className={
-                "tabs__btn " +
-                (requestsTab === "journal" ? "tabs__btn--active" : "")
-              }
-              onClick={() => setRequestsTab("journal")}
-            >
-              Журнал заявок
-            </button>
-          </div>
+          
           {/* Вкладка: Новая заявка */}
           {requestsTab === "new" && (
             <div className="card card--1c">
@@ -1869,51 +1848,7 @@ export default function Warehouse() {
       {["inventory","items","movement","suppliers"].includes(section) && (
         <div className="inventory-section">
           {/* Внутренние вкладки */}
-          <div className="tabs tabs--sm" style={{ marginBottom: 16 }}>
-            <button
-              type="button"
-              className={
-                "tabs__btn " +
-                (inventoryTab === "items" ? "tabs__btn--active" : "")
-              }
-              onClick={() => { setSection("items"); setInventoryTab("items"); }}
-            >
-              Номенклатура
-            </button>
-            <button
-              type="button"
-              className={
-                "tabs__btn " +
-                (inventoryTab === "stock" ? "tabs__btn--active" : "")
-              }
-              onClick={() => { setSection("inventory"); setInventoryTab("stock"); }}
-            >
-              Остатки
-            </button>
-            <button
-              type="button"
-              className={
-                "tabs__btn " +
-                (inventoryTab === "movement" ? "tabs__btn--active" : "")
-              }
-              onClick={() => { setSection("movement"); setInventoryTab("movement"); setMovementTab("movements"); }}
-            >
-              Движение товара
-            </button>
-            
-            
-            <button
-              type="button"
-              className={
-                "tabs__btn " +
-                (inventoryTab === "suppliers" ? "tabs__btn--active" : "")
-              }
-              onClick={() => { setSection("suppliers"); setInventoryTab("suppliers"); setSuppliersTab("suppliers"); }}
-            >
-              Поставщики
-            </button>
-            
-          </div>
+          
           {inventoryTab === "movement" && (
             <div className="tabs tabs--sm inventory-subtabs" style={{ marginBottom: 12 }}>
               <button
@@ -2523,6 +2458,8 @@ export default function Warehouse() {
 
 
 
+
+
 
 
 
