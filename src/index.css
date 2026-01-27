@@ -1434,6 +1434,135 @@ input[type="number"] {
     justify-items: stretch;
   }
 
+  .stock-audit-header {
+    display: flex;
+    flex-direction: column;
+    align-items: stretch;
+    gap: 10px;
+  }
+
+  .stock-audit-header__left {
+    display: flex;
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 6px;
+  }
+
+  .stock-audit-header__toggle {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    font-size: 13px;
+    cursor: pointer;
+    user-select: none;
+  }
+
+  .stock-audit-header__checkbox {
+    margin: 0;
+  }
+
+  .stock-audit-header .btn {
+    width: 100%;
+  }
+
+  .stock-audit-filters {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    margin-bottom: 10px;
+  }
+
+  .stock-audit-filters__label {
+    font-size: 13px;
+    color: #475569;
+    font-weight: 600;
+  }
+
+  .stock-audit-filters__control {
+    width: 100% !important;
+    max-width: none !important;
+  }
+
+  .stock-audit-table {
+    border: none;
+    background: transparent;
+    overflow: visible;
+  }
+
+  .stock-audit-table table {
+    min-width: 0;
+    width: 100%;
+    border-spacing: 0;
+  }
+
+  .stock-audit-table thead {
+    display: none;
+  }
+
+  .stock-audit-table tbody {
+    display: grid;
+    gap: 10px;
+  }
+
+  .stock-audit-table .stock-audit-row {
+    display: grid;
+    gap: 6px;
+    border: 1px solid rgba(15, 23, 42, 0.12);
+    border-radius: 14px;
+    padding: 12px 14px;
+    background: #ffffff;
+    box-shadow: 0 8px 18px rgba(15, 23, 42, 0.06);
+  }
+
+  .stock-audit-table .stock-audit-row td {
+    display: grid;
+    grid-template-columns: 110px minmax(0, 1fr);
+    align-items: baseline;
+    gap: 8px;
+    padding: 0;
+    border: none !important;
+    background: transparent;
+    font-weight: 600;
+    text-align: left !important;
+  }
+
+  .stock-audit-table .stock-audit-row td::before {
+    content: attr(data-label);
+    font-size: 12px;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+    color: #64748b;
+    font-weight: 700;
+  }
+
+  .stock-audit-table .stock-audit-row td[data-label="index"]::before {
+    content: "№";
+  }
+
+  .stock-audit-table .stock-audit-row td[data-label="name"]::before {
+    content: "Наименование";
+  }
+
+  .stock-audit-table .stock-audit-row td[data-label="sku"]::before {
+    content: "SKU";
+  }
+
+  .stock-audit-table .stock-audit-row td[data-label="unit"]::before {
+    content: "Ед.";
+  }
+
+  .stock-audit-table .stock-audit-row td[data-label="stock"]::before {
+    content: "Остаток";
+  }
+
+  .stock-audit-table .stock-audit-row td[data-label="min"]::before {
+    content: "Мин.";
+  }
+
+  .stock-audit-table .stock-audit-row td[data-label="max"]::before {
+    content: "Макс.";
+  }
+
   .movements-history-filters {
     display: flex;
     gap: 8px;

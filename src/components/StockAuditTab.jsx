@@ -238,30 +238,19 @@ export default function StockAuditTab() {
   return (
     <div className="card card--1c">
       <div
-        className="card1c__header"
-        style={{
-          display: "flex",
-          alignItems: "center",
-          justifyContent: "space-between",
-        }}
+        className="card1c__header stock-audit-header"
       >
         {/* Левая часть: заголовок + галочка */}
-        <div style={{ display: "flex", alignItems: "center", gap: 16 }}>
+        <div className="stock-audit-header__left">
           <span>Текущие остатки</span>
           <label
-            style={{
-              display: "inline-flex",
-              alignItems: "center",
-              fontSize: 13,
-              cursor: "pointer",
-              userSelect: "none",
-            }}
+            className="stock-audit-header__toggle"
           >
             <input
               type="checkbox"
               checked={includeZeroInPrint}
               onChange={(e) => setIncludeZeroInPrint(e.target.checked)}
-              style={{ marginRight: 4 }}
+              className="stock-audit-header__checkbox"
             />
             Нулевые остатки включить в акт
           </label>
@@ -279,19 +268,13 @@ export default function StockAuditTab() {
 
       <div className="card1c__body">
         {/* Поиск по коду / названию */}
-        <div
-          style={{
-            display: "flex",
-            gap: 8,
-            marginBottom: 8,
-            alignItems: "center",
-          }}
-        >
-          <span style={{ fontSize: 13 }}>Поиск по коду / названию:</span>
+        <div className="stock-audit-filters">
+          <span className="stock-audit-filters__label">
+            Поиск по коду / названию:
+          </span>
           <input
             type="text"
-            className="form__input"
-            style={{ maxWidth: 240 }}
+            className="form__input stock-audit-filters__control"
             value={search}
             onChange={(e) => setSearch(e.target.value)}
             placeholder="Введите SKU или часть названия..."
@@ -313,7 +296,7 @@ export default function StockAuditTab() {
               : "По вашему запросу ничего не найдено."}
           </p>
         ) : (
-          <div className="table-wrapper">
+          <div className="table-wrapper stock-audit-table">
             <table
               style={{
                 width: "100%",
@@ -389,8 +372,9 @@ export default function StockAuditTab() {
               </thead>
               <tbody>
                 {visibleItems.map((it, index) => (
-                  <tr key={it.id}>
+                  <tr key={it.id} className="stock-audit-row">
                     <td
+                      data-label="index"
                       style={{
                         border: "1px solid #e0e0e0",
                         padding: "3px 4px",
@@ -400,6 +384,7 @@ export default function StockAuditTab() {
                       {index + 1}
                     </td>
                     <td
+                      data-label="name"
                       style={{
                         border: "1px solid #e0e0e0",
                         padding: "3px 4px",
@@ -413,6 +398,7 @@ export default function StockAuditTab() {
                       {it.name}
                     </td>
                     <td
+                      data-label="sku"
                       style={{
                         border: "1px solid #e0e0e0",
                         padding: "3px 4px",
@@ -422,6 +408,7 @@ export default function StockAuditTab() {
                       {it.sku}
                     </td>
                     <td
+                      data-label="unit"
                       style={{
                         border: "1px solid #e0e0e0",
                         padding: "3px 4px",
@@ -431,6 +418,7 @@ export default function StockAuditTab() {
                       {it.unit}
                     </td>
                     <td
+                      data-label="stock"
                       style={{
                         border: "1px solid #e0e0e0",
                         padding: "3px 4px",
@@ -442,6 +430,7 @@ export default function StockAuditTab() {
                       {it.currentStock}
                     </td>
                     <td
+                      data-label="min"
                       style={{
                         border: "1px solid #e0e0e0",
                         padding: "3px 4px",
@@ -451,6 +440,7 @@ export default function StockAuditTab() {
                       {it.minStock ?? "-"}
                     </td>
                     <td
+                      data-label="max"
                       style={{
                         border: "1px solid #e0e0e0",
                         padding: "3px 4px",
