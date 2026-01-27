@@ -36,11 +36,6 @@ export default function Layout() {
       roles: ["EMPLOYEE", "HR", "ACCOUNTING", "ADMIN"],
     },
     {
-      label: "Mobile TSD",
-      to: "/warehouse/tsd",
-      roles: ["EMPLOYEE", "HR", "ACCOUNTING", "ADMIN"],
-    },
-    {
       label: "Техническая поддержка",
       to: "/support",
       roles: ["EMPLOYEE", "HR", "ACCOUNTING", "ADMIN"],
