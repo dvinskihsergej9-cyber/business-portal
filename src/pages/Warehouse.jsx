@@ -1363,7 +1363,7 @@ export default function Warehouse() {
                 ) : filteredRequests.length === 0 ? (
                   <p className="text-muted">Заявок не найдено.</p>
                 ) : (
-                  <div className="table-wrapper">
+                  <div className="table-wrapper requests-journal-table">
                     <table className="table">
                       <thead>
                         <tr>
@@ -1406,9 +1406,9 @@ export default function Warehouse() {
                             "-";
 
                           return (
-                            <tr key={req.id}>
-                              <td>{index + 1}</td>
-                              <td>
+                            <tr key={req.id} className="requests-journal-row">
+                              <td data-label="?">{index + 1}</td>
+                              <td data-label="Дата">
                                 {req.createdAt
                                   ? new Date(
                                       req.createdAt
@@ -1421,19 +1421,19 @@ export default function Warehouse() {
                                     })
                                   : "-"}
                               </td>
-                              <td>{statusLabel(req.status)}</td>
-                              <td>
+                              <td data-label="??????">{statusLabel(req.status)}</td>
+                              <td data-label="Автор">
                                 {createdBy?.name ||
                                   createdBy?.email ||
                                   "-"}
                               </td>
-                              <td>{title}</td>
-                              <td style={{ textAlign: "right" }}>
+                              <td data-label="????? / ??????">{title}</td>
+                              <td data-label="???-??" style={{ textAlign: "right" }}>
                                 {totalQty != null && totalQty !== 0
                                   ? totalQty
                                   : "-"}
                               </td>
-                              <td>{requestComment || "-"}</td>
+                              <td data-label="???????????">{requestComment || "-"}</td>
                             </tr>
                           );
                         })}
@@ -1665,7 +1665,7 @@ export default function Warehouse() {
                           const overdue = isTaskOverdue(t);
                           return (
                             <tr key={t.id}>
-                              <td>{index + 1}</td>
+                              <td data-label="?">{index + 1}</td>
                               <td>
                                 {t.createdAt
                                   ? new Date(
