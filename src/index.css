@@ -1125,6 +1125,37 @@ input[type="number"] {
   }
 }
 
+@media (max-width: 768px) {
+  .portal-surface {
+    padding: 14px 12px 96px;
+  }
+
+  .portal-surface .grid-2 {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .portal-surface .request-form-1c .form__group {
+    flex-direction: column;
+    align-items: stretch;
+    gap: 4px;
+  }
+
+  .portal-surface .request-form-1c .form__label {
+    width: 100%;
+    padding-right: 0;
+  }
+
+  .portal-surface .request-form-1c__actions .btn,
+  .portal-surface .request-form-1c__actions button {
+    width: 100%;
+  }
+
+  .portal-surface .table-wrapper,
+  .portal-surface .admin-table-wrapper {
+    overflow-x: auto;
+  }
+}
+
 @media (prefers-reduced-motion: reduce) {
   .portal-surface .card,
   .portal-surface .page-header {

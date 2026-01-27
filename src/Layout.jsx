@@ -1,9 +1,12 @@
+import { useEffect, useMemo, useState } from "react";
 import { NavLink, Outlet, useLocation } from "react-router-dom";
 import { useAuth } from "./context/AuthContext";
 
 export default function Layout() {
   const { user, logout } = useAuth();
   const location = useLocation();
+  const [isMobile, setIsMobile] = useState(false);
+  const [drawerOpen, setDrawerOpen] = useState(false);
   const menu = [
     {
       label: "Склад",
@@ -22,14 +25,52 @@ export default function Layout() {
     ? menu.filter((item) => item.roles.includes(user.role))
     : [];
 
+  const pageTitle = useMemo(() => {
+    if (location.pathname.startsWith("/admin")) return "Администрирование";
+    if (location.pathname.startsWith("/warehouse")) return "Склад";
+    return "Портал";
+  }, [location.pathname]);
+
+  useEffect(() => {
+    const media = window.matchMedia("(max-width: 768px)");
+    const onChange = () => setIsMobile(media.matches);
+    onChange();
+    media.addEventListener("change", onChange);
+    return () => media.removeEventListener("change", onChange);
+  }, []);
+
+  useEffect(() => {
+    if (drawerOpen) {
+      setDrawerOpen(false);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [location.pathname]);
+
+  useEffect(() => {
+    if (!drawerOpen) return;
+    const onKeyDown = (e) => {
+      if (e.key === "Escape") setDrawerOpen(false);
+    };
+    window.addEventListener("keydown", onKeyDown);
+    return () => window.removeEventListener("keydown", onKeyDown);
+  }, [drawerOpen]);
+
   const handleLogout = () => {
     logout();
   };
 
+  const rootStyle = isMobile ? styles.rootMobile : styles.root;
+  const sidebarStyle = isMobile
+    ? { ...styles.sidebar, display: "none" }
+    : styles.sidebar;
+  const headerStyle = isMobile
+    ? { ...styles.header, ...styles.headerMobile }
+    : styles.header;
+
   return (
-    <div style={styles.root}>
+    <div style={rootStyle}>
       {/* Сайдбар */}
-      <aside style={styles.sidebar}>
+      <aside style={sidebarStyle}>
         {/* Лого / название */}
         <div style={styles.logoBlock}>
           <div style={styles.logoMark} />
@@ -54,6 +95,7 @@ export default function Layout() {
             <NavLink
               key={item.to}
               to={item.to}
+              onClick={() => setDrawerOpen(false)}
               style={({ isActive }) =>
                 isActive
                   ? { ...styles.navItem, ...styles.navItemActive }
@@ -73,17 +115,26 @@ export default function Layout() {
 
       {/* Правая часть: шапка + контент */}
       <div style={styles.main}>
-        <header style={styles.header} className="portal-header">
-          <div>
-            <div style={styles.headerTitle}>
-              {location.pathname === "/dashboard"
-                ? "Обзор"
-                : "Внутренний портал"}
-            </div>
-            <div style={styles.headerSubtitle}>
-              {user
-                ? `Пользователь: ${user.name} (${user.role})`
-                : "Вы не авторизованы"}
+        <header style={headerStyle} className="portal-header">
+          <div style={styles.headerRow}>
+            {isMobile && (
+              <button
+                type="button"
+                onClick={() => setDrawerOpen(true)}
+                style={styles.burgerBtn}
+                aria-label="Открыть меню"
+                aria-expanded={drawerOpen}
+              >
+                ☰
+              </button>
+            )}
+            <div>
+              <div style={styles.headerTitle}>{pageTitle}</div>
+              <div style={styles.headerSubtitle}>
+                {user
+                  ? `Пользователь: ${user.name} (${user.role})`
+                  : "Вы не авторизованы"}
+              </div>
             </div>
           </div>
         </header>
@@ -92,6 +143,59 @@ export default function Layout() {
           <Outlet />
         </main>
       </div>
+
+      {/* Мобильное меню (drawer) */}
+      {isMobile && drawerOpen && (
+        <div
+          style={styles.drawerOverlay}
+          onClick={() => setDrawerOpen(false)}
+          role="presentation"
+        >
+          <aside
+            style={styles.drawerPanel}
+            onClick={(e) => e.stopPropagation()}
+            role="dialog"
+            aria-modal="true"
+            aria-label="Навигация"
+          >
+            <div style={styles.drawerHeader}>
+              <div style={styles.logoMark} />
+              <div>
+                <div style={styles.logoTitle}>Business Portal</div>
+                <div style={styles.logoSubtitle}>Меню</div>
+              </div>
+            </div>
+
+            <nav style={styles.drawerNav} className="sidebar-nav">
+              {allowedMenu.map((item) => (
+                <NavLink
+                  key={`drawer-${item.to}`}
+                  to={item.to}
+                  onClick={() => setDrawerOpen(false)}
+                  style={({ isActive }) =>
+                    isActive
+                      ? { ...styles.navItem, ...styles.navItemActive }
+                      : styles.navItem
+                  }
+                >
+                  <span>{item.label}</span>
+                </NavLink>
+              ))}
+            </nav>
+
+            <button
+              type="button"
+              style={styles.logoutBtn}
+              onClick={() => {
+                setDrawerOpen(false);
+                handleLogout();
+              }}
+            >
+              Выйти
+            </button>
+          </aside>
+        </div>
+      )}
     </div>
   );
 }
@@ -99,6 +203,10 @@ export default function Layout() {
 const styles = {
   root: {
     display: "flex",
+    minHeight: "100vh",
+  },
+  rootMobile: {
+    display: "block",
     minHeight: "100vh",
   },
   sidebar: {
@@ -216,6 +324,28 @@ const styles = {
     top: 0,
     zIndex: 5,
   },
+  headerMobile: {
+    padding: "12px 14px",
+  },
+  headerRow: {
+    display: "flex",
+    alignItems: "center",
+    gap: 10,
+  },
+  burgerBtn: {
+    width: 40,
+    height: 40,
+    borderRadius: 10,
+    border: "1px solid #e5e7eb",
+    background: "#ffffff",
+    color: "#0f172a",
+    fontSize: 20,
+    lineHeight: 1,
+    display: "inline-flex",
+    alignItems: "center",
+    justifyContent: "center",
+    cursor: "pointer",
+  },
   headerTitle: {
     fontSize: 20,
     fontWeight: 600,
@@ -229,5 +359,41 @@ const styles = {
     padding: "0",
     flex: 1,
     boxSizing: "border-box",
+  },
+  drawerOverlay: {
+    position: "fixed",
+    inset: 0,
+    background: "rgba(15, 23, 42, 0.45)",
+    zIndex: 60,
+    display: "flex",
+    alignItems: "stretch",
+  },
+  drawerPanel: {
+    width: "min(84vw, 320px)",
+    background: "#ffffff",
+    borderRight: "1px solid #e5e7eb",
+    boxShadow: "8px 0 24px rgba(15, 23, 42, 0.18)",
+    padding: "16px 14px 20px",
+    display: "flex",
+    flexDirection: "column",
+    gap: 12,
+    animation: "portal-rise 0.18s ease-out",
+  },
+  drawerHeader: {
+    display: "flex",
+    alignItems: "center",
+    gap: 10,
+    padding: "6px 8px",
+    borderRadius: 12,
+    background: "#eff6ff",
+    border: "1px solid #dbeafe",
+    marginBottom: 6,
+  },
+  drawerNav: {
+    flex: 1,
+    display: "flex",
+    flexDirection: "column",
+    gap: 6,
+    marginTop: 2,
   },
 };

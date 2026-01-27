@@ -276,3 +276,35 @@
     grid-template-columns: minmax(0, 1fr);
   }
 }
+
+@media (max-width: 768px) {
+  .admin-console {
+    padding: 16px 14px 24px;
+    border-radius: 14px;
+  }
+
+  .admin-console__header {
+    padding: 10px 12px;
+    border-radius: 14px;
+  }
+
+  .admin-console__tabs {
+    flex-wrap: nowrap;
+    overflow-x: auto;
+    padding-bottom: 4px;
+  }
+
+  .admin-console__tab {
+    white-space: nowrap;
+  }
+
+  .admin-table th,
+  .admin-table td {
+    padding: 8px 10px;
+  }
+
+  .admin-modal__panel {
+    max-height: 84vh;
+    overflow: auto;
+  }
+}
