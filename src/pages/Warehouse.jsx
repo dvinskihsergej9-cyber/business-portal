@@ -12,7 +12,63 @@ import SupplierTrucksQueueTab from "../components/SupplierTrucksQueueTab";
 import MobileTsdTab from "../components/MobileTsdTab";
 import WarehouseLocationsPanel from "../components/WarehouseLocationsPanel";
 
-const API = API_BASE;
+const API = API_BASE;
+
+const WAREHOUSE_EMOJI = {
+  requests: "📦",
+  tasks: "✅",
+  inventory: "🧾",
+  locations: "📍",
+  queue: "🚚",
+  tsd: "📱",
+  qr: "🏷️",
+  receive: "📦",
+  ship: "🚚",
+  audit: "🧾",
+  moves: "🔁",
+  suppliers: "🏭",
+  docs: "🗂️",
+};
+
+const WAREHOUSE_ICON_FALLBACK = {
+  requests: "REQ",
+  tasks: "TASK",
+  inventory: "INV",
+  locations: "LOC",
+  queue: "QUEUE",
+  tsd: "TSD",
+  qr: "QR",
+  receive: "IN",
+  ship: "OUT",
+  audit: "AUD",
+  moves: "MOV",
+  suppliers: "SUP",
+  docs: "DOC",
+};
+
+function WarehouseTileIcon({ name }) {
+  const emoji = WAREHOUSE_EMOJI[name];
+  const fallback = WAREHOUSE_ICON_FALLBACK[name] || "•";
+
+  if (!emoji) {
+    return (
+      <span className="warehouse-card__icon-symbol" aria-hidden="true">
+        {fallback}
+      </span>
+    );
+  }
+
+  return (
+    <span
+      className="warehouse-card__icon-symbol"
+      role="img"
+      aria-label={name}
+      title={name}
+    >
+      {emoji}
+    </span>
+  );
+}
 
 const TYPE_LABELS = {
   ISSUE: "Выдача расходных материалов (РМ)",
@@ -1039,7 +1095,7 @@ export default function Warehouse() {
             onClick={() => setSection("requests")}
           >
             <div className="warehouse-card__icon">
-              <span className="warehouse-card__icon-symbol">??</span>
+              <WarehouseTileIcon name="requests" />
             </div>
             <div className="warehouse-card__body">
               <div className="warehouse-card__title">Заявки на склад</div>
@@ -1058,7 +1114,7 @@ export default function Warehouse() {
             onClick={() => setSection("tasks")}
           >
             <div className="warehouse-card__icon">
-              <span className="warehouse-card__icon-symbol">??</span>
+              <WarehouseTileIcon name="tasks" />
             </div>
             <div className="warehouse-card__body">
               <div className="warehouse-card__title">Задачи склада</div>
@@ -1077,7 +1133,7 @@ export default function Warehouse() {
             onClick={() => setSection("inventory")}
           >
             <div className="warehouse-card__icon">
-              <span className="warehouse-card__icon-symbol">??</span>
+              <WarehouseTileIcon name="inventory" />
             </div>
             <div className="warehouse-card__body">
               <div className="warehouse-card__title">Остатки / закупки</div>
@@ -1096,7 +1152,7 @@ export default function Warehouse() {
             onClick={() => setSection("locations")}
           >
             <div className="warehouse-card__icon">
-              <span className="warehouse-card__icon-symbol">???</span>
+              <WarehouseTileIcon name="locations" />
             </div>
             <div className="warehouse-card__body">
               <div className="warehouse-card__title">{"\u042f\u0447\u0435\u0439\u043a\u0438 / QR"}</div>
@@ -1115,7 +1171,7 @@ export default function Warehouse() {
   onClick={() => setSection("queue")}
 >
   <div className="warehouse-card__icon">
-    <span className="warehouse-card__icon-symbol">??</span>
+    <WarehouseTileIcon name="queue" />
   </div>
   <div className="warehouse-card__body">
     <div className="warehouse-card__title">
@@ -1135,7 +1191,7 @@ export default function Warehouse() {
   onClick={() => setSection("tsd")}
 >
   <div className="warehouse-card__icon">
-    <span className="warehouse-card__icon-symbol">??</span>
+    <WarehouseTileIcon name="tsd" />
   </div>
   <div className="warehouse-card__body">
     <div className="warehouse-card__title">Мобильный ТСД</div>
