@@ -1293,8 +1293,30 @@ export default function Warehouse() {
             {/* ====== ЗАЯВКИ ====== */}
       {section === "requests" && (
         <div className="requests-section">
-          {/* Вкладки внутри раздела заявок */}
-          
+          {/* Вкладки внутри раздела заявок */}
+
+          <div className="tabs tabs--sm" style={{ marginBottom: 16 }}>
+            <button
+              type="button"
+              className={
+                "tabs__btn " +
+                (requestsTab === "new" ? "tabs__btn--active" : "")
+              }
+              onClick={() => setRequestsTab("new")}
+            >
+              Новая заявка
+            </button>
+            <button
+              type="button"
+              className={
+                "tabs__btn " +
+                (requestsTab === "journal" ? "tabs__btn--active" : "")
+              }
+              onClick={() => setRequestsTab("journal")}
+            >
+              Журнал заявок
+            </button>
+          </div>
           {/* Вкладка: Новая заявка */}
           {requestsTab === "new" && (
             <div className="card card--1c">
@@ -2458,6 +2480,7 @@ export default function Warehouse() {
 
 
 
+
 
 
 
