@@ -1330,6 +1330,11 @@ input[type="number"] {
   .requests-journal-table .requests-journal-row td[data-label="comment"]::before {
     content: "Комментарий";
   }
+
+  .requests-journal-table .requests-journal-row td[data-label="qty"] {
+    text-align: left !important;
+    justify-items: start;
+  }
 }
 
 @media (prefers-reduced-motion: reduce) {
