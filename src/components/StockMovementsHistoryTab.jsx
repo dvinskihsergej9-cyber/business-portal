@@ -83,17 +83,10 @@ export default function StockMovementsHistoryTab() {
 
       <div className="card1c__body">
         {/* Фильтры сверху */}
-        <div
-          style={{
-            display: "flex",
-            gap: 12,
-            alignItems: "center",
-            marginBottom: 8,
-          }}
-        >
-          <span style={{ fontSize: 13 }}>Тип операции:</span>
+        <div className="movements-history-filters">
+          <span className="movements-history-filters__label">Тип операции:</span>
           <select
-            className="form__select"
+            className="form__select movements-history-filters__control"
             style={{ width: 160 }}
             value={typeFilter}
             onChange={(e) => setTypeFilter(e.target.value)}
@@ -104,10 +97,10 @@ export default function StockMovementsHistoryTab() {
             <option value="ADJUSTMENT">Корректировка</option>
           </select>
 
-          <span style={{ fontSize: 13 }}>Поиск:</span>
+          <span className="movements-history-filters__label">Поиск:</span>
           <input
             type="text"
-            className="form__input"
+            className="form__input movements-history-filters__control"
             style={{ maxWidth: 260 }}
             value={search}
             onChange={(e) => setSearch(e.target.value)}

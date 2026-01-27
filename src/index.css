@@ -1181,6 +1181,12 @@ input[type="number"] {
     padding: 14px 12px 96px;
   }
 
+  .portal-surface input,
+  .portal-surface select,
+  .portal-surface textarea {
+    font-size: 16px;
+  }
+
   .portal-surface .tabs,
   .portal-surface .tabs.tabs--sm {
     display: flex;
@@ -1426,6 +1432,25 @@ input[type="number"] {
   .tasks-journal-table .tasks-journal-row td[data-label="actions"] {
     grid-template-columns: 1fr;
     justify-items: stretch;
+  }
+
+  .movements-history-filters {
+    display: flex;
+    gap: 8px;
+    align-items: stretch;
+    flex-direction: column;
+    margin-bottom: 10px;
+  }
+
+  .movements-history-filters__label {
+    font-size: 13px;
+    color: #475569;
+    font-weight: 600;
+  }
+
+  .movements-history-filters__control {
+    width: 100% !important;
+    max-width: none !important;
   }
 
   .movements-history-table {
