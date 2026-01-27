@@ -31,6 +31,12 @@ npm run api
 - `YOOKASSA_SHOP_ID`
 - `YOOKASSA_SECRET_KEY`
 
+### Vercel / Preview без VITE_API_BASE
+- Если `VITE_API_BASE` не задан:
+  - в DEV используется `http(s)://<host>:3001/api`
+  - в PROD/preview fallback: `https://business-portal-8nba.onrender.com/api`
+- Рекомендуется всё равно явно задать `VITE_API_BASE` в Vercel.
+
 ## ENV (email, опционально)
 - `MAIL_HOST`
 - `MAIL_PORT`

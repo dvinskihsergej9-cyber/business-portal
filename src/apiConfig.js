@@ -1,11 +1,14 @@
 // src/apiConfig.js
-const rawBase =
-  import.meta.env.VITE_API_BASE ||
-  `${window.location.protocol}//${window.location.hostname}:3001`;
+const envBase = import.meta.env.VITE_API_BASE?.trim();
+
+const devFallbackBase = `${window.location.protocol}//${window.location.hostname}:3001`;
+const prodFallbackBase = "https://business-portal-8nba.onrender.com";
+
+const rawBase = envBase || (import.meta.env.DEV ? devFallbackBase : prodFallbackBase);
 const trimmedBase = rawBase.replace(/\/+$/, "");
-const normalizedBase = trimmedBase.endsWith("/api")
-  ? trimmedBase
-  : `${trimmedBase}/api`;
+const normalizedBase = trimmedBase.endsWith("/api") ? trimmedBase : `${trimmedBase}/api`;
+
+const isLocalHost = ["localhost", "127.0.0.1"].includes(window.location.hostname);
 
 if (import.meta.env.DEV && normalizedBase.includes("/api/api")) {
   console.warn(
@@ -14,9 +17,24 @@ if (import.meta.env.DEV && normalizedBase.includes("/api/api")) {
   );
 }
 
+if (!envBase && import.meta.env.PROD) {
+  console.warn(
+    "[apiConfig] VITE_API_BASE is not set. Falling back to production API:",
+    normalizedBase
+  );
+}
+
+if (normalizedBase === "/api" && !isLocalHost) {
+  console.warn(
+    "[apiConfig] VITE_API_BASE is not set; API_BASE is '/api' which likely breaks on Vercel. Set VITE_API_BASE to https://business-portal-8nba.onrender.com"
+  );
+}
+
 export const API_BASE = normalizedBase;
 
-export const apiFetch = (path, options) => {
+const API_TIMEOUT_MS = 20_000;
+
+export const apiFetch = async (path, options = {}) => {
   const normalizedPath = path.startsWith("/") ? path : `/${path}`;
   if (import.meta.env.DEV && normalizedPath.startsWith("/api/")) {
     console.warn(
@@ -24,5 +42,32 @@ export const apiFetch = (path, options) => {
       path
     );
   }
-  return fetch(`${API_BASE}${normalizedPath}`, options);
+
+  const controller = new AbortController();
+  const timeoutId = setTimeout(() => controller.abort(), API_TIMEOUT_MS);
+
+  const { signal: externalSignal, ...restOptions } = options || {};
+  if (externalSignal) {
+    if (externalSignal.aborted) {
+      controller.abort();
+    } else {
+      externalSignal.addEventListener("abort", () => controller.abort(), {
+        once: true,
+      });
+    }
+  }
+
+  try {
+    return await fetch(`${API_BASE}${normalizedPath}`, {
+      ...restOptions,
+      signal: controller.signal,
+    });
+  } catch (err) {
+    if (err?.name === "AbortError") {
+      throw new Error("API unreachable. Check VITE_API_BASE");
+    }
+    throw err;
+  } finally {
+    clearTimeout(timeoutId);
+  }
 };
