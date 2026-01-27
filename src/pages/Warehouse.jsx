@@ -17,6 +17,8 @@ const WAREHOUSE_EMOJI = {
   requests: "📦",
   tasks: "✅",
   inventory: "🧾",
+  items: "📚",
+  movement: "🔁",
   locations: "📍",
   queue: "🚚",
   tsd: "📱",
@@ -33,6 +35,8 @@ const WAREHOUSE_ICON_FALLBACK = {
   requests: "REQ",
   tasks: "TASK",
   inventory: "INV",
+  items: "ITEM",
+  movement: "MOVE",
   locations: "LOC",
   queue: "QUEUE",
   tsd: "TSD",
@@ -169,6 +173,26 @@ export default function Warehouse() {
   const [inventoryTab, setInventoryTab] = useState("stock"); // stock | items | movement | suppliers
   const [movementTab, setMovementTab] = useState("movements"); // movements | movementsHistory
   const [suppliersTab, setSuppliersTab] = useState("suppliers"); // suppliers | orders
+
+  useEffect(() => {
+    if (section === "inventory") {
+      setInventoryTab("stock");
+      return;
+    }
+    if (section === "items") {
+      setInventoryTab("items");
+      return;
+    }
+    if (section === "movement") {
+      setInventoryTab("movement");
+      setMovementTab((prev) => prev || "movements");
+      return;
+    }
+    if (section === "suppliers") {
+      setInventoryTab("suppliers");
+      setSuppliersTab((prev) => prev || "suppliers");
+    }
+  }, [section]);
 
   const [itemForm, setItemForm] = useState({
     name: "",
@@ -1137,13 +1161,75 @@ export default function Warehouse() {
               <WarehouseTileIcon name="inventory" />
             </div>
             <div className="warehouse-card__body">
-              <div className="warehouse-card__title">Остатки</div>
-              <div className="warehouse-card__subtitle">
-                Номенклатура, инвентаризация и заказы поставщику.
-              </div>
-            </div>
-          </button>
-
+              <div className="warehouse-card__title">Остатки</div>
+
+              <div className="warehouse-card__subtitle">
+
+                Текущие остатки по складу.
+
+              </div>
+
+            </div>
+
+          </button>
+
+          <button
+            type="button"
+            className={
+              "warehouse-card" +
+              (section === "items" ? " warehouse-card--active" : "")
+            }
+            onClick={() => setSection("items")}
+          >
+            <div className="warehouse-card__icon">
+              <WarehouseTileIcon name="items" />
+            </div>
+            <div className="warehouse-card__body">
+              <div className="warehouse-card__title">Номенклатура</div>
+              <div className="warehouse-card__subtitle">
+                Справочник товаров.
+              </div>
+            </div>
+          </button>
+
+          <button
+            type="button"
+            className={
+              "warehouse-card" +
+              (section === "movement" ? " warehouse-card--active" : "")
+            }
+            onClick={() => setSection("movement")}
+          >
+            <div className="warehouse-card__icon">
+              <WarehouseTileIcon name="movement" />
+            </div>
+            <div className="warehouse-card__body">
+              <div className="warehouse-card__title">Движение товара</div>
+              <div className="warehouse-card__subtitle">
+                Операции и история движения.
+              </div>
+            </div>
+          </button>
+
+          <button
+            type="button"
+            className={
+              "warehouse-card" +
+              (section === "suppliers" ? " warehouse-card--active" : "")
+            }
+            onClick={() => setSection("suppliers")}
+          >
+            <div className="warehouse-card__icon">
+              <WarehouseTileIcon name="suppliers" />
+            </div>
+            <div className="warehouse-card__body">
+              <div className="warehouse-card__title">Поставщики</div>
+              <div className="warehouse-card__subtitle">
+                Поставщики и заказы поставщику.
+              </div>
+            </div>
+          </button>
+
           <button
             type="button"
             className={
@@ -1780,7 +1866,7 @@ export default function Warehouse() {
 )}
 
       {/* ====== ОСТАТКИ / ИНВЕНТАРИЗАЦИЯ / ЗАКУПКИ ====== */}
-      {section === "inventory" && (
+      {["inventory","items","movement","suppliers"].includes(section) && (
         <div className="inventory-section">
           {/* Внутренние вкладки */}
           <div className="tabs tabs--sm" style={{ marginBottom: 16 }}>
@@ -1790,7 +1876,7 @@ export default function Warehouse() {
                 "tabs__btn " +
                 (inventoryTab === "items" ? "tabs__btn--active" : "")
               }
-              onClick={() => setInventoryTab("items")}
+              onClick={() => { setSection("items"); setInventoryTab("items"); }}
             >
               Номенклатура
             </button>
@@ -1800,7 +1886,7 @@ export default function Warehouse() {
                 "tabs__btn " +
                 (inventoryTab === "stock" ? "tabs__btn--active" : "")
               }
-              onClick={() => setInventoryTab("stock")}
+              onClick={() => { setSection("inventory"); setInventoryTab("stock"); }}
             >
               Остатки
             </button>
@@ -1810,7 +1896,7 @@ export default function Warehouse() {
                 "tabs__btn " +
                 (inventoryTab === "movement" ? "tabs__btn--active" : "")
               }
-              onClick={() => { setInventoryTab("movement"); setMovementTab("movements"); }}
+              onClick={() => { setSection("movement"); setInventoryTab("movement"); setMovementTab("movements"); }}
             >
               Движение товара
             </button>
@@ -1822,7 +1908,7 @@ export default function Warehouse() {
                 "tabs__btn " +
                 (inventoryTab === "suppliers" ? "tabs__btn--active" : "")
               }
-              onClick={() => { setInventoryTab("suppliers"); setSuppliersTab("suppliers"); }}
+              onClick={() => { setSection("suppliers"); setInventoryTab("suppliers"); setSuppliersTab("suppliers"); }}
             >
               Поставщики
             </button>
@@ -2437,6 +2523,9 @@ export default function Warehouse() {
 
 
 
+
+
+
 
 
 
