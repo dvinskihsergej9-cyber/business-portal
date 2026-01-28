@@ -213,38 +213,31 @@ export default function UserManagement() {
   }
 
   return (
-    <div style={{ padding: 24 }}>
+    <div className="admin-page" style={{ padding: 24 }}>
       <h1>Управление пользователями</h1>
       <p>
         Здесь администратор может просматривать пользователей и менять их роли.
       
 
       <div
-        style={{
-          marginTop: 16,
-          marginBottom: 16,
-          padding: 12,
-          borderRadius: 8,
-          background: "#fff",
-          border: "1px solid #e5e7eb",
-          boxShadow: "0 1px 2px rgba(15,23,42,0.06)",
-        }}
+        className="admin-console__card"
+        style={{ marginTop: 16, marginBottom: 16 }}
       >
         <div style={{ fontWeight: 600, marginBottom: 8 }}>
           {"Пригласить пользователя"}
         </div>
-        <div style={{ display: "grid", gap: 8, gridTemplateColumns: "1fr 220px auto" }}>
+        <div className="admin-invite-grid">
           <input
             type="email"
             placeholder="Email"
             value={inviteEmail}
             onChange={(e) => setInviteEmail(e.target.value)}
-            style={{ padding: 8 }}
+            className="admin-input"
           />
           <select
             value={inviteRole}
             onChange={(e) => setInviteRole(e.target.value)}
-            style={{ padding: 8 }}
+            className="admin-select"
           >
             {ALL_ROLES.map((r) => (
               <option key={r} value={r}>
@@ -256,13 +249,7 @@ export default function UserManagement() {
             type="button"
             onClick={handleInviteSubmit}
             disabled={inviteSending}
-            style={{
-              padding: "8px 14px",
-              background: "#1976d2",
-              color: "#fff",
-              border: "none",
-              cursor: "pointer",
-            }}
+            className="admin-btn admin-btn--primary"
           >
             {inviteSending
               ? "Отправка..."
@@ -310,16 +297,8 @@ export default function UserManagement() {
         ) : invites.length === 0 ? (
           <p>{"Приглашений пока нет."}</p>
         ) : (
-          <table
-            style={{
-              width: "100%",
-              borderCollapse: "collapse",
-              background: "#fff",
-              borderRadius: 8,
-              overflow: "hidden",
-              boxShadow: "0 1px 3px rgba(0,0,0,0.1)",
-            }}
-          >
+          <div className="admin-table-wrapper">
+            <table className="admin-table admin-table--invites">
             <thead>
               <tr>
                 <th style={thStyle}>Email</th>
@@ -332,15 +311,15 @@ export default function UserManagement() {
             <tbody>
               {invites.map((inv) => (
                 <tr key={inv.id}>
-                  <td style={tdStyle}>{inv.email}</td>
-                  <td style={tdStyle}>{roleLabel(inv.role)} ({inv.role})</td>
-                  <td style={tdStyle}>{inv.status}</td>
-                  <td style={tdStyle}>
+                  <td data-label="Email" style={tdStyle}>{inv.email}</td>
+                  <td data-label="Роль" style={tdStyle}>{roleLabel(inv.role)} ({inv.role})</td>
+                  <td data-label="Статус" style={tdStyle}>{inv.status}</td>
+                  <td data-label="Создан" style={tdStyle}>
                     {inv.createdAt
                       ? new Date(inv.createdAt).toLocaleString()
                       : "-"}
                   </td>
-                  <td style={tdStyle}>
+                  <td data-label="Действия" style={tdStyle}>
                     <button
                       type="button"
                       onClick={() => handleInviteResend(inv.id)}
@@ -355,6 +334,7 @@ export default function UserManagement() {
               ))}
             </tbody>
           </table>
+          </div>
         )}
       </div>
 
@@ -363,17 +343,8 @@ export default function UserManagement() {
       ) : users.length === 0 ? (
         <p>Пользователей пока нет.</p>
       ) : (
-        <table
-          style={{
-            width: "100%",
-            borderCollapse: "collapse",
-            marginTop: 16,
-            background: "#fff",
-            borderRadius: 8,
-            overflow: "hidden",
-            boxShadow: "0 1px 3px rgba(0,0,0,0.1)",
-          }}
-        >
+        <div className="admin-table-wrapper">
+          <table className="admin-table admin-table--users">
           <thead>
             <tr>
               <th style={thStyle}>ID</th>
@@ -387,14 +358,14 @@ export default function UserManagement() {
           <tbody>
             {users.map((u) => (
               <tr key={u.id}>
-                <td style={tdStyle}>{u.id}</td>
-                <td style={tdStyle}>{u.name}</td>
-                <td style={tdStyle}>{u.email}</td>
-                <td style={tdStyle}>
+                <td data-label="ID" style={tdStyle}>{u.id}</td>
+                <td data-label="Имя" style={tdStyle}>{u.name}</td>
+                <td data-label="Email" style={tdStyle}>{u.email}</td>
+                <td data-label="Роль" style={tdStyle}>
                   <select
                     value={u.role}
                     onChange={(e) => handleRoleChangeLocal(u.id, e.target.value)}
-                    style={{ padding: 4 }}
+                    className="admin-select"
                     disabled={savingId === u.id}
                   >
                     {ALL_ROLES.map((r) => (
@@ -404,12 +375,12 @@ export default function UserManagement() {
                     ))}
                   </select>
                 </td>
-                <td style={tdStyle}>
+                <td data-label="Создан" style={tdStyle}>
                   {u.createdAt
                     ? new Date(u.createdAt).toLocaleString()
                     : "-"}
                 </td>
-                <td style={tdStyle}>
+                <td data-label="Действия" style={tdStyle}>
                   <button
                     onClick={() => handleSaveRole(u.id)}
                     disabled={savingId === u.id}
@@ -423,6 +394,7 @@ export default function UserManagement() {
             ))}
           </tbody>
         </table>
+        </div>
       )}
     </div>
   );

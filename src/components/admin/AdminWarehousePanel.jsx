@@ -384,14 +384,14 @@ export default function AdminWarehousePanel() {
             <tbody>
               {items.map((item) => (
                 <tr key={item.id}>
-                  <td>
+                  <td data-label="Товар">
                     <div className="admin-table__title">{item.name}</div>
                     <div className="admin-table__meta">ID: {item.id}</div>
                   </td>
-                  <td>{item.sku || "-"}</td>
-                  <td>{item.barcode || "-"}</td>
-                  <td>{item.unit || "-"}</td>
-                  <td className="admin-table__actions">
+                  <td data-label="SKU">{item.sku || "-"}</td>
+                  <td data-label="Штрихкод">{item.barcode || "-"}</td>
+                  <td data-label="Ед.">{item.unit || "-"}</td>
+                  <td data-label="Действия" className="admin-table__actions">
                     <button
                       type="button"
                       className="admin-btn admin-btn--secondary"
@@ -436,14 +436,14 @@ export default function AdminWarehousePanel() {
             <tbody>
               {locations.map((loc) => (
                 <tr key={loc.id}>
-                  <td>
+                  <td data-label="Ячейка">
                     <div className="admin-table__title">{loc.name}</div>
                     <div className="admin-table__meta">ID: {loc.id}</div>
                   </td>
-                  <td>{loc.code || "-"}</td>
-                  <td>{loc.zone || "-"}</td>
-                  <td>{loc.aisle || "-"}</td>
-                  <td className="admin-table__actions">
+                  <td data-label="Код">{loc.code || "-"}</td>
+                  <td data-label="Зона">{loc.zone || "-"}</td>
+                  <td data-label="Ряд">{loc.aisle || "-"}</td>
+                  <td data-label="Действия" className="admin-table__actions">
                     <button
                       type="button"
                       className="admin-btn admin-btn--secondary"
@@ -488,14 +488,14 @@ export default function AdminWarehousePanel() {
             <tbody>
               {requests.map((req) => (
                 <tr key={req.id}>
-                  <td>
+                  <td data-label="Заявка">
                     <div className="admin-table__title">{req.title}</div>
                     <div className="admin-table__meta">ID: {req.id}</div>
                   </td>
-                  <td>{req.type}</td>
-                  <td>{req.status}</td>
-                  <td>{req.createdBy?.name || "-"}</td>
-                  <td className="admin-table__actions">
+                  <td data-label="Тип">{req.type}</td>
+                  <td data-label="Статус">{req.status}</td>
+                  <td data-label="Автор">{req.createdBy?.name || "-"}</td>
+                  <td data-label="Действия" className="admin-table__actions">
                     <button
                       type="button"
                       className="admin-btn admin-btn--secondary"
