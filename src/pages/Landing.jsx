@@ -22,9 +22,6 @@ export default function Landing() {
           <Link className="btn primary" to="/login">
             Войти
           </Link>
-          <Link className="btn" to="/pricing">
-            Тарифы
-          </Link>
         </div>
       </div>
 
