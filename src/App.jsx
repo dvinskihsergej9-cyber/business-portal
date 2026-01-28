@@ -46,6 +46,7 @@ function AppRoutesWithBackground() {
       <div className="app-shell">
         <Routes>
           <Route path="/" element={<Landing />} />
+          <Route path="/about" element={<Landing />} />
           <Route path="/offer" element={<Offer />} />
           <Route path="/privacy" element={<Privacy />} />
           <Route path="/contacts" element={<Contacts />} />

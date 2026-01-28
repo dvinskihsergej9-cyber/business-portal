@@ -101,7 +101,7 @@ export default function Login() {
       >
         <div style={{ marginBottom: 6 }}>{"\u0414\u043e\u043a\u0443\u043c\u0435\u043d\u0442\u044b \u0438 \u043a\u043e\u043d\u0442\u0430\u043a\u0442\u044b"}</div>
         <div style={{ display: "flex", flexWrap: "wrap", gap: 10 }}>
-          <Link to="/">{"\u041e \u0441\u0435\u0440\u0432\u0438\u0441\u0435"}</Link>
+          <Link to="/about">{"\u041e \u0441\u0435\u0440\u0432\u0438\u0441\u0435"}</Link>
           <Link to="/offer">{"\u041e\u0444\u0435\u0440\u0442\u0430"}</Link>
           <Link to="/privacy">{"\u041f\u043e\u043b\u0438\u0442\u0438\u043a\u0430"}</Link>
           <Link to="/contacts">{"\u041a\u043e\u043d\u0442\u0430\u043a\u0442\u044b"}</Link>
