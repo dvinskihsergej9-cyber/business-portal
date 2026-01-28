@@ -1,4 +1,6 @@
-﻿export default function Offer() {
+import { Link } from "react-router-dom";
+
+export default function Offer() {
   return (
     <div className="page">
       <div className="page-header">
@@ -27,7 +29,7 @@
           был предоставлен и сервис использовался — возврат не производится.
         </div>
         <div>
-          Контакты для обращений указаны на странице <a href="/contacts">Контакты</a>.
+          Контакты для обращений указаны на странице <Link to="/contacts">Контакты</Link>.
         </div>
       </div>
     </div>
