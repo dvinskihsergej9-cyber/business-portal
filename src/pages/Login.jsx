@@ -90,7 +90,24 @@ export default function Login() {
       </p>
       <p style={{ marginTop: 8, color: "#6b7280", fontSize: 13 }}>{"\u0420\u0435\u0433\u0438\u0441\u0442\u0440\u0430\u0446\u0438\u044f \u0434\u043e\u0441\u0442\u0443\u043f\u043d\u0430 \u0442\u043e\u043b\u044c\u043a\u043e \u043f\u043e \u043f\u0440\u0438\u0433\u043b\u0430\u0448\u0435\u043d\u0438\u044e \u0430\u0434\u043c\u0438\u043d\u0438\u0441\u0442\u0440\u0430\u0442\u043e\u0440\u0430."}</p>
 
-      
+      <div
+        style={{
+          marginTop: 20,
+          paddingTop: 12,
+          borderTop: "1px solid #e5e7eb",
+          fontSize: 13,
+          color: "#6b7280",
+        }}
+      >
+        <div style={{ marginBottom: 6 }}>{"\u0414\u043e\u043a\u0443\u043c\u0435\u043d\u0442\u044b \u0438 \u043a\u043e\u043d\u0442\u0430\u043a\u0442\u044b"}</div>
+        <div style={{ display: "flex", flexWrap: "wrap", gap: 10 }}>
+          <Link to="/">{"\u041e \u0441\u0435\u0440\u0432\u0438\u0441\u0435"}</Link>
+          <Link to="/offer">{"\u041e\u0444\u0435\u0440\u0442\u0430"}</Link>
+          <Link to="/privacy">{"\u041f\u043e\u043b\u0438\u0442\u0438\u043a\u0430"}</Link>
+          <Link to="/contacts">{"\u041a\u043e\u043d\u0442\u0430\u043a\u0442\u044b"}</Link>
+          <Link to="/refund">{"\u0412\u043e\u0437\u0432\u0440\u0430\u0442"}</Link>
+        </div>
+      </div>
     </div>
   );
 }
