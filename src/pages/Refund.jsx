@@ -1,4 +1,4 @@
-export default function Refund() {
+﻿export default function Refund() {
   return (
     <div className="page">
       <div className="page-header">
@@ -8,12 +8,14 @@ export default function Refund() {
 
       <div className="card" style={{ display: "grid", gap: 12 }}>
         <div>
-          Возврат средств возможен в случаях, предусмотренных законом, по
-          заявлению пользователя.
+          Услуга является цифровой (доступ к функционалу сервиса «СкладОнлайн»).
         </div>
         <div>
-          Для запроса возврата напишите на почту, указанную в разделе
-          «Контакты».
+          Возврат возможен в течение 7 календарных дней по обращению на email
+          sergeydvin0998@mail.ru, если доступ не был предоставлен/не использовался.
+        </div>
+        <div>
+          Если доступ был предоставлен и сервис использовался — возврат не производится.
         </div>
       </div>
     </div>

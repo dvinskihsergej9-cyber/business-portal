@@ -1,12 +1,12 @@
-import { Link } from "react-router-dom";
+﻿import { Link } from "react-router-dom";
 
 export default function Landing() {
   return (
     <div className="page">
       <div className="page-header">
-        <h1 className="page-title">Business Portal</h1>
+        <h1 className="page-title">СкладОнлайн</h1>
         <p className="page-subtitle">
-          Онлайн-доступ к цифровым сервисам компании.
+          СкладОнлайн — веб-сервис для учёта склада и работы с товарами через браузер. Поддерживает операции склада и мобильный режим для работы со сканированием/приёмкой/движением. Доступ предоставляется по подписке.
         </p>
       </div>
 
@@ -16,7 +16,7 @@ export default function Landing() {
           Стоимость: <strong>1990 ₽ / 30 дней</strong>
         </div>
         <div>
-          Доступ предоставляется сразу после активации trial или оплаты.
+          Доступ предоставляется сразу после активации trial или оплаты. Автопродление будет добавлено позже.
         </div>
         <div style={{ display: "flex", gap: 12, flexWrap: "wrap" }}>
           <Link className="btn primary" to="/login">

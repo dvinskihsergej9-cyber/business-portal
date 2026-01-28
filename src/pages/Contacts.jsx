@@ -1,4 +1,4 @@
-export default function Contacts() {
+﻿export default function Contacts() {
   return (
     <div className="page">
       <div className="page-header">
@@ -7,11 +7,12 @@ export default function Contacts() {
       </div>
 
       <div className="card" style={{ display: "grid", gap: 10 }}>
-        <div>ООО «Название компании» (заполните).</div>
-        <div>ИНН: 0000000000</div>
-        <div>Email: support@example.com</div>
-        <div>Телефон: +7 (000) 000-00-00</div>
-        <div>Адрес: г. ..., ул. ..., д. ...</div>
+        <div>Самозанятый (НПД) Двинских Сергей Сергеевич</div>
+        <div>ИНН: 743402272974</div>
+        <div>Email: sergeydvin0998@mail.ru</div>
+        <div>Телефон: 8-909-084-03-43</div>
+        <div>Адрес: г. Челябинск</div>
+        <div>Сайт: https://business-portal-0zeo9bgbg-sergeys-projects-9cd5c7b6.vercel.app</div>
       </div>
     </div>
   );
