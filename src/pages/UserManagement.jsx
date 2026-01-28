@@ -319,11 +319,12 @@ export default function UserManagement() {
                       ? new Date(inv.createdAt).toLocaleString()
                       : "-"}
                   </td>
-                  <td data-label="Действия" style={tdStyle}>
+                  <td data-label="Действия" style={tdStyle} className="admin-table__actions">
                     <button
                       type="button"
                       onClick={() => handleInviteResend(inv.id)}
                       disabled={inviteResendId === inv.id}
+                      className="admin-btn admin-btn--secondary"
                     >
                       {inviteResendId === inv.id
                         ? "Отправка..."
@@ -380,10 +381,11 @@ export default function UserManagement() {
                     ? new Date(u.createdAt).toLocaleString()
                     : "-"}
                 </td>
-                <td data-label="Действия" style={tdStyle}>
+                <td data-label="Действия" style={tdStyle} className="admin-table__actions">
                   <button
                     onClick={() => handleSaveRole(u.id)}
                     disabled={savingId === u.id}
+                    className="admin-btn admin-btn--primary"
                   >
                     {savingId === u.id
                       ? "Сохранение..."

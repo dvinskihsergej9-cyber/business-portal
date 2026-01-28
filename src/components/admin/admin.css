@@ -313,6 +313,11 @@
     padding: 8px 10px;
   }
 
+  .admin-input,
+  .admin-select {
+    font-size: 16px;
+  }
+
   .admin-table-wrapper {
     border: none;
     background: transparent;

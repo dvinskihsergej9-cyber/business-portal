@@ -86,3 +86,37 @@ SMOKE_EMPLOYEE_PASSWORD=Test12345! \
 npm run smoke
 ```
 
+## Smoke seed (локально, опционально)
+```
+SMOKE_SEED=true \
+SMOKE_API_BASE=http://localhost:3001/api \
+SMOKE_ADMIN_EMAIL=admin@test.local \
+SMOKE_ADMIN_PASSWORD=Test12345! \
+SMOKE_EMPLOYEE_EMAIL=employee@test.local \
+SMOKE_EMPLOYEE_PASSWORD=Test12345! \
+npm run smoke
+```
+
+## E2E (Playwright)
+Установить браузер:
+```
+npm run e2e:install
+```
+
+Запуск (в разных терминалах):
+```
+npm run api
+npm run build
+npm run preview -- --host --port 4173
+```
+
+E2E:
+```
+E2E_BASE_URL=http://localhost:4173 \
+E2E_ADMIN_EMAIL=admin@test.local \
+E2E_ADMIN_PASSWORD=Test12345! \
+E2E_EMPLOYEE_EMAIL=employee@test.local \
+E2E_EMPLOYEE_PASSWORD=Test12345! \
+npm run e2e
+```
+

@@ -1,11 +1,14 @@
 import process from "process";
+import bcrypt from "bcryptjs";
+import { PrismaClient } from "@prisma/client";
 
 const API_BASE = process.env.SMOKE_API_BASE || "http://localhost:3001/api";
-const ADMIN_EMAIL = process.env.SMOKE_ADMIN_EMAIL || "";
-const ADMIN_PASSWORD = process.env.SMOKE_ADMIN_PASSWORD || "";
+const ADMIN_EMAIL = process.env.SMOKE_ADMIN_EMAIL || "admin@test.local";
+const ADMIN_PASSWORD = process.env.SMOKE_ADMIN_PASSWORD || "Test12345!";
 const EMPLOYEE_EMAIL = process.env.SMOKE_EMPLOYEE_EMAIL || "employee@test.local";
 const EMPLOYEE_PASSWORD = process.env.SMOKE_EMPLOYEE_PASSWORD || "Test12345!";
 const INVITE_EMAIL = process.env.SMOKE_INVITE_EMAIL || "invite@test.local";
+const SMOKE_SEED = process.env.SMOKE_SEED === "true";
 
 const results = [];
 
@@ -23,31 +26,58 @@ async function login(email, password) {
   });
 }
 
+async function seedUsers() {
+  const prisma = new PrismaClient();
+  const hashAdmin = await bcrypt.hash(ADMIN_PASSWORD, 10);
+  const hashEmployee = await bcrypt.hash(EMPLOYEE_PASSWORD, 10);
+  const upsertUser = async (email, role, name, hash) => {
+    const existing = await prisma.user.findUnique({ where: { email } });
+    if (existing) {
+      await prisma.user.update({
+        where: { email },
+        data: {
+          password: hash,
+          passwordHash: hash,
+          role,
+          name: name || existing.name,
+          isActive: true,
+        },
+      });
+      return;
+    }
+    await prisma.user.create({
+      data: {
+        email,
+        password: hash,
+        passwordHash: hash,
+        role,
+        name,
+        isActive: true,
+      },
+    });
+  };
+  await upsertUser(ADMIN_EMAIL, "ADMIN", "Smoke Admin", hashAdmin);
+  await upsertUser(EMPLOYEE_EMAIL, "EMPLOYEE", "Smoke Employee", hashEmployee);
+  await prisma.$disconnect();
+}
+
 async function run() {
-  if (!EMPLOYEE_EMAIL || !EMPLOYEE_PASSWORD) {
-    throw new Error("Missing EMPLOYEE credentials.");
+  if (SMOKE_SEED) {
+    await seedUsers();
   }
 
   let adminToken = "";
-  if (ADMIN_EMAIL && ADMIN_PASSWORD) {
-    const adminLogin = await login(ADMIN_EMAIL, ADMIN_PASSWORD);
-    if (!adminLogin.ok) {
-      results.push({
-        name: "ADMIN login",
-        ok: false,
-        status: adminLogin.status,
-        message: adminLogin.data?.message,
-      });
-    } else {
-      adminToken = adminLogin.data.token;
-      results.push({ name: "ADMIN login", ok: true });
-    }
-  } else {
+  const adminLogin = await login(ADMIN_EMAIL, ADMIN_PASSWORD);
+  if (!adminLogin.ok) {
     results.push({
       name: "ADMIN login",
-      ok: true,
-      message: "SKIPPED (SMOKE_ADMIN_EMAIL/PASSWORD not set)",
+      ok: false,
+      status: adminLogin.status,
+      message: adminLogin.data?.message,
     });
+  } else {
+    adminToken = adminLogin.data.token;
+    results.push({ name: "ADMIN login", ok: true });
   }
 
   const empLogin = await login(EMPLOYEE_EMAIL, EMPLOYEE_PASSWORD);
@@ -67,7 +97,13 @@ async function run() {
     const me = await request("/me", {
       headers: { Authorization: `Bearer ${empToken}` },
     });
-    results.push({ name: "EMPLOYEE /me", ok: me.ok, status: me.status });
+    const empRoleOk = me.ok && me.data?.role === "EMPLOYEE";
+    results.push({
+      name: "EMPLOYEE /me role",
+      ok: empRoleOk,
+      status: me.status,
+      message: me.data?.role,
+    });
 
     const trial = await request("/billing/start-trial", {
       method: "POST",
@@ -93,6 +129,33 @@ async function run() {
       status: empLocations.status,
     });
 
+    const empItems = await request("/inventory/items", {
+      headers: { Authorization: `Bearer ${empToken}` },
+    });
+    results.push({
+      name: "EMPLOYEE inventory items",
+      ok: empItems.ok,
+      status: empItems.status,
+    });
+
+    const empStock = await request("/inventory/stock", {
+      headers: { Authorization: `Bearer ${empToken}` },
+    });
+    results.push({
+      name: "EMPLOYEE inventory stock",
+      ok: empStock.ok,
+      status: empStock.status,
+    });
+
+    const empMovements = await request("/inventory/movements", {
+      headers: { Authorization: `Bearer ${empToken}` },
+    });
+    results.push({
+      name: "EMPLOYEE inventory movements",
+      ok: empMovements.ok,
+      status: empMovements.status,
+    });
+
     const empRequests = await request("/warehouse/requests/my", {
       headers: { Authorization: `Bearer ${empToken}` },
     });
@@ -101,13 +164,30 @@ async function run() {
       ok: empRequests.ok,
       status: empRequests.status,
     });
+
+    const empAdminInvites = await request("/admin/invites", {
+      headers: { Authorization: `Bearer ${empToken}` },
+    });
+    const empAdminForbidden =
+      empAdminInvites.status === 401 || empAdminInvites.status === 403;
+    results.push({
+      name: "EMPLOYEE admin invites forbidden",
+      ok: empAdminForbidden,
+      status: empAdminInvites.status,
+    });
   }
 
   if (adminToken) {
     const me = await request("/me", {
       headers: { Authorization: `Bearer ${adminToken}` },
     });
-    results.push({ name: "ADMIN /me", ok: me.ok, status: me.status });
+    const adminRoleOk = me.ok && me.data?.role === "ADMIN";
+    results.push({
+      name: "ADMIN /me role",
+      ok: adminRoleOk,
+      status: me.status,
+      message: me.data?.role,
+    });
 
     const users = await request("/users", {
       headers: { Authorization: `Bearer ${adminToken}` },
@@ -184,6 +264,33 @@ async function run() {
       name: "ADMIN warehouse requests",
       ok: adminRequests.ok,
       status: adminRequests.status,
+    });
+
+    const adminItems = await request("/inventory/items", {
+      headers: { Authorization: `Bearer ${adminToken}` },
+    });
+    results.push({
+      name: "ADMIN inventory items",
+      ok: adminItems.ok,
+      status: adminItems.status,
+    });
+
+    const adminStock = await request("/inventory/stock", {
+      headers: { Authorization: `Bearer ${adminToken}` },
+    });
+    results.push({
+      name: "ADMIN inventory stock",
+      ok: adminStock.ok,
+      status: adminStock.status,
+    });
+
+    const adminMovements = await request("/inventory/movements", {
+      headers: { Authorization: `Bearer ${adminToken}` },
+    });
+    results.push({
+      name: "ADMIN inventory movements",
+      ok: adminMovements.ok,
+      status: adminMovements.status,
     });
   }
 
