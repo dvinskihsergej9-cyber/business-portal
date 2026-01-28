@@ -1720,6 +1720,116 @@ input[type="number"] {
     content: "Примечание";
   }
 
+  .discrepancies-header {
+    display: flex;
+    flex-direction: column;
+    align-items: stretch;
+    gap: 10px;
+  }
+
+  .discrepancies-title {
+    font-size: 18px;
+    font-weight: 700;
+  }
+
+  .discrepancies-tabs {
+    display: inline-flex;
+    flex-wrap: nowrap;
+    gap: 8px;
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+  }
+
+  .discrepancies-table {
+    border: none;
+    background: transparent;
+    overflow: visible;
+    margin-top: 12px;
+  }
+
+  .discrepancies-table table {
+    min-width: 0;
+    width: 100%;
+    border-spacing: 0;
+  }
+
+  .discrepancies-table thead {
+    display: none;
+  }
+
+  .discrepancies-table tbody {
+    display: grid;
+    gap: 10px;
+  }
+
+  .discrepancies-table .discrepancies-row {
+    display: grid;
+    gap: 6px;
+    border: 1px solid rgba(15, 23, 42, 0.12);
+    border-radius: 14px;
+    padding: 12px 14px;
+    background: #ffffff;
+    box-shadow: 0 8px 18px rgba(15, 23, 42, 0.06);
+  }
+
+  .discrepancies-table .discrepancies-row td {
+    display: grid;
+    grid-template-columns: 110px minmax(0, 1fr);
+    align-items: baseline;
+    gap: 8px;
+    padding: 0;
+    border: none !important;
+    background: transparent;
+    font-weight: 600;
+    text-align: left !important;
+  }
+
+  .discrepancies-table .discrepancies-row td::before {
+    content: attr(data-label);
+    font-size: 12px;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+    color: #64748b;
+    font-weight: 700;
+  }
+
+  .discrepancies-table .discrepancies-row td[data-label="date"]::before {
+    content: "Дата";
+  }
+
+  .discrepancies-table .discrepancies-row td[data-label="location"]::before {
+    content: "Ячейка";
+  }
+
+  .discrepancies-table .discrepancies-row td[data-label="item"]::before {
+    content: "Товар";
+  }
+
+  .discrepancies-table .discrepancies-row td[data-label="expected"]::before {
+    content: "Было";
+  }
+
+  .discrepancies-table .discrepancies-row td[data-label="counted"]::before {
+    content: "Факт";
+  }
+
+  .discrepancies-table .discrepancies-row td[data-label="delta"]::before {
+    content: "Δ";
+  }
+
+  .discrepancies-table .discrepancies-row td[data-label="session"]::before {
+    content: "Сессия";
+  }
+
+  .discrepancies-table .discrepancies-row td[data-label="actions"]::before {
+    content: "Действия";
+  }
+
+  .discrepancies-table .discrepancies-row td[data-label="actions"] {
+    grid-template-columns: 1fr;
+    justify-items: stretch;
+  }
+
   .movements-history-filters {
     display: flex;
     gap: 8px;

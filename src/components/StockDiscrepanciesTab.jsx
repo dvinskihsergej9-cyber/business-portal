@@ -74,10 +74,12 @@ export default function StockDiscrepanciesTab() {
   };
 
   return (
-    <div className="card" style={{ padding: 16 }}>
-      <div style={{ display: "flex", gap: 12, alignItems: "center" }}>
-        <h3 style={{ margin: 0 }}>Косяки</h3>
-        <div style={{ display: "inline-flex", gap: 8 }}>
+    <div className="card discrepancies-card" style={{ padding: 16 }}>
+      <div className="discrepancies-header">
+        <h3 className="discrepancies-title" style={{ margin: 0 }}>
+          Косяки
+        </h3>
+        <div className="discrepancies-tabs">
           {["OPEN", "CLOSED"].map((value) => (
             <button
               key={value}
@@ -105,7 +107,7 @@ export default function StockDiscrepanciesTab() {
       ) : items.length === 0 ? (
         <div style={{ padding: 16 }}>Нет расхождений.</div>
       ) : (
-        <div style={{ overflowX: "auto", marginTop: 16 }}>
+        <div className="discrepancies-table">
           <table style={{ width: "100%", borderCollapse: "collapse" }}>
             <thead>
               <tr>
@@ -121,24 +123,32 @@ export default function StockDiscrepanciesTab() {
             </thead>
             <tbody>
               {items.map((row) => (
-                <tr key={row.id}>
-                  <td style={tdStyle}>
+                <tr key={row.id} className="discrepancies-row">
+                  <td data-label="date" style={tdStyle}>
                     {row.createdAt
                       ? new Date(row.createdAt).toLocaleString("ru-RU")
                       : "-"}
                   </td>
-                  <td style={tdStyle}>
+                  <td data-label="location" style={tdStyle}>
                     {row.location?.code || row.location?.name || "-"}
                   </td>
-                  <td style={tdStyle}>
+                  <td data-label="item" style={tdStyle}>
                     {row.item?.name || "-"}
                     {row.item?.sku ? ` (${row.item.sku})` : ""}
                   </td>
-                  <td style={tdStyle}>{row.expectedQty}</td>
-                  <td style={tdStyle}>{row.countedQty}</td>
-                  <td style={tdStyle}>{row.delta}</td>
-                  <td style={tdStyle}>{row.sessionId || "-"}</td>
-                  <td style={tdStyle}>
+                  <td data-label="expected" style={tdStyle}>
+                    {row.expectedQty}
+                  </td>
+                  <td data-label="counted" style={tdStyle}>
+                    {row.countedQty}
+                  </td>
+                  <td data-label="delta" style={tdStyle}>
+                    {row.delta}
+                  </td>
+                  <td data-label="session" style={tdStyle}>
+                    {row.sessionId || "-"}
+                  </td>
+                  <td data-label="actions" style={tdStyle}>
                     {status === "OPEN" && user?.role === "ADMIN" && (
                       <button
                         type="button"
