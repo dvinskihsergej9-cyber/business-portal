@@ -1,4 +1,4 @@
-﻿import { useEffect, useMemo, useRef, useState } from "react";
+﻿import { useEffect, useMemo, useState } from "react";
 import { API_BASE } from "../apiConfig";
 import { jsPDF } from "jspdf";
 import autoTable from "jspdf-autotable";
@@ -28,13 +28,36 @@ const formatComment = (value) => {
   return String(value).replace(/RECEIVING/gi, "Приемка");
 };
 
+let fontLoaded = false;
+
+const arrayBufferToBase64 = (buffer) => {
+  const bytes = new Uint8Array(buffer);
+  const chunkSize = 0x8000;
+  let binary = "";
+  for (let i = 0; i < bytes.length; i += chunkSize) {
+    binary += String.fromCharCode(...bytes.subarray(i, i + chunkSize));
+  }
+  return btoa(binary);
+};
+
+const ensurePdfFont = async (pdf) => {
+  if (!fontLoaded) {
+    const res = await fetch("/fonts/Arial.ttf");
+    const buffer = await res.arrayBuffer();
+    const base64 = arrayBufferToBase64(buffer);
+    pdf.addFileToVFS("Arial.ttf", base64);
+    pdf.addFont("Arial.ttf", "Arial", "normal");
+    fontLoaded = true;
+  }
+  pdf.setFont("Arial", "normal");
+};
+
 export default function StockTransactionsTab() {
   const [query, setQuery] = useState("");
   const [loading, setLoading] = useState(true);
   const [items, setItems] = useState([]);
   const [error, setError] = useState("");
   const [printing, setPrinting] = useState(false);
-  const printAreaRef = useRef(null);
 
   const authHeaders = useMemo(() => {
     const token = localStorage.getItem("token");
@@ -69,11 +92,11 @@ export default function StockTransactionsTab() {
   };
 
   const handlePrint = async () => {
-    if (!items.length || !printAreaRef.current || printing) return;
+    if (!items.length || printing) return;
     try {
       setPrinting(true);
       const pdf = new jsPDF("l", "pt", "a4");
-      pdf.setFont("helvetica", "normal");
+      await ensurePdfFont(pdf);
       pdf.setFontSize(12);
       pdf.text("Транзакции склада", 40, 28);
 
@@ -95,6 +118,7 @@ export default function StockTransactionsTab() {
         body: rows,
         theme: "grid",
         styles: {
+          font: "Arial",
           fontSize: 8,
           cellPadding: 3,
           overflow: "linebreak",
@@ -104,6 +128,7 @@ export default function StockTransactionsTab() {
           fillColor: [245, 246, 248],
           textColor: [15, 23, 42],
           fontStyle: "bold",
+          font: "Arial",
         },
         columnStyles: {
           0: { cellWidth: 90 },
@@ -170,7 +195,7 @@ export default function StockTransactionsTab() {
       ) : items.length === 0 ? (
         <div style={{ padding: 12 }}>Нет транзакций.</div>
       ) : (
-        <div className="transactions-table" ref={printAreaRef}>
+        <div className="transactions-table">
           <table style={{ width: "100%", borderCollapse: "collapse" }}>
             <thead>
               <tr>
