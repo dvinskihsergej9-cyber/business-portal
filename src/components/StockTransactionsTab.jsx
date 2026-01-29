@@ -51,11 +51,15 @@ const arrayBufferToBase64 = (buffer) => {
 
 const ensurePdfFont = async (pdf) => {
   if (!fontLoaded) {
-    const res = await fetch("/fonts/Arial.ttf");
+    const fontUrl = new URL("/fonts/Arial.ttf", window.location.origin).toString();
+    const res = await fetch(fontUrl);
+    if (!res.ok) {
+      throw new Error("FONT_LOAD_FAILED");
+    }
     const buffer = await res.arrayBuffer();
     const base64 = arrayBufferToBase64(buffer);
     pdf.addFileToVFS("Arial.ttf", base64);
-    pdf.addFont("Arial.ttf", "Arial", "normal");
+    pdf.addFont("Arial.ttf", "Arial", "normal", "Identity-H");
     fontLoaded = true;
   }
   pdf.setFont("Arial", "normal");
@@ -153,6 +157,9 @@ export default function StockTransactionsTab() {
 
       pdf.save("transactions.pdf");
     } catch (err) {
+      if (err?.message === "FONT_LOAD_FAILED") {
+        alert("Не удалось загрузить шрифт для PDF. Попробуйте обновить страницу.");
+      }
       console.error("transactions pdf error:", err);
     } finally {
       setPrinting(false);
