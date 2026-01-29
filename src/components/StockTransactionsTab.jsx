@@ -1,16 +1,18 @@
-﻿import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { API_BASE } from "../apiConfig";
+import html2canvas from "html2canvas";
+import { jsPDF } from "jspdf";
 
 const typeLabel = (row) => {
   if (row.type === "BIN_AUDIT") {
     return row.result === "DISCREPANCY"
-      ? "Контроль ячейки (расхождение)"
-      : "Контроль ячейки";
+      ? "???????? ?????? (???????????)"
+      : "???????? ??????";
   }
-  if (row.type === "INCOME") return "Приход";
-  if (row.type === "ISSUE") return "Расход";
-  if (row.type === "ADJUSTMENT") return "Корректировка";
-  if (row.type === "MOVE") return "Перемещение";
+  if (row.type === "INCOME") return "??????";
+  if (row.type === "ISSUE") return "??????";
+  if (row.type === "ADJUSTMENT") return "?????????????";
+  if (row.type === "MOVE") return "???????????";
   return row.type || "-";
 };
 
@@ -18,91 +20,12 @@ const formatLocation = (location) => {
   if (!location) return "-";
   const raw = location.code || location.name || "";
   if (!raw) return "-";
-  return raw.toUpperCase() === "RECEIVING" ? "Приемка" : raw;
+  return raw.toUpperCase() === "RECEIVING" ? "???????" : raw;
 };
 
 const formatComment = (value) => {
   if (!value) return "-";
-  return String(value).replace(/RECEIVING/gi, "Приемка");
-};
-
-const escapeHtml = (value) => {
-  if (value == null) return "";
-  return String(value)
-    .replace(/&/g, "&amp;")
-    .replace(/</g, "&lt;")
-    .replace(/>/g, "&gt;")
-    .replace(/"/g, "&quot;")
-    .replace(/'/g, "&#39;");
-};
-
-const buildPrintHtml = (rows) => {
-  const head = `<!doctype html>
-<html lang="ru">
-<head>
-<meta charset="utf-8" />
-<title>Транзакции склада</title>
-<style>
-  body { font-family: Arial, sans-serif; padding: 16px; color: #111827; }
-  h1 { font-size: 18px; margin: 0 0 12px; }
-  table { width: 100%; border-collapse: collapse; }
-  th, td { border: 1px solid #e5e7eb; padding: 6px 8px; font-size: 12px; vertical-align: top; }
-  th { background: #f9fafb; text-align: left; }
-  .muted { color: #6b7280; font-size: 11px; }
-</style>
-</head>
-<body>
-<h1>Транзакции склада</h1>
-<table>
-<thead>
-<tr>
-  <th>Дата</th>
-  <th>Тип</th>
-  <th>Товар</th>
-  <th>Ячейка</th>
-  <th>Кол-во</th>
-  <th>Кто</th>
-  <th>Комментарий</th>
-</tr>
-</thead>
-<tbody>`;
-
-  const body = rows
-    .map((row) => {
-      const date = row.createdAt
-        ? new Date(row.createdAt).toLocaleString("ru-RU")
-        : "-";
-      const type = typeLabel(row);
-      const item = row.item?.name
-        ? `${row.item.name}${row.item?.sku ? ` (${row.item.sku})` : ""}`
-        : "-";
-      const location = formatLocation(row.location);
-      const qty = row.qty != null ? row.qty : "-";
-      const user = row.user?.name || "-";
-      const comment = formatComment(row.comment);
-
-      return `
-<tr>
-  <td>${escapeHtml(date)}</td>
-  <td>${escapeHtml(type)}</td>
-  <td>${escapeHtml(item)}</td>
-  <td>${escapeHtml(location)}</td>
-  <td>${escapeHtml(qty)}</td>
-  <td>${escapeHtml(user)}</td>
-  <td>${escapeHtml(comment)}</td>
-</tr>`;
-    })
-    .join("");
-
-  const tail = `
-</tbody>
-</table>
-<p class="muted">Печать сформирована автоматически</p>
-<script>window.onload = () => setTimeout(() => window.print(), 200);</script>
-</body>
-</html>`;
-
-  return head + body + tail;
+  return String(value).replace(/RECEIVING/gi, "???????");
 };
 
 export default function StockTransactionsTab() {
@@ -110,6 +33,8 @@ export default function StockTransactionsTab() {
   const [loading, setLoading] = useState(true);
   const [items, setItems] = useState([]);
   const [error, setError] = useState("");
+  const [printing, setPrinting] = useState(false);
+  const printAreaRef = useRef(null);
 
   const authHeaders = useMemo(() => {
     const token = localStorage.getItem("token");
@@ -118,38 +43,6 @@ export default function StockTransactionsTab() {
       "Content-Type": "application/json",
     };
   }, []);
-
-  const handlePrint = () => {
-    if (!items.length) return;
-    const html = buildPrintHtml(items);
-    const iframe = document.createElement("iframe");
-    iframe.style.position = "fixed";
-    iframe.style.right = "0";
-    iframe.style.bottom = "0";
-    iframe.style.width = "0";
-    iframe.style.height = "0";
-    iframe.style.border = "0";
-    iframe.setAttribute("aria-hidden", "true");
-    iframe.srcdoc = html;
-    document.body.appendChild(iframe);
-
-    const cleanup = () => {
-      if (iframe.parentNode) {
-        iframe.parentNode.removeChild(iframe);
-      }
-    };
-
-    iframe.onload = () => {
-      const frameWindow = iframe.contentWindow;
-      if (!frameWindow) {
-        cleanup();
-        return;
-      }
-      frameWindow.focus();
-      frameWindow.print();
-      setTimeout(cleanup, 500);
-    };
-  };
 
   const load = async (searchValue) => {
     try {
@@ -165,13 +58,50 @@ export default function StockTransactionsTab() {
       const data = await res.json();
       if (!res.ok) {
         const detail = data.detail ? `: ${data.detail}` : "";
-        throw new Error((data.message || "Ошибка загрузки") + detail);
+        throw new Error((data.message || "?????? ????????") + detail);
       }
       setItems(data.items || []);
     } catch (err) {
-      setError(err.message || "Ошибка загрузки");
+      setError(err.message || "?????? ????????");
     } finally {
       setLoading(false);
+    }
+  };
+
+  const handlePrint = async () => {
+    if (!items.length || !printAreaRef.current || printing) return;
+    try {
+      setPrinting(true);
+      const canvas = await html2canvas(printAreaRef.current, {
+        scale: 2,
+        backgroundColor: "#ffffff",
+        useCORS: true,
+      });
+      const imgData = canvas.toDataURL("image/png");
+      const pdf = new jsPDF("p", "pt", "a4");
+      const pageWidth = pdf.internal.pageSize.getWidth();
+      const pageHeight = pdf.internal.pageSize.getHeight();
+      const imgWidth = pageWidth;
+      const imgHeight = (canvas.height * imgWidth) / canvas.width;
+
+      let heightLeft = imgHeight;
+      let position = 0;
+
+      pdf.addImage(imgData, "PNG", 0, position, imgWidth, imgHeight);
+      heightLeft -= pageHeight;
+
+      while (heightLeft > 0) {
+        position -= pageHeight;
+        pdf.addPage();
+        pdf.addImage(imgData, "PNG", 0, position, imgWidth, imgHeight);
+        heightLeft -= pageHeight;
+      }
+
+      pdf.save("transactions.pdf");
+    } catch (err) {
+      console.error("transactions pdf error:", err);
+    } finally {
+      setPrinting(false);
     }
   };
 
@@ -183,14 +113,14 @@ export default function StockTransactionsTab() {
   return (
     <div className="card" style={{ padding: 16 }}>
       <div style={{ display: "grid", gap: 12, marginBottom: 12 }}>
-        <div style={{ fontWeight: 700, fontSize: 18 }}>Транзакции</div>
+        <div style={{ fontWeight: 700, fontSize: 18 }}>??????????</div>
         <div style={{ fontSize: 13, color: "#64748b" }}>
-          Все действия по ячейкам: отбор, перемещение, инвентаризация, контроль.
+          ??? ???????? ?? ???????: ?????, ???????????, ??????????????, ????????.
         </div>
         <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
           <input
             className="form__input"
-            placeholder="Поиск по товару, SKU, штрих-коду, ячейке"
+            placeholder="????? ?? ??????, SKU, ?????-????, ??????"
             value={query}
             onChange={(event) => setQuery(event.target.value)}
           />
@@ -200,14 +130,15 @@ export default function StockTransactionsTab() {
             onClick={() => load(query.trim())}
             disabled={loading}
           >
-            {loading ? "Поиск..." : "Найти"}
+            {loading ? "?????..." : "?????"}
           </button>
           <button
             type="button"
             className="btn btn--secondary"
             onClick={handlePrint}
+            disabled={printing || !items.length}
           >
-            Печать
+            {printing ? "??????? PDF..." : "??????? PDF"}
           </button>
         </div>
       </div>
@@ -215,21 +146,21 @@ export default function StockTransactionsTab() {
       {error && <div className="alert alert--danger">{error}</div>}
 
       {loading ? (
-        <div style={{ padding: 12 }}>Загрузка...</div>
+        <div style={{ padding: 12 }}>????????...</div>
       ) : items.length === 0 ? (
-        <div style={{ padding: 12 }}>Нет транзакций.</div>
+        <div style={{ padding: 12 }}>??? ??????????.</div>
       ) : (
-        <div className="transactions-table">
+        <div className="transactions-table" ref={printAreaRef}>
           <table style={{ width: "100%", borderCollapse: "collapse" }}>
             <thead>
               <tr>
-                <th style={thStyle}>Дата</th>
-                <th style={thStyle}>Тип</th>
-                <th style={thStyle}>Товар</th>
-                <th style={thStyle}>Ячейка</th>
-                <th style={thStyle}>Кол-во</th>
-                <th style={thStyle}>Кто</th>
-                <th style={thStyle}>Комментарий</th>
+                <th style={thStyle}>????</th>
+                <th style={thStyle}>???</th>
+                <th style={thStyle}>?????</th>
+                <th style={thStyle}>??????</th>
+                <th style={thStyle}>???-??</th>
+                <th style={thStyle}>???</th>
+                <th style={thStyle}>???????????</th>
               </tr>
             </thead>
             <tbody>
