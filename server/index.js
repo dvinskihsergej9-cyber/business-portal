@@ -4278,14 +4278,38 @@ app.get("/api/warehouse/transactions", auth, async (req, res) => {
     const q = String(req.query.q || "").trim();
     const limit = Math.min(Number(req.query.limit) || 300, 1000);
 
+    let itemIds = [];
+    let locationIds = [];
+    if (q) {
+      const [itemRows, locationRows] = await Promise.all([
+        prisma.item.findMany({
+          where: {
+            OR: [
+              { name: { contains: q } },
+              { sku: { contains: q } },
+              { barcode: { contains: q } },
+            ],
+          },
+          select: { id: true },
+        }),
+        prisma.warehouseLocation.findMany({
+          where: {
+            OR: [{ name: { contains: q } }, { code: { contains: q } }],
+          },
+          select: { id: true },
+        }),
+      ]);
+      itemIds = itemRows.map((row) => row.id);
+      locationIds = locationRows.map((row) => row.id);
+    }
+
     const movementWhere = q
       ? {
           OR: [
-            { item: { name: { contains: q } } },
-            { item: { sku: { contains: q } } },
-            { item: { barcode: { contains: q } } },
-            { location: { name: { contains: q } } },
-            { location: { code: { contains: q } } },
+            { itemId: { in: itemIds } },
+            { locationId: { in: locationIds } },
+            { fromLocationId: { in: locationIds } },
+            { toLocationId: { in: locationIds } },
             { comment: { contains: q } },
           ],
         }
@@ -4306,7 +4330,7 @@ app.get("/api/warehouse/transactions", auth, async (req, res) => {
         where: movementWhere,
         orderBy: { createdAt: "desc" },
         take: limit,
-        include: { item: true, location: true, createdBy: true },
+        include: { item: true, createdBy: true },
       }),
       prisma.binAuditEvent.findMany({
         where: auditWhere,
@@ -4331,7 +4355,7 @@ app.get("/api/warehouse/transactions", auth, async (req, res) => {
     }
 
     const movementItems = movements.map((m) => {
-      let location = m.location;
+      let location = m.locationId ? locationMap.get(m.locationId) : null;
       if (!location && (m.fromLocationId || m.toLocationId)) {
         const fromLoc = locationMap.get(m.fromLocationId);
         const toLoc = locationMap.get(m.toLocationId);
