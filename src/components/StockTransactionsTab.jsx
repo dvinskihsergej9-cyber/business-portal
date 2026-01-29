@@ -14,6 +14,18 @@ const typeLabel = (row) => {
   return row.type || "-";
 };
 
+const formatLocation = (location) => {
+  if (!location) return "-";
+  const raw = location.code || location.name || "";
+  if (!raw) return "-";
+  return raw.toUpperCase() === "RECEIVING" ? "Приемка" : raw;
+};
+
+const formatComment = (value) => {
+  if (!value) return "-";
+  return String(value).replace(/RECEIVING/gi, "Приемка");
+};
+
 export default function StockTransactionsTab() {
   const [query, setQuery] = useState("");
   const [loading, setLoading] = useState(true);
@@ -125,7 +137,7 @@ export default function StockTransactionsTab() {
                     {row.item?.sku ? ` (${row.item.sku})` : ""}
                   </td>
                   <td data-label="location" style={tdStyle}>
-                    {row.location?.code || row.location?.name || "-"}
+                    {formatLocation(row.location)}
                   </td>
                   <td data-label="qty" style={tdStyle}>
                     {row.qty != null ? row.qty : "-"}
@@ -134,7 +146,7 @@ export default function StockTransactionsTab() {
                     {row.user?.name || "-"}
                   </td>
                   <td data-label="comment" style={tdStyle}>
-                    {row.comment || "-"}
+                    {formatComment(row.comment)}
                   </td>
                 </tr>
               ))}
