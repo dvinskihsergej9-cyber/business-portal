@@ -4143,7 +4143,7 @@ app.post(
             itemId,
             qty: delta,
             locationId,
-            comment: note || `BIN AUDIT ${session}`,
+            comment: note || `Контроль ячейки ${session}`,
             userId: req.user?.id || null,
           });
 
@@ -4507,7 +4507,7 @@ app.post("/api/warehouse/inventory/count", auth, async (req, res) => {
           itemId: item,
           qty: delta,
           locationId: location,
-          comment: comment || `TSD COUNT locationId=${location}`,
+          comment: comment || `Контроль (ТСД) ячейка ${location}`,
           userId: req.user?.id || null,
         });
       }
@@ -4555,10 +4555,10 @@ app.post("/api/warehouse/receiving", auth, async (req, res) => {
     }
 
     const commentParts = [
-      "TSD RECEIVING",
-      `locationId=${locationId}`,
-      supplierName ? `supplier=${String(supplierName).trim()}` : "",
-      docNo ? `doc=${String(docNo).trim()}` : "",
+      "Приемка (ТСД)",
+      `ячейка=${locationId}`,
+      supplierName ? `поставщик=${String(supplierName).trim()}` : "",
+      docNo ? `док=${String(docNo).trim()}` : "",
     ].filter(Boolean);
     const baseComment = commentParts.join(" ");
 
@@ -4634,7 +4634,7 @@ app.post("/api/warehouse/move", auth, async (req, res) => {
         throw err;
       }
 
-      const moveComment = comment || `TSD MOVE from=${from} to=${to}`;
+      const moveComment = comment || `Перемещение (ТСД) ${from} → ${to}`;
 
       await stockService.createMovementInTx(tx, {
         opId: opId ? `${opId}:OUT` : null,
@@ -4710,7 +4710,7 @@ app.post("/api/warehouse/putaway", auth, async (req, res) => {
         throw err;
       }
 
-      const moveComment = comment || `TSD PUTAWAY from=${from} to=${to}`;
+      const moveComment = comment || `Размещение (ТСД) ${from} → ${to}`;
 
       await stockService.createMovementInTx(tx, {
         opId: opId ? `${opId}:OUT` : null,
@@ -4771,7 +4771,7 @@ app.post("/api/warehouse/pick", auth, async (req, res) => {
     if (!itemRow) return res.status(404).json({ message: "ITEM_NOT_FOUND" });
     if (!fromLoc) return res.status(404).json({ message: "LOCATION_NOT_FOUND" });
 
-    const pickComment = comment || `TSD PICK from=${from}`;
+    const pickComment = comment || `Отбор (ТСД) из ${from}`;
     const movement = await stockService.createMovement({
       opId: opId || null,
       type: "ISSUE",
@@ -4831,7 +4831,7 @@ app.post("/api/warehouse/replen/execute", auth, async (req, res) => {
         throw err;
       }
 
-      const replComment = comment || `TSD REPLENISH from=${from} to=${to}`;
+      const replComment = comment || `Пополнение (ТСД) ${from} → ${to}`;
 
       await stockService.createMovementInTx(tx, {
         opId: opId ? `${opId}:OUT` : null,
@@ -6996,7 +6996,7 @@ app.post("/api/warehouse/receiving/:poId/confirm", auth, async (req, res) => {
           itemId,
           qty: Math.trunc(qty),
           locationId: location.id,
-          comment: `PO RECEIVING ${order.number} [PO#${order.id}]`,
+          comment: `Приемка по заказу ${order.number} [PO#${order.id}]`,
           refType: "PO",
           refId: String(order.id),
           userId: req.user?.id || null,

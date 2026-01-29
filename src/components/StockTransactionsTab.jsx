@@ -25,7 +25,16 @@ const formatLocation = (location) => {
 
 const formatComment = (value) => {
   if (!value) return "-";
-  return String(value).replace(/RECEIVING/gi, "Приемка");
+  return String(value)
+    .replace(/PO RECEIVING/gi, "Приемка по заказу")
+    .replace(/TSD RECEIVING/gi, "Приемка (ТСД)")
+    .replace(/TSD COUNT/gi, "Контроль (ТСД)")
+    .replace(/TSD PICK/gi, "Отбор (ТСД)")
+    .replace(/TSD MOVE/gi, "Перемещение (ТСД)")
+    .replace(/TSD PUTAWAY/gi, "Размещение (ТСД)")
+    .replace(/TSD REPLENISH/gi, "Пополнение (ТСД)")
+    .replace(/BIN AUDIT/gi, "Контроль ячейки")
+    .replace(/RECEIVING/gi, "Приемка");
 };
 
 let fontLoaded = false;
