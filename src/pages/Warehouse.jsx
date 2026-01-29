@@ -176,7 +176,7 @@ export default function Warehouse() {
 
 
 
-  const [section, setSection] = useState("requests");
+  const [section, setSection] = useState("");
 
   const requestsRef = useRef(null);
   const tasksRef = useRef(null);
@@ -283,6 +283,9 @@ export default function Warehouse() {
   const [suppliersTab, setSuppliersTab] = useState("suppliers"); // suppliers | orders
 
   useEffect(() => {
+    if (!section) {
+      return;
+    }
     if (section === "inventory") {
       setInventoryTab("stock");
       return;
