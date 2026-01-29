@@ -1,6 +1,6 @@
 
 
-import { useEffect, useMemo, useState, Fragment } from "react";
+import { useEffect, useMemo, useRef, useState, Fragment } from "react";
 
 import { API_BASE } from "../apiConfig";
 import { useAuth } from "../context/AuthContext";
@@ -178,6 +178,14 @@ export default function Warehouse() {
 
   const [section, setSection] = useState("requests");
 
+  const requestsRef = useRef(null);
+  const tasksRef = useRef(null);
+  const inventoryRef = useRef(null);
+  const locationsRef = useRef(null);
+  const queueRef = useRef(null);
+  const tsdRef = useRef(null);
+  const transactionsRef = useRef(null);
+
   const [requestsTab, setRequestsTab] = useState("new"); // 'new' | 'journal'
 
 
@@ -291,6 +299,25 @@ export default function Warehouse() {
     if (section === "suppliers") {
       setInventoryTab("suppliers");
       setSuppliersTab((prev) => prev || "suppliers");
+    }
+  }, [section]);
+
+  useEffect(() => {
+    const refMap = {
+      requests: requestsRef,
+      tasks: tasksRef,
+      inventory: inventoryRef,
+      items: inventoryRef,
+      movement: inventoryRef,
+      suppliers: inventoryRef,
+      locations: locationsRef,
+      queue: queueRef,
+      tsd: tsdRef,
+      transactions: transactionsRef,
+    };
+    const target = refMap[section];
+    if (target?.current) {
+      target.current.scrollIntoView({ behavior: "smooth", block: "start" });
     }
   }, [section]);
 
@@ -2433,7 +2460,7 @@ export default function Warehouse() {
 
       {section === "requests" && (
 
-        <div className="requests-section">
+        <div className="requests-section" ref={requestsRef}>
 
           {/* Вкладки внутри раздела заявок */}
 
@@ -2897,7 +2924,7 @@ export default function Warehouse() {
 
       {section === "tasks" && (
 
-        <div className="tasks-section">
+        <div className="tasks-section" ref={tasksRef}>
 
           {/* Вкладки: Новая задача / Журнал задач */}
 
@@ -3521,7 +3548,7 @@ export default function Warehouse() {
 
       {section === "locations" && (
 
-        <div className="locations-section">
+        <div className="locations-section" ref={locationsRef}>
 
           <WarehouseLocationsPanel />
 
@@ -3533,7 +3560,7 @@ export default function Warehouse() {
 
       {section === "queue" && (
 
-        <div className="queue-section">
+        <div className="queue-section" ref={queueRef}>
 
           <SupplierTrucksQueueTab />
 
@@ -3545,7 +3572,7 @@ export default function Warehouse() {
 
       {section === "tsd" && (
 
-  <div className="tsd-section">
+  <div className="tsd-section" ref={tsdRef}>
 
     {/* сюда вынесем отдельный компонент, чтобы не раздувать файл */}
 
@@ -3556,7 +3583,7 @@ export default function Warehouse() {
 )}
 
       {section === "transactions" && (
-        <div className="inventory-section">
+        <div className="inventory-section" ref={transactionsRef}>
           <StockTransactionsTab />
         </div>
       )}
@@ -3568,7 +3595,7 @@ export default function Warehouse() {
 
       {["inventory","items","movement","suppliers"].includes(section) && (
 
-        <div className="inventory-section">
+        <div className="inventory-section" ref={inventoryRef}>
 
           {/* Внутренние вкладки */}
 
