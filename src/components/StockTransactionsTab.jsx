@@ -1,7 +1,7 @@
 ﻿import { useEffect, useMemo, useRef, useState } from "react";
 import { API_BASE } from "../apiConfig";
-import html2canvas from "html2canvas";
 import { jsPDF } from "jspdf";
+import autoTable from "jspdf-autotable";
 
 const typeLabel = (row) => {
   if (row.type === "BIN_AUDIT") {
@@ -72,30 +72,50 @@ export default function StockTransactionsTab() {
     if (!items.length || !printAreaRef.current || printing) return;
     try {
       setPrinting(true);
-      const canvas = await html2canvas(printAreaRef.current, {
-        scale: 2,
-        backgroundColor: "#ffffff",
-        useCORS: true,
+      const pdf = new jsPDF("l", "pt", "a4");
+      pdf.setFont("helvetica", "normal");
+      pdf.setFontSize(12);
+      pdf.text("Транзакции склада", 40, 28);
+
+      const rows = items.map((row) => [
+        row.createdAt ? new Date(row.createdAt).toLocaleString("ru-RU") : "-",
+        typeLabel(row),
+        row.item?.name
+          ? `${row.item.name}${row.item?.sku ? ` (${row.item.sku})` : ""}`
+          : "-",
+        formatLocation(row.location),
+        row.qty != null ? String(row.qty) : "-",
+        row.user?.name || "-",
+        formatComment(row.comment),
+      ]);
+
+      autoTable(pdf, {
+        startY: 38,
+        head: [["Дата", "Тип", "Товар", "Ячейка", "Кол-во", "Кто", "Комментарий"]],
+        body: rows,
+        theme: "grid",
+        styles: {
+          fontSize: 8,
+          cellPadding: 3,
+          overflow: "linebreak",
+          valign: "top",
+        },
+        headStyles: {
+          fillColor: [245, 246, 248],
+          textColor: [15, 23, 42],
+          fontStyle: "bold",
+        },
+        columnStyles: {
+          0: { cellWidth: 90 },
+          1: { cellWidth: 90 },
+          2: { cellWidth: 260 },
+          3: { cellWidth: 70 },
+          4: { cellWidth: 55 },
+          5: { cellWidth: 95 },
+          6: { cellWidth: 190 },
+        },
+        rowPageBreak: "avoid",
       });
-      const imgData = canvas.toDataURL("image/png");
-      const pdf = new jsPDF("p", "pt", "a4");
-      const pageWidth = pdf.internal.pageSize.getWidth();
-      const pageHeight = pdf.internal.pageSize.getHeight();
-      const imgWidth = pageWidth;
-      const imgHeight = (canvas.height * imgWidth) / canvas.width;
-
-      let heightLeft = imgHeight;
-      let position = 0;
-
-      pdf.addImage(imgData, "PNG", 0, position, imgWidth, imgHeight);
-      heightLeft -= pageHeight;
-
-      while (heightLeft > 0) {
-        position -= pageHeight;
-        pdf.addPage();
-        pdf.addImage(imgData, "PNG", 0, position, imgWidth, imgHeight);
-        heightLeft -= pageHeight;
-      }
 
       pdf.save("transactions.pdf");
     } catch (err) {
