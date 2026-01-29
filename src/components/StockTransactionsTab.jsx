@@ -4,13 +4,13 @@ import { API_BASE } from "../apiConfig";
 const typeLabel = (row) => {
   if (row.type === "BIN_AUDIT") {
     return row.result === "DISCREPANCY"
-      ? "\u041a\u043e\u043d\u0442\u0440\u043e\u043b\u044c \u044f\u0447\u0435\u0439\u043a\u0438 (\u0440\u0430\u0441\u0445\u043e\u0436\u0434\u0435\u043d\u0438\u0435)"
-      : "\u041a\u043e\u043d\u0442\u0440\u043e\u043b\u044c \u044f\u0447\u0435\u0439\u043a\u0438";
+      ? "???????? ?????? (???????????)"
+      : "???????? ??????";
   }
-  if (row.type === "INCOME") return "\u041f\u043e\u0441\u0442\u0443\u043f\u043b\u0435\u043d\u0438\u0435";
-  if (row.type === "ISSUE") return "\u041e\u0442\u0431\u043e\u0440";
-  if (row.type === "ADJUSTMENT") return "\u041a\u043e\u0440\u0440\u0435\u043a\u0442\u0438\u0440\u043e\u0432\u043a\u0430";
-  if (row.type === "MOVE") return "\u041f\u0435\u0440\u0435\u043c\u0435\u0449\u0435\u043d\u0438\u0435";
+  if (row.type === "INCOME") return "???????????";
+  if (row.type === "ISSUE") return "?????";
+  if (row.type === "ADJUSTMENT") return "?????????????";
+  if (row.type === "MOVE") return "???????????";
   return row.type || "-";
 };
 
@@ -41,11 +41,12 @@ export default function StockTransactionsTab() {
       );
       const data = await res.json();
       if (!res.ok) {
-        throw new Error(data.message || "\u041e\u0448\u0438\u0431\u043a\u0430 \u0437\u0430\u0433\u0440\u0443\u0437\u043a\u0438");
+        const detail = data.detail ? `: ${data.detail}` : "";
+        throw new Error((data.message || "?????? ????????") + detail);
       }
       setItems(data.items || []);
     } catch (err) {
-      setError(err.message || "\u041e\u0448\u0438\u0431\u043a\u0430 \u0437\u0430\u0433\u0440\u0443\u0437\u043a\u0438");
+      setError(err.message || "?????? ????????");
     } finally {
       setLoading(false);
     }
@@ -59,14 +60,14 @@ export default function StockTransactionsTab() {
   return (
     <div className="card" style={{ padding: 16 }}>
       <div style={{ display: "grid", gap: 12, marginBottom: 12 }}>
-        <div style={{ fontWeight: 700, fontSize: 18 }}>{"\u0422\u0440\u0430\u043d\u0437\u0430\u043a\u0446\u0438\u0438"}</div>
+        <div style={{ fontWeight: 700, fontSize: 18 }}>??????????</div>
         <div style={{ fontSize: 13, color: "#64748b" }}>
-          {"\u0412\u0441\u0435 \u0434\u0435\u0439\u0441\u0442\u0432\u0438\u044f \u043f\u043e \u044f\u0447\u0435\u0439\u043a\u0430\u043c: \u043e\u0442\u0431\u043e\u0440, \u043f\u0435\u0440\u0435\u043c\u0435\u0449\u0435\u043d\u0438\u0435, \u0438\u043d\u0432\u0435\u043d\u0442\u0430\u0440\u0438\u0437\u0430\u0446\u0438\u044f, \u043a\u043e\u043d\u0442\u0440\u043e\u043b\u044c."}
+          ??? ???????? ?? ???????: ?????, ???????????, ??????????????, ????????.
         </div>
         <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
           <input
             className="form__input"
-            placeholder={"\u041f\u043e\u0438\u0441\u043a \u043f\u043e \u0442\u043e\u0432\u0430\u0440\u0443, SKU, \u0448\u0442\u0440\u0438\u0445-\u043a\u043e\u0434\u0443, \u044f\u0447\u0435\u0439\u043a\u0435"}
+            placeholder="????? ?? ??????, SKU, ?????-????, ??????"
             value={query}
             onChange={(event) => setQuery(event.target.value)}
           />
@@ -76,14 +77,14 @@ export default function StockTransactionsTab() {
             onClick={() => load(query.trim())}
             disabled={loading}
           >
-            {loading ? "\u0417\u0430\u0433\u0440\u0443\u0437\u043a\u0430..." : "\u041d\u0430\u0439\u0442\u0438"}
+            {loading ? "????????..." : "?????"}
           </button>
           <button
             type="button"
             className="btn btn--secondary"
             onClick={() => window.print()}
           >
-            {"\u041f\u0435\u0447\u0430\u0442\u044c"}
+            ??????
           </button>
         </div>
       </div>
@@ -91,21 +92,21 @@ export default function StockTransactionsTab() {
       {error && <div className="alert alert--danger">{error}</div>}
 
       {loading ? (
-        <div style={{ padding: 12 }}>{"\u0417\u0430\u0433\u0440\u0443\u0437\u043a\u0430..."}</div>
+        <div style={{ padding: 12 }}>????????...</div>
       ) : items.length === 0 ? (
-        <div style={{ padding: 12 }}>{"\u041d\u0435\u0442 \u0442\u0440\u0430\u043d\u0437\u0430\u043a\u0446\u0438\u0439."}</div>
+        <div style={{ padding: 12 }}>??? ??????????.</div>
       ) : (
         <div className="transactions-table">
           <table style={{ width: "100%", borderCollapse: "collapse" }}>
             <thead>
               <tr>
-                <th style={thStyle}>{"\u0414\u0430\u0442\u0430"}</th>
-                <th style={thStyle}>{"\u041e\u043f\u0435\u0440\u0430\u0446\u0438\u044f"}</th>
-                <th style={thStyle}>{"\u0422\u043e\u0432\u0430\u0440"}</th>
-                <th style={thStyle}>{"\u042f\u0447\u0435\u0439\u043a\u0430"}</th>
-                <th style={thStyle}>{"\u041a\u043e\u043b-\u0432\u043e"}</th>
-                <th style={thStyle}>{"\u041a\u0442\u043e"}</th>
-                <th style={thStyle}>{"\u041a\u043e\u043c\u043c\u0435\u043d\u0442\u0430\u0440\u0438\u0439"}</th>
+                <th style={thStyle}>????</th>
+                <th style={thStyle}>????????</th>
+                <th style={thStyle}>?????</th>
+                <th style={thStyle}>??????</th>
+                <th style={thStyle}>???-??</th>
+                <th style={thStyle}>???</th>
+                <th style={thStyle}>???????????</th>
               </tr>
             </thead>
             <tbody>
