@@ -38,15 +38,10 @@ const formatComment = (value) => {
     .replace(/RECEIVING/gi, "Приемка");
 };
 
-let fontLoaded = false;
-
-
 const ensurePdfFont = async (pdf) => {
-  if (!fontLoaded) {
-    pdf.addFileToVFS("Arial.ttf", ARIAL_TTF_BASE64);
-    pdf.addFont("Arial.ttf", "Arial", "normal", "Identity-H");
-    fontLoaded = true;
-  }
+  // jsPDF VFS is per-instance, so we must register the font every time.
+  pdf.addFileToVFS("Arial.ttf", ARIAL_TTF_BASE64);
+  pdf.addFont("Arial.ttf", "Arial", "normal", "Identity-H");
   pdf.setFont("Arial", "normal");
 };
 
