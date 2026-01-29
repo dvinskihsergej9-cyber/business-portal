@@ -26,6 +26,7 @@ const WAREHOUSE_EMOJI = {
   inventory: "🧾",
   items: "📚",
   movement: "🔁",
+  transactions: "🧾",
   locations: "📍",
   queue: "🚚",
   tsd: "📱",
@@ -44,6 +45,7 @@ const WAREHOUSE_ICON_FALLBACK = {
   inventory: "INV",
   items: "ITEM",
   movement: "MOVE",
+  transactions: "TRX",
   locations: "LOC",
   queue: "QUEUE",
   tsd: "TSD",
@@ -2278,6 +2280,25 @@ export default function Warehouse() {
             type="button"
             className={
               "warehouse-card" +
+              (section === "transactions" ? " warehouse-card--active" : "")
+            }
+            onClick={() => setSection("transactions")}
+          >
+            <div className="warehouse-card__icon">
+              <WarehouseTileIcon name="transactions" />
+            </div>
+            <div className="warehouse-card__body">
+              <div className="warehouse-card__title">Транзакции</div>
+              <div className="warehouse-card__subtitle">
+                Все действия по ячейкам и товару.
+              </div>
+            </div>
+          </button>
+
+          <button
+            type="button"
+            className={
+              "warehouse-card" +
               (section === "suppliers" ? " warehouse-card--active" : "")
             }
             onClick={() => setSection("suppliers")}
@@ -3534,6 +3555,13 @@ export default function Warehouse() {
 
 )}
 
+      {section === "transactions" && (
+        <div className="inventory-section">
+          <StockTransactionsTab />
+        </div>
+      )}
+
+
 
 
       {/* ====== ОСТАТКИ / ИНВЕНТАРИЗАЦИЯ / ЗАКУПКИ ====== */}
@@ -3564,15 +3592,6 @@ export default function Warehouse() {
                 onClick={() => setMovementTab("movementsHistory")}
               >
                 История движений
-              </button>
-              <button
-                type="button"
-                className={
-                  "tabs__btn " + (movementTab === "transactions" ? "tabs__btn--active" : "")
-                }
-                onClick={() => setMovementTab("transactions")}
-              >
-                Транзакции
               </button>
             </div>
           )}
@@ -4141,8 +4160,6 @@ export default function Warehouse() {
           {/* ===== Вкладка 4: История движений (1С) ===== */}
 
           {inventoryTab === "movement" && movementTab === "movementsHistory" && <StockMovementsHistoryTab />}
-
-          {inventoryTab === "movement" && movementTab === "transactions" && <StockTransactionsTab />}
 
           {/* ===== Вкладка 5: Поставщики ===== */}
           {inventoryTab === "suppliers" && suppliersTab === "suppliers" && (
