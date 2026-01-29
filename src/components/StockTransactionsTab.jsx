@@ -1,16 +1,16 @@
-import { useEffect, useMemo, useState } from "react";
+﻿import { useEffect, useMemo, useState } from "react";
 import { API_BASE } from "../apiConfig";
 
 const typeLabel = (row) => {
   if (row.type === "BIN_AUDIT") {
     return row.result === "DISCREPANCY"
-      ? "???????? ?????? (???????????)"
-      : "???????? ??????";
+      ? "Контроль ячейки (расхождение)"
+      : "Контроль ячейки";
   }
-  if (row.type === "INCOME") return "???????????";
-  if (row.type === "ISSUE") return "?????";
-  if (row.type === "ADJUSTMENT") return "?????????????";
-  if (row.type === "MOVE") return "???????????";
+  if (row.type === "INCOME") return "Приход";
+  if (row.type === "ISSUE") return "Расход";
+  if (row.type === "ADJUSTMENT") return "Корректировка";
+  if (row.type === "MOVE") return "Перемещение";
   return row.type || "-";
 };
 
@@ -42,11 +42,11 @@ export default function StockTransactionsTab() {
       const data = await res.json();
       if (!res.ok) {
         const detail = data.detail ? `: ${data.detail}` : "";
-        throw new Error((data.message || "?????? ????????") + detail);
+        throw new Error((data.message || "Ошибка загрузки") + detail);
       }
       setItems(data.items || []);
     } catch (err) {
-      setError(err.message || "?????? ????????");
+      setError(err.message || "Ошибка загрузки");
     } finally {
       setLoading(false);
     }
@@ -60,14 +60,14 @@ export default function StockTransactionsTab() {
   return (
     <div className="card" style={{ padding: 16 }}>
       <div style={{ display: "grid", gap: 12, marginBottom: 12 }}>
-        <div style={{ fontWeight: 700, fontSize: 18 }}>??????????</div>
+        <div style={{ fontWeight: 700, fontSize: 18 }}>Транзакции</div>
         <div style={{ fontSize: 13, color: "#64748b" }}>
-          ??? ???????? ?? ???????: ?????, ???????????, ??????????????, ????????.
+          Все действия по ячейкам: отбор, перемещение, инвентаризация, контроль.
         </div>
         <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
           <input
             className="form__input"
-            placeholder="????? ?? ??????, SKU, ?????-????, ??????"
+            placeholder="Поиск по товару, SKU, штрих-коду, ячейке"
             value={query}
             onChange={(event) => setQuery(event.target.value)}
           />
@@ -77,14 +77,14 @@ export default function StockTransactionsTab() {
             onClick={() => load(query.trim())}
             disabled={loading}
           >
-            {loading ? "????????..." : "?????"}
+            {loading ? "Поиск..." : "Найти"}
           </button>
           <button
             type="button"
             className="btn btn--secondary"
             onClick={() => window.print()}
           >
-            ??????
+            Печать
           </button>
         </div>
       </div>
@@ -92,21 +92,21 @@ export default function StockTransactionsTab() {
       {error && <div className="alert alert--danger">{error}</div>}
 
       {loading ? (
-        <div style={{ padding: 12 }}>????????...</div>
+        <div style={{ padding: 12 }}>Загрузка...</div>
       ) : items.length === 0 ? (
-        <div style={{ padding: 12 }}>??? ??????????.</div>
+        <div style={{ padding: 12 }}>Нет транзакций.</div>
       ) : (
         <div className="transactions-table">
           <table style={{ width: "100%", borderCollapse: "collapse" }}>
             <thead>
               <tr>
-                <th style={thStyle}>????</th>
-                <th style={thStyle}>????????</th>
-                <th style={thStyle}>?????</th>
-                <th style={thStyle}>??????</th>
-                <th style={thStyle}>???-??</th>
-                <th style={thStyle}>???</th>
-                <th style={thStyle}>???????????</th>
+                <th style={thStyle}>Дата</th>
+                <th style={thStyle}>Тип</th>
+                <th style={thStyle}>Товар</th>
+                <th style={thStyle}>Ячейка</th>
+                <th style={thStyle}>Кол-во</th>
+                <th style={thStyle}>Кто</th>
+                <th style={thStyle}>Комментарий</th>
               </tr>
             </thead>
             <tbody>
