@@ -4278,93 +4278,21 @@ app.get("/api/warehouse/transactions", auth, async (req, res) => {
     const q = String(req.query.q || "").trim();
     const limit = Math.min(Number(req.query.limit) || 300, 1000);
 
-    let itemIds = [];
-    let locationIds = [];
-    if (q) {
-      const [itemRows, locationRows] = await Promise.all([
-        prisma.item.findMany({
-          where: {
-            OR: [
-              { name: { contains: q } },
-              { sku: { contains: q } },
-              { barcode: { contains: q } },
-            ],
-          },
-          select: { id: true },
-        }),
-        prisma.warehouseLocation.findMany({
-          where: {
-            OR: [{ name: { contains: q } }, { code: { contains: q } }],
-          },
-          select: { id: true },
-        }),
-      ]);
-      itemIds = itemRows.map((row) => row.id);
-      locationIds = locationRows.map((row) => row.id);
-    }
-
-    const movementWhere = q
-      ? {
-          OR: [
-            { itemId: { in: itemIds } },
-            { locationId: { in: locationIds } },
-            { fromLocationId: { in: locationIds } },
-            { toLocationId: { in: locationIds } },
-            { comment: { contains: q } },
-          ],
-        }
-      : {};
-
-    const auditWhere = q
-      ? {
-          OR: [
-            { location: { name: { contains: q } } },
-            { location: { code: { contains: q } } },
-            { session: { startedBy: { name: { contains: q } } } },
-          ],
-        }
-      : {};
-
     const [movements, audits] = await Promise.all([
       prisma.stockMovement.findMany({
-        where: movementWhere,
         orderBy: { createdAt: "desc" },
         take: limit,
         include: { item: true, createdBy: true },
       }),
       prisma.binAuditEvent.findMany({
-        where: auditWhere,
         orderBy: { checkedAt: "desc" },
         take: limit,
         include: { location: true, session: { include: { startedBy: true } } },
       }),
     ]);
 
-    const locationIds = new Set();
-    movements.forEach((m) => {
-      if (m.locationId) locationIds.add(m.locationId);
-      if (m.fromLocationId) locationIds.add(m.fromLocationId);
-      if (m.toLocationId) locationIds.add(m.toLocationId);
-    });
-    const locationMap = new Map();
-    if (locationIds.size) {
-      const list = await prisma.warehouseLocation.findMany({
-        where: { id: { in: Array.from(locationIds) } },
-      });
-      list.forEach((loc) => locationMap.set(loc.id, loc));
-    }
-
-    const movementItems = movements.map((m) => {
-      let location = m.locationId ? locationMap.get(m.locationId) : null;
-      if (!location && (m.fromLocationId || m.toLocationId)) {
-        const fromLoc = locationMap.get(m.fromLocationId);
-        const toLoc = locationMap.get(m.toLocationId);
-        const fromLabel = fromLoc?.code || fromLoc?.name || m.fromLocationId || "-";
-        const toLabel = toLoc?.code || toLoc?.name || m.toLocationId || "-";
-        location = { name: `${fromLabel} -> ${toLabel}`, code: null };
-      }
-      const qty =
-        m.type === "ISSUE" ? -Number(m.quantity) : Number(m.quantity);
+    let movementItems = movements.map((m) => {
+      const qty = m.type === "ISSUE" ? -Number(m.quantity) : Number(m.quantity);
       return {
         id: `mov-${m.id}`,
         type: m.type,
@@ -4377,14 +4305,31 @@ app.get("/api/warehouse/transactions", auth, async (req, res) => {
               barcode: m.item.barcode,
             }
           : null,
-        location: location
-          ? { id: location.id, name: location.name, code: location.code }
-          : null,
+        location: m.locationId ? { id: m.locationId, name: String(m.locationId), code: null } : null,
         qty: Number.isFinite(qty) ? qty : null,
         user: m.createdBy ? { id: m.createdBy.id, name: m.createdBy.name } : null,
         comment: m.comment || null,
       };
     });
+
+    const locationIds = Array.from(
+      new Set(movements.map((m) => m.locationId).filter(Boolean))
+    );
+    if (locationIds.length) {
+      const locs = await prisma.warehouseLocation.findMany({
+        where: { id: { in: locationIds } },
+      });
+      const map = new Map(locs.map((l) => [l.id, l]));
+      movementItems = movementItems.map((row) => {
+        if (!row.location) return row;
+        const loc = map.get(row.location.id);
+        if (!loc) return row;
+        return {
+          ...row,
+          location: { id: loc.id, name: loc.name, code: loc.code },
+        };
+      });
+    }
 
     const auditItems = audits.map((a) => ({
       id: `audit-${a.id}`,
@@ -4402,13 +4347,30 @@ app.get("/api/warehouse/transactions", auth, async (req, res) => {
       comment: a.note || null,
     }));
 
-    const combined = [...movementItems, ...auditItems]
+    let combined = [...movementItems, ...auditItems]
       .sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt))
       .slice(0, limit);
 
+    if (q) {
+      const qLower = q.toLowerCase();
+      combined = combined.filter((row) => {
+        const item = row.item || {};
+        const loc = row.location || {};
+        return (
+          (item.name || "").toLowerCase().includes(qLower) ||
+          (item.sku || "").toLowerCase().includes(qLower) ||
+          (item.barcode || "").toLowerCase().includes(qLower) ||
+          (loc.name || "").toLowerCase().includes(qLower) ||
+          (loc.code || "").toLowerCase().includes(qLower) ||
+          (row.comment || "").toLowerCase().includes(qLower)
+        );
+      });
+    }
+
     res.json({ items: combined });
   } catch (err) {
-    console.error("transactions list error:", err);\n    res.status(500).json({ message: "TRANSACTIONS_LIST_ERROR", detail: String(err) });
+    console.error("transactions list error:", err);
+    res.status(500).json({ message: "TRANSACTIONS_LIST_ERROR", detail: String(err) });
   }
 });
 
