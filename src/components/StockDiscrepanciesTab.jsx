@@ -2,7 +2,8 @@ import { useEffect, useMemo, useState } from "react";
 import { API_BASE } from "../apiConfig";
 import { useAuth } from "../context/AuthContext";
 
-const statusLabel = (value) => (value === "CLOSED" ? "РђСЂС…РёРІ" : "РћС‚РєСЂС‹С‚С‹Рµ");
+const statusLabel = (value) =>
+  value === "CLOSED" ? "\u0410\u0440\u0445\u0438\u0432" : "\u041e\u0442\u043a\u0440\u044b\u0442\u044b\u0435";
 
 export default function StockDiscrepanciesTab() {
   const { user } = useAuth();
@@ -32,11 +33,11 @@ export default function StockDiscrepanciesTab() {
       );
       const data = await res.json();
       if (!res.ok) {
-        throw new Error(data.message || "РћС€РёР±РєР° Р·Р°РіСЂСѓР·РєРё");
+        throw new Error(data.message || "\u041e\u0448\u0438\u0431\u043a\u0430 \u0437\u0430\u0433\u0440\u0443\u0437\u043a\u0438");
       }
       setItems(data.items || []);
     } catch (err) {
-      setError(err.message || "РћС€РёР±РєР° Р·Р°РіСЂСѓР·РєРё");
+      setError(err.message || "\u041e\u0448\u0438\u0431\u043a\u0430 \u0437\u0430\u0433\u0440\u0443\u0437\u043a\u0438");
     } finally {
       setLoading(false);
     }
@@ -61,13 +62,13 @@ export default function StockDiscrepanciesTab() {
       );
       const data = await res.json();
       if (!res.ok) {
-        throw new Error(data.message || "РќРµ СѓРґР°Р»РѕСЃСЊ Р·Р°РєСЂС‹С‚СЊ");
+        throw new Error(data.message || "\u041d\u0435 \u0443\u0434\u0430\u043b\u043e\u0441\u044c \u0437\u0430\u043a\u0440\u044b\u0442\u044c");
       }
       setCloseTarget(null);
       setCloseNote("");
       await load();
     } catch (err) {
-      setError(err.message || "РќРµ СѓРґР°Р»РѕСЃСЊ Р·Р°РєСЂС‹С‚СЊ");
+      setError(err.message || "\u041d\u0435 \u0443\u0434\u0430\u043b\u043e\u0441\u044c \u0437\u0430\u043a\u0440\u044b\u0442\u044c");
     } finally {
       setClosing(false);
     }
@@ -77,7 +78,7 @@ export default function StockDiscrepanciesTab() {
     <div className="card discrepancies-card" style={{ padding: 16 }}>
       <div className="discrepancies-header">
         <h3 className="discrepancies-title" style={{ margin: 0 }}>
-          РљРѕСЃСЏРєРё
+          {"\u041a\u043e\u0441\u044f\u043a\u0438"}
         </h3>
         <div className="discrepancies-tabs">
           {["OPEN", "CLOSED"].map((value) => (
@@ -103,21 +104,21 @@ export default function StockDiscrepanciesTab() {
       )}
 
       {loading ? (
-        <div style={{ padding: 16 }}>Р—Р°РіСЂСѓР·РєР°...</div>
+        <div style={{ padding: 16 }}>{"\u0417\u0430\u0433\u0440\u0443\u0437\u043a\u0430..."}</div>
       ) : items.length === 0 ? (
-        <div style={{ padding: 16 }}>РќРµС‚ СЂР°СЃС…РѕР¶РґРµРЅРёР№.</div>
+        <div style={{ padding: 16 }}>{"\u041d\u0435\u0442 \u0440\u0430\u0441\u0445\u043e\u0436\u0434\u0435\u043d\u0438\u0439."}</div>
       ) : (
         <div className="discrepancies-table">
           <table style={{ width: "100%", borderCollapse: "collapse" }}>
             <thead>
               <tr>
-                <th style={thStyle}>Р”Р°С‚Р°</th>
-                <th style={thStyle}>РЇС‡РµР№РєР°</th>
-                <th style={thStyle}>РўРѕРІР°СЂ</th>
-                <th style={thStyle}>Р‘С‹Р»Рѕ</th>
-                <th style={thStyle}>Р¤Р°РєС‚</th>
-                <th style={thStyle}>О”</th>
-                <th style={thStyle}>РЎРµСЃСЃРёСЏ</th>
+                <th style={thStyle}>{"\u0414\u0430\u0442\u0430"}</th>
+                <th style={thStyle}>{"\u042f\u0447\u0435\u0439\u043a\u0430"}</th>
+                <th style={thStyle}>{"\u0422\u043e\u0432\u0430\u0440"}</th>
+                <th style={thStyle}>{"\u0411\u044b\u043b\u043e"}</th>
+                <th style={thStyle}>{"\u0424\u0430\u043a\u0442"}</th>
+                <th style={thStyle}>{"\u0394"}</th>
+                <th style={thStyle}>{"\u0421\u0435\u0441\u0441\u0438\u044f"}</th>
                 <th style={thStyle}></th>
               </tr>
             </thead>
@@ -144,7 +145,7 @@ export default function StockDiscrepanciesTab() {
                               <div key={pick.id}>
                                 {pick.user?.name || "-"}{" "}
                                 {pick.createdAt
-                                  ? `— ${new Date(pick.createdAt).toLocaleString("ru-RU")}`
+                                  ? `? ${new Date(pick.createdAt).toLocaleString("ru-RU")}`
                                   : ""}
                                 {pick.qty != null ? `, \u043a\u043e\u043b-\u0432\u043e ${pick.qty}` : ""}
                               </div>
@@ -172,7 +173,7 @@ export default function StockDiscrepanciesTab() {
                         className="btn btn--secondary"
                         onClick={() => setCloseTarget(row)}
                       >
-                        Р—Р°РєСЂС‹С‚СЊ
+                        {"\u0417\u0430\u043a\u0440\u044b\u0442\u044c"}
                       </button>
                     )}
                   </td>
@@ -186,9 +187,9 @@ export default function StockDiscrepanciesTab() {
       {closeTarget && (
         <div style={modalOverlay}>
           <div style={modalPanel}>
-            <h4 style={{ marginTop: 0 }}>Р—Р°РєСЂС‹С‚СЊ СЂР°СЃС…РѕР¶РґРµРЅРёРµ</h4>
+            <h4 style={{ marginTop: 0 }}>{"\u0417\u0430\u043a\u0440\u044b\u0442\u044c \u0440\u0430\u0441\u0445\u043e\u0436\u0434\u0435\u043d\u0438\u0435"}</h4>
             <p style={{ marginTop: 0 }}>
-              РЈРєР°Р¶РёС‚Рµ РїСЂРёС‡РёРЅСѓ РёР»Рё РєРѕРјРјРµРЅС‚Р°СЂРёР№ Рє Р·Р°РєСЂС‹С‚РёСЋ.
+              {"\u0423\u043a\u0430\u0436\u0438\u0442\u0435 \u043f\u0440\u0438\u0447\u0438\u043d\u0443 \u0438\u043b\u0438 \u043a\u043e\u043c\u043c\u0435\u043d\u0442\u0430\u0440\u0438\u0439 \u043a \u0437\u0430\u043a\u0440\u044b\u0442\u0438\u044e."}
             </p>
             <textarea
               style={modalTextarea}
@@ -205,7 +206,7 @@ export default function StockDiscrepanciesTab() {
                   setCloseNote("");
                 }}
               >
-                РћС‚РјРµРЅР°
+                {"\u041e\u0442\u043c\u0435\u043d\u0430"}
               </button>
               <button
                 type="button"
@@ -213,7 +214,7 @@ export default function StockDiscrepanciesTab() {
                 onClick={handleClose}
                 disabled={closing}
               >
-                {closing ? "РЎРѕС…СЂР°РЅРµРЅРёРµ..." : "Р—Р°РєСЂС‹С‚СЊ"}
+                {closing ? "\u0421\u043e\u0445\u0440\u0430\u043d\u0435\u043d\u0438\u0435..." : "\u0417\u0430\u043a\u0440\u044b\u0442\u044c"}
               </button>
             </div>
           </div>
