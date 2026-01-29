@@ -12,6 +12,7 @@ import PurchaseOrderModal from "../components/PurchaseOrderModal";
 import PurchaseOrderReceiveModal from "../components/PurchaseOrderReceiveModal";
 import StockAuditTab from "../components/StockAuditTab";
 import StockMovementsHistoryTab from "../components/StockMovementsHistoryTab";
+import StockTransactionsTab from "../components/StockTransactionsTab";
 import SupplierTrucksQueueTab from "../components/SupplierTrucksQueueTab";
 import MobileTsdTab from "../components/MobileTsdTab";
 import WarehouseLocationsPanel from "../components/WarehouseLocationsPanel";
@@ -3564,6 +3565,15 @@ export default function Warehouse() {
               >
                 История движений
               </button>
+              <button
+                type="button"
+                className={
+                  "tabs__btn " + (movementTab === "transactions" ? "tabs__btn--active" : "")
+                }
+                onClick={() => setMovementTab("transactions")}
+              >
+                Транзакции
+              </button>
             </div>
           )}
 
@@ -4131,6 +4141,8 @@ export default function Warehouse() {
           {/* ===== Вкладка 4: История движений (1С) ===== */}
 
           {inventoryTab === "movement" && movementTab === "movementsHistory" && <StockMovementsHistoryTab />}
+
+          {inventoryTab === "movement" && movementTab === "transactions" && <StockTransactionsTab />}
 
           {/* ===== Вкладка 5: Поставщики ===== */}
           {inventoryTab === "suppliers" && suppliersTab === "suppliers" && (

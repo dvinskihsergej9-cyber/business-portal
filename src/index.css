@@ -1936,6 +1936,87 @@ input[type="number"] {
   .movements-history-table .movements-history-row td[data-label="comment"]::before {
     content: "Комментарий";
   }
+
+  .transactions-table {
+    border: none;
+    background: transparent;
+    overflow: visible;
+  }
+
+  .transactions-table table {
+    min-width: 0;
+    width: 100%;
+    border-spacing: 0;
+  }
+
+  .transactions-table thead {
+    display: none;
+  }
+
+  .transactions-table tbody {
+    display: grid;
+    gap: 10px;
+  }
+
+  .transactions-table .transactions-row {
+    display: grid;
+    gap: 6px;
+    border: 1px solid rgba(15, 23, 42, 0.12);
+    border-radius: 14px;
+    padding: 12px 14px;
+    background: #ffffff;
+    box-shadow: 0 8px 18px rgba(15, 23, 42, 0.06);
+  }
+
+  .transactions-table .transactions-row td {
+    display: grid;
+    grid-template-columns: 110px minmax(0, 1fr);
+    align-items: baseline;
+    gap: 8px;
+    padding: 0;
+    border: none !important;
+    background: transparent;
+    font-weight: 600;
+    text-align: left !important;
+  }
+
+  .transactions-table .transactions-row td::before {
+    content: attr(data-label);
+    font-size: 12px;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+    color: #64748b;
+    font-weight: 700;
+  }
+
+  .transactions-table .transactions-row td[data-label="date"]::before {
+    content: "Дата";
+  }
+
+  .transactions-table .transactions-row td[data-label="type"]::before {
+    content: "Тип";
+  }
+
+  .transactions-table .transactions-row td[data-label="item"]::before {
+    content: "Товар";
+  }
+
+  .transactions-table .transactions-row td[data-label="location"]::before {
+    content: "Ячейка";
+  }
+
+  .transactions-table .transactions-row td[data-label="qty"]::before {
+    content: "Кол-во";
+  }
+
+  .transactions-table .transactions-row td[data-label="user"]::before {
+    content: "Кто";
+  }
+
+  .transactions-table .transactions-row td[data-label="comment"]::before {
+    content: "Комментарий";
+  }
+
 }
 
 @media (prefers-reduced-motion: reduce) {

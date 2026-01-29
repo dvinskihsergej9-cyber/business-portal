@@ -4272,6 +4272,123 @@ app.get("/api/warehouse/discrepancies", auth, async (req, res) => {
   }
 });
 
+// ===== TRANSACTIONS =====
+app.get("/api/warehouse/transactions", auth, async (req, res) => {
+  try {
+    const q = String(req.query.q || "").trim();
+    const limit = Math.min(Number(req.query.limit) || 300, 1000);
+
+    const movementWhere = q
+      ? {
+          OR: [
+            { item: { name: { contains: q } } },
+            { item: { sku: { contains: q } } },
+            { item: { barcode: { contains: q } } },
+            { location: { name: { contains: q } } },
+            { location: { code: { contains: q } } },
+            { comment: { contains: q } },
+          ],
+        }
+      : {};
+
+    const auditWhere = q
+      ? {
+          OR: [
+            { location: { name: { contains: q } } },
+            { location: { code: { contains: q } } },
+            { session: { startedBy: { name: { contains: q } } } },
+          ],
+        }
+      : {};
+
+    const [movements, audits] = await Promise.all([
+      prisma.stockMovement.findMany({
+        where: movementWhere,
+        orderBy: { createdAt: "desc" },
+        take: limit,
+        include: { item: true, location: true, createdBy: true },
+      }),
+      prisma.binAuditEvent.findMany({
+        where: auditWhere,
+        orderBy: { checkedAt: "desc" },
+        take: limit,
+        include: { location: true, session: { include: { startedBy: true } } },
+      }),
+    ]);
+
+    const locationIds = new Set();
+    movements.forEach((m) => {
+      if (m.locationId) locationIds.add(m.locationId);
+      if (m.fromLocationId) locationIds.add(m.fromLocationId);
+      if (m.toLocationId) locationIds.add(m.toLocationId);
+    });
+    const locationMap = new Map();
+    if (locationIds.size) {
+      const list = await prisma.warehouseLocation.findMany({
+        where: { id: { in: Array.from(locationIds) } },
+      });
+      list.forEach((loc) => locationMap.set(loc.id, loc));
+    }
+
+    const movementItems = movements.map((m) => {
+      let location = m.location;
+      if (!location && (m.fromLocationId || m.toLocationId)) {
+        const fromLoc = locationMap.get(m.fromLocationId);
+        const toLoc = locationMap.get(m.toLocationId);
+        const fromLabel = fromLoc?.code || fromLoc?.name || m.fromLocationId || "-";
+        const toLabel = toLoc?.code || toLoc?.name || m.toLocationId || "-";
+        location = { name: `${fromLabel} -> ${toLabel}`, code: null };
+      }
+      const qty =
+        m.type === "ISSUE" ? -Number(m.quantity) : Number(m.quantity);
+      return {
+        id: `mov-${m.id}`,
+        type: m.type,
+        createdAt: m.createdAt,
+        item: m.item
+          ? {
+              id: m.item.id,
+              name: m.item.name,
+              sku: m.item.sku,
+              barcode: m.item.barcode,
+            }
+          : null,
+        location: location
+          ? { id: location.id, name: location.name, code: location.code }
+          : null,
+        qty: Number.isFinite(qty) ? qty : null,
+        user: m.createdBy ? { id: m.createdBy.id, name: m.createdBy.name } : null,
+        comment: m.comment || null,
+      };
+    });
+
+    const auditItems = audits.map((a) => ({
+      id: `audit-${a.id}`,
+      type: "BIN_AUDIT",
+      result: a.result,
+      createdAt: a.checkedAt,
+      item: null,
+      location: a.location
+        ? { id: a.location.id, name: a.location.name, code: a.location.code }
+        : null,
+      qty: null,
+      user: a.session?.startedBy
+        ? { id: a.session.startedBy.id, name: a.session.startedBy.name }
+        : null,
+      comment: a.note || null,
+    }));
+
+    const combined = [...movementItems, ...auditItems]
+      .sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt))
+      .slice(0, limit);
+
+    res.json({ items: combined });
+  } catch (err) {
+    console.error("transactions list error:", err);
+    res.status(500).json({ message: "TRANSACTIONS_LIST_ERROR" });
+  }
+});
+
 // ===== DISCREPANCY CLOSE =====
 app.put("/api/warehouse/discrepancies/:id/close", auth, async (req, res) => {
   try {
