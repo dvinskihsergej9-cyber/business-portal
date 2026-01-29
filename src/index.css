@@ -1089,6 +1089,19 @@ input[type="number"] {
   box-shadow: 0 6px 14px rgba(15, 23, 42, 0.12);
 }
 
+/* Force tab buttons to ignore global button styles */
+.portal-surface .tabs__btn {
+  background: #0ea5e9;
+  color: #ffffff;
+  box-shadow: none;
+}
+
+.portal-surface .tabs__btn--active {
+  background: #ffffff;
+  color: #0f172a;
+  box-shadow: 0 6px 14px rgba(15, 23, 42, 0.12);
+}
+
 .portal-surface table {
   border-collapse: separate;
   border-spacing: 0 8px;
