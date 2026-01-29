@@ -2,6 +2,7 @@
 import { API_BASE } from "../apiConfig";
 import { jsPDF } from "jspdf";
 import autoTable from "jspdf-autotable";
+import { ARIAL_TTF_BASE64 } from "../utils/arialFontBase64";
 
 const typeLabel = (row) => {
   if (row.type === "BIN_AUDIT") {
@@ -39,26 +40,10 @@ const formatComment = (value) => {
 
 let fontLoaded = false;
 
-const arrayBufferToBase64 = (buffer) => {
-  const bytes = new Uint8Array(buffer);
-  const chunkSize = 0x8000;
-  let binary = "";
-  for (let i = 0; i < bytes.length; i += chunkSize) {
-    binary += String.fromCharCode(...bytes.subarray(i, i + chunkSize));
-  }
-  return btoa(binary);
-};
 
 const ensurePdfFont = async (pdf) => {
   if (!fontLoaded) {
-    const fontUrl = new URL("/fonts/Arial.ttf", window.location.origin).toString();
-    const res = await fetch(fontUrl);
-    if (!res.ok) {
-      throw new Error("FONT_LOAD_FAILED");
-    }
-    const buffer = await res.arrayBuffer();
-    const base64 = arrayBufferToBase64(buffer);
-    pdf.addFileToVFS("Arial.ttf", base64);
+    pdf.addFileToVFS("Arial.ttf", ARIAL_TTF_BASE64);
     pdf.addFont("Arial.ttf", "Arial", "normal", "Identity-H");
     fontLoaded = true;
   }
