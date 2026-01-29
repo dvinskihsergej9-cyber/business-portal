@@ -4251,7 +4251,7 @@ app.get("/api/warehouse/discrepancies", auth, async (req, res) => {
 // ===== DISCREPANCY CLOSE =====
 app.put("/api/warehouse/discrepancies/:id/close", auth, async (req, res) => {
   try {
-    if (req.user?.role !== "ADMIN") {
+    if (!["ADMIN", "EMPLOYEE"].includes(req.user?.role)) {
       return res.status(403).json({ message: "FORBIDDEN" });
     }
     const id = Number(req.params.id);

@@ -2,7 +2,7 @@ import { useEffect, useMemo, useState } from "react";
 import { API_BASE } from "../apiConfig";
 import { useAuth } from "../context/AuthContext";
 
-const statusLabel = (value) => (value === "CLOSED" ? "Архив" : "Открытые");
+const statusLabel = (value) => (value === "CLOSED" ? "РђСЂС…РёРІ" : "РћС‚РєСЂС‹С‚С‹Рµ");
 
 export default function StockDiscrepanciesTab() {
   const { user } = useAuth();
@@ -32,11 +32,11 @@ export default function StockDiscrepanciesTab() {
       );
       const data = await res.json();
       if (!res.ok) {
-        throw new Error(data.message || "Ошибка загрузки");
+        throw new Error(data.message || "РћС€РёР±РєР° Р·Р°РіСЂСѓР·РєРё");
       }
       setItems(data.items || []);
     } catch (err) {
-      setError(err.message || "Ошибка загрузки");
+      setError(err.message || "РћС€РёР±РєР° Р·Р°РіСЂСѓР·РєРё");
     } finally {
       setLoading(false);
     }
@@ -61,13 +61,13 @@ export default function StockDiscrepanciesTab() {
       );
       const data = await res.json();
       if (!res.ok) {
-        throw new Error(data.message || "Не удалось закрыть");
+        throw new Error(data.message || "РќРµ СѓРґР°Р»РѕСЃСЊ Р·Р°РєСЂС‹С‚СЊ");
       }
       setCloseTarget(null);
       setCloseNote("");
       await load();
     } catch (err) {
-      setError(err.message || "Не удалось закрыть");
+      setError(err.message || "РќРµ СѓРґР°Р»РѕСЃСЊ Р·Р°РєСЂС‹С‚СЊ");
     } finally {
       setClosing(false);
     }
@@ -77,7 +77,7 @@ export default function StockDiscrepanciesTab() {
     <div className="card discrepancies-card" style={{ padding: 16 }}>
       <div className="discrepancies-header">
         <h3 className="discrepancies-title" style={{ margin: 0 }}>
-          Косяки
+          РљРѕСЃСЏРєРё
         </h3>
         <div className="discrepancies-tabs">
           {["OPEN", "CLOSED"].map((value) => (
@@ -103,21 +103,21 @@ export default function StockDiscrepanciesTab() {
       )}
 
       {loading ? (
-        <div style={{ padding: 16 }}>Загрузка...</div>
+        <div style={{ padding: 16 }}>Р—Р°РіСЂСѓР·РєР°...</div>
       ) : items.length === 0 ? (
-        <div style={{ padding: 16 }}>Нет расхождений.</div>
+        <div style={{ padding: 16 }}>РќРµС‚ СЂР°СЃС…РѕР¶РґРµРЅРёР№.</div>
       ) : (
         <div className="discrepancies-table">
           <table style={{ width: "100%", borderCollapse: "collapse" }}>
             <thead>
               <tr>
-                <th style={thStyle}>Дата</th>
-                <th style={thStyle}>Ячейка</th>
-                <th style={thStyle}>Товар</th>
-                <th style={thStyle}>Было</th>
-                <th style={thStyle}>Факт</th>
-                <th style={thStyle}>Δ</th>
-                <th style={thStyle}>Сессия</th>
+                <th style={thStyle}>Р”Р°С‚Р°</th>
+                <th style={thStyle}>РЇС‡РµР№РєР°</th>
+                <th style={thStyle}>РўРѕРІР°СЂ</th>
+                <th style={thStyle}>Р‘С‹Р»Рѕ</th>
+                <th style={thStyle}>Р¤Р°РєС‚</th>
+                <th style={thStyle}>О”</th>
+                <th style={thStyle}>РЎРµСЃСЃРёСЏ</th>
                 <th style={thStyle}></th>
               </tr>
             </thead>
@@ -149,13 +149,13 @@ export default function StockDiscrepanciesTab() {
                     {row.sessionId || "-"}
                   </td>
                   <td data-label="actions" style={tdStyle}>
-                    {status === "OPEN" && user?.role === "ADMIN" && (
+                    {status === "OPEN" && ["ADMIN", "EMPLOYEE"].includes(user?.role) && (
                       <button
                         type="button"
                         className="btn btn--secondary"
                         onClick={() => setCloseTarget(row)}
                       >
-                        Закрыть
+                        Р—Р°РєСЂС‹С‚СЊ
                       </button>
                     )}
                   </td>
@@ -169,9 +169,9 @@ export default function StockDiscrepanciesTab() {
       {closeTarget && (
         <div style={modalOverlay}>
           <div style={modalPanel}>
-            <h4 style={{ marginTop: 0 }}>Закрыть расхождение</h4>
+            <h4 style={{ marginTop: 0 }}>Р—Р°РєСЂС‹С‚СЊ СЂР°СЃС…РѕР¶РґРµРЅРёРµ</h4>
             <p style={{ marginTop: 0 }}>
-              Укажите причину или комментарий к закрытию.
+              РЈРєР°Р¶РёС‚Рµ РїСЂРёС‡РёРЅСѓ РёР»Рё РєРѕРјРјРµРЅС‚Р°СЂРёР№ Рє Р·Р°РєСЂС‹С‚РёСЋ.
             </p>
             <textarea
               style={modalTextarea}
@@ -188,7 +188,7 @@ export default function StockDiscrepanciesTab() {
                   setCloseNote("");
                 }}
               >
-                Отмена
+                РћС‚РјРµРЅР°
               </button>
               <button
                 type="button"
@@ -196,7 +196,7 @@ export default function StockDiscrepanciesTab() {
                 onClick={handleClose}
                 disabled={closing}
               >
-                {closing ? "Сохранение..." : "Закрыть"}
+                {closing ? "РЎРѕС…СЂР°РЅРµРЅРёРµ..." : "Р—Р°РєСЂС‹С‚СЊ"}
               </button>
             </div>
           </div>

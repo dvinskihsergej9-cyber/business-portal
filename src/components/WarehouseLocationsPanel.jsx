@@ -387,6 +387,14 @@ export default function WarehouseLocationsPanel() {
 
   return (
     <div className="warehouse-locations">
+      <div style={{ display: "grid", gap: 6 }}>
+        <div style={{ fontSize: 18, fontWeight: 700 }}>
+          {"\u0421\u043f\u0440\u0430\u0432\u043e\u0447\u043d\u0438\u043a \u044f\u0447\u0435\u0435\u043a"}
+        </div>
+        <div style={{ fontSize: 13, color: "#64748b" }}>
+          {"\u0421\u043e\u0437\u0434\u0430\u0439\u0442\u0435 \u044f\u0447\u0435\u0439\u043a\u0443, \u0441\u043e\u0437\u0434\u0430\u0439\u0442\u0435 QR-\u044d\u0442\u0438\u043a\u0435\u0442\u043a\u0443 \u0438 \u0438\u0441\u043f\u043e\u043b\u044c\u0437\u0443\u0439\u0442\u0435 \u0435\u0451 \u0432 \u0422\u0421\u0414."}
+        </div>
+      </div>
       {error && <div className="alert alert--error">{error}</div>}
       {message && <div className="alert alert--success">{message}</div>}
 
