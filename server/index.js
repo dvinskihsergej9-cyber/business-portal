@@ -4278,7 +4278,7 @@ app.get("/api/warehouse/transactions", auth, async (req, res) => {
     const q = String(req.query.q || "").trim();
     const limit = Math.min(Number(req.query.limit) || 300, 1000);
 
-    const [movements, audits] = await Promise.all([
+    const [movements, audits, discrepancies] = await Promise.all([
       prisma.stockMovement.findMany({
         orderBy: { createdAt: "desc" },
         take: limit,
@@ -4288,6 +4288,15 @@ app.get("/api/warehouse/transactions", auth, async (req, res) => {
         orderBy: { checkedAt: "desc" },
         take: limit,
         include: { location: true, session: { include: { startedBy: true } } },
+      }),
+      prisma.stockDiscrepancy.findMany({
+        orderBy: { createdAt: "desc" },
+        take: limit,
+        include: {
+          item: true,
+          location: true,
+          session: { include: { startedBy: true } },
+        },
       }),
     ]);
 
@@ -4305,7 +4314,9 @@ app.get("/api/warehouse/transactions", auth, async (req, res) => {
               barcode: m.item.barcode,
             }
           : null,
-        location: m.locationId ? { id: m.locationId, name: String(m.locationId), code: null } : null,
+        location: m.locationId
+          ? { id: m.locationId, name: String(m.locationId), code: null }
+          : null,
         qty: Number.isFinite(qty) ? qty : null,
         user: m.createdBy ? { id: m.createdBy.id, name: m.createdBy.name } : null,
         comment: m.comment || null,
@@ -4331,23 +4342,48 @@ app.get("/api/warehouse/transactions", auth, async (req, res) => {
       });
     }
 
-    const auditItems = audits.map((a) => ({
-      id: `audit-${a.id}`,
+    const auditItems = audits
+      .filter((a) => a.result === "OK")
+      .map((a) => ({
+        id: `audit-${a.id}`,
+        type: "BIN_AUDIT",
+        result: a.result,
+        createdAt: a.checkedAt,
+        item: null,
+        location: a.location
+          ? { id: a.location.id, name: a.location.name, code: a.location.code }
+          : null,
+        qty: null,
+        user: a.session?.startedBy
+          ? { id: a.session.startedBy.id, name: a.session.startedBy.name }
+          : null,
+        comment: a.note || null,
+      }));
+
+    const discrepancyItems = discrepancies.map((d) => ({
+      id: `disc-${d.id}`,
       type: "BIN_AUDIT",
-      result: a.result,
-      createdAt: a.checkedAt,
-      item: null,
-      location: a.location
-        ? { id: a.location.id, name: a.location.name, code: a.location.code }
+      result: "DISCREPANCY",
+      createdAt: d.createdAt,
+      item: d.item
+        ? {
+            id: d.item.id,
+            name: d.item.name,
+            sku: d.item.sku,
+            barcode: d.item.barcode,
+          }
         : null,
-      qty: null,
-      user: a.session?.startedBy
-        ? { id: a.session.startedBy.id, name: a.session.startedBy.name }
+      location: d.location
+        ? { id: d.location.id, name: d.location.name, code: d.location.code }
         : null,
-      comment: a.note || null,
+      qty: Number.isFinite(d.delta) ? d.delta : null,
+      user: d.session?.startedBy
+        ? { id: d.session.startedBy.id, name: d.session.startedBy.name }
+        : null,
+      comment: d.closeNote || null,
     }));
 
-    let combined = [...movementItems, ...auditItems]
+    let combined = [...movementItems, ...auditItems, ...discrepancyItems]
       .sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt))
       .slice(0, limit);
 

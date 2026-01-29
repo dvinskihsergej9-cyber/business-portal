@@ -26,6 +26,85 @@ const formatComment = (value) => {
   return String(value).replace(/RECEIVING/gi, "Приемка");
 };
 
+const escapeHtml = (value) => {
+  if (value == null) return "";
+  return String(value)
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;")
+    .replace(/'/g, "&#39;");
+};
+
+const buildPrintHtml = (rows) => {
+  const head = `<!doctype html>
+<html lang="ru">
+<head>
+<meta charset="utf-8" />
+<title>Транзакции склада</title>
+<style>
+  body { font-family: Arial, sans-serif; padding: 16px; color: #111827; }
+  h1 { font-size: 18px; margin: 0 0 12px; }
+  table { width: 100%; border-collapse: collapse; }
+  th, td { border: 1px solid #e5e7eb; padding: 6px 8px; font-size: 12px; vertical-align: top; }
+  th { background: #f9fafb; text-align: left; }
+  .muted { color: #6b7280; font-size: 11px; }
+</style>
+</head>
+<body>
+<h1>Транзакции склада</h1>
+<table>
+<thead>
+<tr>
+  <th>Дата</th>
+  <th>Тип</th>
+  <th>Товар</th>
+  <th>Ячейка</th>
+  <th>Кол-во</th>
+  <th>Кто</th>
+  <th>Комментарий</th>
+</tr>
+</thead>
+<tbody>`;
+
+  const body = rows
+    .map((row) => {
+      const date = row.createdAt
+        ? new Date(row.createdAt).toLocaleString("ru-RU")
+        : "-";
+      const type = typeLabel(row);
+      const item = row.item?.name
+        ? `${row.item.name}${row.item?.sku ? ` (${row.item.sku})` : ""}`
+        : "-";
+      const location = formatLocation(row.location);
+      const qty = row.qty != null ? row.qty : "-";
+      const user = row.user?.name || "-";
+      const comment = formatComment(row.comment);
+
+      return `
+<tr>
+  <td>${escapeHtml(date)}</td>
+  <td>${escapeHtml(type)}</td>
+  <td>${escapeHtml(item)}</td>
+  <td>${escapeHtml(location)}</td>
+  <td>${escapeHtml(qty)}</td>
+  <td>${escapeHtml(user)}</td>
+  <td>${escapeHtml(comment)}</td>
+</tr>`;
+    })
+    .join("");
+
+  const tail = `
+</tbody>
+</table>
+<p class="muted">Печать сформирована автоматически</p>
+<script>window.onload = () => setTimeout(() => window.print(), 200);</script>
+</body>
+</html>`;
+
+  return head + body + tail;
+};
+
 export default function StockTransactionsTab() {
   const [query, setQuery] = useState("");
   const [loading, setLoading] = useState(true);
@@ -39,6 +118,15 @@ export default function StockTransactionsTab() {
       "Content-Type": "application/json",
     };
   }, []);
+
+  const handlePrint = () => {
+    if (!items.length) return;
+    const html = buildPrintHtml(items);
+    const printWindow = window.open("", "_blank", "noopener,noreferrer");
+    if (!printWindow) return;
+    printWindow.document.write(html);
+    printWindow.document.close();
+  };
 
   const load = async (searchValue) => {
     try {
@@ -94,7 +182,7 @@ export default function StockTransactionsTab() {
           <button
             type="button"
             className="btn btn--secondary"
-            onClick={() => window.print()}
+            onClick={handlePrint}
           >
             Печать
           </button>
