@@ -4218,30 +4218,54 @@ app.get("/api/warehouse/discrepancies", auth, async (req, res) => {
       include: { location: true, item: true, session: true },
     });
 
-    res.json({
-      items: items.map((row) => ({
-        id: row.id,
-        status: row.status,
-        createdAt: row.createdAt,
-        closedAt: row.closedAt,
-        expectedQty: row.expectedQty,
-        countedQty: row.countedQty,
-        delta: row.delta,
-        location: {
-          id: row.location.id,
-          code: row.location.code,
-          name: row.location.name,
-        },
-        item: {
-          id: row.item.id,
-          name: row.item.name,
-          sku: row.item.sku,
-          barcode: row.item.barcode,
-        },
-        sessionId: row.sessionId,
-        closeNote: row.closeNote,
-      })),
-    });
+    const itemsWithMovements = await Promise.all(
+      items.map(async (row) => {
+        const movements = await prisma.stockMovement.findMany({
+          where: {
+            itemId: row.itemId,
+            locationId: row.locationId,
+            type: "ISSUE",
+          },
+          orderBy: { createdAt: "desc" },
+          take: 5,
+          include: { createdBy: true },
+        });
+
+        return {
+          id: row.id,
+          status: row.status,
+          createdAt: row.createdAt,
+          closedAt: row.closedAt,
+          expectedQty: row.expectedQty,
+          countedQty: row.countedQty,
+          delta: row.delta,
+          location: {
+            id: row.location.id,
+            code: row.location.code,
+            name: row.location.name,
+          },
+          item: {
+            id: row.item.id,
+            name: row.item.name,
+            sku: row.item.sku,
+            barcode: row.item.barcode,
+          },
+          sessionId: row.sessionId,
+          closeNote: row.closeNote,
+          recentPickers: movements.map((m) => ({
+            id: m.id,
+            createdAt: m.createdAt,
+            qty: m.quantity,
+            opId: m.opId,
+            user: m.createdBy
+              ? { id: m.createdBy.id, name: m.createdBy.name }
+              : null,
+          })),
+        };
+      })
+    );
+
+    res.json({ items: itemsWithMovements });
   } catch (err) {
     console.error("discrepancies list error:", err);
     res.status(500).json({ message: "DISCREPANCIES_LIST_ERROR" });

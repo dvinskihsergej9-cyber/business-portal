@@ -135,6 +135,23 @@ export default function StockDiscrepanciesTab() {
                   <td data-label="item" style={tdStyle}>
                     {row.item?.name || "-"}
                     {row.item?.sku ? ` (${row.item.sku})` : ""}
+                    {Array.isArray(row.recentPickers) &&
+                      row.recentPickers.length > 0 && (
+                        <div style={{ marginTop: 6, fontSize: 12, color: "#64748b" }}>
+                          {"\u041f\u043e\u0441\u043b\u0435\u0434\u043d\u0438\u0435 \u043e\u0442\u0431\u043e\u0440\u044b:"}
+                          <div style={{ marginTop: 4, display: "grid", gap: 4 }}>
+                            {row.recentPickers.map((pick) => (
+                              <div key={pick.id}>
+                                {pick.user?.name || "-"}{" "}
+                                {pick.createdAt
+                                  ? `— ${new Date(pick.createdAt).toLocaleString("ru-RU")}`
+                                  : ""}
+                                {pick.qty != null ? `, \u043a\u043e\u043b-\u0432\u043e ${pick.qty}` : ""}
+                              </div>
+                            ))}
+                          </div>
+                        </div>
+                      )}
                   </td>
                   <td data-label="expected" style={tdStyle}>
                     {row.expectedQty}
