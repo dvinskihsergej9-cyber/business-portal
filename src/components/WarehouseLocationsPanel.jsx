@@ -123,6 +123,11 @@ export default function WarehouseLocationsPanel() {
       setForm({ name: "", zone: "", aisle: "", rack: "", level: "" });
       setMessage(`Ячейка создана: ${data.name}`);
       setSelectedId(String(data.id));
+      try {
+        await ensureLocationQr(data.id);
+      } catch (err) {
+        setError(err.message || "\u041d\u0435 \u0443\u0434\u0430\u043b\u043e\u0441\u044c \u0441\u043e\u0437\u0434\u0430\u0442\u044c QR");
+      }
       await loadLocations();
     } catch (err) {
       setError(err.message || "Ошибка создания ячейки");
@@ -147,6 +152,12 @@ export default function WarehouseLocationsPanel() {
   const handlePrint = async () => {
     if (!selectedId) {
       setError("Выберите ячейку.");
+      return;
+    }
+
+    const printWindow = window.open("", "_blank");
+    if (!printWindow) {
+      setError("Блокировщик всплывающих окон");
       return;
     }
 
@@ -175,14 +186,11 @@ export default function WarehouseLocationsPanel() {
         } catch {}
         throw new Error(messageText);
       }
-      const printWindow = window.open("", "_blank");
-      if (printWindow) {
-        printWindow.document.write(html);
-        printWindow.document.close();
-      } else {
-        throw new Error("Блокировщик всплывающих окон");
-      }
+      printWindow.document.write(html);
+      printWindow.document.close();
+      printWindow.focus();
     } catch (err) {
+      printWindow.close();
       setError(err.message || "Ошибка печати");
     } finally {
       setActionLoading(false);
@@ -314,9 +322,13 @@ export default function WarehouseLocationsPanel() {
 
   const handlePrintItems = async () => {
     if (!selectedItems.length) {
-      setError(
-        "Выберите товары."
-      );
+      setError("Выберите товары.");
+      return;
+    }
+
+    const printWindow = window.open("", "_blank");
+    if (!printWindow) {
+      setError("Блокировщик всплывающих окон");
       return;
     }
 
@@ -336,27 +348,19 @@ export default function WarehouseLocationsPanel() {
       });
       const html = await res.text();
       if (!res.ok) {
-        let messageText =
-          "Ошибка печати";
+        let messageText = "Ошибка печати";
         try {
           const parsed = JSON.parse(html);
           messageText = parsed.message || messageText;
         } catch {}
         throw new Error(messageText);
       }
-      const printWindow = window.open("", "_blank");
-      if (printWindow) {
-        printWindow.document.write(html);
-        printWindow.document.close();
-      } else {
-        throw new Error(
-          "Блокировщик всплывающих окон"
-        );
-      }
+      printWindow.document.write(html);
+      printWindow.document.close();
+      printWindow.focus();
     } catch (err) {
-      setError(
-        err.message || "Ошибка печати"
-      );
+      printWindow.close();
+      setError(err.message || "Ошибка печати");
     } finally {
       setActionLoading(false);
     }
@@ -685,7 +689,7 @@ export default function WarehouseLocationsPanel() {
                 >
                   {actionLoading
                     ? "Печать..."
-                    : "Создать QR и печатать"}
+                    : "Печать QR"}
                 </button>
               </div>
             </div>
