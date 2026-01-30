@@ -17,6 +17,7 @@ import StockRevisionTab from "../components/StockRevisionTab";
 import SupplierTrucksQueueTab from "../components/SupplierTrucksQueueTab";
 import MobileTsdTab from "../components/MobileTsdTab";
 import WarehouseLocationsPanel from "../components/WarehouseLocationsPanel";
+import TmcTab from "../components/TmcTab";
 
 
 const API = API_BASE;
@@ -28,6 +29,7 @@ const WAREHOUSE_EMOJI = {
   items: "📚",
   movement: "🔁",
   transactions: "🧾",
+  tmc: "\uD83E\uDDF4",
   locations: "📍",
   queue: "🚚",
   tsd: "📱",
@@ -47,6 +49,7 @@ const WAREHOUSE_ICON_FALLBACK = {
   items: "ITEM",
   movement: "MOVE",
   transactions: "TRX",
+  tmc: "TMC",
   locations: "LOC",
   queue: "QUEUE",
   tsd: "TSD",
@@ -188,6 +191,7 @@ export default function Warehouse() {
   const tsdRef = useRef(null);
   const transactionsRef = useRef(null);
   const revisionRef = useRef(null);
+  const tmcRef = useRef(null);
 
   const [requestsTab, setRequestsTab] = useState("new"); // 'new' | 'journal'
 
@@ -321,6 +325,7 @@ export default function Warehouse() {
       tsd: tsdRef,
       transactions: transactionsRef,
       revision: revisionRef,
+      tmc: tmcRef,
     };
     const target = refMap[section];
     if (target?.current) {
@@ -2348,6 +2353,26 @@ export default function Warehouse() {
             </div>
           </button>
 
+          <button
+            type="button"
+            className={
+              "warehouse-card" +
+              (section === "tmc" ? " warehouse-card--active" : "")
+            }
+            onClick={() => setSection("tmc")}
+          >
+            <div className="warehouse-card__icon">
+              <WarehouseTileIcon name="tmc" />
+            </div>
+            <div className="warehouse-card__body">
+              <div className="warehouse-card__title">{"\u0422\u041c\u0426"}</div>
+              <div className="warehouse-card__subtitle">
+                {"\u0420\u0430\u0441\u0445\u043e\u0434\u043d\u044b\u0435 \u043c\u0430\u0442\u0435\u0440\u0438\u0430\u043b\u044b \u0434\u043b\u044f \u043e\u0442\u0434\u0435\u043b\u043e\u0432 \u0438 \u0441\u043e\u0442\u0440\u0443\u0434\u043d\u0438\u043a\u043e\u0432."}
+              </div>
+            </div>
+          </button>
+
+
 
           <button
             type="button"
@@ -3618,6 +3643,12 @@ export default function Warehouse() {
       {section === "revision" && (
         <div className="inventory-section" ref={revisionRef}>
           <StockRevisionTab />
+        </div>
+      )}
+
+      {section === "tmc" && (
+        <div className="inventory-section" ref={tmcRef}>
+          <TmcTab />
         </div>
       )}
 

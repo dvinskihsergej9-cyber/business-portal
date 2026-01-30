@@ -1390,6 +1390,7 @@ async function getLowStockItems() {
   const items = await prisma.item.findMany({
     where: {
       minStock: { not: null },
+      category: "STOCK",
     },
     orderBy: { name: "asc" },
     include: {
@@ -3484,6 +3485,7 @@ app.post("/api/inventory/items", auth, async (req, res) => {
 app.get("/api/inventory/items", auth, async (req, res) => {
   try {
     const items = await prisma.item.findMany({
+      where: { category: "STOCK" },
       orderBy: { name: "asc" },
     });
     res.json(items);
@@ -3508,6 +3510,7 @@ app.get("/api/inventory/items/by-barcode/:barcode", auth, async (req, res) => {
     // Р В РЎвЂР РЋРІР‚В°Р В Р’ВµР В РЎВ Р В РЎвЂ”Р В РЎвЂў Р РЋРІвЂљВ¬Р РЋРІР‚С™Р РЋР вЂљР В РЎвЂР РЋРІР‚В¦Р В РЎвЂќР В РЎвЂўР В РўвЂР РЋРЎвЂњ, QR Р В РЎвЂР В Р’В»Р В РЎвЂ SKU (Р В Р вЂ¦Р В Р’В° Р РЋР С“Р В Р’В»Р РЋРЎвЂњР РЋРІР‚РЋР В Р’В°Р В РІвЂћвЂ“, Р В Р’ВµР РЋР С“Р В Р’В»Р В РЎвЂ Р РЋР С“Р В РЎвЂќР В Р’В°Р В Р вЂ¦Р В Р’ВµР РЋР вЂљ Р В РЎвЂ”Р В РЎвЂўР РЋР С“Р РЋРІР‚в„–Р В Р’В»Р В Р’В°Р В Р’ВµР РЋРІР‚С™ Р В РЎвЂќР В РЎвЂўР В РўвЂ Р В Р’В°Р РЋР вЂљР РЋРІР‚С™Р В РЎвЂР В РЎвЂќР РЋРЎвЂњР В Р’В»Р В Р’В°)
     const item = await prisma.item.findFirst({
       where: {
+        category: "STOCK",
         OR: [
           { barcode },
           { qrCode: barcode },
@@ -3694,6 +3697,9 @@ app.post("/api/warehouse/products/:id/codes", auth, async (req, res) => {
     }
 
     const item = await prisma.item.findUnique({ where: { id } });
+    if (item && item.category === "TMC") {
+      return res.status(404).json({ message: "ITEM_NOT_FOUND" });
+    }
     if (!item) {
       return res.status(404).json({ message: "Р В РЎС›Р В РЎвЂўР В Р вЂ Р В Р’В°Р РЋР вЂљ Р В Р вЂ¦Р В Р’Вµ Р В Р вЂ¦Р В Р’В°Р В РІвЂћвЂ“Р В РўвЂР В Р’ВµР В Р вЂ¦" });
     }
@@ -3810,6 +3816,9 @@ app.post("/api/warehouse/products/:id/qr", auth, async (req, res) => {
       return res.status(400).json({ message: "Р В РЎСљР В Р’ВµР В РЎвЂќР В РЎвЂўР РЋР вЂљР РЋР вЂљР В Р’ВµР В РЎвЂќР РЋРІР‚С™Р В Р вЂ¦Р РЋРІР‚в„–Р В РІвЂћвЂ“ ID Р РЋРІР‚С™Р В РЎвЂўР В Р вЂ Р В Р’В°Р РЋР вЂљР В Р’В°" });
     }
     const item = await prisma.item.findUnique({ where: { id } });
+    if (item && item.category === "TMC") {
+      return res.status(404).json({ message: "ITEM_NOT_FOUND" });
+    }
     if (!item) {
       return res.status(404).json({ message: "Р В РЎС›Р В РЎвЂўР В Р вЂ Р В Р’В°Р РЋР вЂљ Р В Р вЂ¦Р В Р’Вµ Р В Р вЂ¦Р В Р’В°Р В РІвЂћвЂ“Р В РўвЂР В Р’ВµР В Р вЂ¦" });
     }
@@ -4619,6 +4628,243 @@ app.post("/api/warehouse/revisions/:id/apply", auth, requireAdmin, async (req, r
   }
 });
 
+// ===== TMC (SUPPLIES) =====
+const TMC_DEFAULTS = [
+  { name: "?????? ?4", unit: "?????" },
+  { name: "????? ?????????", unit: "??" },
+  { name: "?????? ????????????", unit: "??" },
+  { name: "????? ??????????", unit: "?????" },
+  { name: "??????-??????", unit: "?????" },
+  { name: "???????? ???????", unit: "????" },
+  { name: "????????", unit: "??" },
+  { name: "????? ??? ??????", unit: "??" },
+  { name: "????????", unit: "??" },
+  { name: "??????? ?????", unit: "?????" },
+  { name: "????????", unit: "?????" },
+  { name: "??? ????????????", unit: "??" },
+  { name: "????? ????????????", unit: "?????" },
+  { name: "?????? ???", unit: "??" },
+  { name: "????????????? ????????", unit: "??" },
+];
+
+const getTmcStockForItem = async (itemId) => {
+  const movements = await prisma.stockMovement.findMany({
+    where: { itemId },
+    orderBy: { createdAt: "asc" },
+  });
+  let qty = 0;
+  for (const m of movements) {
+    if (m.type === "INCOME" || m.type === "ADJUSTMENT") {
+      qty += Number(m.quantity);
+    } else if (m.type === "ISSUE") {
+      qty -= Number(m.quantity);
+    }
+  }
+  return Math.round(qty);
+};
+
+app.get("/api/tmc/items", auth, async (req, res) => {
+  try {
+    const items = await prisma.item.findMany({
+      where: { category: "TMC" },
+      orderBy: { name: "asc" },
+    });
+    res.json(items);
+  } catch (err) {
+    console.error("tmc items error:", err);
+    res.status(500).json({ message: "TMC_ITEMS_ERROR" });
+  }
+});
+
+app.get("/api/tmc/stock", auth, async (req, res) => {
+  try {
+    const items = await prisma.item.findMany({
+      where: { category: "TMC" },
+      orderBy: { name: "asc" },
+    });
+    const result = [];
+    for (const item of items) {
+      const currentStock = await getTmcStockForItem(item.id);
+      result.push({
+        id: item.id,
+        name: item.name,
+        sku: item.sku,
+        barcode: item.barcode,
+        unit: item.unit,
+        currentStock,
+      });
+    }
+    res.json(result);
+  } catch (err) {
+    console.error("tmc stock error:", err);
+    res.status(500).json({ message: "TMC_STOCK_ERROR" });
+  }
+});
+
+app.get("/api/tmc/transactions", auth, async (req, res) => {
+  try {
+    const limit = Math.min(Number(req.query.limit) || 200, 500);
+    const items = await prisma.stockMovement.findMany({
+      where: { item: { category: "TMC" } },
+      orderBy: { createdAt: "desc" },
+      take: limit,
+      include: { item: true, createdBy: true },
+    });
+    const result = items.map((m) => ({
+      id: m.id,
+      type: m.type,
+      createdAt: m.createdAt,
+      qty: m.type === "ISSUE" ? -Number(m.quantity) : Number(m.quantity),
+      comment: m.comment || null,
+      item: m.item
+        ? { id: m.item.id, name: m.item.name, sku: m.item.sku }
+        : null,
+      user: m.createdBy ? { id: m.createdBy.id, name: m.createdBy.name } : null,
+    }));
+    res.json({ items: result });
+  } catch (err) {
+    console.error("tmc transactions error:", err);
+    res.status(500).json({ message: "TMC_TRANSACTIONS_ERROR" });
+  }
+});
+
+app.post("/api/tmc/items", auth, requireAdmin, async (req, res) => {
+  try {
+    const { name, unit, sku, barcode } = req.body || {};
+    if (!name || String(name).trim().length < 2) {
+      return res.status(400).json({ message: "BAD_NAME" });
+    }
+    const item = await prisma.item.create({
+      data: {
+        name: String(name).trim(),
+        unit: unit ? String(unit).trim() : "??",
+        sku: sku ? String(sku).trim() : null,
+        barcode: barcode ? String(barcode).trim() : null,
+        category: "TMC",
+      },
+    });
+    res.json(item);
+  } catch (err) {
+    console.error("tmc item create error:", err);
+    res.status(500).json({ message: "TMC_ITEM_CREATE_ERROR" });
+  }
+});
+
+app.put("/api/tmc/items/:id", auth, requireAdmin, async (req, res) => {
+  try {
+    const id = Number(req.params.id);
+    const { name, unit, sku, barcode } = req.body || {};
+    if (!id || Number.isNaN(id)) {
+      return res.status(400).json({ message: "BAD_ITEM_ID" });
+    }
+    const existing = await prisma.item.findUnique({ where: { id } });
+    if (!existing || existing.category !== "TMC") {
+      return res.status(404).json({ message: "ITEM_NOT_FOUND" });
+    }
+    const item = await prisma.item.update({
+      where: { id },
+      data: {
+        name: name ? String(name).trim() : existing.name,
+        unit: unit ? String(unit).trim() : existing.unit,
+        sku: sku ? String(sku).trim() : existing.sku,
+        barcode: barcode ? String(barcode).trim() : existing.barcode,
+      },
+    });
+    res.json(item);
+  } catch (err) {
+    console.error("tmc item update error:", err);
+    res.status(500).json({ message: "TMC_ITEM_UPDATE_ERROR" });
+  }
+});
+
+app.post("/api/tmc/receive", auth, requireAdmin, async (req, res) => {
+  try {
+    const { itemId, qty, comment, docNo } = req.body || {};
+    const item = Number(itemId);
+    const amount = Number(qty);
+    if (!item || !Number.isFinite(amount) || amount <= 0) {
+      return res.status(400).json({ message: "BAD_REQUEST" });
+    }
+    const itemRow = await prisma.item.findUnique({ where: { id: item } });
+    if (!itemRow || itemRow.category !== "TMC") {
+      return res.status(404).json({ message: "ITEM_NOT_FOUND" });
+    }
+    const note = docNo ? `?????? ???: ${docNo}` : "?????? ???";
+    const movement = await stockService.createMovement({
+      type: "INCOME",
+      itemId: item,
+      qty: Math.trunc(amount),
+      locationId: null,
+      comment: comment ? `${note}. ${comment}` : note,
+      userId: req.user?.id || null,
+    });
+    res.json({ ok: true, id: movement.id });
+  } catch (err) {
+    console.error("tmc receive error:", err);
+    res.status(500).json({ message: "TMC_RECEIVE_ERROR" });
+  }
+});
+
+app.post("/api/tmc/issue", auth, async (req, res) => {
+  try {
+    const { itemId, qty, department, employee, comment } = req.body || {};
+    const item = Number(itemId);
+    const amount = Number(qty);
+    if (!item || !Number.isFinite(amount) || amount <= 0) {
+      return res.status(400).json({ message: "BAD_REQUEST" });
+    }
+    const itemRow = await prisma.item.findUnique({ where: { id: item } });
+    if (!itemRow || itemRow.category !== "TMC") {
+      return res.status(404).json({ message: "ITEM_NOT_FOUND" });
+    }
+
+    const current = await getTmcStockForItem(itemRow.id);
+    if (current < amount) {
+      return res.status(400).json({ message: "INSUFFICIENT_QTY" });
+    }
+
+    const target = [department, employee].filter(Boolean).join(" / ");
+    const note = target ? `?????? ???: ${target}` : "?????? ???";
+    const movement = await stockService.createMovement({
+      type: "ISSUE",
+      itemId: item,
+      qty: Math.trunc(amount),
+      locationId: null,
+      comment: comment ? `${note}. ${comment}` : note,
+      userId: req.user?.id || null,
+    });
+    res.json({ ok: true, id: movement.id });
+  } catch (err) {
+    console.error("tmc issue error:", err);
+    res.status(500).json({ message: "TMC_ISSUE_ERROR" });
+  }
+});
+
+app.post("/api/tmc/seed-defaults", auth, requireAdmin, async (req, res) => {
+  try {
+    const existing = await prisma.item.findMany({
+      where: { category: "TMC" },
+      select: { name: true },
+    });
+    const exists = new Set(existing.map((i) => i.name.toLowerCase()));
+    const toCreate = TMC_DEFAULTS.filter((row) => !exists.has(row.name.toLowerCase()))
+      .map((row) => ({
+        name: row.name,
+        unit: row.unit || "??",
+        category: "TMC",
+      }));
+
+    if (toCreate.length) {
+      await prisma.item.createMany({ data: toCreate });
+    }
+
+    res.json({ added: toCreate.length });
+  } catch (err) {
+    console.error("tmc seed error:", err);
+    res.status(500).json({ message: "TMC_SEED_ERROR" });
+  }
+});
+
 // ===== DISCREPANCY CLOSE =====
 app.put("/api/warehouse/discrepancies/:id/close", auth, async (req, res) => {
   try {
@@ -5118,6 +5364,9 @@ app.post("/api/warehouse/print/labels", auth, async (req, res) => {
 
       if (kind === "item") {
         const item = await prisma.item.findUnique({ where: { id } });
+    if (item && item.category === "TMC") {
+      return res.status(404).json({ message: "ITEM_NOT_FOUND" });
+    }
         if (!item) continue;
         labels.push({
           kind: "item",
@@ -5609,6 +5858,7 @@ app.post("/api/warehouse/labels/print", auth, async (req, res) => {
 app.get("/api/inventory/stock", auth, async (req, res) => {
   try {
     const items = await prisma.item.findMany({
+      where: { category: "STOCK" },
       orderBy: { name: "asc" },
       include: {
         movements: true,
@@ -5651,6 +5901,7 @@ app.get("/api/inventory/stock", auth, async (req, res) => {
 app.get("/api/warehouse/stock/summary", auth, async (req, res) => {
   try {
     const items = await prisma.item.findMany({
+      where: { category: "STOCK" },
       orderBy: { name: "asc" },
       include: { movements: true },
     });
@@ -5691,6 +5942,9 @@ app.get("/api/warehouse/stock/item/:id", auth, async (req, res) => {
     }
 
     const item = await prisma.item.findUnique({ where: { id } });
+    if (item && item.category === "TMC") {
+      return res.status(404).json({ message: "ITEM_NOT_FOUND" });
+    }
     if (!item) {
       return res.status(404).json({ message: "ITEM_NOT_FOUND" });
     }
@@ -5717,6 +5971,7 @@ app.get("/api/inventory/low-stock-order-file", auth, async (req, res) => {
   try {
     // 1. Р В РІР‚ВР В Р’ВµР РЋР вЂљР РЋРІР‚ВР В РЎВ Р В Р вЂ Р РЋР С“Р В Р’Вµ Р РЋРІР‚С™Р В РЎвЂўР В Р вЂ Р В Р’В°Р РЋР вЂљР РЋРІР‚в„– Р РЋР С“ Р В РўвЂР В Р вЂ Р В РЎвЂР В Р’В¶Р В Р’ВµР В Р вЂ¦Р В РЎвЂР РЋР РЏР В РЎВР В РЎвЂ
     const items = await prisma.item.findMany({
+      where: { category: "STOCK" },
       orderBy: { name: "asc" },
       include: { movements: true },
     });

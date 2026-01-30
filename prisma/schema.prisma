@@ -299,6 +299,7 @@ model Item {
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
   defaultPrice Float?
+  category    ItemCategory @default(STOCK)
 
   movements          StockMovement[]
   purchaseOrderItems PurchaseOrderItem[]
@@ -538,4 +539,10 @@ enum SupplierTruckStatus {
   IN_QUEUE
   UNLOADING
   DONE
+}
+
+
+enum ItemCategory {
+  STOCK
+  TMC
 }
