@@ -4677,7 +4677,7 @@ app.get("/api/warehouse/locations/:id/stock", auth, async (req, res) => {
   }
 });
 
-// ===== TSD: INVENTORY COUNT =====
+// ===== TSD: INVENTORY COUNT (CREATE DISCREPANCY ONLY) =====
 app.post("/api/warehouse/inventory/count", auth, async (req, res) => {
   try {
     const { opId, locationId, itemId, qty, comment } = req.body || {};
@@ -4701,27 +4701,40 @@ app.post("/api/warehouse/inventory/count", auth, async (req, res) => {
     const normalizedQty = Math.trunc(amount);
 
     let delta = 0;
+    let discrepancyId = null;
+
     await prisma.$transaction(async (tx) => {
-      const current = await stockService.getItemLocationQty(
-        tx,
-        item,
-        location
-      );
+      const current = await stockService.getItemLocationQty(tx, item, location);
       delta = normalizedQty - current;
+
       if (delta !== 0) {
-        await stockService.createMovementInTx(tx, {
-          opId: opId || null,
-          type: "ADJUSTMENT",
-          itemId: item,
-          qty: delta,
-          locationId: location,
-          comment: comment || `Контроль (ТСД) ячейка ${location}`,
-          userId: req.user?.id || null,
+        const opKey = opId || `count:${location}:${item}:${Date.now()}`;
+        const existing = await tx.stockDiscrepancy.findFirst({
+          where: { movementOpId: opKey },
         });
+
+        if (!existing) {
+          const created = await tx.stockDiscrepancy.create({
+            data: {
+              sessionId: null,
+              locationId: location,
+              itemId: item,
+              expectedQty: Math.trunc(current),
+              countedQty: Math.trunc(normalizedQty),
+              delta: Math.trunc(delta),
+              status: "OPEN",
+              movementOpId: opKey,
+              closeNote: comment || null,
+            },
+          });
+          discrepancyId = created.id;
+        } else {
+          discrepancyId = existing.id;
+        }
       }
     });
 
-    res.json({ locationId: location, itemId: item, qty: normalizedQty, delta });
+    res.json({ locationId: location, itemId: item, qty: normalizedQty, delta, discrepancyId });
   } catch (err) {
     console.error("inventory count error:", err);
     if (err.code === "BAD_QTY") {
