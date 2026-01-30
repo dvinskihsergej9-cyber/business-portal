@@ -1,6 +1,15 @@
 ﻿import { useEffect, useMemo, useState } from "react";
 import { apiFetch } from "../apiConfig";
 import { useAuth } from "../context/AuthContext";
+import { jsPDF } from "jspdf";
+import autoTable from "jspdf-autotable";
+import { ARIAL_TTF_BASE64 } from "../utils/arialFontBase64";
+
+const ensurePdfFont = async (pdf) => {
+  pdf.addFileToVFS("Arial.ttf", ARIAL_TTF_BASE64);
+  pdf.addFont("Arial.ttf", "Arial", "normal", "Identity-H");
+  pdf.setFont("Arial", "normal");
+};
 
 const formatQty = (value) => (value == null ? "-" : String(value));
 
@@ -28,6 +37,7 @@ export default function TmcTab() {
   const [transactions, setTransactions] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
+  const [printing, setPrinting] = useState(false);
 
   const [newItem, setNewItem] = useState({ name: "", unit: "шт" });
   const [receiveForm, setReceiveForm] = useState({ itemId: "", qty: "", docNo: "", comment: "" });
@@ -70,18 +80,6 @@ export default function TmcTab() {
     loadAll();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
-
-  const handleSeed = async () => {
-    try {
-      setError("");
-      const res = await apiFetch("/tmc/seed-defaults", { method: "POST", headers: authHeaders });
-      const data = await res.json();
-      if (!res.ok) throw new Error(mapErrorMessage(data.message) || "Не удалось загрузить список");
-      await loadAll();
-    } catch (err) {
-      setError(err.message || "Не удалось загрузить список");
-    }
-  };
 
   const handleAddItem = async () => {
     if (!newItem.name.trim()) return;
@@ -146,6 +144,54 @@ export default function TmcTab() {
     }
   };
 
+  const handlePrint = async () => {
+    if (printing) return;
+    try {
+      setPrinting(true);
+      const pdf = new jsPDF("l", "pt", "a4");
+      await ensurePdfFont(pdf);
+      pdf.setFontSize(12);
+      pdf.text("Ревизия ТМЦ", 40, 28);
+
+      const rows = stock.map((row) => [
+        row.name || "-",
+        row.unit || "-",
+        row.currentStock ?? "-",
+      ]);
+
+      autoTable(pdf, {
+        startY: 38,
+        head: [["Товар", "Ед.", "Остаток"]],
+        body: rows,
+        theme: "grid",
+        styles: {
+          font: "Arial",
+          fontSize: 8,
+          cellPadding: 3,
+          overflow: "linebreak",
+          valign: "top",
+        },
+        headStyles: {
+          fillColor: [245, 246, 248],
+          textColor: [15, 23, 42],
+          fontStyle: "bold",
+          font: "Arial",
+        },
+        columnStyles: {
+          0: { cellWidth: 340 },
+          1: { cellWidth: 80 },
+          2: { cellWidth: 80 },
+        },
+      });
+
+      pdf.save("tmc-revision.pdf");
+    } catch (err) {
+      console.error("tmc print error:", err);
+    } finally {
+      setPrinting(false);
+    }
+  };
+
   const itemOptions = items.length ? items : stock;
 
   return (
@@ -181,13 +227,41 @@ export default function TmcTab() {
                   Добавить
                 </button>
               )}
-              {isAdmin && (
-                <button type="button" className="btn btn--secondary" onClick={handleSeed}>
-                  Загрузить базовый список
-                </button>
-              )}
             </div>
           </div>
+        </div>
+
+        <div className="card" style={{ padding: 12 }}>
+          <div style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center" }}>
+            <div style={{ fontWeight: 700 }}>Остатки ТМЦ</div>
+            <button type="button" className="btn btn--secondary" onClick={handlePrint} disabled={printing}>
+              {printing ? "Готовим акт..." : "Печать акта"}
+            </button>
+          </div>
+          {loading ? (
+            <div>Загрузка...</div>
+          ) : (
+            <div className="transactions-table">
+              <table style={{ width: "100%", borderCollapse: "collapse" }}>
+                <thead>
+                  <tr>
+                    <th style={thStyle}>Товар</th>
+                    <th style={thStyle}>Ед.</th>
+                    <th style={thStyle}>Остаток</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {stock.map((row) => (
+                    <tr key={row.id} className="transactions-row">
+                      <td data-label="item" style={tdStyle}>{row.name}</td>
+                      <td data-label="unit" style={tdStyle}>{row.unit || "-"}</td>
+                      <td data-label="qty" style={tdStyle}>{formatQty(row.currentStock)}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
         </div>
 
         <div className="card" style={{ padding: 12 }}>
@@ -278,34 +352,6 @@ export default function TmcTab() {
               Выдать
             </button>
           </div>
-        </div>
-
-        <div className="card" style={{ padding: 12 }}>
-          <div style={{ fontWeight: 700, marginBottom: 8 }}>Остатки ТМЦ</div>
-          {loading ? (
-            <div>Загрузка...</div>
-          ) : (
-            <div className="transactions-table">
-              <table style={{ width: "100%", borderCollapse: "collapse" }}>
-                <thead>
-                  <tr>
-                    <th style={thStyle}>Товар</th>
-                    <th style={thStyle}>Ед.</th>
-                    <th style={thStyle}>Остаток</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {stock.map((row) => (
-                    <tr key={row.id} className="transactions-row">
-                      <td data-label="item" style={tdStyle}>{row.name}</td>
-                      <td data-label="unit" style={tdStyle}>{row.unit || "-"}</td>
-                      <td data-label="qty" style={tdStyle}>{formatQty(row.currentStock)}</td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          )}
         </div>
 
         <div className="card" style={{ padding: 12 }}>

@@ -4790,7 +4790,7 @@ app.post("/api/tmc/receive", auth, requireAdmin, async (req, res) => {
     if (!itemRow || itemRow.category !== "TMC") {
       return res.status(404).json({ message: "ITEM_NOT_FOUND" });
     }
-    const note = docNo ? `?????? ???: ${docNo}` : "?????? ???";
+    const note = docNo ? `Приход ТМЦ: ${docNo}` : "Приход ТМЦ";
     const movement = await stockService.createMovement({
       type: "INCOME",
       itemId: item,
@@ -4825,7 +4825,7 @@ app.post("/api/tmc/issue", auth, async (req, res) => {
     }
 
     const target = [department, employee].filter(Boolean).join(" / ");
-    const note = target ? `?????? ???: ${target}` : "?????? ???";
+    const note = target ? `Выдача ТМЦ: ${target}` : "Выдача ТМЦ";
     const movement = await stockService.createMovement({
       type: "ISSUE",
       itemId: item,
