@@ -1,4 +1,4 @@
-﻿import { useEffect, useMemo, useState } from "react";
+﻿import { useEffect, useMemo, useState, useRef } from "react";
 import { apiFetch } from "../apiConfig";
 import { useAuth } from "../context/AuthContext";
 import { jsPDF } from "jspdf";
@@ -29,6 +29,7 @@ const mapErrorMessage = (message) => {
 };
 
 export default function TmcTab() {
+  const errorRef = useRef(null);
   const { user } = useAuth();
   const isAdmin = user?.role === "ADMIN";
 
@@ -38,6 +39,7 @@ export default function TmcTab() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [printing, setPrinting] = useState(false);
+  const [showZeros, setShowZeros] = useState(true);
 
   const [newItem, setNewItem] = useState({ name: "", unit: "шт" });
   const [receiveForm, setReceiveForm] = useState({ itemId: "", qty: "", docNo: "", comment: "" });
@@ -153,10 +155,12 @@ export default function TmcTab() {
       pdf.setFontSize(12);
       pdf.text("Ревизия ТМЦ", 40, 28);
 
-      const rows = stock.map((row) => [
+      const printRows = (showZeros ? stock : stock.filter((row) => Number(row.currentStock) !== 0));
+      const rows = printRows.map((row) => [
         row.name || "-",
         row.unit || "-",
         row.currentStock ?? "-",
+        "",
       ]);
 
       autoTable(pdf, {
@@ -178,12 +182,15 @@ export default function TmcTab() {
           font: "Arial",
         },
         columnStyles: {
-          0: { cellWidth: 340 },
-          1: { cellWidth: 80 },
+          0: { cellWidth: 300 },
+          1: { cellWidth: 70 },
           2: { cellWidth: 80 },
+          3: { cellWidth: 80 },
         },
       });
 
+      const finalY = pdf.lastAutoTable ? pdf.lastAutoTable.finalY + 24 : 80;
+      pdf.text("??? ??????: ____________________________", 40, finalY);
       pdf.save("tmc-revision.pdf");
     } catch (err) {
       console.error("tmc print error:", err);
@@ -201,7 +208,7 @@ export default function TmcTab() {
         <div style={{ fontSize: 13, color: "#64748b" }}>
           Общий запас расходных материалов. Приход и выдача списывают остатки ТМЦ.
         </div>
-        {error && <div className="alert alert--danger">{error}</div>}
+        {error && <div className="alert alert--danger" ref={errorRef}>{error}</div>}
       </div>
 
       <div style={{ display: "grid", gap: 16 }}>
@@ -251,7 +258,7 @@ export default function TmcTab() {
                   </tr>
                 </thead>
                 <tbody>
-                  {stock.map((row) => (
+                  {(showZeros ? stock : stock.filter((row) => Number(row.currentStock) !== 0)).map((row) => (
                     <tr key={row.id} className="transactions-row">
                       <td data-label="item" style={tdStyle}>{row.name}</td>
                       <td data-label="unit" style={tdStyle}>{row.unit || "-"}</td>
