@@ -1403,6 +1403,7 @@ async function getLowStockItems() {
     let qty = 0;
 
     for (const m of item.movements) {
+      if (!m.locationId) continue;
       if (m.type === "INCOME" || m.type === "ADJUSTMENT") {
         qty += Number(m.quantity);
       } else if (m.type === "ISSUE") {
@@ -5617,6 +5618,7 @@ app.get("/api/inventory/stock", auth, async (req, res) => {
     const result = items.map((item) => {
       let qty = 0;
       for (const m of item.movements) {
+        if (!m.locationId) continue;
         if (m.type === "INCOME" || m.type === "ADJUSTMENT") {
           qty += Number(m.quantity);
         } else if (m.type === "ISSUE") {
@@ -5656,6 +5658,7 @@ app.get("/api/warehouse/stock/summary", auth, async (req, res) => {
     const result = items.map((item) => {
       let qty = 0;
       for (const m of item.movements) {
+        if (!m.locationId) continue;
         if (m.type === "INCOME" || m.type === "ADJUSTMENT") {
           qty += Number(m.quantity);
         } else if (m.type === "ISSUE") {
@@ -5724,6 +5727,7 @@ app.get("/api/inventory/low-stock-order-file", auth, async (req, res) => {
       // Р РЋР С“Р РЋРІР‚РЋР В РЎвЂР РЋРІР‚С™Р В Р’В°Р В Р’ВµР В РЎВ Р РЋРІР‚С™Р В Р’ВµР В РЎвЂќР РЋРЎвЂњР РЋРІР‚В°Р В РЎвЂР В РІвЂћвЂ“ Р В РЎвЂўР РЋР С“Р РЋРІР‚С™Р В Р’В°Р РЋРІР‚С™Р В РЎвЂўР В РЎвЂќ Р РЋРІР‚С™Р В Р’В°Р В РЎвЂќ Р В Р’В¶Р В Р’Вµ, Р В РЎвЂќР В Р’В°Р В РЎвЂќ Р В Р вЂ  /api/inventory/stock
       let qty = 0;
       for (const m of item.movements) {
+        if (!m.locationId) continue;
         if (m.type === "INCOME" || m.type === "ADJUSTMENT") {
           qty += Number(m.quantity);
         } else if (m.type === "ISSUE") {
@@ -6110,7 +6114,7 @@ async function getCurrentStockForItem(itemId) {
   if (!item) return null;
 
   const movements = await prisma.stockMovement.findMany({
-    where: { itemId: id },
+    where: { itemId: id, locationId: { not: null } },
   });
 
   let total = 0;
