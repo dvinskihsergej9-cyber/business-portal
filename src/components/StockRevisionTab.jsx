@@ -1,5 +1,5 @@
 ﻿import { useEffect, useMemo, useState } from "react";
-import { API_BASE } from "../apiConfig";
+import { apiFetch } from "../apiConfig";
 import { useAuth } from "../context/AuthContext";
 import { jsPDF } from "jspdf";
 import autoTable from "jspdf-autotable";
@@ -42,7 +42,7 @@ export default function StockRevisionTab() {
     try {
       setLoading(true);
       setError("");
-      const res = await fetch(`${API_BASE}/warehouse/revisions`, {
+      const res = await apiFetch("/warehouse/revisions", {
         headers: authHeaders,
       });
       const data = await res.json();
@@ -66,7 +66,7 @@ export default function StockRevisionTab() {
     try {
       setItemsLoading(true);
       setError("");
-      const res = await fetch(`${API_BASE}/warehouse/revisions/${revisionId}`, {
+      const res = await apiFetch(`/warehouse/revisions/${revisionId}`, {
         headers: authHeaders,
       });
       const data = await res.json();
@@ -100,7 +100,7 @@ export default function StockRevisionTab() {
     try {
       setCreating(true);
       setError("");
-      const res = await fetch(`${API_BASE}/warehouse/revisions`, {
+      const res = await apiFetch("/warehouse/revisions", {
         method: "POST",
         headers: authHeaders,
       });
@@ -125,7 +125,7 @@ export default function StockRevisionTab() {
     try {
       setApplying(true);
       setError("");
-      const res = await fetch(`${API_BASE}/warehouse/revisions/${selectedId}/apply`, {
+      const res = await apiFetch(`/warehouse/revisions/${selectedId}/apply`, {
         method: "POST",
         headers: authHeaders,
         body: JSON.stringify({ itemIds: ids, applyAll }),
