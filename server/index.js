@@ -4630,22 +4630,23 @@ app.post("/api/warehouse/revisions/:id/apply", auth, requireAdmin, async (req, r
 
 // ===== TMC (SUPPLIES) =====
 const TMC_DEFAULTS = [
-  { name: "?????? ?4", unit: "?????" },
-  { name: "????? ?????????", unit: "??" },
-  { name: "?????? ????????????", unit: "??" },
-  { name: "????? ??????????", unit: "?????" },
-  { name: "??????-??????", unit: "?????" },
-  { name: "???????? ???????", unit: "????" },
-  { name: "????????", unit: "??" },
-  { name: "????? ??? ??????", unit: "??" },
-  { name: "????????", unit: "??" },
-  { name: "??????? ?????", unit: "?????" },
-  { name: "????????", unit: "?????" },
-  { name: "??? ????????????", unit: "??" },
-  { name: "????? ????????????", unit: "?????" },
-  { name: "?????? ???", unit: "??" },
-  { name: "????????????? ????????", unit: "??" },
+  { name: "Бумага А4", unit: "пачка" },
+  { name: "Ручки шариковые", unit: "шт" },
+  { name: "Маркер перманентный", unit: "шт" },
+  { name: "Скотч прозрачный", unit: "рулон" },
+  { name: "Стретч-плёнка", unit: "рулон" },
+  { name: "Перчатки рабочие", unit: "пара" },
+  { name: "Салфетки", unit: "уп" },
+  { name: "Мешки для мусора", unit: "уп" },
+  { name: "Картридж", unit: "шт" },
+  { name: "Клейкая лента", unit: "рулон" },
+  { name: "Этикетки", unit: "рулон" },
+  { name: "Нож канцелярский", unit: "шт" },
+  { name: "Скотч армированный", unit: "рулон" },
+  { name: "Пакеты зип", unit: "уп" },
+  { name: "Маркировочные наклейки", unit: "уп" },
 ];
+
 
 const getTmcStockForItem = async (itemId) => {
   const movements = await prisma.stockMovement.findMany({
@@ -4844,13 +4845,25 @@ app.post("/api/tmc/seed-defaults", auth, requireAdmin, async (req, res) => {
   try {
     const existing = await prisma.item.findMany({
       where: { category: "TMC" },
+      select: { id: true, name: true },
+    });
+    const bad = existing.filter((row) => (row.name || "").includes(String.fromCharCode(0xFFFD)) || (row.name || "").includes("?"));
+    if (bad.length) {
+      await prisma.item.deleteMany({
+        where: { id: { in: bad.map((row) => row.id) } },
+      });
+    }
+
+    const existingAfter = await prisma.item.findMany({
+      where: { category: "TMC" },
       select: { name: true },
     });
-    const exists = new Set(existing.map((i) => i.name.toLowerCase()));
+
+    const exists = new Set(existingAfter.map((i) => i.name.toLowerCase()));
     const toCreate = TMC_DEFAULTS.filter((row) => !exists.has(row.name.toLowerCase()))
       .map((row) => ({
         name: row.name,
-        unit: row.unit || "??",
+        unit: row.unit || "\u0448\u0442",
         category: "TMC",
       }));
 
