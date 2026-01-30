@@ -13,6 +13,7 @@ import PurchaseOrderReceiveModal from "../components/PurchaseOrderReceiveModal";
 import StockAuditTab from "../components/StockAuditTab";
 import StockMovementsHistoryTab from "../components/StockMovementsHistoryTab";
 import StockTransactionsTab from "../components/StockTransactionsTab";
+import StockRevisionTab from "../components/StockRevisionTab";
 import SupplierTrucksQueueTab from "../components/SupplierTrucksQueueTab";
 import MobileTsdTab from "../components/MobileTsdTab";
 import WarehouseLocationsPanel from "../components/WarehouseLocationsPanel";
@@ -56,6 +57,7 @@ const WAREHOUSE_ICON_FALLBACK = {
   moves: "MOV",
   suppliers: "SUP",
   docs: "DOC",
+  revision: "REV",
 };
 
 function WarehouseTileIcon({ name }) {
@@ -185,6 +187,7 @@ export default function Warehouse() {
   const queueRef = useRef(null);
   const tsdRef = useRef(null);
   const transactionsRef = useRef(null);
+  const revisionRef = useRef(null);
 
   const [requestsTab, setRequestsTab] = useState("new"); // 'new' | 'journal'
 
@@ -317,6 +320,7 @@ export default function Warehouse() {
       queue: queueRef,
       tsd: tsdRef,
       transactions: transactionsRef,
+      revision: revisionRef,
     };
     const target = refMap[section];
     if (target?.current) {
@@ -2329,6 +2333,26 @@ export default function Warehouse() {
             type="button"
             className={
               "warehouse-card" +
+              (section === "revision" ? " warehouse-card--active" : "")
+            }
+            onClick={() => setSection("revision")}
+          >
+            <div className="warehouse-card__icon">
+              <WarehouseTileIcon name="revision" />
+            </div>
+            <div className="warehouse-card__body">
+              <div className="warehouse-card__title">{"\u0420\u0435\u0432\u0438\u0437\u0438\u044f"}</div>
+              <div className="warehouse-card__subtitle">
+                {"\u0421\u043d\u0438\u043c\u043e\u043a \u0440\u0430\u0441\u0445\u043e\u0436\u0434\u0435\u043d\u0438\u0439 \u043f\u043e \u043a\u043e\u043d\u0442\u0440\u043e\u043b\u044e \u044f\u0447\u0435\u0435\u043a."}
+              </div>
+            </div>
+          </button>
+
+
+          <button
+            type="button"
+            className={
+              "warehouse-card" +
               (section === "suppliers" ? " warehouse-card--active" : "")
             }
             onClick={() => setSection("suppliers")}
@@ -3588,6 +3612,12 @@ export default function Warehouse() {
       {section === "transactions" && (
         <div className="inventory-section" ref={transactionsRef}>
           <StockTransactionsTab />
+        </div>
+      )}
+
+      {section === "revision" && (
+        <div className="inventory-section" ref={revisionRef}>
+          <StockRevisionTab />
         </div>
       )}
 

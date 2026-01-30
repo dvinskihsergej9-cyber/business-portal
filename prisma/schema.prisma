@@ -34,6 +34,8 @@ model User {
   receivingDiscrepanciesClosed ReceivingDiscrepancy[] @relation("ReceivingDiscrepancyClosedBy")
   invitesCreated InviteToken[] @relation("InviteCreatedBy")
   passwordResetTokens PasswordResetToken[]
+  revisionsCreated StockRevision[] @relation("RevisionCreatedBy")
+  revisionItemsApplied StockRevisionItem[] @relation("RevisionItemAppliedBy")
 }
 
 // ============ SUBSCRIPTION ============
@@ -303,6 +305,7 @@ model Item {
   placements         WarehousePlacement[]
   discrepancies      StockDiscrepancy[]
   receivingDiscrepancies ReceivingDiscrepancy[]
+  revisionItems      StockRevisionItem[]
 }
 
 model WarehouseLocation {
@@ -320,6 +323,7 @@ model WarehouseLocation {
   placements WarehousePlacement[]
   auditEvents BinAuditEvent[]
   discrepancies StockDiscrepancy[]
+  revisionItems StockRevisionItem[]
 }
 
 model WarehousePlacement {
@@ -395,6 +399,36 @@ model StockDiscrepancy {
   closedByUser  User?               @relation("DiscrepancyClosedBy", fields: [closedByUserId], references: [id])
   closeNote     String?
   movementOpId  String?
+  revisionItems StockRevisionItem[]
+}
+
+model StockRevision {
+  id             Int      @id @default(autoincrement())
+  createdAt      DateTime @default(now())
+  createdByUserId Int?
+  createdBy      User?    @relation("RevisionCreatedBy", fields: [createdByUserId], references: [id])
+  items          StockRevisionItem[]
+}
+
+model StockRevisionItem {
+  id                 Int      @id @default(autoincrement())
+  revisionId         Int
+  revision           StockRevision @relation(fields: [revisionId], references: [id])
+  discrepancyId      Int?
+  discrepancy        StockDiscrepancy? @relation(fields: [discrepancyId], references: [id])
+  locationId         Int
+  location           WarehouseLocation @relation(fields: [locationId], references: [id])
+  itemId             Int
+  item               Item     @relation(fields: [itemId], references: [id])
+  expectedQty        Int
+  countedQty         Int
+  delta              Int
+  status             String   @default("OPEN")
+  appliedAt          DateTime?
+  appliedByUserId    Int?
+  appliedBy          User?    @relation("RevisionItemAppliedBy", fields: [appliedByUserId], references: [id])
+  appliedMovementOpId String?
+  note               String?
 }
 
 model ReceivingDiscrepancy {

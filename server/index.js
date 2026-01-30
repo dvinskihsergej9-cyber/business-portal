@@ -4137,16 +4137,6 @@ app.post(
           if (delta === 0) continue;
 
           const opId = `audit:${session}:${locationId}:${itemId}`;
-          const movement = await stockService.createMovementInTx(tx, {
-            opId,
-            type: "ADJUSTMENT",
-            itemId,
-            qty: delta,
-            locationId,
-            comment: note || `Контроль ячейки ${session}`,
-            userId: req.user?.id || null,
-          });
-
           const existing = await tx.stockDiscrepancy.findFirst({
             where: { movementOpId: opId },
           });
@@ -4160,13 +4150,12 @@ app.post(
                 countedQty: Math.trunc(countedQty),
                 delta: Math.trunc(delta),
                 status: "OPEN",
-                movementOpId: movement.opId || opId,
+                movementOpId: opId,
               },
             });
             createdDiscrepancies.push(created.id);
+            adjustedCount += 1;
           }
-
-          adjustedCount += 1;
         }
 
         await tx.binAuditEvent.create({
@@ -4407,6 +4396,225 @@ app.get("/api/warehouse/transactions", auth, async (req, res) => {
   } catch (err) {
     console.error("transactions list error:", err);
     res.status(500).json({ message: "TRANSACTIONS_LIST_ERROR", detail: String(err) });
+  }
+});
+
+// ===== STOCK REVISIONS =====
+app.get("/api/warehouse/revisions", auth, async (req, res) => {
+  try {
+    const revisions = await prisma.stockRevision.findMany({
+      orderBy: { createdAt: "desc" },
+      include: { createdBy: true, _count: { select: { items: true } } },
+    });
+
+    const grouped = await prisma.stockRevisionItem.groupBy({
+      by: ["revisionId", "status"],
+      _count: { _all: true },
+    });
+
+    const countMap = new Map();
+    for (const row of grouped) {
+      const key = `${row.revisionId}:${row.status}`;
+      countMap.set(key, row._count._all || 0);
+    }
+
+    const items = revisions.map((rev) => {
+      const applied = countMap.get(`${rev.id}:APPLIED`) || 0;
+      const open = countMap.get(`${rev.id}:OPEN`) || 0;
+      const skipped = countMap.get(`${rev.id}:SKIPPED`) || 0;
+      return {
+        id: rev.id,
+        createdAt: rev.createdAt,
+        createdBy: rev.createdBy
+          ? { id: rev.createdBy.id, name: rev.createdBy.name }
+          : null,
+        itemsCount: rev._count?.items || 0,
+        appliedCount: applied,
+        openCount: open,
+        skippedCount: skipped,
+      };
+    });
+
+    res.json({ items });
+  } catch (err) {
+    console.error("revisions list error:", err);
+    res.status(500).json({ message: "REVISIONS_LIST_ERROR" });
+  }
+});
+
+app.get("/api/warehouse/revisions/:id", auth, async (req, res) => {
+  try {
+    const id = Number(req.params.id);
+    if (!id || Number.isNaN(id)) {
+      return res.status(400).json({ message: "BAD_REVISION_ID" });
+    }
+    const revision = await prisma.stockRevision.findUnique({
+      where: { id },
+      include: {
+        createdBy: true,
+        items: {
+          orderBy: { id: "desc" },
+          include: {
+            item: true,
+            location: true,
+            discrepancy: {
+              include: { session: { include: { startedBy: true } } },
+            },
+          },
+        },
+      },
+    });
+    if (!revision) {
+      return res.status(404).json({ message: "REVISION_NOT_FOUND" });
+    }
+
+    const items = revision.items.map((row) => ({
+      id: row.id,
+      status: row.status,
+      expectedQty: row.expectedQty,
+      countedQty: row.countedQty,
+      delta: row.delta,
+      discrepancyId: row.discrepancyId,
+      createdAt: row.discrepancy?.createdAt || null,
+      checkedBy: row.discrepancy?.session?.startedBy
+        ? {
+            id: row.discrepancy.session.startedBy.id,
+            name: row.discrepancy.session.startedBy.name,
+          }
+        : null,
+      item: row.item
+        ? { id: row.item.id, name: row.item.name, sku: row.item.sku }
+        : null,
+      location: row.location
+        ? { id: row.location.id, name: row.location.name, code: row.location.code }
+        : null,
+    }));
+
+    res.json({
+      id: revision.id,
+      createdAt: revision.createdAt,
+      createdBy: revision.createdBy
+        ? { id: revision.createdBy.id, name: revision.createdBy.name }
+        : null,
+      items,
+    });
+  } catch (err) {
+    console.error("revision detail error:", err);
+    res.status(500).json({ message: "REVISION_DETAIL_ERROR" });
+  }
+});
+
+app.post("/api/warehouse/revisions", auth, requireAdmin, async (req, res) => {
+  try {
+    const discrepancies = await prisma.stockDiscrepancy.findMany({
+      where: { status: "OPEN" },
+      orderBy: { createdAt: "desc" },
+    });
+
+    const revision = await prisma.stockRevision.create({
+      data: { createdByUserId: req.user?.id || null },
+    });
+
+    if (discrepancies.length) {
+      await prisma.stockRevisionItem.createMany({
+        data: discrepancies.map((row) => ({
+          revisionId: revision.id,
+          discrepancyId: row.id,
+          locationId: row.locationId,
+          itemId: row.itemId,
+          expectedQty: row.expectedQty,
+          countedQty: row.countedQty,
+          delta: row.delta,
+          status: "OPEN",
+        })),
+      });
+    }
+
+    res.json({ id: revision.id, itemsCount: discrepancies.length });
+  } catch (err) {
+    console.error("revision create error:", err);
+    res.status(500).json({ message: "REVISION_CREATE_ERROR" });
+  }
+});
+
+app.post("/api/warehouse/revisions/:id/apply", auth, requireAdmin, async (req, res) => {
+  try {
+    const id = Number(req.params.id);
+    if (!id || Number.isNaN(id)) {
+      return res.status(400).json({ message: "BAD_REVISION_ID" });
+    }
+    const { itemIds, applyAll } = req.body || {};
+    if (!applyAll && (!Array.isArray(itemIds) || itemIds.length === 0)) {
+      return res.status(400).json({ message: "BAD_ITEMS" });
+    }
+
+    const targetIds = applyAll
+      ? undefined
+      : itemIds.map((value) => Number(value)).filter((value) => value && !Number.isNaN(value));
+
+    const items = await prisma.stockRevisionItem.findMany({
+      where: {
+        revisionId: id,
+        ...(applyAll ? {} : { id: { in: targetIds } }),
+      },
+    });
+
+    const appliedIds = [];
+
+    await prisma.$transaction(async (tx) => {
+      for (const row of items) {
+        if (row.status !== "OPEN") continue;
+        const delta = Number(row.delta);
+        if (!Number.isFinite(delta) || delta === 0) {
+          await tx.stockRevisionItem.update({
+            where: { id: row.id },
+            data: { status: "SKIPPED" },
+          });
+          continue;
+        }
+
+        const opId = `revision:${id}:${row.id}`;
+        const movement = await stockService.createMovementInTx(tx, {
+          opId,
+          type: "ADJUSTMENT",
+          itemId: row.itemId,
+          qty: delta,
+          locationId: row.locationId,
+          comment: `REVISION ${id}`,
+          userId: req.user?.id || null,
+        });
+
+        await tx.stockRevisionItem.update({
+          where: { id: row.id },
+          data: {
+            status: "APPLIED",
+            appliedAt: new Date(),
+            appliedByUserId: req.user?.id || null,
+            appliedMovementOpId: movement.opId || opId,
+          },
+        });
+
+        if (row.discrepancyId) {
+          await tx.stockDiscrepancy.update({
+            where: { id: row.discrepancyId },
+            data: {
+              status: "CLOSED",
+              closedAt: new Date(),
+              closedByUserId: req.user?.id || null,
+              closeNote: `REVISION ${id}`,
+              movementOpId: movement.opId || opId,
+            },
+          });
+        }
+
+        appliedIds.push(row.id);
+      }
+    });
+
+    res.json({ ok: true, appliedIds });
+  } catch (err) {
+    console.error("revision apply error:", err);
+    res.status(500).json({ message: "REVISION_APPLY_ERROR" });
   }
 });
 

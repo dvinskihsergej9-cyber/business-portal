@@ -35,6 +35,7 @@ const formatComment = (value) => {
     .replace(/TSD PUTAWAY/gi, "Размещение (ТСД)")
     .replace(/TSD REPLENISH/gi, "Пополнение (ТСД)")
     .replace(/BIN AUDIT/gi, "Контроль ячейки")
+    .replace(/REVISION/gi, "Ревизия")
     .replace(/RECEIVING/gi, "Приемка");
 };
 
