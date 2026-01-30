@@ -2034,6 +2034,10 @@ input[type="number"] {
     content: "Комментарий";
   }
 
+  .transactions-table .transactions-row td[data-label="unit"]::before {
+    content: "Ед.";
+  }
+
 }
 
 @media (prefers-reduced-motion: reduce) {

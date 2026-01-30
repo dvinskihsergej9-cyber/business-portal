@@ -11,6 +11,14 @@ const typeLabel = (type) => {
   return type || "-";
 };
 
+const mapErrorMessage = (message) => {
+  if (!message) return "Ошибка";
+  if (message === "INSUFFICIENT_QTY") return "Недостаточно остатка для выдачи.";
+  if (message === "BAD_REQUEST") return "Проверьте заполнение формы.";
+  if (message === "ITEM_NOT_FOUND") return "Позиция не найдена.";
+  return message;
+};
+
 export default function TmcTab() {
   const { user } = useAuth();
   const isAdmin = user?.role === "ADMIN";
@@ -45,9 +53,9 @@ export default function TmcTab() {
       const itemsData = await itemsRes.json();
       const stockData = await stockRes.json();
       const txData = await txRes.json();
-      if (!itemsRes.ok) throw new Error(itemsData.message || "Ошибка загрузки ТМЦ");
-      if (!stockRes.ok) throw new Error(stockData.message || "Ошибка загрузки остатков");
-      if (!txRes.ok) throw new Error(txData.message || "Ошибка загрузки журнала");
+      if (!itemsRes.ok) throw new Error(mapErrorMessage(itemsData.message) || "Ошибка загрузки ТМЦ");
+      if (!stockRes.ok) throw new Error(mapErrorMessage(stockData.message) || "Ошибка загрузки остатков");
+      if (!txRes.ok) throw new Error(mapErrorMessage(txData.message) || "Ошибка загрузки журнала");
       setItems(itemsData || []);
       setStock(stockData || []);
       setTransactions(txData.items || []);
@@ -68,7 +76,7 @@ export default function TmcTab() {
       setError("");
       const res = await apiFetch("/tmc/seed-defaults", { method: "POST", headers: authHeaders });
       const data = await res.json();
-      if (!res.ok) throw new Error(data.message || "Не удалось загрузить список");
+      if (!res.ok) throw new Error(mapErrorMessage(data.message) || "Не удалось загрузить список");
       await loadAll();
     } catch (err) {
       setError(err.message || "Не удалось загрузить список");
@@ -85,7 +93,7 @@ export default function TmcTab() {
         body: JSON.stringify({ name: newItem.name.trim(), unit: newItem.unit || "шт" }),
       });
       const data = await res.json();
-      if (!res.ok) throw new Error(data.message || "Не удалось добавить");
+      if (!res.ok) throw new Error(mapErrorMessage(data.message) || "Не удалось добавить");
       setNewItem({ name: "", unit: "шт" });
       await loadAll();
     } catch (err) {
@@ -107,7 +115,7 @@ export default function TmcTab() {
         }),
       });
       const data = await res.json();
-      if (!res.ok) throw new Error(data.message || "Не удалось оприходовать");
+      if (!res.ok) throw new Error(mapErrorMessage(data.message) || "Не удалось оприходовать");
       setReceiveForm({ itemId: "", qty: "", docNo: "", comment: "" });
       await loadAll();
     } catch (err) {
@@ -130,7 +138,7 @@ export default function TmcTab() {
         }),
       });
       const data = await res.json();
-      if (!res.ok) throw new Error(data.message || "Не удалось выдать");
+      if (!res.ok) throw new Error(mapErrorMessage(data.message) || "Не удалось выдать");
       setIssueForm({ itemId: "", qty: "", department: "", employee: "", comment: "" });
       await loadAll();
     } catch (err) {
