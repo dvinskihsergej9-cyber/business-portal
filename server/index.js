@@ -45,7 +45,7 @@ function createToken(user) {
 async function auth(req, res, next) {
   const header = req.headers["authorization"];
   if (!header) {
-    return res.status(401).json({ message: "Р В РЎСљР В Р’ВµР РЋРІР‚С™ Р РЋРІР‚С™Р В РЎвЂўР В РЎвЂќР В Р’ВµР В Р вЂ¦Р В Р’В° Р В Р’В°Р В Р вЂ Р РЋРІР‚С™Р В РЎвЂўР РЋР вЂљР В РЎвЂР В Р’В·Р В Р’В°Р РЋРІР‚В Р В РЎвЂР В РЎвЂ" });
+    return res.status(401).json({ message: "????? ??????? ???????? ??????." });
   }
 
   const [type, token] = header.split(" ");
@@ -1125,8 +1125,7 @@ async function sendSafetyReminderForAssignment(a, force = false) {
     diffDays >= 0 ? `???? ????????: ${diffDays + 1}` : `?????????? ?? ${Math.abs(diffDays)} ??.`,
   ];
 
-  const textMsg = lines.join("
-");
+  const textMsg = lines.join("\n");
   await sendTelegramMessage(a.employee.telegramChatId, textMsg);
   await prisma.safetyAssignment.update({
     where: { id: a.id },
@@ -1177,14 +1176,13 @@ async function handleTelegramUpdate(update) {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           callback_query_id: callbackId,
-          text: "?????? ???????? ??? ???????????.",
+          text: "\u0417\u0430\u0434\u0430\u0447\u0430 \u043d\u0435 \u043d\u0430\u0439\u0434\u0435\u043d\u0430 \u0438\u043b\u0438 \u0443\u0434\u0430\u043b\u0435\u043d\u0430.",
           show_alert: false,
         }),
       });
       return;
     }
 
-    // Р В РЎвЂ”Р РЋР вЂљР В РЎвЂўР В Р вЂ Р В Р’ВµР РЋР вЂљР РЋР РЏР В Р’ВµР В РЎВ, Р РЋРІР‚РЋР РЋРІР‚С™Р В РЎвЂў Р В Р вЂ¦Р В Р’В°Р В Р’В¶Р В Р’В°Р В Р’В» Р В РЎвЂР В РЎВР В Р’ВµР В Р вЂ¦Р В Р вЂ¦Р В РЎвЂў Р В РЎвЂР РЋР С“Р В РЎвЂ”Р В РЎвЂўР В Р’В»Р В Р вЂ¦Р В РЎвЂР РЋРІР‚С™Р В Р’ВµР В Р’В»Р РЋР Р‰ (Р В Р’ВµР РЋР С“Р В Р’В»Р В РЎвЂ executorChatId Р В Р’В·Р В Р’В°Р В РўвЂР В Р’В°Р В Р вЂ¦)
     if (
       task.executorChatId &&
       String(task.executorChatId) !== String(from.id)
@@ -1194,14 +1192,13 @@ async function handleTelegramUpdate(update) {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           callback_query_id: callbackId,
-          text: "Р В Р’В­Р РЋРІР‚С™Р В Р’В° Р В Р’В·Р В Р’В°Р В РўвЂР В Р’В°Р РЋРІР‚РЋР В Р’В° Р В Р вЂ¦Р В Р’В°Р В Р’В·Р В Р вЂ¦Р В Р’В°Р РЋРІР‚РЋР В Р’ВµР В Р вЂ¦Р В Р’В° Р В РўвЂР РЋР вЂљР РЋРЎвЂњР В РЎвЂ“Р В РЎвЂўР В РЎВР РЋРЎвЂњ Р РЋР С“Р В РЎвЂўР РЋРІР‚С™Р РЋР вЂљР РЋРЎвЂњР В РўвЂР В Р вЂ¦Р В РЎвЂР В РЎвЂќР РЋРЎвЂњ.",
+          text: "\u042d\u0442\u0430 \u0437\u0430\u0434\u0430\u0447\u0430 \u043d\u0430\u0437\u043d\u0430\u0447\u0435\u043d\u0430 \u0434\u0440\u0443\u0433\u043e\u043c\u0443 \u0438\u0441\u043f\u043e\u043b\u043d\u0438\u0442\u0435\u043b\u044e.",
           show_alert: true,
         }),
       });
       return;
     }
 
-    // Р В РЎвЂўР В Р’В±Р В Р вЂ¦Р В РЎвЂўР В Р вЂ Р В Р’В»Р РЋР РЏР В Р’ВµР В РЎВ Р РЋР С“Р РЋРІР‚С™Р В Р’В°Р РЋРІР‚С™Р РЋРЎвЂњР РЋР С“ Р В Р’В·Р В Р’В°Р В РўвЂР В Р’В°Р РЋРІР‚РЋР В РЎвЂ
     await prisma.warehouseTask.update({
       where: { id: taskId },
       data: {
@@ -1210,10 +1207,8 @@ async function handleTelegramUpdate(update) {
       },
     });
 
-    // Р В Р’ВµР РЋР С“Р В Р’В»Р В РЎвЂ Р В Р’В·Р В Р’В°Р В РўвЂР В Р’В°Р РЋРІР‚РЋР В Р’В° Р РЋР С“Р В РЎвЂўР В Р’В·Р В РўвЂР В Р’В°Р В Р вЂ¦Р В Р’В° Р В РЎвЂ”Р В РЎвЂў Р В Р’В·Р В Р’В°Р РЋР РЏР В Р вЂ Р В РЎвЂќР В Р’Вµ Р В Р вЂ¦Р В Р’В° Р РЋР С“Р В РЎвЂќР В Р’В»Р В Р’В°Р В РўвЂ Р Р†Р вЂљРІР‚Сњ Р В Р’В°Р В Р вЂ Р РЋРІР‚С™Р В РЎвЂў-Р В РЎвЂ”Р РЋР вЂљР В РЎвЂўР В Р вЂ Р В Р’ВµР В РўвЂР В Р’ВµР В Р вЂ¦Р В РЎвЂР В Р’Вµ Р В Р’В·Р В Р’В°Р РЋР РЏР В Р вЂ Р В РЎвЂќР В РЎвЂ Р В РЎвЂ”Р В РЎвЂў Р РЋР С“Р В РЎвЂќР В Р’В»Р В Р’В°Р В РўвЂР РЋРЎвЂњ
     try {
-      // title Р В Р вЂ Р В РЎвЂР В РўвЂР В Р’В°: "Р В РІР‚вЂќР В Р’В°Р РЋР РЏР В Р вЂ Р В РЎвЂќР В Р’В° Р В Р вЂ¦Р В Р’В° Р РЋР С“Р В РЎвЂќР В Р’В»Р В Р’В°Р В РўвЂ #19: ... "
-      const match = task.title.match(/Р В РІР‚вЂќР В Р’В°Р РЋР РЏР В Р вЂ Р В РЎвЂќР В Р’В° Р В Р вЂ¦Р В Р’В° Р РЋР С“Р В РЎвЂќР В Р’В»Р В Р’В°Р В РўвЂ #(\d+)/);
+      const match = task.title.match(/\u0417\u0430\u044f\u0432\u043a\u0430 \u0441\u043a\u043b\u0430\u0434\u0430 #(\d+)/);
       if (match && task.assignerId) {
         const requestId = Number(match[1]);
         if (requestId) {
@@ -1224,37 +1219,37 @@ async function handleTelegramUpdate(update) {
       console.error("[Telegram] autoPostRequestFromTask error:", e);
     }
 
-    // Р В РЎвЂўР РЋРІР‚С™Р В Р вЂ Р В Р’ВµР РЋРІР‚С™Р В РЎвЂР В РЎВ Р В РЎС›Р В Р’ВµР В Р’В»Р В Р’ВµР В РЎвЂ“Р РЋР вЂљР В Р’В°Р В РЎВР РЋРЎвЂњ, Р РЋРІР‚РЋР РЋРІР‚С™Р В РЎвЂўР В Р’В±Р РЋРІР‚в„– Р РЋРЎвЂњР В Р’В±Р РЋР вЂљР В Р’В°Р В Р’В»Р В РЎвЂР РЋР С“Р РЋР Р‰ "Р РЋРІР‚РЋР В Р’В°Р РЋР С“Р В РЎвЂР В РЎвЂќР В РЎвЂ" Р В Р вЂ¦Р В Р’В° Р В РЎвЂќР В Р вЂ¦Р В РЎвЂўР В РЎвЂ”Р В РЎвЂќР В Р’Вµ
     await fetch(`${TELEGRAM_API}/answerCallbackQuery`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
         callback_query_id: callbackId,
-        text: "Р В РІР‚вЂќР В Р’В°Р В РўвЂР В Р’В°Р РЋРІР‚РЋР В Р’В° Р В РЎвЂўР РЋРІР‚С™Р В РЎВР В Р’ВµР РЋРІР‚РЋР В Р’ВµР В Р вЂ¦Р В Р’В° Р В РЎвЂќР В Р’В°Р В РЎвЂќ Р В Р вЂ Р РЋРІР‚в„–Р В РЎвЂ”Р В РЎвЂўР В Р’В»Р В Р вЂ¦Р В Р’ВµР В Р вЂ¦Р В Р вЂ¦Р В Р’В°Р РЋР РЏ Р Р†РЎС™РІР‚В¦",
+        text: "\u0417\u0430\u0434\u0430\u0447\u0430 \u043e\u0442\u043c\u0435\u0447\u0435\u043d\u0430 \u043a\u0430\u043a \u0432\u044b\u043f\u043e\u043b\u043d\u0435\u043d\u043d\u0430\u044f.",
         show_alert: false,
       }),
     });
 
-    // Р В РЎвЂР РЋР С“Р В РЎвЂ”Р В РЎвЂўР В Р’В»Р В Р вЂ¦Р В РЎвЂР РЋРІР‚С™Р В Р’ВµР В Р’В»Р РЋР вЂ№
     await sendTelegramMessage(
       from.id,
-      `?????? <b>${task.title}</b> ???????? ??? ???????????.`
+      `\u0417\u0430\u0434\u0430\u0447\u0430 <b>${task.title}</b> \u043e\u0442\u043c\u0435\u0447\u0435\u043d\u0430 \u043a\u0430\u043a \u0432\u044b\u043f\u043e\u043b\u043d\u0435\u043d\u043d\u0430\u044f.`
     );
 
-    // Р В Р вЂ  Р В РЎвЂ“Р РЋР вЂљР РЋРЎвЂњР В РЎвЂ”Р В РЎвЂ”Р РЋРЎвЂњ
     await sendWarehouseGroupMessage(
-      `?????? <b>${task.title}</b> ????????? ??????????? ${from.first_name || from.username || from.id}.`
+      `\u0417\u0430\u0434\u0430\u0447\u0430 <b>${task.title}</b> \u0432\u044b\u043f\u043e\u043b\u043d\u0435\u043d\u0430 \u043f\u043e\u043b\u044c\u0437\u043e\u0432\u0430\u0442\u0435\u043b\u0435\u043c ${from.first_name || from.username || from.id}.`
     );
 
     console.log(
-      `[Telegram] Р В РІР‚вЂќР В Р’В°Р В РўвЂР В Р’В°Р РЋРІР‚РЋР В Р’В° ${taskId} Р В РЎвЂўР РЋРІР‚С™Р В РЎВР В Р’ВµР РЋРІР‚РЋР В Р’ВµР В Р вЂ¦Р В Р’В° Р В РЎвЂќР В Р’В°Р В РЎвЂќ Р В Р вЂ Р РЋРІР‚в„–Р В РЎвЂ”Р В РЎвЂўР В Р’В»Р В Р вЂ¦Р В Р’ВµР В Р вЂ¦Р В Р вЂ¦Р В Р’В°Р РЋР РЏ Р В РЎвЂ”Р В РЎвЂўР В Р’В»Р РЋР Р‰Р В Р’В·Р В РЎвЂўР В Р вЂ Р В Р’В°Р РЋРІР‚С™Р В Р’ВµР В Р’В»Р В Р’ВµР В РЎВ ${from.id}`
+      `[Telegram] \u0437\u0430\u0434\u0430\u0447\u0430 ${taskId} \u043e\u0442\u043c\u0435\u0447\u0435\u043d\u0430 \u043a\u0430\u043a \u0432\u044b\u043f\u043e\u043b\u043d\u0435\u043d\u043d\u0430\u044f \u043f\u043e\u043b\u044c\u0437\u043e\u0432\u0430\u0442\u0435\u043b\u0435\u043c ${from.id}`
     );
   } catch (err) {
-    console.error("[handleTelegramUpdate] Р В РЎвЂєР РЋРІвЂљВ¬Р В РЎвЂР В Р’В±Р В РЎвЂќР В Р’В°:", err);
+    console.error("[handleTelegramUpdate] error:", err);
   }
 }
 
 let telegramOffset = 0;
+
+
+
 
 async function startTelegramPolling() {
   console.log("Р Р†РІР‚вЂњР’В¶Р С—РЎвЂР РЏ Р В РІР‚вЂќР В Р’В°Р В РЎвЂ”Р РЋРЎвЂњР РЋР С“Р В РЎвЂќ long polling Telegram...");
@@ -1305,6 +1300,27 @@ function buildWarehouseTaskTelegramText({ task, dueStr, kind, isExecutor }) {
     lines.push(`\u0418\u0441\u043F\u043E\u043B\u043D\u0438\u0442\u0435\u043B\u044C: ${executor}`);
   }
   lines.push(`\u0421\u0440\u043E\u043A: ${dueStr}`);
+
+  return lines.join("\n");
+}
+
+function buildWarehouseTaskCreatedTelegramText(task) {
+  const title = task?.title || "";
+  const author = task?.assigner?.name || task?.assigner?.email || task?.assignerName || "";
+  const lines = [];
+
+  lines.push("????? ?????? ??????");
+  lines.push("");
+  lines.push(`??????: ${title}`);
+
+  if (author) {
+    lines.push(`?????: ${author}`);
+  }
+
+  if (task?.description) {
+    lines.push("");
+    lines.push(task.description);
+  }
 
   return lines.join("\n");
 }
@@ -3104,21 +3120,18 @@ app.put("/api/warehouse/requests/:id/status", auth, async (req, res) => {
 // Р В РІР‚в„ўР РЋР С“Р В РЎвЂ”Р В РЎвЂўР В РЎВР В РЎвЂўР В РЎвЂ“Р В Р’В°Р РЋРІР‚С™Р В Р’ВµР В Р’В»Р РЋР Р‰Р В Р вЂ¦Р В Р’В°Р РЋР РЏ Р РЋРІР‚С›Р РЋРЎвЂњР В Р вЂ¦Р В РЎвЂќР РЋРІР‚В Р В РЎвЂР РЋР РЏ: Р РЋР С“Р В РЎвЂўР В Р’В·Р В РўвЂР В Р’В°Р РЋРІР‚С™Р РЋР Р‰ Р В Р’В·Р В Р’В°Р В РўвЂР В Р’В°Р РЋРІР‚РЋР РЋРЎвЂњ Р РЋР С“Р В РЎвЂќР В Р’В»Р В Р’В°Р В РўвЂР В Р’В° Р В РЎвЂ”Р В РЎвЂў Р В Р’В·Р В Р’В°Р РЋР РЏР В Р вЂ Р В РЎвЂќР В Р’Вµ
 async function createWarehouseTaskFromRequest(request, assignerId) {
   try {
-    // Р В Р Р‹Р В РЎвЂўР В Р’В±Р В РЎвЂР РЋР вЂљР В Р’В°Р В Р’ВµР В РЎВ Р В РЎвЂўР В РЎвЂ”Р В РЎвЂР РЋР С“Р В Р’В°Р В Р вЂ¦Р В РЎвЂР В Р’Вµ Р В Р’В·Р В Р’В°Р В РўвЂР В Р’В°Р РЋРІР‚РЋР В РЎвЂ Р В РЎвЂР В Р’В· Р В РЎвЂќР В РЎвЂўР В РЎВР В РЎВР В Р’ВµР В Р вЂ¦Р РЋРІР‚С™Р В Р’В°Р РЋР вЂљР В РЎвЂР РЋР РЏ Р В РЎвЂ Р В РЎвЂ”Р В РЎвЂўР В Р’В·Р В РЎвЂР РЋРІР‚В Р В РЎвЂР В РІвЂћвЂ“ Р В Р’В·Р В Р’В°Р РЋР РЏР В Р вЂ Р В РЎвЂќР В РЎвЂ
     const lines = [];
 
     if (request.comment) {
-      lines.push(`Р В РЎв„ўР В РЎвЂўР В РЎВР В РЎВР В Р’ВµР В Р вЂ¦Р РЋРІР‚С™Р В Р’В°Р РЋР вЂљР В РЎвЂР В РІвЂћвЂ“: ${request.comment}`);
+      lines.push(`Комментарий: ${request.comment}`);
     }
 
     if (request.items && request.items.length) {
       if (lines.length) lines.push("");
-      lines.push("Р В РЎСџР В РЎвЂўР В Р’В·Р В РЎвЂР РЋРІР‚В Р В РЎвЂР В РЎвЂ:");
+      lines.push("Позиции:");
 
       for (const it of request.items) {
-        lines.push(
-          `- ${it.name} Р Р†Р вЂљРІР‚Сњ ${it.quantity} ${it.unit || ""}`.trim()
-        );
+        lines.push(`- ${it.name} — ${it.quantity} ${it.unit || ""}`.trim());
       }
     }
 
@@ -3126,11 +3139,10 @@ async function createWarehouseTaskFromRequest(request, assignerId) {
 
     const task = await prisma.warehouseTask.create({
       data: {
-        title: `Р В РІР‚вЂќР В Р’В°Р РЋР РЏР В Р вЂ Р В РЎвЂќР В Р’В° Р В Р вЂ¦Р В Р’В° Р РЋР С“Р В РЎвЂќР В Р’В»Р В Р’В°Р В РўвЂ #${request.id}: ${request.title}`,
+        title: `Заявка склада #${request.id}: ${request.title || "Без названия"}`,
         description,
-        // Р В РЎвЂ”Р В РЎвЂўР В РЎвЂќР В Р’В° Р РЋР С“Р РЋР вЂљР В РЎвЂўР В РЎвЂќ Р В Р вЂ¦Р В Р’Вµ Р В Р’В·Р В Р’В°Р В РўвЂР В Р’В°Р РЋРІР‚ВР В РЎВ, Р В Р’ВµР В РЎвЂ“Р В РЎвЂў Р В РЎВР В РЎвЂўР В Р’В¶Р В Р вЂ¦Р В РЎвЂў Р В РЎвЂ”Р В РЎвЂўР РЋРІР‚С™Р В РЎвЂўР В РЎВ Р РЋР вЂљР РЋРЎвЂњР В РЎвЂќР В Р’В°Р В РЎВР В РЎвЂ Р В Р вЂ Р РЋРІР‚в„–Р РЋР С“Р РЋРІР‚С™Р В Р’В°Р В Р вЂ Р В РЎвЂР РЋРІР‚С™Р РЋР Р‰ Р В Р вЂ  Р В Р’В·Р В Р’В°Р В РўвЂР В Р’В°Р РЋРІР‚РЋР В Р’В°Р РЋРІР‚В¦
         dueDate: null,
-        executorName: "Р В Р Р‹Р В РЎвЂќР В Р’В»Р В Р’В°Р В РўвЂ",
+        executorName: "Не назначен",
         executorChatId: null,
         assignerId,
       },
@@ -3142,39 +3154,19 @@ async function createWarehouseTaskFromRequest(request, assignerId) {
     });
 
     console.log(
-      `[Warehouse] Р РЋР С“Р В РЎвЂўР В Р’В·Р В РўвЂР В Р’В°Р В Р вЂ¦Р В Р’В° Р В Р’В·Р В Р’В°Р В РўвЂР В Р’В°Р РЋРІР‚РЋР В Р’В° ${task.id} Р В РЎвЂ”Р В РЎвЂў Р В Р’В·Р В Р’В°Р РЋР РЏР В Р вЂ Р В РЎвЂќР В Р’Вµ ${request.id}`
+      `[Warehouse] создана задача ${task.id} по заявке ${request.id}`
     );
 
-    // Р В Р Р‹Р В РЎвЂўР В РЎвЂўР В Р’В±Р РЋРІР‚В°Р В Р’ВµР В Р вЂ¦Р В РЎвЂР В Р’Вµ Р В Р вЂ  Р РЋР С“Р В РЎвЂќР В Р’В»Р В Р’В°Р В РўвЂР РЋР С“Р В РЎвЂќР В РЎвЂўР В РІвЂћвЂ“ Telegram-Р РЋРІР‚РЋР В Р’В°Р РЋРІР‚С™
-    const parts = [];
+    const groupText = buildWarehouseTaskCreatedTelegramText(task);
 
-    parts.push("РЎР‚РЎСџРІР‚СљР’В¦ <b>Р В РЎСљР В РЎвЂўР В Р вЂ Р В Р’В°Р РЋР РЏ Р В Р’В·Р В Р’В°Р В РўвЂР В Р’В°Р РЋРІР‚РЋР В Р’В° Р РЋР С“Р В РЎвЂќР В Р’В»Р В Р’В°Р В РўвЂР В Р’В° Р В РЎвЂ”Р В РЎвЂў Р В Р’В·Р В Р’В°Р РЋР РЏР В Р вЂ Р В РЎвЂќР В Р’Вµ</b>");
-    parts.push("");
-    parts.push(`РЎР‚РЎСџРІР‚СљРЎСљ <b>Р В РІР‚вЂќР В Р’В°Р В РўвЂР В Р’В°Р РЋРІР‚РЋР В Р’В°:</b> ${task.title}`);
-
-    if (task.description) {
-      parts.push("");
-      parts.push(`<b>Р В РІР‚СњР В Р’ВµР РЋРІР‚С™Р В Р’В°Р В Р’В»Р В РЎвЂ:</b>\n${task.description}`);
-    }
-
-    if (task.assigner) {
-      parts.push("");
-      parts.push(
-        `РЎР‚РЎСџРІР‚ВР’В¤ <b>Р В РЎвЂ™Р В Р вЂ Р РЋРІР‚С™Р В РЎвЂўР РЋР вЂљ Р В Р’В·Р В Р’В°Р РЋР РЏР В Р вЂ Р В РЎвЂќР В РЎвЂ:</b> ${task.assigner.name || "Р В РЎСљР В Р’ВµР В РЎвЂР В Р’В·Р В Р вЂ Р В Р’ВµР РЋР С“Р РЋРІР‚С™Р В Р вЂ¦Р В РЎвЂў"} (${task.assigner.email || ""})`
-      );
-    }
-
-    const text = parts.join("\n");
-
-    await sendWarehouseGroupMessage(text);
+    await sendWarehouseGroupMessage(groupText);
 
     return task;
   } catch (err) {
-    console.error("[createWarehouseTaskFromRequest] Р В РЎвЂєР РЋРІвЂљВ¬Р В РЎвЂР В Р’В±Р В РЎвЂќР В Р’В°:", err);
+    console.error("[createWarehouseTaskFromRequest] error:", err);
   }
 }
 
-// Р РЋР С“Р В РЎвЂўР В Р’В·Р В РўвЂР В Р’В°Р РЋРІР‚С™Р РЋР Р‰ Р В Р’В·Р В Р’В°Р В РўвЂР В Р’В°Р РЋРІР‚РЋР РЋРЎвЂњ Р РЋР С“Р В РЎвЂќР В Р’В»Р В Р’В°Р В РўвЂР В Р’В°
 app.post("/api/warehouse/tasks", auth, async (req, res) => {
   try {
     const { title, description, dueDate, executorName, executorChatId } =
@@ -3183,7 +3175,7 @@ app.post("/api/warehouse/tasks", auth, async (req, res) => {
     if (!title) {
       return res
         .status(400)
-        .json({ message: "Р В РЎвЂєР В РЎвЂ”Р В РЎвЂР РЋР С“Р В Р’В°Р В Р вЂ¦Р В РЎвЂР В Р’Вµ Р В Р’В·Р В Р’В°Р В РўвЂР В Р’В°Р РЋРІР‚РЋР В РЎвЂ Р В РЎвЂўР В Р’В±Р РЋР РЏР В Р’В·Р В Р’В°Р РЋРІР‚С™Р В Р’ВµР В Р’В»Р РЋР Р‰Р В Р вЂ¦Р В РЎвЂў" });
+        .json({ message: "Нужно указать название задачи." });
     }
 
     const task = await prisma.warehouseTask.create({
@@ -3202,111 +3194,41 @@ app.post("/api/warehouse/tasks", auth, async (req, res) => {
       },
     });
 
-    // Р В Р Р‹Р В РЎвЂўР В РЎвЂўР В Р’В±Р РЋРІР‚В°Р В Р’ВµР В Р вЂ¦Р В РЎвЂР В Р’Вµ Р В Р вЂ  Р В РЎвЂ“Р РЋР вЂљР РЋРЎвЂњР В РЎвЂ”Р В РЎвЂ”Р РЋРЎвЂњ
-    const parts = [];
-
-    parts.push("РЎР‚РЎСџРІР‚СљР’В¦ <b>Р В РЎСљР В РЎвЂўР В Р вЂ Р В Р’В°Р РЋР РЏ Р В Р’В·Р В Р’В°Р В РўвЂР В Р’В°Р РЋРІР‚РЋР В Р’В° Р РЋР С“Р В РЎвЂќР В Р’В»Р В Р’В°Р В РўвЂР В Р’В°</b>");
-    parts.push("");
-    parts.push(`РЎР‚РЎСџРІР‚СљРЎСљ <b>Р В РІР‚вЂќР В Р’В°Р В РўвЂР В Р’В°Р РЋРІР‚РЋР В Р’В°:</b> ${task.title}`);
-
-    if (task.description) {
-      parts.push(`РЎР‚РЎСџРІР‚СљРІР‚С› <b>Р В РІР‚СњР В Р’ВµР РЋРІР‚С™Р В Р’В°Р В Р’В»Р В РЎвЂ:</b> ${task.description}`);
-    }
-
-    if (task.executorName) {
-      parts.push(`РЎР‚РЎСџРІР‚ВР’В· <b>Р В Р’ВР РЋР С“Р В РЎвЂ”Р В РЎвЂўР В Р’В»Р В Р вЂ¦Р В РЎвЂР РЋРІР‚С™Р В Р’ВµР В Р’В»Р РЋР Р‰:</b> ${task.executorName}`);
-    }
-
-    if (task.dueDate) {
-      const due = new Date(task.dueDate);
-      if (!Number.isNaN(due.getTime())) {
-        const dueStr = due.toLocaleString("ru-RU", {
-          day: "2-digit",
-          month: "2-digit",
-          year: "numeric",
-          hour: "2-digit",
-          minute: "2-digit",
-        });
-        parts.push(`Р Р†Р РЏР’В° <b>Р В Р Р‹Р РЋР вЂљР В РЎвЂўР В РЎвЂќ:</b> ${dueStr}`);
-      }
-    }
-
-    if (task.assigner) {
-      parts.push("");
-      parts.push(
-        `РЎР‚РЎСџРІР‚ВР’В¤ <b>Р В РЎСљР В Р’В°Р В Р’В·Р В Р вЂ¦Р В Р’В°Р РЋРІР‚РЋР В РЎвЂР В Р’В»:</b> ${task.assigner.name || "Р В РЎСљР В Р’ВµР В РЎвЂР В Р’В·Р В Р вЂ Р В Р’ВµР РЋР С“Р РЋРІР‚С™Р В Р вЂ¦Р В РЎвЂў"} (${task.assigner.email || ""
-        })`
-      );
-    }
-
-    const groupText = parts.join("\n");
+    const groupText = buildWarehouseTaskCreatedTelegramText(task);
 
     sendWarehouseGroupMessage(groupText).catch((err) =>
-      console.error("Р В РЎвЂєР РЋРІвЂљВ¬Р В РЎвЂР В Р’В±Р В РЎвЂќР В Р’В° Р В РЎвЂўР РЋРІР‚С™Р В РЎвЂ”Р РЋР вЂљР В Р’В°Р В Р вЂ Р В РЎвЂќР В РЎвЂ Р В Р вЂ  Telegram (Р В РЎвЂ“Р РЋР вЂљР РЋРЎвЂњР В РЎвЂ”Р В РЎвЂ”Р В Р’В°):", err)
+      console.error("Ошибка отправки в Telegram (группа):", err)
     );
 
-    // Р В РІР‚С”Р В РЎвЂР РЋРІР‚РЋР В Р вЂ¦Р В РЎвЂўР В Р’Вµ Р РЋР С“Р В РЎвЂўР В РЎвЂўР В Р’В±Р РЋРІР‚В°Р В Р’ВµР В Р вЂ¦Р В РЎвЂР В Р’Вµ Р В РЎвЂР РЋР С“Р В РЎвЂ”Р В РЎвЂўР В Р’В»Р В Р вЂ¦Р В РЎвЂР РЋРІР‚С™Р В Р’ВµР В Р’В»Р РЋР вЂ№
     if (task.executorChatId) {
-      const execParts = [];
+      const execText = `${groupText}
 
-      execParts.push("РЎР‚РЎСџРІР‚ВРІР‚в„– <b>Р В РІР‚в„ўР В Р’В°Р В РЎВ Р В Р вЂ¦Р В Р’В°Р В Р’В·Р В Р вЂ¦Р В Р’В°Р РЋРІР‚РЋР В Р’ВµР В Р вЂ¦Р В Р’В° Р В Р’В·Р В Р’В°Р В РўвЂР В Р’В°Р РЋРІР‚РЋР В Р’В° Р РЋР С“Р В РЎвЂќР В Р’В»Р В Р’В°Р В РўвЂР В Р’В°</b>");
-      execParts.push("");
-      execParts.push(`РЎР‚РЎСџРІР‚СљРЎСљ <b>Р В РІР‚вЂќР В Р’В°Р В РўвЂР В Р’В°Р РЋРІР‚РЋР В Р’В°:</b> ${task.title}`);
-
-      if (task.description) {
-        execParts.push(`РЎР‚РЎСџРІР‚СљРІР‚С› <b>Р В РІР‚СњР В Р’ВµР РЋРІР‚С™Р В Р’В°Р В Р’В»Р В РЎвЂ:</b> ${task.description}`);
-      }
-
-      if (task.dueDate) {
-        const due = new Date(task.dueDate);
-        if (!Number.isNaN(due.getTime())) {
-          const dueStr = due.toLocaleString("ru-RU", {
-            day: "2-digit",
-            month: "2-digit",
-            year: "numeric",
-            hour: "2-digit",
-            minute: "2-digit",
-          });
-          execParts.push(`Р Р†Р РЏР’В° <b>Р В Р Р‹Р РЋР вЂљР В РЎвЂўР В РЎвЂќ:</b> ${dueStr}`);
-        }
-      }
-
-      if (task.assigner) {
-        execParts.push("");
-        execParts.push(
-          `РЎР‚РЎСџРІР‚ВР’В¤ <b>Р В РЎСљР В Р’В°Р В Р’В·Р В Р вЂ¦Р В Р’В°Р РЋРІР‚РЋР В РЎвЂР В Р’В»:</b> ${task.assigner.name || "Р В РЎСљР В Р’ВµР В РЎвЂР В Р’В·Р В Р вЂ Р В Р’ВµР РЋР С“Р РЋРІР‚С™Р В Р вЂ¦Р В РЎвЂў"} (${task.assigner.email || ""
-          })`
-        );
-      }
-
-      const execText = execParts.join("\n");
-
+Вы назначены исполнителем.`;
       sendTelegramMessage(task.executorChatId, execText, {
         reply_markup: {
           inline_keyboard: [
             [
               {
-                text: "Р Р†РЎС™РІР‚В¦ Р В РІР‚в„ўР РЋРІР‚в„–Р В РЎвЂ”Р В РЎвЂўР В Р’В»Р В Р вЂ¦Р В Р’ВµР В Р вЂ¦Р В РЎвЂў",
+                text: "Отметить выполнено",
                 callback_data: `done:${task.id}`,
               },
             ],
           ],
         },
       }).catch((err) =>
-        console.error("Р В РЎвЂєР РЋРІвЂљВ¬Р В РЎвЂР В Р’В±Р В РЎвЂќР В Р’В° Р В РЎвЂўР РЋРІР‚С™Р В РЎвЂ”Р РЋР вЂљР В Р’В°Р В Р вЂ Р В РЎвЂќР В РЎвЂ Р В Р вЂ  Telegram (Р В РЎвЂР РЋР С“Р В РЎвЂ”Р В РЎвЂўР В Р’В»Р В Р вЂ¦Р В РЎвЂР РЋРІР‚С™Р В Р’ВµР В Р’В»Р РЋР Р‰):", err)
+        console.error("Ошибка отправки в Telegram (исполнитель):", err)
       );
     }
 
     res.status(201).json(task);
   } catch (err) {
-    console.error("Warehouse task create error:", err);
+    console.error("warehouse task create error:", err);
     res
       .status(500)
-      .json({ message: "Р В РЎвЂєР РЋРІвЂљВ¬Р В РЎвЂР В Р’В±Р В РЎвЂќР В Р’В° Р РЋР С“Р В Р’ВµР РЋР вЂљР В Р вЂ Р В Р’ВµР РЋР вЂљР В Р’В° Р В РЎвЂ”Р РЋР вЂљР В РЎвЂ Р РЋР С“Р В РЎвЂўР В Р’В·Р В РўвЂР В Р’В°Р В Р вЂ¦Р В РЎвЂР В РЎвЂ Р В Р’В·Р В Р’В°Р В РўвЂР В Р’В°Р РЋРІР‚РЋР В РЎвЂ Р РЋР С“Р В РЎвЂќР В Р’В»Р В Р’В°Р В РўвЂР В Р’В°" });
+      .json({ message: "Ошибка создания задачи склада." });
   }
 });
 
-// Р В РЎВР В РЎвЂўР В РЎвЂ Р В Р’В·Р В Р’В°Р В РўвЂР В Р’В°Р РЋРІР‚РЋР В РЎвЂ (Р В Р вЂ¦Р В Р’В°Р В Р’В·Р В Р вЂ¦Р В Р’В°Р РЋРІР‚РЋР В Р’ВµР В Р вЂ¦Р В Р вЂ¦Р РЋРІР‚в„–Р В Р’Вµ Р В РЎВР В Р вЂ¦Р В РЎвЂўР В РІвЂћвЂ“)
 app.get("/api/warehouse/tasks/my", auth, async (req, res) => {
   try {
     const tasks = await prisma.warehouseTask.findMany({
