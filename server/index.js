@@ -1106,24 +1106,28 @@ async function sendSafetyReminderForAssignment(a, force = false) {
   const now = new Date();
   const due = new Date(a.dueDate);
   const diffDays = Math.floor((due - now) / (1000 * 60 * 60 * 24));
-  if (!force && diffDays > 3) return false; // Р В Р вЂ¦Р В Р’В°Р РЋРІР‚РЋР В РЎвЂР В Р вЂ¦Р В Р’В°Р В Р’ВµР В РЎВ Р В Р’В·Р В Р’В° 3 Р В РўвЂР В Р вЂ¦Р РЋР РЏ
+  if (!force && diffDays > 3) return false;
 
   if (!force && a.lastReminderAt) {
     const last = new Date(a.lastReminderAt);
     const hoursSince = (now - last) / (1000 * 60 * 60);
-    if (hoursSince < 20) return false; // Р В Р вЂ¦Р В Р’Вµ Р РЋРІР‚РЋР В Р’В°Р РЋРІР‚В°Р В Р’Вµ Р РЋР вЂљР В Р’В°Р В Р’В·Р В Р’В° Р В Р вЂ  Р РЋР С“Р РЋРЎвЂњР РЋРІР‚С™Р В РЎвЂќР В РЎвЂ
+    if (hoursSince < 20) return false;
   }
 
-  const text = [
-    `Р В РЎСљР В Р’В°Р В РЎвЂ”Р В РЎвЂўР В РЎВР В РЎвЂР В Р вЂ¦Р В Р’В°Р В Р вЂ¦Р В РЎвЂР В Р’Вµ Р В РЎвЂ”Р В РЎвЂў Р В РЎвЂР В Р вЂ¦Р РЋР С“Р РЋРІР‚С™Р РЋР вЂљР РЋРЎвЂњР В РЎвЂќР РЋРІР‚С™Р В Р’В°Р В Р’В¶Р РЋРЎвЂњ: ${a.instruction?.title || "Р В РЎвЂР В Р вЂ¦Р РЋР С“Р РЋРІР‚С™Р РЋР вЂљР РЋРЎвЂњР В РЎвЂќР РЋРІР‚С™Р В Р’В°Р В Р’В¶"}`,
-    `Р В Р Р‹Р В РЎвЂўР РЋРІР‚С™Р РЋР вЂљР РЋРЎвЂњР В РўвЂР В Р вЂ¦Р В РЎвЂР В РЎвЂќ: ${a.employee.fullName}`,
-    `Р В Р Р‹Р РЋР вЂљР В РЎвЂўР В РЎвЂќ: ${due.toLocaleDateString("ru-RU")}`,
-    diffDays >= 0 ? `Р В РЎвЂєР РЋР С“Р РЋРІР‚С™Р В Р’В°Р В Р’В»Р В РЎвЂўР РЋР С“Р РЋР Р‰ Р В РўвЂР В Р вЂ¦Р В Р’ВµР В РІвЂћвЂ“: ${diffDays + 1}` : `Р В РЎСџР РЋР вЂљР В РЎвЂўР РЋР С“Р РЋР вЂљР В РЎвЂўР РЋРІР‚РЋР В Р’ВµР В Р вЂ¦Р В РЎвЂў Р В Р вЂ¦Р В Р’В° ${Math.abs(diffDays)} Р В РўвЂР В Р вЂ¦.`,
+  const title = a.instruction?.title || "??????????";
+  const dueStr = due.toLocaleDateString("ru-RU");
+  const lines = [
+    "??????????? ?? ???????????",
     "",
-    "Р В РЎСџР В РЎвЂўР РЋР С“Р В Р’В»Р В Р’Вµ Р В РЎвЂ”Р РЋР вЂљР В РЎвЂўР РЋРІР‚В¦Р В РЎвЂўР В Р’В¶Р В РўвЂР В Р’ВµР В Р вЂ¦Р В РЎвЂР РЋР РЏ Р В РЎвЂ”Р В РЎвЂўР РЋР С“Р РЋРІР‚С™Р В Р’В°Р В Р вЂ Р РЋР Р‰Р РЋРІР‚С™Р В Р’Вµ Р РЋР С“Р РЋРІР‚С™Р В Р’В°Р РЋРІР‚С™Р РЋРЎвЂњР РЋР С“ Р вЂ™Р’В«Р В РЎСџР РЋР вЂљР В РЎвЂўР В РІвЂћвЂ“Р В РўвЂР В Р’ВµР В Р вЂ¦Р вЂ™Р’В».",
-  ].join("\n");
+    `??????????: ${title}`,
+    `?????????: ${a.employee.fullName}`,
+    `????: ${dueStr}`,
+    diffDays >= 0 ? `???? ????????: ${diffDays + 1}` : `?????????? ?? ${Math.abs(diffDays)} ??.`,
+  ];
 
-  await sendTelegramMessage(a.employee.telegramChatId, text);
+  const textMsg = lines.join("
+");
+  await sendTelegramMessage(a.employee.telegramChatId, textMsg);
   await prisma.safetyAssignment.update({
     where: { id: a.id },
     data: { lastReminderAt: now },
@@ -1173,8 +1177,8 @@ async function handleTelegramUpdate(update) {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           callback_query_id: callbackId,
-          text: "Р В РІР‚вЂќР В Р’В°Р В РўвЂР В Р’В°Р РЋРІР‚РЋР В Р’В° Р В Р вЂ¦Р В Р’Вµ Р В Р вЂ¦Р В Р’В°Р В РІвЂћвЂ“Р В РўвЂР В Р’ВµР В Р вЂ¦Р В Р’В°",
-          show_alert: true,
+          text: "?????? ???????? ??? ???????????.",
+          show_alert: false,
         }),
       });
       return;
@@ -1234,12 +1238,12 @@ async function handleTelegramUpdate(update) {
     // Р В РЎвЂР РЋР С“Р В РЎвЂ”Р В РЎвЂўР В Р’В»Р В Р вЂ¦Р В РЎвЂР РЋРІР‚С™Р В Р’ВµР В Р’В»Р РЋР вЂ№
     await sendTelegramMessage(
       from.id,
-      `Р Р†РЎС™РІР‚В¦ Р В РІР‚вЂќР В Р’В°Р В РўвЂР В Р’В°Р РЋРІР‚РЋР В Р’В° <b>${task.title}</b> Р В РЎвЂўР РЋРІР‚С™Р В РЎВР В Р’ВµР РЋРІР‚РЋР В Р’ВµР В Р вЂ¦Р В Р’В° Р В РЎвЂќР В Р’В°Р В РЎвЂќ Р В Р вЂ Р РЋРІР‚в„–Р В РЎвЂ”Р В РЎвЂўР В Р’В»Р В Р вЂ¦Р В Р’ВµР В Р вЂ¦Р В Р вЂ¦Р В Р’В°Р РЋР РЏ.`
+      `?????? <b>${task.title}</b> ???????? ??? ???????????.`
     );
 
     // Р В Р вЂ  Р В РЎвЂ“Р РЋР вЂљР РЋРЎвЂњР В РЎвЂ”Р В РЎвЂ”Р РЋРЎвЂњ
     await sendWarehouseGroupMessage(
-      `Р Р†РЎС™РІР‚В¦ Р В РІР‚вЂќР В Р’В°Р В РўвЂР В Р’В°Р РЋРІР‚РЋР В Р’В° Р РЋР С“Р В РЎвЂќР В Р’В»Р В Р’В°Р В РўвЂР В Р’В° <b>${task.title}</b> Р В Р вЂ Р РЋРІР‚в„–Р В РЎвЂ”Р В РЎвЂўР В Р’В»Р В Р вЂ¦Р В Р’ВµР В Р вЂ¦Р В Р’В° Р В РЎвЂР РЋР С“Р В РЎвЂ”Р В РЎвЂўР В Р’В»Р В Р вЂ¦Р В РЎвЂР РЋРІР‚С™Р В Р’ВµР В Р’В»Р В Р’ВµР В РЎВ.`
+      `?????? <b>${task.title}</b> ????????? ??????????? ${from.first_name || from.username || from.id}.`
     );
 
     console.log(
