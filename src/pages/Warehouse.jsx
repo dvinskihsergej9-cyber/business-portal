@@ -29,6 +29,7 @@ const WAREHOUSE_EMOJI = {
   items: "📚",
   movement: "🔁",
   transactions: "🧾",
+  revision: "\uD83E\uDDFE",
   tmc: "\uD83E\uDDF4",
   locations: "📍",
   queue: "🚚",
