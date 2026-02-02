@@ -24,8 +24,12 @@ export default function Scanner({
     const startScanner = async () => {
       try {
         const module = await import("html5-qrcode");
-        const Html5Qrcode = module.Html5Qrcode;
+        const Html5Qrcode = module.Html5Qrcode || module.default?.Html5Qrcode || module.default;
         if (cancelled) return;
+
+        if (!Html5Qrcode) {
+          throw new Error("Html5QrcodeUnavailable");
+        }
 
         scanner = new Html5Qrcode(scannerId);
         scannerRef.current = scanner;
@@ -43,7 +47,7 @@ export default function Scanner({
         await waitForElement();
 
         // iOS Safari sometimes blocks camera without an explicit getUserMedia call.
-        if (navigator?.mediaDevices?.getUserMedia) {
+        if (typeof navigator !== "undefined" && navigator.mediaDevices?.getUserMedia) {
           try {
             const stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: "environment" } });
             stream.getTracks().forEach((track) => track.stop());
@@ -65,7 +69,7 @@ export default function Scanner({
 
         let started = false;
         try {
-          const cameras = await Html5Qrcode.getCameras();
+          const cameras = Html5Qrcode.getCameras ? await Html5Qrcode.getCameras() : [];
           if (cancelled) return;
           if (cameras && cameras.length) {
             const preferred =
