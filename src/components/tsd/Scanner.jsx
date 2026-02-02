@@ -52,6 +52,7 @@ export default function Scanner({
       };
 
       await waitForElement();
+      await new Promise((resolve) => setTimeout(resolve, 200));
 
       let scanner = scannerRef.current;
       if (!scanner) {
