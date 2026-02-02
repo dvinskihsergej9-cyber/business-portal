@@ -30,7 +30,21 @@ export default function Scanner({
         scanner = new Html5Qrcode(scannerId);
         scannerRef.current = scanner;
 
-        const config = { fps: 10, qrbox: { width: 240, height: 240 } };
+        // iOS Safari sometimes blocks camera without an explicit getUserMedia call.
+        if (navigator?.mediaDevices?.getUserMedia) {
+          try {
+            const stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: "environment" } });
+            stream.getTracks().forEach((track) => track.stop());
+          } catch (err) {
+            console.warn("camera permission preflight failed:", err);
+          }
+        }
+
+        const config = {
+          fps: 10,
+          qrbox: { width: 240, height: 240 },
+          experimentalFeatures: { useBarCodeDetectorIfSupported: true },
+        };
         const onSuccess = (decodedText) => {
           if (cancelled) return;
           onScan(decodedText);
@@ -61,7 +75,8 @@ export default function Scanner({
         }
       } catch (err) {
         console.error(err);
-        setCameraError("Не удалось запустить камеру. Проверьте разрешения и HTTPS.");
+        const reason = err?.name ? ` (${err.name})` : "";
+        setCameraError(`Не удалось запустить камеру. Проверьте разрешения и HTTPS.${reason}`);
         setCameraActive(false);
       }
     };
