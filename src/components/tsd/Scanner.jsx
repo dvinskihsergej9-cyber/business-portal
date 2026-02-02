@@ -13,11 +13,9 @@ export default function Scanner({
     []
   );
   const scannerRef = useRef(null);
-  const fileInputRef = useRef(null);
   const [manualValue, setManualValue] = useState("");
   const [cameraActive, setCameraActive] = useState(false);
   const [cameraError, setCameraError] = useState("");
-  const [fileScanError, setFileScanError] = useState("");
 
   const stopScanner = useCallback(async () => {
     const scanner = scannerRef.current;
@@ -40,7 +38,6 @@ export default function Scanner({
   const startScanner = useCallback(async () => {
     if (scannerRef.current) return;
     setCameraError("");
-    setFileScanError("");
     try {
       setCameraActive(true);
 
@@ -81,8 +78,7 @@ export default function Scanner({
     } catch (err) {
       console.error(err);
       const reason = err?.name ? ` (${err.name})` : "";
-      const msg = err?.message ? ` ${err.message}` : "";
-      setCameraError(`Не удалось запустить камеру.${reason}${msg}`);
+      setCameraError(`Не удалось запустить камеру.${reason}`);
       await stopScanner();
     }
   }, [onScan, scannerId, stopScanner]);
@@ -100,37 +96,6 @@ export default function Scanner({
     if (onUserAction) onUserAction();
     onScan(code);
     setManualValue("");
-  };
-
-  const handleFilePick = async (event) => {
-    const file = event.target.files?.[0];
-    if (!file) return;
-    setFileScanError("");
-    try {
-      let scanner = scannerRef.current;
-      if (!scanner) {
-        if (window?.Html5Qrcode) {
-          scanner = new window.Html5Qrcode(scannerId);
-        } else {
-          const module = await import("html5-qrcode");
-          const Html5Qrcode = module.Html5Qrcode || module.default?.Html5Qrcode || module.default;
-          if (!Html5Qrcode) throw new Error("Html5QrcodeUnavailable");
-          scanner = new Html5Qrcode(scannerId);
-        }
-        scannerRef.current = scanner;
-      }
-      const result = await scanner.scanFile(file, true);
-      onScan(result);
-    } catch (err) {
-      console.error(err);
-      const reason = err?.name ? ` (${err.name})` : "";
-      const msg = err?.message ? ` ${err.message}` : "";
-      setFileScanError(`Не удалось распознать файл.${reason}${msg}`);
-    } finally {
-      if (fileInputRef.current) {
-        fileInputRef.current.value = "";
-      }
-    }
   };
 
   return (
@@ -168,26 +133,6 @@ export default function Scanner({
       </div>
 
       {cameraError && <div className="tsd-alert tsd-alert--error">{cameraError}</div>}
-      {fileScanError && <div className="tsd-alert tsd-alert--error">{fileScanError}</div>}
-      {cameraError && (
-        <div style={{ marginTop: 8 }}>
-          <input
-            ref={fileInputRef}
-            type="file"
-            accept="image/*"
-            capture="environment"
-            style={{ display: "none" }}
-            onChange={handleFilePick}
-          />
-          <button
-            type="button"
-            className="tsd-btn tsd-btn--secondary"
-            onClick={() => fileInputRef.current?.click()}
-          >
-            Сканировать фото
-          </button>
-        </div>
-      )}
 
       <form className="tsd-manual" onSubmit={handleManualSubmit}>
         <input
