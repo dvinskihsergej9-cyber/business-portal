@@ -39,7 +39,7 @@ export default function TmcTab() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [printing, setPrinting] = useState(false);
-  const [showZeros, setShowZeros] = useState(true);
+  const [showZeros, setShowZeros] = useState(false);
 
   const [newItem, setNewItem] = useState({ name: "", unit: "шт" });
   const [receiveForm, setReceiveForm] = useState({ itemId: "", qty: "", docNo: "", comment: "" });
@@ -52,6 +52,14 @@ export default function TmcTab() {
       "Content-Type": "application/json",
     };
   }, []);
+
+  useEffect(() => {
+    if (!error || !errorRef.current) return;
+    const id = setTimeout(() => {
+      errorRef.current?.scrollIntoView({ behavior: "smooth", block: "center" });
+    }, 50);
+    return () => clearTimeout(id);
+  }, [error]);
 
   const loadAll = async () => {
     try {
@@ -155,7 +163,7 @@ export default function TmcTab() {
       pdf.setFontSize(12);
       pdf.text("Ревизия ТМЦ", 40, 28);
 
-      const printRows = (showZeros ? stock : stock.filter((row) => Number(row.currentStock) !== 0));
+      const printRows = showZeros ? stock : stock.filter((row) => Number(row.currentStock) !== 0);
       const rows = printRows.map((row) => [
         row.name || "-",
         row.unit || "-",
@@ -165,7 +173,7 @@ export default function TmcTab() {
 
       autoTable(pdf, {
         startY: 38,
-        head: [["Товар", "Ед.", "Остаток"]],
+        head: [["Товар", "Ед.", "Остаток", "Факт"]],
         body: rows,
         theme: "grid",
         styles: {
@@ -190,7 +198,7 @@ export default function TmcTab() {
       });
 
       const finalY = pdf.lastAutoTable ? pdf.lastAutoTable.finalY + 24 : 80;
-      pdf.text("??? ??????: ____________________________", 40, finalY);
+      pdf.text("Кто считал: ____________________________", 40, finalY);
       pdf.save("tmc-revision.pdf");
     } catch (err) {
       console.error("tmc print error:", err);
@@ -239,8 +247,16 @@ export default function TmcTab() {
         </div>
 
         <div className="card" style={{ padding: 12 }}>
-          <div style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center" }}>
+          <div style={{ display: "flex", gap: 12, flexWrap: "wrap", alignItems: "center" }}>
             <div style={{ fontWeight: 700 }}>Остатки ТМЦ</div>
+            <label style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 13, color: "#475569" }}>
+              <input
+                type="checkbox"
+                checked={showZeros}
+                onChange={(e) => setShowZeros(e.target.checked)}
+              />
+              Показывать нулевые
+            </label>
             <button type="button" className="btn btn--secondary" onClick={handlePrint} disabled={printing}>
               {printing ? "Готовим акт..." : "Печать акта"}
             </button>
