@@ -57,9 +57,6 @@ export default function TmcTab() {
     if (!error || !errorRef.current) return;
     const id = setTimeout(() => {
       errorRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
-      if (typeof window !== "undefined") {
-        window.scrollTo({ top: 0, behavior: "smooth" });
-      }
     }, 50);
     return () => clearTimeout(id);
   }, [error]);

@@ -319,14 +319,14 @@ export default function Warehouse() {
       tasks: tasksRef,
       inventory: inventoryRef,
       items: inventoryRef,
-  movement: "\uD83D\uDCE6",
+      movement: inventoryRef,
       suppliers: inventoryRef,
       locations: locationsRef,
       queue: queueRef,
       tsd: tsdRef,
-  transactions: "\uD83D\uDD01",
+      transactions: transactionsRef,
       revision: revisionRef,
-  tmc: "\uD83D\uDCCE",
+      tmc: tmcRef,
     };
     const target = refMap[section];
     if (target?.current) {
