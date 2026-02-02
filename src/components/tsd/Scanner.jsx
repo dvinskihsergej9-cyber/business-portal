@@ -39,6 +39,20 @@ export default function Scanner({
     if (scannerRef.current) return;
     setCameraError("");
     try {
+      setCameraActive(true);
+
+      const waitForElement = async () => {
+        let tries = 0;
+        while (tries < 10) {
+          const el = document.getElementById(scannerId);
+          if (el) return;
+          await new Promise((resolve) => requestAnimationFrame(resolve));
+          tries += 1;
+        }
+      };
+
+      await waitForElement();
+
       let scanner = scannerRef.current;
       if (!scanner) {
         if (window?.Html5Qrcode) {
@@ -61,7 +75,6 @@ export default function Scanner({
         },
         () => {}
       );
-      setCameraActive(true);
     } catch (err) {
       console.error(err);
       const reason = err?.name ? ` (${err.name})` : "";
