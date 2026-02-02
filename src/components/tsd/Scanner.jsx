@@ -30,19 +30,38 @@ export default function Scanner({
         scanner = new Html5Qrcode(scannerId);
         scannerRef.current = scanner;
 
-        await scanner.start(
-          { facingMode: "environment" },
-          { fps: 10, qrbox: { width: 240, height: 240 } },
-          (decodedText) => {
-            if (cancelled) return;
-            onScan(decodedText);
-            setCameraActive(false);
-          },
-          () => {}
-        );
+        const config = { fps: 10, qrbox: { width: 240, height: 240 } };
+        const onSuccess = (decodedText) => {
+          if (cancelled) return;
+          onScan(decodedText);
+          setCameraActive(false);
+        };
+
+        let started = false;
+        try {
+          const cameras = await Html5Qrcode.getCameras();
+          if (cancelled) return;
+          if (cameras && cameras.length) {
+            const preferred =
+              cameras.find((cam) => /back|rear|environment/i.test(cam.label)) || cameras[0];
+            await scanner.start({ deviceId: { exact: preferred.id } }, config, onSuccess, () => {});
+            started = true;
+          }
+        } catch (err) {
+          console.warn("camera selection fallback:", err);
+        }
+
+        if (!started) {
+          await scanner.start(
+            { facingMode: "environment" },
+            config,
+            onSuccess,
+            () => {}
+          );
+        }
       } catch (err) {
         console.error(err);
-        setCameraError("Не удалось запустить камеру.");
+        setCameraError("Не удалось запустить камеру. Проверьте разрешения и HTTPS.");
         setCameraActive(false);
       }
     };
