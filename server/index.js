@@ -1309,12 +1309,12 @@ function buildWarehouseTaskCreatedTelegramText(task) {
   const author = task?.assigner?.name || task?.assigner?.email || task?.assignerName || "";
   const lines = [];
 
-  lines.push("????? ?????? ??????");
+  lines.push("\u041d\u043e\u0432\u0430\u044f \u0437\u0430\u0434\u0430\u0447\u0430 \u0441\u043a\u043b\u0430\u0434\u0430");
   lines.push("");
-  lines.push(`??????: ${title}`);
+  lines.push(`\u0417\u0430\u0434\u0430\u0447\u0430: ${title}`);
 
   if (author) {
-    lines.push(`?????: ${author}`);
+    lines.push(`\u0410\u0432\u0442\u043e\u0440: ${author}`);
   }
 
   if (task?.description) {
