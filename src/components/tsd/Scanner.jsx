@@ -30,6 +30,18 @@ export default function Scanner({
         scanner = new Html5Qrcode(scannerId);
         scannerRef.current = scanner;
 
+        const waitForElement = async () => {
+          let tries = 0;
+          while (!cancelled && tries < 10) {
+            const el = document.getElementById(scannerId);
+            if (el) return;
+            await new Promise((resolve) => requestAnimationFrame(resolve));
+            tries += 1;
+          }
+        };
+
+        await waitForElement();
+
         // iOS Safari sometimes blocks camera without an explicit getUserMedia call.
         if (navigator?.mediaDevices?.getUserMedia) {
           try {
