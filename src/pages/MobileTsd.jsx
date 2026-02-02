@@ -54,12 +54,6 @@ const MODES = [
     icon: "PCK",
   },
   {
-    id: "labels",
-    title: "QR/Этикетки",
-    subtitle: "Печать кодов",
-    icon: "QR",
-  },
-  {
     id: "discrepancies",
     title: "Косяки",
     subtitle: "Расхождения и проблемы",
@@ -149,19 +143,6 @@ const emptyPickState = {
   done: false,
 };
 
-const emptyLabelsState = {
-  tab: "locations",
-  locations: [],
-  items: [],
-  selectedLocationId: "",
-  selectedItemId: "",
-  selectedItems: [],
-  qtyPerId: 1,
-  layout: "A4",
-  loading: false,
-  error: "",
-};
-
 export default function MobileTsd() {
   const [mode, setMode] = useState(null);
   const [countState, setCountState] = useState(emptyCountState);
@@ -171,7 +152,6 @@ export default function MobileTsd() {
   const [putawayState, setPutawayState] = useState(emptyPutawayState);
   const [replenState, setReplenState] = useState(emptyReplenState);
   const [pickState, setPickState] = useState(emptyPickState);
-  const [labelsState, setLabelsState] = useState(emptyLabelsState);
 
   const authHeaders = useMemo(() => {
     const token = localStorage.getItem("token");
@@ -197,7 +177,6 @@ export default function MobileTsd() {
     setPutawayState(emptyPutawayState);
     setReplenState(emptyReplenState);
     setPickState(emptyPickState);
-    setLabelsState(emptyLabelsState);
   }, [mode]);
 
   useEffect(() => {
@@ -221,39 +200,6 @@ export default function MobileTsd() {
     startSession();
   }, [mode, binState.sessionId, authHeaders]);
 
-  useEffect(() => {
-    if (mode !== "labels") return;
-    const loadLists = async () => {
-      try {
-        setLabelsState((prev) => ({ ...prev, loading: true, error: "" }));
-        const [locationsRes, itemsRes] = await Promise.all([
-          fetch(`${API_BASE}/warehouse/locations`, { headers: authHeaders }),
-          fetch(`${API_BASE}/inventory/items`, { headers: authHeaders }),
-        ]);
-        const locationsData = await locationsRes.json();
-        const itemsData = await itemsRes.json();
-        if (!locationsRes.ok) {
-          throw new Error(locationsData.message || "Не удалось загрузить ячейки");
-        }
-        if (!itemsRes.ok) {
-          throw new Error(itemsData.message || "Не удалось загрузить товары");
-        }
-        setLabelsState((prev) => ({
-          ...prev,
-          locations: locationsData,
-          items: itemsData,
-          loading: false,
-        }));
-      } catch (err) {
-        setLabelsState((prev) => ({
-          ...prev,
-          loading: false,
-          error: err.message,
-        }));
-      }
-    };
-    loadLists();
-  }, [mode, authHeaders]);
 
   const resolveScan = async (code) => {
     const res = await fetch(
@@ -1008,101 +954,6 @@ export default function MobileTsd() {
         ...prev,
         error: err.message,
         loading: false,
-      }));
-    }
-  };
-
-  const handleLabelsAddItem = () => {
-    const id = Number(labelsState.selectedItemId);
-    if (!id) return;
-    const item = labelsState.items.find((it) => it.id === id);
-    if (!item) return;
-    setLabelsState((prev) => ({
-      ...prev,
-      selectedItemId: "",
-      selectedItems: prev.selectedItems.some((it) => it.id === id)
-        ? prev.selectedItems
-        : [...prev.selectedItems, item],
-    }));
-  };
-
-  const handleLabelsPrint = async () => {
-    try {
-      setLabelsState((prev) => ({ ...prev, loading: true, error: "" }));
-      if (labelsState.tab === "locations") {
-        const locationId = Number(labelsState.selectedLocationId);
-        if (!locationId) {
-          setLabelsState((prev) => ({
-            ...prev,
-            loading: false,
-            error: "Выберите ячейку.",
-          }));
-          return;
-        }
-        const res = await fetch(`${API_BASE}/warehouse/print/labels`, {
-          method: "POST",
-          headers: authHeaders,
-          body: JSON.stringify({
-            kind: "location",
-            ids: [locationId],
-            qtyPerId: Number(labelsState.qtyPerId) || 1,
-            layout: labelsState.layout,
-          }),
-        });
-        const html = await res.text();
-        if (!res.ok) {
-          let message = "Не удалось напечатать";
-          try {
-            const data = JSON.parse(html);
-            message = data.message || message;
-          } catch {
-            // ignore non-JSON response
-          }
-          throw new Error(message);
-        }
-        const win = window.open("", "_blank");
-        win.document.write(html);
-        win.document.close();
-      } else {
-        if (!labelsState.selectedItems.length) {
-          setLabelsState((prev) => ({
-            ...prev,
-            loading: false,
-            error: "Добавьте товары.",
-          }));
-          return;
-        }
-        const res = await fetch(`${API_BASE}/warehouse/print/labels`, {
-          method: "POST",
-          headers: authHeaders,
-          body: JSON.stringify({
-            kind: "item",
-            ids: labelsState.selectedItems.map((it) => it.id),
-            qtyPerId: Number(labelsState.qtyPerId) || 1,
-            layout: labelsState.layout,
-          }),
-        });
-        const html = await res.text();
-        if (!res.ok) {
-          let message = "Не удалось напечатать";
-          try {
-            const data = JSON.parse(html);
-            message = data.message || message;
-          } catch {
-            // ignore non-JSON response
-          }
-          throw new Error(message);
-        }
-        const win = window.open("", "_blank");
-        win.document.write(html);
-        win.document.close();
-      }
-      setLabelsState((prev) => ({ ...prev, loading: false }));
-    } catch (err) {
-      setLabelsState((prev) => ({
-        ...prev,
-        loading: false,
-        error: err.message,
       }));
     }
   };
@@ -1965,207 +1816,6 @@ export default function MobileTsd() {
     </>
   );
 
-  const renderLabels = () => (
-    <>
-      <TsdHeader
-        title="QR/Этикетки"
-        subtitle="Печать QR по товарам и ячейкам"
-        onBack={() => setMode(null)}
-      />
-
-      <div className="tsd-tabbar">
-        <button
-          type="button"
-          className={
-            "tsd-tab" + (labelsState.tab === "locations" ? " tsd-tab--active" : "")
-          }
-          onClick={() =>
-            setLabelsState((prev) => ({ ...prev, tab: "locations", error: "" }))
-          }
-        >
-          Ячейки
-        </button>
-        <button
-          type="button"
-          className={
-            "tsd-tab" + (labelsState.tab === "items" ? " tsd-tab--active" : "")
-          }
-          onClick={() =>
-            setLabelsState((prev) => ({ ...prev, tab: "items", error: "" }))
-          }
-        >
-          Товары
-        </button>
-      </div>
-
-      <div className="tsd-section">
-        {labelsState.error && (
-          <div className="tsd-alert tsd-alert--error">{labelsState.error}</div>
-        )}
-        {labelsState.loading && (
-          <div className="tsd-alert tsd-alert--success">Загрузка...</div>
-        )}
-
-        {labelsState.tab === "locations" && (
-          <div className="tsd-list">
-            <div className="tsd-card">
-              <div className="tsd-card__body">
-                <div className="tsd-card__title">Выбор ячейки</div>
-                <div className="tsd-card__meta">Печать QR для ячейки</div>
-              </div>
-              <select
-                className="tsd-input"
-                value={labelsState.selectedLocationId}
-                onChange={(event) =>
-                  setLabelsState((prev) => ({
-                    ...prev,
-                    selectedLocationId: event.target.value,
-                  }))
-                }
-              >
-                <option value="">Выберите ячейку</option>
-                {labelsState.locations.map((loc) => (
-                  <option key={loc.id} value={loc.id}>
-                    {loc.code || loc.name || `LOC ${loc.id}`}
-                  </option>
-                ))}
-              </select>
-            </div>
-            <div className="tsd-inline tsd-inline--two">
-              <div>
-                <label className="tsd-scanner__label">Количество</label>
-                <input
-                  className="tsd-input"
-                  type="number"
-                  min="1"
-                  value={labelsState.qtyPerId}
-                  onChange={(event) =>
-                    setLabelsState((prev) => ({
-                      ...prev,
-                      qtyPerId: event.target.value,
-                    }))
-                  }
-                />
-              </div>
-              <div>
-                <label className="tsd-scanner__label">Макет</label>
-                <select
-                  className="tsd-input"
-                  value={labelsState.layout}
-                  onChange={(event) =>
-                    setLabelsState((prev) => ({
-                      ...prev,
-                      layout: event.target.value,
-                    }))
-                  }
-                >
-                  <option value="A4">A4</option>
-                  <option value="label">Label</option>
-                </select>
-              </div>
-            </div>
-          </div>
-        )}
-
-        {labelsState.tab === "items" && (
-          <>
-            <div className="tsd-card">
-              <div className="tsd-card__body">
-                <div className="tsd-card__title">Выбор товара</div>
-                <div className="tsd-card__meta">Печать QR для товара</div>
-              </div>
-              <div className="tsd-inline tsd-inline--two">
-                <select
-                  className="tsd-input"
-                  value={labelsState.selectedItemId}
-                  onChange={(event) =>
-                    setLabelsState((prev) => ({
-                      ...prev,
-                      selectedItemId: event.target.value,
-                    }))
-                  }
-                >
-                  <option value="">Выберите товар</option>
-                  {labelsState.items.map((it) => (
-                    <option key={it.id} value={it.id}>
-                      {it.name}
-                    </option>
-                  ))}
-                </select>
-                <button
-                  type="button"
-                  className="tsd-btn tsd-btn--secondary"
-                  onClick={handleLabelsAddItem}
-                >
-                  Добавить
-                </button>
-              </div>
-            </div>
-            <div className="tsd-list">
-              {labelsState.selectedItems.map((it) => (
-                <ItemCard
-                  key={it.id}
-                  item={it}
-                  onRemove={() =>
-                    setLabelsState((prev) => ({
-                      ...prev,
-                      selectedItems: prev.selectedItems.filter(
-                        (row) => row.id !== it.id
-                      ),
-                    }))
-                  }
-                />
-              ))}
-            </div>
-            <div className="tsd-inline tsd-inline--two">
-              <div>
-                <label className="tsd-scanner__label">Количество</label>
-                <input
-                  className="tsd-input"
-                  type="number"
-                  min="1"
-                  value={labelsState.qtyPerId}
-                  onChange={(event) =>
-                    setLabelsState((prev) => ({
-                      ...prev,
-                      qtyPerId: event.target.value,
-                    }))
-                  }
-                />
-              </div>
-              <div>
-                <label className="tsd-scanner__label">Макет</label>
-                <select
-                  className="tsd-input"
-                  value={labelsState.layout}
-                  onChange={(event) =>
-                    setLabelsState((prev) => ({
-                      ...prev,
-                      layout: event.target.value,
-                    }))
-                  }
-                >
-                  <option value="A4">A4</option>
-                  <option value="label">Label</option>
-                </select>
-              </div>
-            </div>
-          </>
-        )}
-      </div>
-
-      <div className="tsd-action-bar">
-        <button
-          type="button"
-          className="tsd-btn tsd-btn--primary"
-          onClick={handleLabelsPrint}
-          disabled={labelsState.loading}
-        >
-          Создать и печатать QR
-        </button>
-      </div>
-    </>
-  );
   const renderDiscrepancies = () => (
     <>
       <TsdHeader
@@ -2189,7 +1839,6 @@ export default function MobileTsd() {
     if (mode === "putaway") return renderPutaway();
     if (mode === "replenish") return renderReplenish();
     if (mode === "pick") return renderPick();
-    if (mode === "labels") return renderLabels();
     if (mode === "discrepancies") return renderDiscrepancies();
     return null;
   };
