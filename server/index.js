@@ -1307,23 +1307,58 @@ function buildWarehouseTaskTelegramText({ task, dueStr, kind, isExecutor }) {
 function buildWarehouseTaskCreatedTelegramText(task) {
   const title = task?.title || "";
   const author = task?.assigner?.name || task?.assigner?.email || task?.assignerName || "";
+  const details = task?.description || "";
+  const due = task?.dueDate ? new Date(task.dueDate) : null;
+  const dueStr = due && !Number.isNaN(due.getTime())
+    ? due.toLocaleString("ru-RU", { day: "2-digit", month: "2-digit", year: "numeric", hour: "2-digit", minute: "2-digit" })
+    : "";
+
   const lines = [];
-
-  lines.push("\u041d\u043e\u0432\u0430\u044f \u0437\u0430\u0434\u0430\u0447\u0430 \u0441\u043a\u043b\u0430\u0434\u0430");
+  lines.push("\u{1F44B} \u041d\u043e\u0432\u0430\u044f \u0437\u0430\u0434\u0430\u0447\u0430 \u0441\u043a\u043b\u0430\u0434\u0430");
   lines.push("");
-  lines.push(`\u0417\u0430\u0434\u0430\u0447\u0430: ${title}`);
-
+  lines.push(`\u{1F4DD} \u0417\u0430\u0434\u0430\u0447\u0430: ${title}`);
+  if (details) {
+    lines.push(`\u{1F4C4} \u0414\u0435\u0442\u0430\u043b\u0438: ${details}`);
+  }
+  if (dueStr) {
+    lines.push(`\u23F0 \u0421\u0440\u043e\u043a: ${dueStr}`);
+  }
   if (author) {
-    lines.push(`\u0410\u0432\u0442\u043e\u0440: ${author}`);
-  }
-
-  if (task?.description) {
     lines.push("");
-    lines.push(task.description);
+    lines.push(`\u{1F464} \u041d\u0430\u0437\u043d\u0430\u0447\u0438\u043b: ${author}`);
   }
-
   return lines.join("\n");
 }
+function buildWarehouseTaskAssignedTelegramText(task, { forExecutor }) {
+  const title = task?.title || "";
+  const details = task?.description || "";
+  const due = task?.dueDate ? new Date(task.dueDate) : null;
+  const dueStr = due && !Number.isNaN(due.getTime())
+    ? due.toLocaleString("ru-RU", { day: "2-digit", month: "2-digit", year: "numeric", hour: "2-digit", minute: "2-digit" })
+    : "";
+  const assigner = task?.assigner?.name || task?.assigner?.email || "";
+
+  const lines = [];
+  lines.push(forExecutor
+    ? "\u{1F44B} \u0412\u0430\u043c \u043d\u0430\u0437\u043d\u0430\u0447\u0435\u043d\u0430 \u0437\u0430\u0434\u0430\u0447\u0430 \u0441\u043a\u043b\u0430\u0434\u0430"
+    : "\u{1F44B} \u041d\u0430\u0437\u043d\u0430\u0447\u0435\u043d\u0430 \u0437\u0430\u0434\u0430\u0447\u0430 \u0441\u043a\u043b\u0430\u0434\u0430"
+  );
+  lines.push("");
+  lines.push(`\u{1F4DD} \u0417\u0430\u0434\u0430\u0447\u0430: ${title}`);
+  if (details) {
+    lines.push(`\u{1F4C4} \u0414\u0435\u0442\u0430\u043b\u0438: ${details}`);
+  }
+  if (dueStr) {
+    lines.push(`\u23F0 \u0421\u0440\u043e\u043a: ${dueStr}`);
+  }
+  if (assigner) {
+    lines.push("");
+    lines.push(`\u{1F464} \u041d\u0430\u0437\u043d\u0430\u0447\u0438\u043b: ${assigner}`);
+  }
+  return lines.join("\n");
+}
+
+
 
 async function checkWarehouseTaskNotifications() {
   try {
@@ -3123,15 +3158,15 @@ async function createWarehouseTaskFromRequest(request, assignerId) {
     const lines = [];
 
     if (request.comment) {
-      lines.push(`Комментарий: ${request.comment}`);
+      lines.push(`\u041a\u043e\u043c\u043c\u0435\u043d\u0442\u0430\u0440\u0438\u0439: ${request.comment}`);
     }
 
     if (request.items && request.items.length) {
       if (lines.length) lines.push("");
-      lines.push("Позиции:");
+      lines.push("\u041f\u043e\u0437\u0438\u0446\u0438\u0438:");
 
       for (const it of request.items) {
-        lines.push(`- ${it.name} — ${it.quantity} ${it.unit || ""}`.trim());
+        lines.push(`- ${it.name} \u2014 ${it.quantity} ${it.unit || ""}`.trim());
       }
     }
 
@@ -3139,10 +3174,10 @@ async function createWarehouseTaskFromRequest(request, assignerId) {
 
     const task = await prisma.warehouseTask.create({
       data: {
-        title: `Заявка склада #${request.id}: ${request.title || "Без названия"}`,
+        title: `\u0417\u0430\u044f\u0432\u043a\u0430 \u0441\u043a\u043b\u0430\u0434\u0430 #${request.id}: ${request.title || "\u0411\u0435\u0437 \u043d\u0430\u0437\u0432\u0430\u043d\u0438\u044f"}`,
         description,
         dueDate: null,
-        executorName: "Не назначен",
+        executorName: "\u041d\u0435 \u043d\u0430\u0437\u043d\u0430\u0447\u0435\u043d",
         executorChatId: null,
         assignerId,
       },
@@ -3154,7 +3189,7 @@ async function createWarehouseTaskFromRequest(request, assignerId) {
     });
 
     console.log(
-      `[Warehouse] создана задача ${task.id} по заявке ${request.id}`
+      `[Warehouse] \u0441\u043e\u0437\u0434\u0430\u043d\u0430 \u0437\u0430\u0434\u0430\u0447\u0430 ${task.id} \u043f\u043e \u0437\u0430\u044f\u0432\u043a\u0435 ${request.id}`
     );
 
     const groupText = buildWarehouseTaskCreatedTelegramText(task);
@@ -3175,7 +3210,7 @@ app.post("/api/warehouse/tasks", auth, async (req, res) => {
     if (!title) {
       return res
         .status(400)
-        .json({ message: "Нужно указать название задачи." });
+        .json({ message: "\u041d\u0443\u0436\u043d\u043e \u0443\u043a\u0430\u0437\u0430\u0442\u044c \u043d\u0430\u0437\u0432\u0430\u043d\u0438\u0435 \u0437\u0430\u0434\u0430\u0447\u0438." });
     }
 
     const task = await prisma.warehouseTask.create({
@@ -3194,29 +3229,27 @@ app.post("/api/warehouse/tasks", auth, async (req, res) => {
       },
     });
 
-    const groupText = buildWarehouseTaskCreatedTelegramText(task);
+    const groupText = buildWarehouseTaskAssignedTelegramText(task, { forExecutor: false });
 
     sendWarehouseGroupMessage(groupText).catch((err) =>
-      console.error("Ошибка отправки в Telegram (группа):", err)
+      console.error("\u041e\u0448\u0438\u0431\u043a\u0430 \u043e\u0442\u043f\u0440\u0430\u0432\u043a\u0438 \u0432 Telegram (\u0433\u0440\u0443\u043f\u043f\u0430):", err)
     );
 
     if (task.executorChatId) {
-      const execText = `${groupText}
-
-Вы назначены исполнителем.`;
+      const execText = buildWarehouseTaskAssignedTelegramText(task, { forExecutor: true });
       sendTelegramMessage(task.executorChatId, execText, {
         reply_markup: {
           inline_keyboard: [
             [
               {
-                text: "Отметить выполнено",
+                text: "\u041e\u0442\u043c\u0435\u0442\u0438\u0442\u044c \u0432\u044b\u043f\u043e\u043b\u043d\u0435\u043d\u043e",
                 callback_data: `done:${task.id}`,
               },
             ],
           ],
         },
       }).catch((err) =>
-        console.error("Ошибка отправки в Telegram (исполнитель):", err)
+        console.error("\u041e\u0448\u0438\u0431\u043a\u0430 \u043e\u0442\u043f\u0440\u0430\u0432\u043a\u0438 \u0432 Telegram (\u0438\u0441\u043f\u043e\u043b\u043d\u0438\u0442\u0435\u043b\u044c):", err)
       );
     }
 
@@ -3225,7 +3258,7 @@ app.post("/api/warehouse/tasks", auth, async (req, res) => {
     console.error("warehouse task create error:", err);
     res
       .status(500)
-      .json({ message: "Ошибка создания задачи склада." });
+      .json({ message: "\u041e\u0448\u0438\u0431\u043a\u0430 \u0441\u043e\u0437\u0434\u0430\u043d\u0438\u044f \u0437\u0430\u0434\u0430\u0447\u0438 \u0441\u043a\u043b\u0430\u0434\u0430." });
   }
 });
 

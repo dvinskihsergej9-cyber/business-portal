@@ -56,7 +56,10 @@ export default function TmcTab() {
   useEffect(() => {
     if (!error || !errorRef.current) return;
     const id = setTimeout(() => {
-      errorRef.current?.scrollIntoView({ behavior: "smooth", block: "center" });
+      errorRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
+      if (typeof window !== "undefined") {
+        window.scrollTo({ top: 0, behavior: "smooth" });
+      }
     }, 50);
     return () => clearTimeout(id);
   }, [error]);
@@ -198,7 +201,7 @@ export default function TmcTab() {
       });
 
       const finalY = pdf.lastAutoTable ? pdf.lastAutoTable.finalY + 24 : 80;
-      pdf.text("Кто считал: ____________________________", 40, finalY);
+      pdf.text("Кто считал (ФИО, подпись): ____________________________", 40, finalY);
       pdf.save("tmc-revision.pdf");
     } catch (err) {
       console.error("tmc print error:", err);
@@ -255,7 +258,7 @@ export default function TmcTab() {
                 checked={showZeros}
                 onChange={(e) => setShowZeros(e.target.checked)}
               />
-              Показывать нулевые
+              Показывать нулевые (в списке и акте)
             </label>
             <button type="button" className="btn btn--secondary" onClick={handlePrint} disabled={printing}>
               {printing ? "Готовим акт..." : "Печать акта"}
