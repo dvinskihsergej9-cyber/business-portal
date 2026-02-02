@@ -359,6 +359,7 @@ export default function AdminWarehousePanel() {
           type="button"
           className="admin-btn admin-btn--ghost"
           onClick={loadAll}
+          title="Обновить список товаров, ячеек и заявок"
         >
           Обновить
         </button>
