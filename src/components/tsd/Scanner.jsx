@@ -40,7 +40,7 @@ export default function Scanner({
     setCameraError("");
     try {
       const module = await import("html5-qrcode");
-      const Html5Qrcode = module.Html5Qrcode;
+      const Html5Qrcode = module.Html5Qrcode || module.default?.Html5Qrcode || module.default;
       if (!Html5Qrcode) throw new Error("Html5QrcodeUnavailable");
 
       const scanner = new Html5Qrcode(scannerId);
