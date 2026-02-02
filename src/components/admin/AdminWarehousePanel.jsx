@@ -355,14 +355,36 @@ export default function AdminWarehousePanel() {
         >
           Заявки
         </button>
-        <button
-          type="button"
-          className="admin-btn admin-btn--ghost"
-          onClick={loadAll}
-          title="Обновить список товаров, ячеек и заявок"
-        >
-          Обновить
-        </button>
+        <div style={{ display: "inline-flex", alignItems: "center", gap: 6 }}>
+          <button
+            type="button"
+            className="admin-btn admin-btn--ghost"
+            onClick={loadAll}
+          >
+            {"\u041e\u0431\u043d\u043e\u0432\u0438\u0442\u044c"}
+          </button>
+          <button
+            type="button"
+            className="admin-btn admin-btn--ghost"
+            title="\u041e\u0431\u043d\u043e\u0432\u0438\u0442\u044c \u0441\u043f\u0438\u0441\u043e\u043a \u0442\u043e\u0432\u0430\u0440\u043e\u0432, \u044f\u0447\u0435\u0435\u043a \u0438 \u0437\u0430\u044f\u0432\u043e\u043a"
+            aria-label="\u041f\u043e\u0434\u0441\u043a\u0430\u0437\u043a\u0430: \u043e\u0431\u043d\u043e\u0432\u043b\u044f\u0435\u0442 \u0441\u043f\u0438\u0441\u043e\u043a \u0442\u043e\u0432\u0430\u0440\u043e\u0432, \u044f\u0447\u0435\u0435\u043a \u0438 \u0437\u0430\u044f\u0432\u043e\u043a"
+            onClick={() => {
+              if (typeof window !== "undefined") {
+                window.alert("\u041e\u0431\u043d\u043e\u0432\u043b\u044f\u0435\u0442 \u0441\u043f\u0438\u0441\u043e\u043a \u0442\u043e\u0432\u0430\u0440\u043e\u0432, \u044f\u0447\u0435\u0435\u043a \u0438 \u0437\u0430\u044f\u0432\u043e\u043a.");
+              }
+            }}
+            style={{
+              width: 28,
+              height: 28,
+              borderRadius: "50%",
+              padding: 0,
+              lineHeight: "28px",
+              textAlign: "center",
+            }}
+          >
+            ?
+          </button>
+        </div>
       </div>
 
       {error && <div className="admin-alert admin-alert--error">{error}</div>}
