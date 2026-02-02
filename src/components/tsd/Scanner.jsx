@@ -1,4 +1,4 @@
-import React, { useMemo, useRef, useState, useEffect } from "react";
+﻿import React, { useMemo, useRef, useState, useEffect } from "react";
 
 export default function Scanner({
   label,
@@ -24,75 +24,25 @@ export default function Scanner({
     const startScanner = async () => {
       try {
         const module = await import("html5-qrcode");
-        const Html5Qrcode = module.Html5Qrcode || module.default?.Html5Qrcode || module.default;
+        const Html5Qrcode = module.Html5Qrcode;
         if (cancelled) return;
-
-        if (!Html5Qrcode) {
-          throw new Error("Html5QrcodeUnavailable");
-        }
 
         scanner = new Html5Qrcode(scannerId);
         scannerRef.current = scanner;
 
-        const waitForElement = async () => {
-          let tries = 0;
-          while (!cancelled && tries < 10) {
-            const el = document.getElementById(scannerId);
-            if (el) return;
-            await new Promise((resolve) => requestAnimationFrame(resolve));
-            tries += 1;
-          }
-        };
-
-        await waitForElement();
-
-        // iOS Safari sometimes blocks camera without an explicit getUserMedia call.
-        if (typeof navigator !== "undefined" && navigator.mediaDevices?.getUserMedia) {
-          try {
-            const stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: "environment" } });
-            stream.getTracks().forEach((track) => track.stop());
-          } catch (err) {
-            console.warn("camera permission preflight failed:", err);
-          }
-        }
-
-        const config = {
-          fps: 10,
-          qrbox: { width: 240, height: 240 },
-          experimentalFeatures: { useBarCodeDetectorIfSupported: true },
-        };
-        const onSuccess = (decodedText) => {
-          if (cancelled) return;
-          onScan(decodedText);
-          setCameraActive(false);
-        };
-
-        let started = false;
-        try {
-          const cameras = Html5Qrcode.getCameras ? await Html5Qrcode.getCameras() : [];
-          if (cancelled) return;
-          if (cameras && cameras.length) {
-            const preferred =
-              cameras.find((cam) => /back|rear|environment/i.test(cam.label)) || cameras[0];
-            await scanner.start({ deviceId: { exact: preferred.id } }, config, onSuccess, () => {});
-            started = true;
-          }
-        } catch (err) {
-          console.warn("camera selection fallback:", err);
-        }
-
-        if (!started) {
-          await scanner.start(
-            { facingMode: "environment" },
-            config,
-            onSuccess,
-            () => {}
-          );
-        }
+        await scanner.start(
+          { facingMode: "environment" },
+          { fps: 10, qrbox: { width: 240, height: 240 } },
+          (decodedText) => {
+            if (cancelled) return;
+            onScan(decodedText);
+            setCameraActive(false);
+          },
+          () => {}
+        );
       } catch (err) {
         console.error(err);
-        const reason = err?.name ? ` (${err.name})` : "";
-        setCameraError(`Не удалось запустить камеру. Проверьте разрешения и HTTPS.${reason}`);
+        setCameraError("Не удалось запустить камеру.");
         setCameraActive(false);
       }
     };
