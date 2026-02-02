@@ -56,10 +56,7 @@ export default function TmcTab() {
   useEffect(() => {
     if (!error || !errorRef.current) return;
     const id = setTimeout(() => {
-      errorRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
-      if (typeof window !== "undefined") {
-        window.scrollBy({ top: -80, left: 0, behavior: "smooth" });
-      }
+      errorRef.current?.scrollIntoView({ behavior: "smooth", block: "center" });
     }, 50);
     return () => clearTimeout(id);
   }, [error]);
