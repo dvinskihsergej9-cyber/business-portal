@@ -1283,6 +1283,28 @@ async function startTelegramPolling() {
 
 // ================== Р В РЎСљР В РЎвЂ™Р В РЎСџР В РЎвЂєР В РЎС™Р В Р’ВР В РЎСљР В РЎвЂ™Р В РЎСљР В Р’ВР В Р вЂЎ Р В РЎСџР В РЎвЂє Р В РІР‚вЂќР В РЎвЂ™Р В РІР‚СњР В РЎвЂ™Р В Р’В§Р В РЎвЂ™Р В РЎС™ Р В Р Р‹Р В РЎв„ўР В РІР‚С”Р В РЎвЂ™Р В РІР‚СњР В РЎвЂ™ ==================
 
+
+function buildWarehouseTaskTelegramText({ task, dueStr, kind, isExecutor }) {
+  const title = task?.title || "";
+  const executor = task?.executorName || "";
+  const lines = [];
+
+  if (kind === "due_soon") {
+    lines.push("\u26A0\uFE0F \u0421\u043A\u043E\u0440\u043E \u0438\u0441\u0442\u0435\u043A\u0430\u0435\u0442 \u0441\u0440\u043E\u043A" + (isExecutor ? " \u0432\u0430\u0448\u0435\u0439 \u0437\u0430\u0434\u0430\u0447\u0438" : " \u043F\u043E \u0437\u0430\u0434\u0430\u0447\u0435"));
+  } else {
+    lines.push("\u23F0 \u041F\u0440\u043E\u0441\u0440\u043E\u0447\u0435\u043D\u0430 \u0437\u0430\u0434\u0430\u0447\u0430" + (isExecutor ? "" : ""));
+  }
+
+  lines.push("");
+  lines.push(`\u0417\u0430\u0434\u0430\u0447\u0430: ${title}`);
+  if (!isExecutor && executor) {
+    lines.push(`\u0418\u0441\u043F\u043E\u043B\u043D\u0438\u0442\u0435\u043B\u044C: ${executor}`);
+  }
+  lines.push(`\u0421\u0440\u043E\u043A: ${dueStr}`);
+
+  return lines.join("\n");
+}
+
 async function checkWarehouseTaskNotifications() {
   try {
     const now = new Date();
@@ -1318,21 +1340,12 @@ async function checkWarehouseTaskNotifications() {
           minute: "2-digit",
         });
 
-        const baseText =
-          "Р Р†Р РЏР’В° <b>Р В Р Р‹Р В РЎвЂќР В РЎвЂўР РЋР вЂљР В РЎвЂў Р РЋР С“Р РЋР вЂљР В РЎвЂўР В РЎвЂќ Р В РЎвЂ”Р В РЎвЂў Р В Р’В·Р В Р’В°Р В РўвЂР В Р’В°Р РЋРІР‚РЋР В Р’Вµ Р РЋР С“Р В РЎвЂќР В Р’В»Р В Р’В°Р В РўвЂР В Р’В°</b>\n\n" +
-          `РЎР‚РЎСџРІР‚СљРЎСљ <b>Р В РІР‚вЂќР В Р’В°Р В РўвЂР В Р’В°Р РЋРІР‚РЋР В Р’В°:</b> ${task.title}\n` +
-          (task.executorName
-            ? `РЎР‚РЎСџРІР‚ВР’В· <b>Р В Р’ВР РЋР С“Р В РЎвЂ”Р В РЎвЂўР В Р’В»Р В Р вЂ¦Р В РЎвЂР РЋРІР‚С™Р В Р’ВµР В Р’В»Р РЋР Р‰:</b> ${task.executorName}\n`
-            : "") +
-          `Р Р†Р РЏР’В° <b>Р В Р Р‹Р РЋР вЂљР В РЎвЂўР В РЎвЂќ:</b> ${dueStr}`;
+        const baseText = buildWarehouseTaskTelegramText({ task, dueStr, kind: "due_soon", isExecutor: false });
 
         await sendWarehouseGroupMessage(baseText);
 
         if (task.executorChatId) {
-          const execText =
-            "Р Р†Р РЏР’В° <b>Р В Р в‚¬ Р В Р вЂ Р В Р’В°Р РЋР С“ Р РЋР С“Р В РЎвЂќР В РЎвЂўР РЋР вЂљР В РЎвЂў Р РЋР С“Р РЋР вЂљР В РЎвЂўР В РЎвЂќ Р В РЎвЂ”Р В РЎвЂў Р В Р’В·Р В Р’В°Р В РўвЂР В Р’В°Р РЋРІР‚РЋР В Р’Вµ Р РЋР С“Р В РЎвЂќР В Р’В»Р В Р’В°Р В РўвЂР В Р’В°</b>\n\n" +
-            `РЎР‚РЎСџРІР‚СљРЎСљ <b>Р В РІР‚вЂќР В Р’В°Р В РўвЂР В Р’В°Р РЋРІР‚РЋР В Р’В°:</b> ${task.title}\n` +
-            `Р Р†Р РЏР’В° <b>Р В Р Р‹Р РЋР вЂљР В РЎвЂўР В РЎвЂќ:</b> ${dueStr}`;
+          const execText = buildWarehouseTaskTelegramText({ task, dueStr, kind: "due_soon", isExecutor: true });
           await sendTelegramMessage(task.executorChatId, execText);
         }
 
@@ -1354,21 +1367,12 @@ async function checkWarehouseTaskNotifications() {
           minute: "2-digit",
         });
 
-        const baseText =
-          "Р Р†РЎв„ўР’В Р С—РЎвЂР РЏ <b>Р В РЎСџР РЋР вЂљР В РЎвЂўР РЋР С“Р РЋР вЂљР В РЎвЂўР РЋРІР‚РЋР В Р’ВµР В Р вЂ¦Р В Р’В° Р В Р’В·Р В Р’В°Р В РўвЂР В Р’В°Р РЋРІР‚РЋР В Р’В° Р РЋР С“Р В РЎвЂќР В Р’В»Р В Р’В°Р В РўвЂР В Р’В°</b>\n\n" +
-          `РЎР‚РЎСџРІР‚СљРЎСљ <b>Р В РІР‚вЂќР В Р’В°Р В РўвЂР В Р’В°Р РЋРІР‚РЋР В Р’В°:</b> ${task.title}\n` +
-          (task.executorName
-            ? `РЎР‚РЎСџРІР‚ВР’В· <b>Р В Р’ВР РЋР С“Р В РЎвЂ”Р В РЎвЂўР В Р’В»Р В Р вЂ¦Р В РЎвЂР РЋРІР‚С™Р В Р’ВµР В Р’В»Р РЋР Р‰:</b> ${task.executorName}\n`
-            : "") +
-          `Р Р†Р РЏР’В° <b>Р В Р Р‹Р РЋР вЂљР В РЎвЂўР В РЎвЂќ Р В Р’В±Р РЋРІР‚в„–Р В Р’В»:</b> ${dueStr}`;
+        const baseText = buildWarehouseTaskTelegramText({ task, dueStr, kind: "overdue", isExecutor: false });
 
         await sendWarehouseGroupMessage(baseText);
 
         if (task.executorChatId) {
-          const execText =
-            "Р Р†РЎв„ўР’В Р С—РЎвЂР РЏ <b>Р В Р в‚¬ Р В Р вЂ Р В Р’В°Р РЋР С“ Р В РЎвЂ”Р РЋР вЂљР В РЎвЂўР РЋР С“Р РЋР вЂљР В РЎвЂўР РЋРІР‚РЋР В Р’ВµР В Р вЂ¦Р В Р’В° Р В Р’В·Р В Р’В°Р В РўвЂР В Р’В°Р РЋРІР‚РЋР В Р’В° Р РЋР С“Р В РЎвЂќР В Р’В»Р В Р’В°Р В РўвЂР В Р’В°</b>\n\n" +
-            `РЎР‚РЎСџРІР‚СљРЎСљ <b>Р В РІР‚вЂќР В Р’В°Р В РўвЂР В Р’В°Р РЋРІР‚РЋР В Р’В°:</b> ${task.title}\n` +
-            `Р Р†Р РЏР’В° <b>Р В Р Р‹Р РЋР вЂљР В РЎвЂўР В РЎвЂќ Р В Р’В±Р РЋРІР‚в„–Р В Р’В»:</b> ${dueStr}`;
+          const execText = buildWarehouseTaskTelegramText({ task, dueStr, kind: "overdue", isExecutor: true });
           await sendTelegramMessage(task.executorChatId, execText);
         }
 
