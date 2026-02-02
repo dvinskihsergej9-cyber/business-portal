@@ -30,7 +30,7 @@ const WAREHOUSE_EMOJI = {
   movement: "\uD83D\uDCE6",
   transactions: "\uD83D\uDD01",
   revision: "\uD83E\uDDFE",
-  tmc: "\uD83E\uDDF4",
+  tmc: "\uD83D\uDCCE",
   locations: "📍",
   queue: "🚚",
   tsd: "📱",
@@ -50,7 +50,7 @@ const WAREHOUSE_ICON_FALLBACK = {
   items: "ITEM",
   movement: "\uD83D\uDCE6",
   transactions: "\uD83D\uDD01",
-  tmc: "TMC",
+  tmc: "\uD83D\uDCCE",
   locations: "LOC",
   queue: "QUEUE",
   tsd: "TSD",
@@ -326,7 +326,7 @@ export default function Warehouse() {
       tsd: tsdRef,
   transactions: "\uD83D\uDD01",
       revision: revisionRef,
-      tmc: tmcRef,
+  tmc: "\uD83D\uDCCE",
     };
     const target = refMap[section];
     if (target?.current) {
