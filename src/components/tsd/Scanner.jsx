@@ -1,4 +1,4 @@
-﻿import React, { useMemo, useRef, useState, useEffect } from "react";
+﻿import React, { useMemo, useRef, useState, useEffect, useCallback } from "react";
 
 export default function Scanner({
   label,
@@ -17,52 +17,58 @@ export default function Scanner({
   const [cameraActive, setCameraActive] = useState(false);
   const [cameraError, setCameraError] = useState("");
 
-  useEffect(() => {
-    let scanner = null;
-    let cancelled = false;
-
-    const startScanner = async () => {
+  const stopScanner = useCallback(async () => {
+    const scanner = scannerRef.current;
+    if (scanner) {
       try {
-        const module = await import("html5-qrcode");
-        const Html5Qrcode = module.Html5Qrcode;
-        if (cancelled) return;
-
-        scanner = new Html5Qrcode(scannerId);
-        scannerRef.current = scanner;
-
-        await scanner.start(
-          { facingMode: "environment" },
-          { fps: 10, qrbox: { width: 240, height: 240 } },
-          (decodedText) => {
-            if (cancelled) return;
-            onScan(decodedText);
-            setCameraActive(false);
-          },
-          () => {}
-        );
-      } catch (err) {
-        console.error(err);
-        setCameraError("Не удалось запустить камеру.");
-        setCameraActive(false);
+        await scanner.stop();
+      } catch {
+        // ignore
       }
-    };
-
-    if (cameraActive) {
-      setCameraError("");
-      startScanner();
-    }
-
-    return () => {
-      cancelled = true;
-      if (scanner) {
-        scanner
-          .stop()
-          .then(() => scanner.clear())
-          .catch(() => {});
+      try {
+        await scanner.clear();
+      } catch {
+        // ignore
       }
       scannerRef.current = null;
+    }
+    setCameraActive(false);
+  }, []);
+
+  const startScanner = useCallback(async () => {
+    if (scannerRef.current) return;
+    setCameraError("");
+    try {
+      const module = await import("html5-qrcode");
+      const Html5Qrcode = module.Html5Qrcode;
+      if (!Html5Qrcode) throw new Error("Html5QrcodeUnavailable");
+
+      const scanner = new Html5Qrcode(scannerId);
+      scannerRef.current = scanner;
+
+      await scanner.start(
+        { facingMode: "environment" },
+        { fps: 10, qrbox: { width: 240, height: 240 } },
+        (decodedText) => {
+          onScan(decodedText);
+          stopScanner();
+        },
+        () => {}
+      );
+      setCameraActive(true);
+    } catch (err) {
+      console.error(err);
+      const reason = err?.name ? ` (${err.name})` : "";
+      setCameraError(`Не удалось запустить камеру.${reason}`);
+      await stopScanner();
+    }
+  }, [onScan, scannerId, stopScanner]);
+
+  useEffect(() => {
+    return () => {
+      stopScanner();
     };
-  }, [cameraActive, onScan, scannerId]);
+  }, [stopScanner]);
 
   const handleManualSubmit = (event) => {
     event.preventDefault();
@@ -85,7 +91,11 @@ export default function Scanner({
           className="tsd-btn tsd-btn--secondary"
           onClick={() => {
             if (onUserAction) onUserAction();
-            setCameraActive((prev) => !prev);
+            if (cameraActive) {
+              stopScanner();
+            } else {
+              startScanner();
+            }
           }}
           disabled={disabled}
         >
