@@ -36,6 +36,8 @@ model User {
   passwordResetTokens PasswordResetToken[]
   revisionsCreated StockRevision[] @relation("RevisionCreatedBy")
   revisionItemsApplied StockRevisionItem[] @relation("RevisionItemAppliedBy")
+  receivingLinesCreated WarehouseReceivingLine[] @relation("ReceivingLineCreatedBy")
+  receivingLinesPlaced WarehouseReceivingLine[] @relation("ReceivingLinePlacedBy")
 }
 
 // ============ SUBSCRIPTION ============
@@ -286,6 +288,11 @@ enum PurchaseOrderStatus {
   CLOSED
 }
 
+enum ReceivingLineStatus {
+  PENDING
+  PLACED
+}
+
 // ============ STOCK ITEMS ============
 model Item {
   id          Int      @id @default(autoincrement())
@@ -307,6 +314,7 @@ model Item {
   discrepancies      StockDiscrepancy[]
   receivingDiscrepancies ReceivingDiscrepancy[]
   revisionItems      StockRevisionItem[]
+  receivingLines     WarehouseReceivingLine[]
 }
 
 model WarehouseLocation {
@@ -325,6 +333,30 @@ model WarehouseLocation {
   auditEvents BinAuditEvent[]
   discrepancies StockDiscrepancy[]
   revisionItems StockRevisionItem[]
+  receivingLines WarehouseReceivingLine[]
+}
+
+model WarehouseReceivingLine {
+  id            Int      @id @default(autoincrement())
+  itemId        Int
+  item          Item     @relation(fields: [itemId], references: [id])
+  qty           Int
+  remainingQty  Int
+  manufacturedAt DateTime
+  expiresAt     DateTime
+  status        ReceivingLineStatus @default(PENDING)
+  locationId    Int?
+  location      WarehouseLocation? @relation(fields: [locationId], references: [id])
+  createdAt     DateTime @default(now())
+  createdById   Int?
+  createdBy     User?    @relation("ReceivingLineCreatedBy", fields: [createdById], references: [id])
+  placedAt      DateTime?
+  placedById    Int?
+  placedBy      User?    @relation("ReceivingLinePlacedBy", fields: [placedById], references: [id])
+
+  @@index([status])
+  @@index([itemId])
+  @@index([locationId])
 }
 
 model WarehousePlacement {

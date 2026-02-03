@@ -228,6 +228,27 @@ const APP_URL = process.env.APP_URL || FRONTEND_URL;
 const YOOKASSA_SHOP_ID = process.env.YOOKASSA_SHOP_ID;
 const YOOKASSA_SECRET_KEY = process.env.YOOKASSA_SECRET_KEY;
 
+async function getReceivingLocationId(tx) {
+  const existing = await tx.warehouseLocation.findFirst({
+    where: {
+      OR: [
+        { code: "RECEIVING" },
+        { name: "RECEIVING" },
+        { name: "Приемка" },
+        { name: "Приёмка" },
+      ],
+    },
+  });
+  if (existing) return existing.id;
+  const created = await tx.warehouseLocation.create({
+    data: {
+      name: "Приемка",
+      code: "RECEIVING",
+    },
+  });
+  return created.id;
+}
+
 const PLANS = {
   "basic-30": {
     id: "basic-30",
@@ -4980,39 +5001,56 @@ app.post("/api/warehouse/receiving", auth, async (req, res) => {
       comment,
       lines,
       defaultLocationId,
+      manufacturedAt,
+      expiresAt,
     } = req.body || {};
     const locationId = Number(rawLocationId ?? defaultLocationId);
 
     const hasLines = Array.isArray(lines) && lines.length > 0;
     if (
-      !locationId ||
       (!hasLines && (!itemId || !Number.isFinite(Number(qty)) || Number(qty) <= 0))
     ) {
       return res.status(400).json({ message: "BAD_REQUEST" });
     }
 
-    const location = await prisma.warehouseLocation.findUnique({
-      where: { id: locationId },
-    });
-    if (!location) {
-      return res.status(404).json({ message: "LOCATION_NOT_FOUND" });
-    }
-
     const commentParts = [
       "Приемка (ТСД)",
-      `ячейка=${locationId}`,
+      locationId ? `ячейка=${locationId}` : "",
       supplierName ? `поставщик=${String(supplierName).trim()}` : "",
       docNo ? `док=${String(docNo).trim()}` : "",
     ].filter(Boolean);
     const baseComment = commentParts.join(" ");
 
-    const linesToPost = hasLines ? lines : [{ itemId, qty }];
+    const linesToPost = hasLines ? lines : [{ itemId, qty, manufacturedAt, expiresAt }];
 
     await prisma.$transaction(async (tx) => {
+      const receivingLocationId = await getReceivingLocationId(tx);
+      const effectiveLocationId = locationId || receivingLocationId;
+
+      const location = await tx.warehouseLocation.findUnique({
+        where: { id: effectiveLocationId },
+      });
+      if (!location) {
+        const err = new Error("LOCATION_NOT_FOUND");
+        err.code = "LOCATION_NOT_FOUND";
+        throw err;
+      }
+
       for (const line of linesToPost) {
         const lineItemId = Number(line.itemId);
         const amount = Number(line.qty);
         if (!lineItemId || !Number.isFinite(amount) || amount <= 0) continue;
+
+        const manufactured = line.manufacturedAt ? new Date(line.manufacturedAt) : null;
+        const expires = line.expiresAt ? new Date(line.expiresAt) : null;
+        if (!manufactured || Number.isNaN(manufactured.getTime())) {
+          const err = new Error("MANUFACTURED_AT_REQUIRED");
+          err.code = "MANUFACTURED_AT_REQUIRED";
+          throw err;
+        }
+        const normalizedExpires = expires && !Number.isNaN(expires.getTime())
+          ? expires
+          : manufactured;
 
         const itemRow = await tx.item.findUnique({ where: { id: lineItemId } });
         if (!itemRow) continue;
@@ -5026,20 +5064,39 @@ app.post("/api/warehouse/receiving", auth, async (req, res) => {
           type: "INCOME",
           itemId: lineItemId,
           qty: Math.trunc(amount),
-          locationId,
+          locationId: effectiveLocationId,
           comment: comment || baseComment,
           userId: req.user?.id || null,
           refType: supplierName ? "SUPPLIER" : null,
           refId: docNo || null,
         });
+
+        await tx.warehouseReceivingLine.create({
+          data: {
+            itemId: lineItemId,
+            qty: Math.trunc(amount),
+            remainingQty: Math.trunc(amount),
+            manufacturedAt: manufactured,
+            expiresAt: normalizedExpires,
+            status: "PENDING",
+            locationId: effectiveLocationId,
+            createdById: req.user?.id || null,
+          },
+        });
       }
     });
 
-    res.json({ ok: true, locationId, lines: linesToPost.length });
+    res.json({ ok: true, locationId: locationId || null, lines: linesToPost.length });
   } catch (err) {
     console.error("receiving error:", err);
+    if (err.code === "MANUFACTURED_AT_REQUIRED") {
+      return res.status(400).json({ message: "MANUFACTURED_AT_REQUIRED" });
+    }
     if (err.code === "BAD_QTY") {
       return res.status(400).json({ message: "BAD_QTY" });
+    }
+    if (err.code === "LOCATION_NOT_FOUND") {
+      return res.status(404).json({ message: "LOCATION_NOT_FOUND" });
     }
     res.status(500).json({ message: "RECEIVING_ERROR" });
   }
@@ -5197,6 +5254,141 @@ app.post("/api/warehouse/putaway", auth, async (req, res) => {
   }
 });
 
+// ===== TSD: PUTAWAY FROM RECEIVING =====
+app.get("/api/warehouse/putaway/pending", auth, async (req, res) => {
+  try {
+    const items = await prisma.warehouseReceivingLine.findMany({
+      where: {
+        status: "PENDING",
+        remainingQty: { gt: 0 },
+      },
+      orderBy: { createdAt: "desc" },
+      include: {
+        item: true,
+        location: true,
+        createdBy: true,
+      },
+    });
+    res.json({ items });
+  } catch (err) {
+    console.error("putaway pending error:", err);
+    res.status(500).json({ message: "PUTAWAY_PENDING_ERROR" });
+  }
+});
+
+app.post("/api/warehouse/putaway/from-receiving", auth, async (req, res) => {
+  try {
+    const { receiptId, receivingLineId, toLocationId, locationId, qty } =
+      req.body || {};
+    const receipt = Number(receiptId ?? receivingLineId);
+    const to = Number(toLocationId ?? locationId);
+    const amount = qty == null ? null : Number(qty);
+
+    if (!receipt || !to) {
+      return res.status(400).json({ message: "BAD_REQUEST" });
+    }
+
+    await prisma.$transaction(async (tx) => {
+      const line = await tx.warehouseReceivingLine.findUnique({
+        where: { id: receipt },
+      });
+      if (!line || line.status !== "PENDING" || line.remainingQty <= 0) {
+        const err = new Error("RECEIVING_LINE_NOT_FOUND");
+        err.code = "RECEIVING_LINE_NOT_FOUND";
+        throw err;
+      }
+
+      const toLoc = await tx.warehouseLocation.findUnique({ where: { id: to } });
+      if (!toLoc) {
+        const err = new Error("LOCATION_NOT_FOUND");
+        err.code = "LOCATION_NOT_FOUND";
+        throw err;
+      }
+
+      const receivingLocationId = line.locationId || (await getReceivingLocationId(tx));
+      const moveQty = amount && Number.isFinite(amount) ? Math.trunc(amount) : line.remainingQty;
+      if (moveQty <= 0 || moveQty > line.remainingQty) {
+        const err = new Error("BAD_QTY");
+        err.code = "BAD_QTY";
+        throw err;
+      }
+
+      const moveComment = `Размещение (ТСД) ${receivingLocationId} → ${to}`;
+
+      await stockService.createMovementInTx(tx, {
+        opId: null,
+        type: "ISSUE",
+        itemId: line.itemId,
+        qty: moveQty,
+        locationId: receivingLocationId,
+        fromLocationId: receivingLocationId,
+        toLocationId: to,
+        comment: moveComment,
+        userId: req.user?.id || null,
+      });
+
+      await stockService.createMovementInTx(tx, {
+        opId: null,
+        type: "INCOME",
+        itemId: line.itemId,
+        qty: moveQty,
+        locationId: to,
+        fromLocationId: receivingLocationId,
+        toLocationId: to,
+        comment: moveComment,
+        userId: req.user?.id || null,
+      });
+
+      if (moveQty < line.remainingQty) {
+        await tx.warehouseReceivingLine.update({
+          where: { id: line.id },
+          data: {
+            remainingQty: line.remainingQty - moveQty,
+          },
+        });
+        await tx.warehouseReceivingLine.create({
+          data: {
+            itemId: line.itemId,
+            qty: moveQty,
+            remainingQty: moveQty,
+            manufacturedAt: line.manufacturedAt,
+            expiresAt: line.expiresAt,
+            status: "PLACED",
+            locationId: to,
+            createdById: line.createdById,
+            placedAt: new Date(),
+            placedById: req.user?.id || null,
+          },
+        });
+      } else {
+        await tx.warehouseReceivingLine.update({
+          where: { id: line.id },
+          data: {
+            status: "PLACED",
+            locationId: to,
+            placedAt: new Date(),
+            placedById: req.user?.id || null,
+          },
+        });
+      }
+    });
+
+    res.json({ ok: true });
+  } catch (err) {
+    if (err.code === "BAD_QTY") {
+      return res.status(400).json({ message: "BAD_QTY" });
+    }
+    if (err.code === "LOCATION_NOT_FOUND") {
+      return res.status(404).json({ message: "LOCATION_NOT_FOUND" });
+    }
+    if (err.code === "RECEIVING_LINE_NOT_FOUND") {
+      return res.status(404).json({ message: "RECEIVING_LINE_NOT_FOUND" });
+    }
+    console.error("putaway from receiving error:", err);
+    res.status(500).json({ message: "PUTAWAY_FROM_RECEIVING_ERROR" });
+  }
+});
+
 // ===== TSD: PICK =====
 app.post("/api/warehouse/pick", auth, async (req, res) => {
   try {
@@ -5216,17 +5408,46 @@ app.post("/api/warehouse/pick", auth, async (req, res) => {
     if (!fromLoc) return res.status(404).json({ message: "LOCATION_NOT_FOUND" });
 
     const pickComment = comment || `Отбор (ТСД) из ${from}`;
-    const movement = await stockService.createMovement({
-      opId: opId || null,
-      type: "ISSUE",
-      itemId: item,
-      qty: Math.trunc(amount),
-      locationId: from,
-      fromLocationId: from,
-      comment: pickComment,
-      refType: refType || "PICK",
-      refId: refId || null,
-      userId: req.user?.id || null,
+    const movement = await prisma.$transaction(async (tx) => {
+      const created = await stockService.createMovementInTx(tx, {
+        opId: opId || null,
+        type: "ISSUE",
+        itemId: item,
+        qty: Math.trunc(amount),
+        locationId: from,
+        fromLocationId: from,
+        comment: pickComment,
+        refType: refType || "PICK",
+        refId: refId || null,
+        userId: req.user?.id || null,
+      });
+
+      let remaining = Math.trunc(amount);
+      const lots = await tx.warehouseReceivingLine.findMany({
+        where: {
+          status: "PLACED",
+          itemId: item,
+          locationId: from,
+          remainingQty: { gt: 0 },
+        },
+        orderBy: [
+          { expiresAt: "asc" },
+          { manufacturedAt: "asc" },
+          { createdAt: "asc" },
+        ],
+      });
+
+      for (const lot of lots) {
+        if (remaining <= 0) break;
+        const take = Math.min(remaining, lot.remainingQty);
+        await tx.warehouseReceivingLine.update({
+          where: { id: lot.id },
+          data: { remainingQty: lot.remainingQty - take },
+        });
+        remaining -= take;
+      }
+
+      return created;
     });
 
     res.json({ ok: true, movementId: movement.id });

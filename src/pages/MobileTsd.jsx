@@ -6,7 +6,6 @@ import Stepper from "../components/tsd/Stepper";
 import Scanner from "../components/tsd/Scanner";
 import ItemCard from "../components/tsd/ItemCard";
 import LocationCard from "../components/tsd/LocationCard";
-import ReceivingByPo from "../components/tsd/ReceivingByPo";
 import StockDiscrepanciesTab from "../components/StockDiscrepanciesTab";
 import "../components/tsd/tsd.css";
 
@@ -62,10 +61,10 @@ const MODES = [
 ];
 
 const COUNT_STEPS = ["Ячейка", "Товар", "Количество", "Подтверждение"];
-const RECEIVING_STEPS = ["Ячейка", "Товары", "Кол-во", "Подтверждение"];
+const RECEIVING_STEPS = ["Товар", "Даты", "Подтверждение"];
 const BIN_STEPS = ["Ячейка", "Остатки", "Расхождения"];
 const MOVE_STEPS = ["Откуда", "Товар", "Кол-во", "Куда", "Подтверждение"];
-const PUTAWAY_STEPS = ["Откуда", "Товар", "Кол-во", "Куда", "Подтверждение"];
+const PUTAWAY_STEPS = ["Товар", "Ячейка", "Подтверждение"];
 const REPLENISH_STEPS = ["Откуда", "Товар", "Кол-во", "Куда", "Подтверждение"];
 const PICK_STEPS = ["Ячейка", "Товар", "Кол-во", "Подтверждение"];
 
@@ -81,7 +80,6 @@ const emptyCountState = {
 
 const emptyReceivingState = {
   step: 0,
-  location: null,
   lines: [],
   loading: false,
   error: "",
@@ -113,9 +111,9 @@ const emptyMoveState = {
 
 const emptyPutawayState = {
   step: 0,
-  from: null,
-  item: null,
-  qty: "",
+  pending: [],
+  selected: null,
+  selectedQty: "",
   to: null,
   loading: false,
   error: "",
@@ -199,6 +197,38 @@ export default function MobileTsd() {
     };
     startSession();
   }, [mode, binState.sessionId, authHeaders]);
+
+  useEffect(() => {
+    if (mode !== "putaway") return;
+    const loadPending = async () => {
+      try {
+        setPutawayState((prev) => ({
+          ...prev,
+          loading: true,
+          error: "",
+        }));
+        const res = await fetch(`${API_BASE}/warehouse/putaway/pending`, {
+          headers: authHeaders,
+        });
+        const data = await res.json();
+        if (!res.ok) {
+          throw new Error(data.message || "Не удалось загрузить размещение");
+        }
+        setPutawayState((prev) => ({
+          ...prev,
+          pending: data.items || [],
+          loading: false,
+        }));
+      } catch (err) {
+        setPutawayState((prev) => ({
+          ...prev,
+          error: err.message,
+          loading: false,
+        }));
+      }
+    };
+    loadPending();
+  }, [mode, authHeaders]);
 
 
   const resolveScan = async (code) => {
@@ -297,28 +327,6 @@ export default function MobileTsd() {
       }));
     }
   };
-  const handleReceivingLocation = async (code) => {
-    try {
-      setReceivingState((prev) => ({ ...prev, loading: true, error: "" }));
-      const data = await resolveScan(code);
-      if (data.type !== "location") {
-        throw new Error("Это не ячейка.");
-      }
-      setReceivingState((prev) => ({
-        ...prev,
-        location: data.entity,
-        step: 1,
-        loading: false,
-      }));
-    } catch (err) {
-      setReceivingState((prev) => ({
-        ...prev,
-        error: err.message,
-        loading: false,
-      }));
-    }
-  };
-
   const handleReceivingItem = async (code) => {
     try {
       setReceivingState((prev) => ({ ...prev, loading: true, error: "" }));
@@ -337,7 +345,12 @@ export default function MobileTsd() {
             qty: nextLines[existsIndex].qty + 1,
           };
         } else {
-          nextLines.push({ item: data.entity, qty: 1 });
+          nextLines.push({
+            item: data.entity,
+            qty: 1,
+            manufacturedAt: "",
+            expiresAt: "",
+          });
         }
         return { ...prev, lines: nextLines, loading: false };
       });
@@ -361,6 +374,14 @@ export default function MobileTsd() {
       }));
       return;
     }
+    const missingDate = lines.find((line) => !line.manufacturedAt);
+    if (missingDate) {
+      setReceivingState((prev) => ({
+        ...prev,
+        error: "Укажите дату изготовления для всех позиций.",
+      }));
+      return;
+    }
     try {
       setReceivingState((prev) => ({ ...prev, loading: true, error: "" }));
       const opId = makeOpId("RECEIVE");
@@ -369,10 +390,11 @@ export default function MobileTsd() {
         headers: authHeaders,
         body: JSON.stringify({
           opId,
-          locationId: receivingState.location.id,
           lines: lines.map((line) => ({
             itemId: line.item.id,
             qty: Number(line.qty),
+            manufacturedAt: line.manufacturedAt || null,
+            expiresAt: line.expiresAt || line.manufacturedAt || null,
           })),
         }),
       });
@@ -665,7 +687,7 @@ export default function MobileTsd() {
     }
   };
 
-  const handlePutawayFrom = async (code) => {
+  const handlePutawayTo = async (code) => {
     try {
       setPutawayState((prev) => ({ ...prev, loading: true, error: "" }));
       const data = await resolveScan(code);
@@ -674,29 +696,7 @@ export default function MobileTsd() {
       }
       setPutawayState((prev) => ({
         ...prev,
-        from: data.entity,
-        step: 1,
-        loading: false,
-      }));
-    } catch (err) {
-      setPutawayState((prev) => ({
-        ...prev,
-        error: err.message,
-        loading: false,
-      }));
-    }
-  };
-
-  const handlePutawayItem = async (code) => {
-    try {
-      setPutawayState((prev) => ({ ...prev, loading: true, error: "" }));
-      const data = await resolveScan(code);
-      if (data.type !== "item") {
-        throw new Error("Это не товар.");
-      }
-      setPutawayState((prev) => ({
-        ...prev,
-        item: data.entity,
+        to: data.entity,
         step: 2,
         loading: false,
       }));
@@ -709,30 +709,29 @@ export default function MobileTsd() {
     }
   };
 
-  const handlePutawayTo = async (code) => {
-    try {
-      setPutawayState((prev) => ({ ...prev, loading: true, error: "" }));
-      const data = await resolveScan(code);
-      if (data.type !== "location") {
-        throw new Error("Это не ячейка.");
-      }
-      setPutawayState((prev) => ({
-        ...prev,
-        to: data.entity,
-        step: 4,
-        loading: false,
-      }));
-    } catch (err) {
-      setPutawayState((prev) => ({
-        ...prev,
-        error: err.message,
-        loading: false,
-      }));
-    }
+  const handlePutawaySelect = (line) => {
+    setPutawayState((prev) => ({
+      ...prev,
+      selected: line,
+      selectedQty:
+        line.remainingQty?.toString?.() || line.qty?.toString?.() || "",
+      to: null,
+      done: false,
+      error: "",
+      step: 1,
+    }));
   };
 
   const handlePutawaySubmit = async () => {
-    const qty = Number(putawayState.qty);
+    const qty = Number(putawayState.selectedQty);
+    if (!putawayState.selected) {
+      setPutawayState((prev) => ({ ...prev, error: "Выберите товар." }));
+      return;
+    }
+    if (!putawayState.to) {
+      setPutawayState((prev) => ({ ...prev, error: "Сканируйте ячейку." }));
+      return;
+    }
     if (!Number.isFinite(qty) || qty <= 0) {
       setPutawayState((prev) => ({ ...prev, error: "Введите количество." }));
       return;
@@ -740,14 +739,13 @@ export default function MobileTsd() {
     try {
       setPutawayState((prev) => ({ ...prev, loading: true, error: "" }));
       const opId = makeOpId("PUTAWAY");
-      const res = await fetch(`${API_BASE}/warehouse/putaway`, {
+      const res = await fetch(`${API_BASE}/warehouse/putaway/from-receiving`, {
         method: "POST",
         headers: authHeaders,
         body: JSON.stringify({
           opId,
-          fromLocationId: putawayState.from.id,
-          toLocationId: putawayState.to.id,
-          itemId: putawayState.item.id,
+          receivingLineId: putawayState.selected.id,
+          locationId: putawayState.to.id,
           qty,
         }),
       });
@@ -755,11 +753,16 @@ export default function MobileTsd() {
       if (!res.ok) {
         throw new Error(data.message || "Размещение не выполнено");
       }
+      const refreshed = await fetch(`${API_BASE}/warehouse/putaway/pending`, {
+        headers: authHeaders,
+      });
+      const refreshedData = await refreshed.json();
       setPutawayState((prev) => ({
         ...prev,
+        pending: refreshed.ok ? refreshedData.items || [] : prev.pending,
         loading: false,
         done: true,
-        step: 4,
+        step: 2,
       }));
     } catch (err) {
       setPutawayState((prev) => ({
@@ -1090,12 +1093,209 @@ export default function MobileTsd() {
     </>
   );
 
+  const formatDate = (value) => {
+    if (!value) return "-";
+    const date = new Date(value);
+    if (Number.isNaN(date.getTime())) return value;
+    return date.toLocaleDateString("ru-RU");
+  };
+
   const renderReceiving = () => (
-    <ReceivingByPo
-      authHeaders={authHeaders}
-      makeOpId={makeOpId}
-      onBack={() => setMode(null)}
-    />
+    <>
+      <TsdHeader
+        title="Приемка"
+        subtitle="Сканируй товар и укажи даты"
+        onBack={() => setMode(null)}
+      />
+      <Stepper steps={RECEIVING_STEPS} activeIndex={receivingState.step} />
+
+      <div className="tsd-section">
+        {receivingState.error && (
+          <div className="tsd-alert tsd-alert--error">{receivingState.error}</div>
+        )}
+
+        {receivingState.step === 0 && (
+          <>
+            <Scanner
+              label="Сканируй товар"
+              hint="QR, штрихкод или артикул"
+              onScan={handleReceivingItem}
+              disabled={receivingState.loading}
+            />
+            {receivingState.lines.length > 0 && (
+              <div className="tsd-list">
+                {receivingState.lines.map((line) => (
+                  <div key={line.item.id} className="tsd-card">
+                    <ItemCard item={line.item} />
+                    <div className="tsd-inline tsd-inline--two">
+                      <div>
+                        <label className="tsd-scanner__label">Количество</label>
+                        <input
+                          className="tsd-input"
+                          type="number"
+                          min="1"
+                          value={line.qty}
+                          onChange={(event) =>
+                            setReceivingState((prev) => ({
+                              ...prev,
+                              lines: prev.lines.map((row) =>
+                                row.item.id === line.item.id
+                                  ? { ...row, qty: event.target.value }
+                                  : row
+                              ),
+                            }))
+                          }
+                        />
+                      </div>
+                      <div style={{ display: "flex", alignItems: "flex-end" }}>
+                        <button
+                          type="button"
+                          className="tsd-btn tsd-btn--ghost"
+                          onClick={() =>
+                            setReceivingState((prev) => ({
+                              ...prev,
+                              lines: prev.lines.filter((row) => row.item.id !== line.item.id),
+                            }))
+                          }
+                        >
+                          Удалить
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+          </>
+        )}
+
+        {receivingState.step === 1 && (
+          <div className="tsd-list">
+            {receivingState.lines.map((line) => (
+              <div key={line.item.id} className="tsd-card">
+                <ItemCard item={line.item} qty={Number(line.qty) || 0} />
+                <div className="tsd-inline tsd-inline--two">
+                  <div>
+                    <label className="tsd-scanner__label">Дата изготовления</label>
+                    <input
+                      className="tsd-input"
+                      type="date"
+                      value={line.manufacturedAt}
+                      onChange={(event) =>
+                        setReceivingState((prev) => ({
+                          ...prev,
+                          lines: prev.lines.map((row) =>
+                            row.item.id === line.item.id
+                              ? { ...row, manufacturedAt: event.target.value }
+                              : row
+                          ),
+                        }))
+                      }
+                    />
+                  </div>
+                  <div>
+                    <label className="tsd-scanner__label">Дата окончания срока</label>
+                    <input
+                      className="tsd-input"
+                      type="date"
+                      value={line.expiresAt}
+                      onChange={(event) =>
+                        setReceivingState((prev) => ({
+                          ...prev,
+                          lines: prev.lines.map((row) =>
+                            row.item.id === line.item.id
+                              ? { ...row, expiresAt: event.target.value }
+                              : row
+                          ),
+                        }))
+                      }
+                    />
+                  </div>
+                </div>
+                <div className="tsd-muted">
+                  Если срок не ограничен — поставьте одинаковые даты.
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
+
+        {receivingState.step === 2 && (
+          <div className="tsd-list">
+            {receivingState.lines.map((line) => (
+              <div key={line.item.id} className="tsd-card">
+                <ItemCard item={line.item} qty={Number(line.qty) || 0} />
+                <div className="tsd-card__meta">
+                  Дата изготовления: {formatDate(line.manufacturedAt)}
+                </div>
+                <div className="tsd-card__meta">
+                  Срок: {formatDate(line.expiresAt || line.manufacturedAt)}
+                </div>
+              </div>
+            ))}
+            {receivingState.done && (
+              <div className="tsd-alert tsd-alert--success">
+                Приемка сохранена. Товары добавлены в размещение.
+              </div>
+            )}
+          </div>
+        )}
+      </div>
+
+      {receivingState.step === 0 && (
+        <div className="tsd-action-bar">
+          <button
+            type="button"
+            className="tsd-btn tsd-btn--primary"
+            disabled={receivingState.lines.length === 0}
+            onClick={() =>
+              setReceivingState((prev) => ({ ...prev, step: 1 }))
+            }
+          >
+            Далее
+          </button>
+        </div>
+      )}
+
+      {receivingState.step === 1 && (
+        <div className="tsd-action-bar">
+          <button
+            type="button"
+            className="tsd-btn tsd-btn--primary"
+            onClick={() =>
+              setReceivingState((prev) => ({ ...prev, step: 2 }))
+            }
+          >
+            Далее
+          </button>
+        </div>
+      )}
+
+      {receivingState.step === 2 && !receivingState.done && (
+        <div className="tsd-action-bar">
+          <button
+            type="button"
+            className="tsd-btn tsd-btn--primary"
+            onClick={handleReceivingSubmit}
+            disabled={receivingState.loading}
+          >
+            Подтвердить приемку
+          </button>
+        </div>
+      )}
+
+      {receivingState.done && (
+        <div className="tsd-action-bar">
+          <button
+            type="button"
+            className="tsd-btn tsd-btn--primary"
+            onClick={() => setReceivingState(emptyReceivingState)}
+          >
+            Новая приемка
+          </button>
+        </div>
+      )}
+    </>
   );
   const renderBin = () => (
     <>
@@ -1423,14 +1623,13 @@ export default function MobileTsd() {
       <TsdHeader
         title="Размещение"
         subtitle="Перенос с приемки в ячейку"
-        contextLabel="Откуда"
-        contextValue={putawayState.from?.name}
+        contextLabel="Товар"
+        contextValue={putawayState.selected?.item?.name}
         onChangeContext={() =>
           setPutawayState((prev) => ({
             ...prev,
-            from: null,
-            item: null,
-            qty: "",
+            selected: null,
+            selectedQty: "",
             to: null,
             step: 0,
             done: false,
@@ -1446,49 +1645,65 @@ export default function MobileTsd() {
         )}
 
         {putawayState.step === 0 && (
-          <Scanner
-            label="Сканируй ячейку-источник"
-            onScan={handlePutawayFrom}
-            disabled={putawayState.loading}
-          />
+          <>
+            {putawayState.loading && (
+              <div className="tsd-alert tsd-alert--info">Загрузка…</div>
+            )}
+            {!putawayState.loading && putawayState.pending.length === 0 && (
+              <div className="tsd-alert tsd-alert--info">
+                Нет товаров для размещения.
+              </div>
+            )}
+            <div className="tsd-grid">
+              {putawayState.pending.map((line) => (
+                <div key={line.id} className="tsd-card">
+                  <div className="tsd-card__body">
+                    <div className="tsd-card__title">{line.item?.name}</div>
+                    <div className="tsd-card__meta">
+                      Осталось: {line.remainingQty ?? line.qty}{" "}
+                      {line.item?.unit || ""}
+                    </div>
+                    <div className="tsd-card__meta">
+                      Дата: {formatDate(line.manufacturedAt)}
+                    </div>
+                    <div className="tsd-card__meta">
+                      Срок: {formatDate(line.expiresAt || line.manufacturedAt)}
+                    </div>
+                  </div>
+                  <button
+                    type="button"
+                    className="tsd-btn tsd-btn--primary"
+                    onClick={() => handlePutawaySelect(line)}
+                  >
+                    Разместить
+                  </button>
+                </div>
+              ))}
+            </div>
+          </>
         )}
 
         {putawayState.step === 1 && (
           <>
-            <LocationCard location={putawayState.from} />
-            <Scanner
-              label="Сканируй товар"
-              onScan={handlePutawayItem}
-              disabled={putawayState.loading}
+            <ItemCard
+              item={putawayState.selected?.item}
+              qty={Number(putawayState.selectedQty) || 0}
             />
-          </>
-        )}
-
-        {putawayState.step === 2 && (
-          <>
-            <LocationCard location={putawayState.from} />
-            <ItemCard item={putawayState.item} />
             <div className="tsd-qty-input">
               <label className="tsd-scanner__label">Количество</label>
               <input
                 className="tsd-input"
                 type="number"
-                value={putawayState.qty}
+                min="1"
+                value={putawayState.selectedQty}
                 onChange={(event) =>
                   setPutawayState((prev) => ({
                     ...prev,
-                    qty: event.target.value,
+                    selectedQty: event.target.value,
                   }))
                 }
               />
             </div>
-          </>
-        )}
-
-        {putawayState.step === 3 && (
-          <>
-            <LocationCard location={putawayState.from} />
-            <ItemCard item={putawayState.item} qty={Number(putawayState.qty) || 0} />
             <Scanner
               label="Сканируй ячейку-получатель"
               onScan={handlePutawayTo}
@@ -1497,10 +1712,12 @@ export default function MobileTsd() {
           </>
         )}
 
-        {putawayState.step === 4 && (
+        {putawayState.step === 2 && (
           <>
-            <LocationCard location={putawayState.from} />
-            <ItemCard item={putawayState.item} qty={Number(putawayState.qty) || 0} />
+            <ItemCard
+              item={putawayState.selected?.item}
+              qty={Number(putawayState.selectedQty) || 0}
+            />
             <LocationCard location={putawayState.to} />
             {putawayState.done && (
               <div className="tsd-alert tsd-alert--success">
@@ -1511,19 +1728,7 @@ export default function MobileTsd() {
         )}
       </div>
 
-      {putawayState.step === 2 && (
-        <div className="tsd-action-bar">
-          <button
-            type="button"
-            className="tsd-btn tsd-btn--primary"
-            onClick={() => setPutawayState((prev) => ({ ...prev, step: 3 }))}
-          >
-            Далее
-          </button>
-        </div>
-      )}
-
-      {putawayState.step === 4 && !putawayState.done && (
+      {putawayState.step === 2 && !putawayState.done && (
         <div className="tsd-action-bar">
           <button
             type="button"
@@ -1542,14 +1747,17 @@ export default function MobileTsd() {
             type="button"
             className="tsd-btn tsd-btn--primary"
             onClick={() =>
-              setPutawayState({
-                ...emptyPutawayState,
-                from: putawayState.from,
-                step: 1,
-              })
+              setPutawayState((prev) => ({
+                ...prev,
+                selected: null,
+                selectedQty: "",
+                to: null,
+                step: 0,
+                done: false,
+              }))
             }
           >
-            Следующий товар
+            Следующая позиция
           </button>
         </div>
       )}
