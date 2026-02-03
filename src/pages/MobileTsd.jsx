@@ -723,6 +723,7 @@ export default function MobileTsd() {
   };
 
   const handlePutawaySubmit = async (forceMix = false) => {
+    const shouldMix = forceMix === true;
     const qty = Number(putawayState.selectedQty);
     if (!putawayState.selected) {
       setPutawayState((prev) => ({ ...prev, error: "Выберите товар." }));
@@ -747,7 +748,7 @@ export default function MobileTsd() {
           receivingLineId: putawayState.selected.id,
           locationId: putawayState.to.id,
           qty,
-          allowMix: forceMix,
+          allowMix: shouldMix,
         }),
       });
       const data = await res.json();
