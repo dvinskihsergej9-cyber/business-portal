@@ -307,6 +307,17 @@ model Item {
   updatedAt   DateTime @updatedAt
   defaultPrice Float?
   category    ItemCategory @default(STOCK)
+  autoReorderEnabled Boolean @default(false)
+  autoReorderMin Float?
+  autoReorderSupplierId Int?
+  autoReorderSupplier Supplier? @relation(fields: [autoReorderSupplierId], references: [id])
+  autoReorderContactName String?
+  autoReorderContactEmail String?
+  autoReorderMessage String?
+  autoReorderActive Boolean @default(false)
+  autoReorderLastTriggeredAt DateTime?
+  autoReorderLastReminderAt DateTime?
+  autoReorderLastOrderId Int?
 
   movements          StockMovement[]
   purchaseOrderItems PurchaseOrderItem[]
@@ -541,6 +552,7 @@ model Supplier {
   updatedAt DateTime @updatedAt
 
   orders PurchaseOrder[]
+  autoReorderItems Item[]
 }
 
 model SupplierTruck {

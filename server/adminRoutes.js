@@ -224,6 +224,13 @@ export function adminRoutes({ prisma, auth, requireAdmin }) {
         minStock,
         maxStock,
         defaultPrice,
+        autoReorderEnabled,
+        autoReorderMin,
+        autoReorderSupplierId,
+        autoReorderContactName,
+        autoReorderContactEmail,
+        autoReorderMessage,
+        autoReorderReset,
       } = req.body || {};
       if (!name || !String(name).trim()) {
         return res.status(400).json({ message: "NAME_REQUIRED" });
@@ -241,6 +248,31 @@ export function adminRoutes({ prisma, auth, requireAdmin }) {
             defaultPrice === "" || defaultPrice === null
               ? null
               : Number(defaultPrice),
+          autoReorderEnabled: Boolean(autoReorderEnabled),
+          autoReorderMin:
+            autoReorderMin === "" || autoReorderMin === null
+              ? null
+              : Number(autoReorderMin),
+          autoReorderSupplierId:
+            autoReorderSupplierId === "" || autoReorderSupplierId == null
+              ? null
+              : Number(autoReorderSupplierId),
+          autoReorderContactName: autoReorderContactName
+            ? String(autoReorderContactName).trim()
+            : null,
+          autoReorderContactEmail: autoReorderContactEmail
+            ? String(autoReorderContactEmail).trim()
+            : null,
+          autoReorderMessage: autoReorderMessage
+            ? String(autoReorderMessage).trim()
+            : null,
+          autoReorderActive:
+            Boolean(autoReorderEnabled) && !autoReorderReset
+              ? existing.autoReorderActive
+              : false,
+          autoReorderLastReminderAt: autoReorderReset
+            ? null
+            : existing.autoReorderLastReminderAt,
         },
       });
       return res.json(updated);

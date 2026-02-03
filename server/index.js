@@ -223,6 +223,23 @@ async function sendPasswordChangedEmail(email) {
   }
 }
 
+async function sendAutoReorderEmail({ to, subject, text }) {
+  const transport = getMailTransport();
+  if (!transport) {
+    console.log(`[AUTO-REORDER] ${to}: ${subject}\n${text}`);
+    return { sent: false };
+  }
+
+  const from = process.env.MAIL_FROM || `Business Portal <${process.env.MAIL_USER}>`;
+  try {
+    await transport.sendMail({ from, to, subject, text });
+    return { sent: true };
+  } catch (err) {
+    console.error("Auto reorder email send error:", err);
+    return { sent: false, error: err.message };
+  }
+}
+
 
 const APP_URL = process.env.APP_URL || FRONTEND_URL;
 const YOOKASSA_SHOP_ID = process.env.YOOKASSA_SHOP_ID;
@@ -8330,6 +8347,175 @@ async function checkDbReadyForBackground() {
   }
 }
 
+const AUTO_REORDER_INTERVAL_MS = Number(
+  process.env.AUTO_REORDER_INTERVAL_MS || 5 * 60 * 1000
+);
+const AUTO_REORDER_REMINDER_MS = Number(
+  process.env.AUTO_REORDER_REMINDER_MS || 24 * 60 * 60 * 1000
+);
+
+async function getItemTotalQty(itemId) {
+  const movements = await prisma.stockMovement.findMany({
+    where: { itemId },
+    select: { type: true, quantity: true },
+  });
+  let qty = 0;
+  for (const m of movements) {
+    if (m.type === "INCOME" || m.type === "ADJUSTMENT") {
+      qty += Number(m.quantity);
+    } else if (m.type === "ISSUE") {
+      qty -= Number(m.quantity);
+    }
+  }
+  return Math.round(qty);
+}
+
+async function checkAutoReorders() {
+  try {
+    const items = await prisma.item.findMany({
+      where: {
+        autoReorderEnabled: true,
+        autoReorderMin: { not: null },
+        autoReorderSupplierId: { not: null },
+      },
+      include: {
+        autoReorderSupplier: true,
+      },
+    });
+    if (!items.length) return;
+
+    const adminUsers = await prisma.user.findMany({
+      where: { role: "ADMIN", isActive: true },
+      select: { email: true, name: true },
+    });
+    const adminEmails = adminUsers
+      .map((u) => u.email)
+      .filter(Boolean);
+
+    for (const item of items) {
+      const totalQty = await getItemTotalQty(item.id);
+      const minQty = Number(item.autoReorderMin);
+
+      if (item.autoReorderActive && totalQty > minQty) {
+        await prisma.item.update({
+          where: { id: item.id },
+          data: {
+            autoReorderActive: false,
+            autoReorderLastReminderAt: null,
+          },
+        });
+        continue;
+      }
+
+      if (item.autoReorderActive && totalQty <= minQty) {
+        const lastReminder = item.autoReorderLastReminderAt
+          ? new Date(item.autoReorderLastReminderAt).getTime()
+          : 0;
+        if (Date.now() - lastReminder >= AUTO_REORDER_REMINDER_MS) {
+          const subject = `Автозаказ: напоминание по товару "${item.name}"`;
+          const text =
+            `Остаток товара "${item.name}" по-прежнему ниже минимума.\n` +
+            `Текущий остаток: ${totalQty}\nМинимум: ${minQty}\n` +
+            `Автозаказ активен. Проверьте заказ поставщику.`;
+          for (const email of adminEmails) {
+            await sendAutoReorderEmail({ to: email, subject, text });
+          }
+          await prisma.item.update({
+            where: { id: item.id },
+            data: { autoReorderLastReminderAt: new Date() },
+          });
+        }
+        continue;
+      }
+
+      if (totalQty > minQty) continue;
+
+      const supplier = item.autoReorderSupplier;
+      if (!supplier) continue;
+
+      const targetMax = Number(item.maxStock || item.autoReorderMin || 0);
+      const orderQty = Math.max(targetMax - totalQty, 1);
+
+      const adminUser = await prisma.user.findFirst({
+        where: { role: "ADMIN", isActive: true },
+        select: { id: true },
+      });
+      if (!adminUser) {
+        console.error("AUTO_REORDER: admin user not found");
+        continue;
+      }
+
+      const lastOrder = await prisma.purchaseOrder.findFirst({
+        orderBy: { id: "desc" },
+        select: { id: true },
+      });
+      const nextNumber = `PO-${String((lastOrder?.id || 0) + 1).padStart(
+        5,
+        "0"
+      )}`;
+
+      const order = await prisma.purchaseOrder.create({
+        data: {
+          number: nextNumber,
+          date: new Date(),
+          status: "DRAFT",
+          comment: `Автозаказ по товару "${item.name}"`,
+          supplierId: supplier.id,
+          createdById: adminUser.id,
+          items: {
+            create: [
+              {
+                itemId: item.id,
+                quantity: orderQty,
+                price: item.defaultPrice || 0,
+              },
+            ],
+          },
+        },
+      });
+
+      await prisma.item.update({
+        where: { id: item.id },
+        data: {
+          autoReorderActive: true,
+          autoReorderLastTriggeredAt: new Date(),
+          autoReorderLastReminderAt: null,
+          autoReorderLastOrderId: order.id,
+        },
+      });
+
+      const supplierEmail =
+        item.autoReorderContactEmail || supplier.email || null;
+      const subject = `Автозаказ: ${item.name}`;
+      const text =
+        item.autoReorderMessage ||
+        `Просим оформить поставку товара "${item.name}".\n` +
+          `Количество: ${orderQty}\n` +
+          `Текущий остаток: ${totalQty}\n` +
+          `Минимум: ${minQty}\n` +
+          `Контакт: ${item.autoReorderContactName || "Администратор"}\n`;
+
+      if (supplierEmail) {
+        await sendAutoReorderEmail({ to: supplierEmail, subject, text });
+      }
+
+      for (const email of adminEmails) {
+        await sendAutoReorderEmail({
+          to: email,
+          subject,
+          text:
+            `Создан автозаказ на товар "${item.name}".\n` +
+            `Количество: ${orderQty}\n` +
+            `Поставщик: ${supplier.name}\n` +
+            `Заказ: ${nextNumber}`,
+        });
+      }
+    }
+  } catch (err) {
+    console.error("AUTO_REORDER_CHECK_ERROR:", err);
+  }
+}
+
 async function startBackgroundTasks() {
   if (backgroundTasksStarted) return;
   const ready = await checkDbReadyForBackground();
@@ -8345,6 +8531,9 @@ async function startBackgroundTasks() {
 
   setInterval(sendSafetyReminders, 1000 * 60 * 60); // ??? ? ???
   sendSafetyReminders();
+
+  setInterval(checkAutoReorders, AUTO_REORDER_INTERVAL_MS);
+  checkAutoReorders();
 
   setInterval(() => {
     // 1) ??????????? ?? ??????? ??????
