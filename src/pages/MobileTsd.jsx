@@ -73,6 +73,7 @@ const emptyCountState = {
   location: null,
   item: null,
   qty: "",
+  mode: "AUTO",
   loading: false,
   error: "",
   done: false,
@@ -144,6 +145,7 @@ const emptyPickState = {
 export default function MobileTsd() {
   const [mode, setMode] = useState(null);
   const [countState, setCountState] = useState(emptyCountState);
+  const [countLocations, setCountLocations] = useState([]);
   const [receivingState, setReceivingState] = useState(emptyReceivingState);
   const [binState, setBinState] = useState(emptyBinState);
   const [moveState, setMoveState] = useState(emptyMoveState);
@@ -176,6 +178,24 @@ export default function MobileTsd() {
     setReplenState(emptyReplenState);
     setPickState(emptyPickState);
   }, [mode]);
+
+  useEffect(() => {
+    if (mode !== "count") return;
+    const loadLocations = async () => {
+      try {
+        const res = await fetch(`${API_BASE}/warehouse/locations`, {
+          headers: authHeaders,
+        });
+        const data = await res.json();
+        if (res.ok && Array.isArray(data)) {
+          setCountLocations(data);
+        }
+      } catch {
+        // ignore
+      }
+    };
+    loadLocations();
+  }, [mode, authHeaders]);
 
   useEffect(() => {
     if (mode !== "bin") return;
@@ -307,10 +327,17 @@ export default function MobileTsd() {
           locationId: countState.location.id,
           itemId: countState.item.id,
           qty,
+          inventoryType: countState.mode,
         }),
       });
       const data = await res.json();
       if (!res.ok) {
+        if (data.code === "COUNT_PLUS_ONLY") {
+          throw new Error("Выбран пересчет в плюс, а разница в минус. Выберите другой тип.");
+        }
+        if (data.code === "COUNT_MINUS_ONLY") {
+          throw new Error("Выбран пересчет в минус, а разница в плюс. Выберите другой тип.");
+        }
         throw new Error(data.message || "Не удалось сохранить пересчет");
       }
       setCountState((prev) => ({
@@ -987,7 +1014,7 @@ export default function MobileTsd() {
     <>
       <TsdHeader
         title="Инвентаризация"
-        subtitle="Сканируй ячейку и товар"
+        subtitle="Ячейка, товар и количество"
         contextLabel="Текущая ячейка"
         contextValue={countState.location?.name}
         onChangeContext={() =>
@@ -1010,12 +1037,42 @@ export default function MobileTsd() {
         )}
 
         {countState.step === 0 && (
-          <Scanner
-            label="Сканируй ячейку"
-            hint="QR ячейки или код вручную"
-            onScan={handleCountLocation}
-            disabled={countState.loading}
-          />
+          <>
+            <Scanner
+              label="Сканируй ячейку"
+              hint="QR ячейки или код вручную"
+              onScan={handleCountLocation}
+              disabled={countState.loading}
+            />
+            {countLocations.length > 0 && (
+              <div className="tsd-qty-input">
+                <label className="tsd-scanner__label">Или выбери ячейку</label>
+                <select
+                  className="tsd-input"
+                  value={countState.location?.id || ""}
+                  onChange={(event) => {
+                    const selected = countLocations.find(
+                      (loc) => String(loc.id) === event.target.value
+                    );
+                    if (selected) {
+                      setCountState((prev) => ({
+                        ...prev,
+                        location: selected,
+                        step: 1,
+                      }));
+                    }
+                  }}
+                >
+                  <option value="">Выберите ячейку</option>
+                  {countLocations.map((loc) => (
+                    <option key={loc.id} value={loc.id}>
+                      {loc.name || loc.code || `Ячейка ${loc.id}`}
+                    </option>
+                  ))}
+                </select>
+              </div>
+            )}
+          </>
         )}
 
         {countState.step === 1 && (
@@ -1034,6 +1091,23 @@ export default function MobileTsd() {
           <>
             <LocationCard location={countState.location} />
             <ItemCard item={countState.item} />
+            <div className="tsd-qty-input">
+              <label className="tsd-scanner__label">Тип инвентаризации</label>
+              <select
+                className="tsd-input"
+                value={countState.mode}
+                onChange={(event) =>
+                  setCountState((prev) => ({
+                    ...prev,
+                    mode: event.target.value,
+                  }))
+                }
+              >
+                <option value="AUTO">Авто (по разнице)</option>
+                <option value="PLUS">В плюс</option>
+                <option value="MINUS">В минус</option>
+              </select>
+            </div>
             <div className="tsd-qty-input">
               <label className="tsd-scanner__label">Количество</label>
               <input

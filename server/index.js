@@ -4941,10 +4941,11 @@ app.get("/api/warehouse/locations/:id/stock", auth, async (req, res) => {
 // ===== TSD: INVENTORY COUNT (CREATE DISCREPANCY ONLY) =====
 app.post("/api/warehouse/inventory/count", auth, async (req, res) => {
   try {
-    const { opId, locationId, itemId, qty, comment } = req.body || {};
+    const { opId, locationId, itemId, qty, comment, inventoryType } = req.body || {};
     const location = Number(locationId);
     const item = Number(itemId);
     const amount = Number(qty);
+    const mode = String(inventoryType || "AUTO").toUpperCase();
 
     if (!location || !item || !Number.isFinite(amount) || amount < 0) {
       return res.status(400).json({ message: "BAD_REQUEST" });
@@ -4967,6 +4968,17 @@ app.post("/api/warehouse/inventory/count", auth, async (req, res) => {
     await prisma.$transaction(async (tx) => {
       const current = await stockService.getItemLocationQty(tx, item, location);
       delta = normalizedQty - current;
+
+      if (mode === "PLUS" && delta < 0) {
+        const err = new Error("COUNT_PLUS_ONLY");
+        err.code = "COUNT_PLUS_ONLY";
+        throw err;
+      }
+      if (mode === "MINUS" && delta > 0) {
+        const err = new Error("COUNT_MINUS_ONLY");
+        err.code = "COUNT_MINUS_ONLY";
+        throw err;
+      }
 
       if (delta !== 0) {
         const opKey = opId || `count:${location}:${item}:${Date.now()}`;
@@ -5018,6 +5030,12 @@ app.post("/api/warehouse/inventory/count", auth, async (req, res) => {
     console.error("inventory count error:", err);
     if (err.code === "BAD_QTY") {
       return res.status(400).json({ message: "BAD_QTY" });
+    }
+    if (err.code === "COUNT_PLUS_ONLY") {
+      return res.status(400).json({ message: "COUNT_PLUS_ONLY", code: "COUNT_PLUS_ONLY" });
+    }
+    if (err.code === "COUNT_MINUS_ONLY") {
+      return res.status(400).json({ message: "COUNT_MINUS_ONLY", code: "COUNT_MINUS_ONLY" });
     }
     res.status(500).json({ message: "INVENTORY_COUNT_ERROR" });
   }
