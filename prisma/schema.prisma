@@ -293,6 +293,11 @@ enum ReceivingLineStatus {
   PLACED
 }
 
+enum ReceivingLineSource {
+  RECEIVING
+  INVENTORY_PLUS
+}
+
 // ============ STOCK ITEMS ============
 model Item {
   id          Int      @id @default(autoincrement())
@@ -356,6 +361,9 @@ model WarehouseReceivingLine {
   manufacturedAt DateTime
   expiresAt     DateTime
   status        ReceivingLineStatus @default(PENDING)
+  sourceType    ReceivingLineSource @default(RECEIVING)
+  discrepancyId Int?
+  discrepancy   StockDiscrepancy? @relation(fields: [discrepancyId], references: [id])
   locationId    Int?
   location      WarehouseLocation? @relation(fields: [locationId], references: [id])
   createdAt     DateTime @default(now())
@@ -444,6 +452,7 @@ model StockDiscrepancy {
   closeNote     String?
   movementOpId  String?
   revisionItems StockRevisionItem[]
+  receivingLines WarehouseReceivingLine[]
 }
 
 model StockRevision {

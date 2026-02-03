@@ -4989,6 +4989,24 @@ app.post("/api/warehouse/inventory/count", auth, async (req, res) => {
             },
           });
           discrepancyId = created.id;
+
+          if (delta > 0) {
+            const now = new Date();
+            await tx.warehouseReceivingLine.create({
+              data: {
+                itemId: item,
+                qty: Math.trunc(delta),
+                remainingQty: Math.trunc(delta),
+                manufacturedAt: now,
+                expiresAt: now,
+                status: "PENDING",
+                sourceType: "INVENTORY_PLUS",
+                discrepancyId: created.id,
+                locationId: location,
+                createdById: req.user?.id || null,
+              },
+            });
+          }
         } else {
           discrepancyId = existing.id;
         }
@@ -5286,7 +5304,18 @@ app.get("/api/warehouse/putaway/pending", auth, async (req, res) => {
         createdBy: true,
       },
     });
-    res.json({ items });
+    res.json({
+      items: items.map((row) => ({
+        id: row.id,
+        qty: row.qty,
+        remainingQty: row.remainingQty,
+        manufacturedAt: row.manufacturedAt,
+        expiresAt: row.expiresAt,
+        sourceType: row.sourceType,
+        item: row.item,
+        location: row.location,
+      })),
+    });
   } catch (err) {
     console.error("putaway pending error:", err);
     res.status(500).json({ message: "PUTAWAY_PENDING_ERROR" });
@@ -5387,29 +5416,43 @@ app.post("/api/warehouse/putaway/from-receiving", auth, async (req, res) => {
 
       const moveComment = `Размещение (ТСД) ${receivingLocationId} → ${to}`;
 
-      await stockService.createMovementInTx(tx, {
-        opId: null,
-        type: "ISSUE",
-        itemId: line.itemId,
-        qty: moveQty,
-        locationId: receivingLocationId,
-        fromLocationId: receivingLocationId,
-        toLocationId: to,
-        comment: moveComment,
-        userId: req.user?.id || null,
-      });
+      if (line.sourceType === "INVENTORY_PLUS") {
+        await stockService.createMovementInTx(tx, {
+          opId: null,
+          type: "ADJUSTMENT",
+          itemId: line.itemId,
+          qty: moveQty,
+          locationId: to,
+          fromLocationId: null,
+          toLocationId: to,
+          comment: "Инвентаризация +",
+          userId: req.user?.id || null,
+        });
+      } else {
+        await stockService.createMovementInTx(tx, {
+          opId: null,
+          type: "ISSUE",
+          itemId: line.itemId,
+          qty: moveQty,
+          locationId: receivingLocationId,
+          fromLocationId: receivingLocationId,
+          toLocationId: to,
+          comment: moveComment,
+          userId: req.user?.id || null,
+        });
 
-      await stockService.createMovementInTx(tx, {
-        opId: null,
-        type: "INCOME",
-        itemId: line.itemId,
-        qty: moveQty,
-        locationId: to,
-        fromLocationId: receivingLocationId,
-        toLocationId: to,
-        comment: moveComment,
-        userId: req.user?.id || null,
-      });
+        await stockService.createMovementInTx(tx, {
+          opId: null,
+          type: "INCOME",
+          itemId: line.itemId,
+          qty: moveQty,
+          locationId: to,
+          fromLocationId: receivingLocationId,
+          toLocationId: to,
+          comment: moveComment,
+          userId: req.user?.id || null,
+        });
+      }
 
       if (moveQty < line.remainingQty) {
         await tx.warehouseReceivingLine.update({
@@ -5426,6 +5469,8 @@ app.post("/api/warehouse/putaway/from-receiving", auth, async (req, res) => {
             manufacturedAt: line.manufacturedAt,
             expiresAt: line.expiresAt,
             status: "PLACED",
+            sourceType: line.sourceType,
+            discrepancyId: line.discrepancyId,
             locationId: to,
             createdById: line.createdById,
             placedAt: new Date(),
@@ -5437,9 +5482,22 @@ app.post("/api/warehouse/putaway/from-receiving", auth, async (req, res) => {
           where: { id: line.id },
           data: {
             status: "PLACED",
+            sourceType: line.sourceType,
             locationId: to,
             placedAt: new Date(),
             placedById: req.user?.id || null,
+          },
+        });
+      }
+
+      if (line.discrepancyId && moveQty === line.remainingQty) {
+        await tx.stockDiscrepancy.update({
+          where: { id: line.discrepancyId },
+          data: {
+            status: "CLOSED",
+            closedAt: new Date(),
+            closedByUserId: req.user?.id || null,
+            closeNote: "INVENTORY_PLUS_PLACED",
           },
         });
       }
