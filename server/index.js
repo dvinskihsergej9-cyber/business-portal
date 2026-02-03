@@ -5317,22 +5317,39 @@ app.post("/api/warehouse/putaway/from-receiving", auth, async (req, res) => {
         throw err;
       }
 
+      const locationStock = await stockService.getLocationStock(to);
+      const nonZeroStock = locationStock.filter((row) => row.qty > 0);
+      const foreignStock = nonZeroStock.find(
+        (row) => row.item?.id && row.item.id !== line.itemId
+      );
+      if (foreignStock) {
+        const err = new Error("LOCATION_OCCUPIED");
+        err.code = "LOCATION_OCCUPIED";
+        err.details = {
+          existingItemId: foreignStock.item?.id || null,
+          existingManufacturedAt: null,
+          existingExpiresAt: null,
+        };
+        throw err;
+      }
+
       const existing = await tx.warehouseReceivingLine.findFirst({
         where: {
           status: "PLACED",
           locationId: to,
+          itemId: line.itemId,
           remainingQty: { gt: 0 },
         },
+        orderBy: { createdAt: "desc" },
       });
       if (existing) {
-        const sameItem = existing.itemId === line.itemId;
         const sameDate =
           existing.manufacturedAt?.getTime?.() ===
             line.manufacturedAt?.getTime?.() &&
           existing.expiresAt?.getTime?.() === line.expiresAt?.getTime?.();
-        if (!sameItem) {
-          const err = new Error("LOCATION_OCCUPIED");
-          err.code = "LOCATION_OCCUPIED";
+        if (!sameDate && !req.body?.allowMix) {
+          const err = new Error("LOCATION_CONFLICT_CONFIRM");
+          err.code = "LOCATION_CONFLICT_CONFIRM";
           err.details = {
             existingItemId: existing.itemId,
             existingManufacturedAt: existing.manufacturedAt,
@@ -5340,18 +5357,15 @@ app.post("/api/warehouse/putaway/from-receiving", auth, async (req, res) => {
           };
           throw err;
         }
-        if (!sameDate) {
-          if (!req.body?.allowMix) {
-            const err = new Error("LOCATION_CONFLICT_CONFIRM");
-            err.code = "LOCATION_CONFLICT_CONFIRM";
-            err.details = {
-              existingItemId: existing.itemId,
-              existingManufacturedAt: existing.manufacturedAt,
-              existingExpiresAt: existing.expiresAt,
-            };
-            throw err;
-          }
-        }
+      } else if (nonZeroStock.length > 0 && !req.body?.allowMix) {
+        const err = new Error("LOCATION_CONFLICT_CONFIRM");
+        err.code = "LOCATION_CONFLICT_CONFIRM";
+        err.details = {
+          existingItemId: nonZeroStock[0]?.item?.id || null,
+          existingManufacturedAt: null,
+          existingExpiresAt: null,
+        };
+        throw err;
       }
 
       const moveComment = `Размещение (ТСД) ${receivingLocationId} → ${to}`;
