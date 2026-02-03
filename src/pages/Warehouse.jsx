@@ -304,7 +304,7 @@ export default function Warehouse() {
     }
     if (section === "movement") {
       setInventoryTab("movement");
-      setMovementTab((prev) => prev || "movements");
+      setMovementTab((prev) => prev || "movementsHistory");
       return;
     }
     if (section === "suppliers") {
@@ -2309,10 +2309,8 @@ export default function Warehouse() {
               <WarehouseTileIcon name="movement" />
             </div>
             <div className="warehouse-card__body">
-              <div className="warehouse-card__title">История движений</div>
-              <div className="warehouse-card__subtitle">
-                Журнал операций по складу.
-              </div>
+              <div className="warehouse-card__title">{"\u0418\u0441\u0442\u043e\u0440\u0438\u044f \u0434\u0432\u0438\u0436\u0435\u043d\u0438\u0439"}</div>
+              <div className="warehouse-card__subtitle">{"\u0416\u0443\u0440\u043d\u0430\u043b \u043e\u043f\u0435\u0440\u0430\u0446\u0438\u0439 \u043f\u043e \u0441\u043a\u043b\u0430\u0434\u0443."}</div>
             </div>
           </button>
 
@@ -3670,15 +3668,6 @@ export default function Warehouse() {
               <button
                 type="button"
                 className={
-                  "tabs__btn " + (false ? "tabs__btn--active" : "")
-                }
-                onClick={() => setMovementTab("movements")}
-              >
-                
-              </button>
-              <button
-                type="button"
-                className={
                   "tabs__btn " + (movementTab === "movementsHistory" ? "tabs__btn--active" : "")
                 }
                 onClick={() => setMovementTab("movementsHistory")}
@@ -4003,7 +3992,253 @@ export default function Warehouse() {
 
 
 
-          {/* ===== Р’РєР»Р°РґРєР° 3:  (С‚РѕР»СЊРєРѕ С„РѕСЂРјР°) ===== */}
+          {/* ===== Р’РєР»Р°РґРєР° 3: Р”РІРёР¶РµРЅРёРµ С‚РѕРІР°СЂР° (С‚РѕР»СЊРєРѕ С„РѕСЂРјР°) ===== */}
+
+          {false && inventoryTab === "movement" && movementTab === "movements" && (
+
+            <div className="grid-2">
+
+              <div className="card card--1c" style={{ gridColumn: "span 2" }}>
+
+                <div
+
+                  className="card1c__header"
+
+                  style={{
+
+                    display: "flex",
+
+                    justifyContent: "space-between",
+
+                    alignItems: "center",
+
+                  }}
+
+                >
+
+                  <span>Р”РІРёР¶РµРЅРёРµ С‚РѕРІР°СЂР°</span>
+
+                  <button
+
+                    type="button"
+
+                    className="btn btn--secondary btn--sm"
+
+                    onClick={() => {
+
+                      console.log(
+
+                        "CLICK РџРћ Р—РђРљРЈРџРЈ, showReceiveModal Р±С‹Р»Рѕ:",
+
+                        showReceiveModal
+
+                      );
+
+                      setShowReceiveModal(true);
+
+                    }}
+
+                  >
+
+                    Р—Р°РєСѓРї РїРѕ Р·Р°РєР°Р·Сѓ
+
+                  </button>
+
+                </div>
+
+                <div className="card1c__body">
+
+                  {inventoryError && (
+
+                    <div
+
+                      className="alert alert--danger"
+
+                      style={{ marginBottom: 8 }}
+
+                    >
+
+                      {inventoryError}
+
+                    </div>
+
+                  )}
+
+                  <form
+
+                    onSubmit={handleCreateMovement}
+
+                    className="form request-form-1c"
+
+                  >
+
+                    <div className="form__group">
+
+                      <label className="form__label">РўРёРї РѕРїРµСЂР°С†РёРё</label>
+
+                      <select
+
+                        className="form__select"
+
+                        value={movementForm.type}
+
+                        onChange={(e) =>
+
+                          setMovementForm({
+
+                            ...movementForm,
+
+                            type: e.target.value,
+
+                          })
+
+                        }
+
+                      >
+
+                        <option value="INCOME">РџСЂРёС…РѕРґ</option>
+
+                        <option value="ISSUE">Р Р°СЃС…РѕРґ</option>
+
+                        <option value="ADJUSTMENT">РљРѕСЂСЂРµРєС‚РёСЂРѕРІРєР°</option>
+
+                      </select>
+
+                    </div>
+
+
+
+                    <div className="form__group">
+
+                      <label className="form__label">РўРѕРІР°СЂ</label>
+
+                      <select
+
+                        className="form__select"
+
+                        value={movementForm.itemId}
+
+                        onChange={(e) =>
+
+                          setMovementForm({
+
+                            ...movementForm,
+
+                            itemId: e.target.value,
+
+                          })
+
+                        }
+
+                      >
+
+                        <option value="">-- Р’С‹Р±РµСЂРёС‚Рµ С‚РѕРІР°СЂ --</option>
+
+                        {inventoryItems.map((it) => (
+
+                          <option key={it.id} value={it.id}>
+
+                            {it.name} (РћСЃС‚Р°С‚РѕРє:{" "}
+
+                            {currentStockForItem(it.id)} {it.unit})
+
+                          </option>
+
+                        ))}
+
+                      </select>
+
+                    </div>
+
+
+
+                    <div className="form__group">
+
+                      <label className="form__label">РљРѕР»РёС‡РµСЃС‚РІРѕ</label>
+
+                      <div style={{ flex: 1 }}>
+
+                        <input
+
+                          className="form__input"
+
+                          type="number"
+
+                          value={movementForm.quantity}
+
+                          onChange={(e) =>
+
+                            setMovementForm({
+
+                              ...movementForm,
+
+                              quantity: e.target.value,
+
+                            })
+
+                          }
+
+                          placeholder="РќР°РїСЂРёРјРµСЂ: 5 РёР»Рё -5"
+
+                        />
+
+                      </div>
+
+                    </div>
+
+
+
+                    <div className="form__group">
+
+                      <label className="form__label">РљРѕРјРјРµРЅС‚Р°СЂРёР№</label>
+
+                      <input
+
+                        className="form__input"
+
+                        value={movementForm.comment}
+
+                        onChange={(e) =>
+
+                          setMovementForm({
+
+                            ...movementForm,
+
+                            comment: e.target.value,
+
+                          })
+
+                        }
+
+                      />
+
+                    </div>
+
+
+
+                    <div className="request-form-1c__actions">
+
+                      <button type="submit" className="btn btn--primary">
+
+                        РџСЂРѕРІРµСЃС‚Рё РґРІРёР¶РµРЅРёРµ
+
+                      </button>
+
+                    </div>
+
+                  </form>
+
+                </div>
+
+              </div>
+
+            </div>
+
+          )}
+
+
+
+          {/* ===== Р’РєР»Р°РґРєР° 4: РСЃС‚РѕСЂРёСЏ РґРІРёР¶РµРЅРёР№ (1РЎ) ===== */}
 
           {inventoryTab === "movement" && movementTab === "movementsHistory" && <StockMovementsHistoryTab />}
 
