@@ -5305,12 +5305,53 @@ app.post("/api/warehouse/putaway/from-receiving", auth, async (req, res) => {
         throw err;
       }
 
-      const receivingLocationId = line.locationId || (await getReceivingLocationId(tx));
-      const moveQty = amount && Number.isFinite(amount) ? Math.trunc(amount) : line.remainingQty;
+      const receivingLocationId =
+        line.locationId || (await getReceivingLocationId(tx));
+      const moveQty =
+        amount && Number.isFinite(amount)
+          ? Math.trunc(amount)
+          : line.remainingQty;
       if (moveQty <= 0 || moveQty > line.remainingQty) {
         const err = new Error("BAD_QTY");
         err.code = "BAD_QTY";
         throw err;
+      }
+
+      const existing = await tx.warehouseReceivingLine.findFirst({
+        where: {
+          status: "PLACED",
+          locationId: to,
+          remainingQty: { gt: 0 },
+        },
+      });
+      if (existing) {
+        const sameItem = existing.itemId === line.itemId;
+        const sameDate =
+          existing.manufacturedAt?.getTime?.() ===
+            line.manufacturedAt?.getTime?.() &&
+          existing.expiresAt?.getTime?.() === line.expiresAt?.getTime?.();
+        if (!sameItem) {
+          const err = new Error("LOCATION_OCCUPIED");
+          err.code = "LOCATION_OCCUPIED";
+          err.details = {
+            existingItemId: existing.itemId,
+            existingManufacturedAt: existing.manufacturedAt,
+            existingExpiresAt: existing.expiresAt,
+          };
+          throw err;
+        }
+        if (!sameDate) {
+          if (!req.body?.allowMix) {
+            const err = new Error("LOCATION_CONFLICT_CONFIRM");
+            err.code = "LOCATION_CONFLICT_CONFIRM";
+            err.details = {
+              existingItemId: existing.itemId,
+              existingManufacturedAt: existing.manufacturedAt,
+              existingExpiresAt: existing.expiresAt,
+            };
+            throw err;
+          }
+        }
       }
 
       const moveComment = `Размещение (ТСД) ${receivingLocationId} → ${to}`;
@@ -5377,6 +5418,18 @@ app.post("/api/warehouse/putaway/from-receiving", auth, async (req, res) => {
   } catch (err) {
     if (err.code === "BAD_QTY") {
       return res.status(400).json({ message: "BAD_QTY" });
+    }
+    if (err.code === "LOCATION_OCCUPIED") {
+      return res.status(409).json({
+        message: "LOCATION_OCCUPIED",
+        details: err.details || null,
+      });
+    }
+    if (err.code === "LOCATION_CONFLICT_CONFIRM") {
+      return res.status(409).json({
+        message: "LOCATION_CONFLICT_CONFIRM",
+        details: err.details || null,
+      });
     }
     if (err.code === "LOCATION_NOT_FOUND") {
       return res.status(404).json({ message: "LOCATION_NOT_FOUND" });

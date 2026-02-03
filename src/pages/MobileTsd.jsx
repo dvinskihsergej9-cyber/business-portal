@@ -722,7 +722,7 @@ export default function MobileTsd() {
     }));
   };
 
-  const handlePutawaySubmit = async () => {
+  const handlePutawaySubmit = async (forceMix = false) => {
     const qty = Number(putawayState.selectedQty);
     if (!putawayState.selected) {
       setPutawayState((prev) => ({ ...prev, error: "Выберите товар." }));
@@ -747,10 +747,30 @@ export default function MobileTsd() {
           receivingLineId: putawayState.selected.id,
           locationId: putawayState.to.id,
           qty,
+          allowMix: forceMix,
         }),
       });
       const data = await res.json();
       if (!res.ok) {
+        if (data?.message === "LOCATION_OCCUPIED") {
+          throw new Error(
+            "В ячейке уже есть другой товар. Выберите другую ячейку."
+          );
+        }
+        if (data?.message === "LOCATION_CONFLICT_CONFIRM") {
+          if (globalThis.confirm) {
+            const ok = globalThis.confirm(
+              "В ячейке уже есть такой же товар, но с другой датой. Разместить сюда?"
+            );
+            if (ok) {
+              await handlePutawaySubmit(true);
+              return;
+            }
+          }
+          throw new Error(
+            "В ячейке уже есть такой же товар, но с другой датой."
+          );
+        }
         throw new Error(data.message || "Размещение не выполнено");
       }
       const refreshed = await fetch(`${API_BASE}/warehouse/putaway/pending`, {
