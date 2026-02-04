@@ -68,16 +68,19 @@ const PUTAWAY_STEPS = ["Товар", "Ячейка", "Подтверждение
 const REPLENISH_STEPS = ["Откуда", "Товар", "Кол-во", "Куда", "Подтверждение"];
 const PICK_STEPS = ["Ячейка", "Товар", "Кол-во", "Подтверждение"];
 
-const emptyCountState = {
-  step: 0,
-  location: null,
-  item: null,
-  qty: "",
-  mode: "AUTO",
-  loading: false,
-  error: "",
-  done: false,
-};
+  const emptyCountState = {
+    step: 0,
+    location: null,
+    item: null,
+    qty: "",
+    mode: "AUTO",
+    manufacturedAt: "",
+    expiresAt: "",
+    allowDifferentDate: false,
+    loading: false,
+    error: "",
+    done: false,
+  };
 
 const emptyReceivingState = {
   step: 0,
@@ -316,6 +319,15 @@ export default function MobileTsd() {
       }));
       return;
     }
+    if (countState.mode === "PLUS") {
+      if (!countState.manufacturedAt) {
+        setCountState((prev) => ({
+          ...prev,
+          error: "Укажите дату изготовления.",
+        }));
+        return;
+      }
+    }
     try {
       setCountState((prev) => ({ ...prev, loading: true, error: "" }));
       const opId = makeOpId("COUNT");
@@ -328,10 +340,28 @@ export default function MobileTsd() {
           itemId: countState.item.id,
           qty,
           inventoryType: countState.mode,
+          manufacturedAt: countState.manufacturedAt || null,
+          expiresAt: countState.expiresAt || countState.manufacturedAt || null,
+          allowDifferentDate: countState.allowDifferentDate,
         }),
       });
       const data = await res.json();
       if (!res.ok) {
+        if (data.code === "COUNT_ITEM_NOT_IN_LOCATION") {
+          throw new Error("В этой ячейке нет такого товара.");
+        }
+        if (data.code === "COUNT_CELL_NOT_EMPTY") {
+          throw new Error("Ячейка не пустая. Нельзя добавить новый товар.");
+        }
+        if (data.code === "COUNT_DATE_MISMATCH") {
+          setCountState((prev) => ({
+            ...prev,
+            allowDifferentDate: true,
+          }));
+          throw new Error(
+            "В ячейке есть этот товар с другой датой. Повторите подтверждение, если уверены."
+          );
+        }
         if (data.code === "COUNT_PLUS_ONLY") {
           throw new Error("Выбран пересчет в плюс, а разница в минус. Выберите другой тип.");
         }
@@ -1108,6 +1138,38 @@ export default function MobileTsd() {
                 <option value="MINUS">В минус</option>
               </select>
             </div>
+            {countState.mode === "PLUS" && (
+              <div className="tsd-inline tsd-inline--two">
+                <div>
+                  <label className="tsd-scanner__label">Дата изготовления</label>
+                  <input
+                    className="tsd-input"
+                    type="date"
+                    value={countState.manufacturedAt}
+                    onChange={(event) =>
+                      setCountState((prev) => ({
+                        ...prev,
+                        manufacturedAt: event.target.value,
+                      }))
+                    }
+                  />
+                </div>
+                <div>
+                  <label className="tsd-scanner__label">Срок годности</label>
+                  <input
+                    className="tsd-input"
+                    type="date"
+                    value={countState.expiresAt}
+                    onChange={(event) =>
+                      setCountState((prev) => ({
+                        ...prev,
+                        expiresAt: event.target.value,
+                      }))
+                    }
+                  />
+                </div>
+              </div>
+            )}
             <div className="tsd-qty-input">
               <label className="tsd-scanner__label">Количество</label>
               <input

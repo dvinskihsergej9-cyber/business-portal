@@ -4941,11 +4941,22 @@ app.get("/api/warehouse/locations/:id/stock", auth, async (req, res) => {
 // ===== TSD: INVENTORY COUNT (CREATE DISCREPANCY ONLY) =====
 app.post("/api/warehouse/inventory/count", auth, async (req, res) => {
   try {
-    const { opId, locationId, itemId, qty, comment, inventoryType } = req.body || {};
+    const {
+      opId,
+      locationId,
+      itemId,
+      qty,
+      comment,
+      inventoryType,
+      manufacturedAt,
+      expiresAt,
+      allowDifferentDate,
+    } = req.body || {};
     const location = Number(locationId);
     const item = Number(itemId);
     const amount = Number(qty);
     const mode = String(inventoryType || "AUTO").toUpperCase();
+    const allowDiffDate = Boolean(allowDifferentDate);
 
     if (!location || !item || !Number.isFinite(amount) || amount < 0) {
       return res.status(400).json({ message: "BAD_REQUEST" });
@@ -4968,6 +4979,58 @@ app.post("/api/warehouse/inventory/count", auth, async (req, res) => {
     await prisma.$transaction(async (tx) => {
       const current = await stockService.getItemLocationQty(tx, item, location);
       delta = normalizedQty - current;
+
+      const locationItems = await tx.warehouseItemStock.findMany({
+        where: { locationId: location },
+        include: { item: true },
+      });
+      const sameItem = locationItems.find((row) => row.itemId === item);
+
+      if (mode === "MINUS" && !sameItem) {
+        const err = new Error("COUNT_ITEM_NOT_IN_LOCATION");
+        err.code = "COUNT_ITEM_NOT_IN_LOCATION";
+        throw err;
+      }
+      if (mode === "PLUS" && !sameItem && locationItems.length > 0) {
+        const err = new Error("COUNT_CELL_NOT_EMPTY");
+        err.code = "COUNT_CELL_NOT_EMPTY";
+        throw err;
+      }
+
+      let manufactured = null;
+      let expires = null;
+      if (mode === "PLUS") {
+        if (!manufacturedAt) {
+          const err = new Error("MANUFACTURED_AT_REQUIRED");
+          err.code = "MANUFACTURED_AT_REQUIRED";
+          throw err;
+        }
+        manufactured = new Date(manufacturedAt);
+        expires = expiresAt ? new Date(expiresAt) : manufactured;
+        if (!manufactured || Number.isNaN(manufactured.getTime())) {
+          const err = new Error("MANUFACTURED_AT_REQUIRED");
+          err.code = "MANUFACTURED_AT_REQUIRED";
+          throw err;
+        }
+        if (expires && Number.isNaN(expires.getTime())) {
+          expires = manufactured;
+        }
+      }
+
+      if (mode === "PLUS" && sameItem && manufactured) {
+        const mismatch =
+          (sameItem.manufacturedAt &&
+            new Date(sameItem.manufacturedAt).toISOString().slice(0, 10) !==
+              manufactured.toISOString().slice(0, 10)) ||
+          (sameItem.expiresAt &&
+            new Date(sameItem.expiresAt).toISOString().slice(0, 10) !==
+              (expires || manufactured).toISOString().slice(0, 10));
+        if (mismatch && !allowDiffDate) {
+          const err = new Error("COUNT_DATE_MISMATCH");
+          err.code = "COUNT_DATE_MISMATCH";
+          throw err;
+        }
+      }
 
       if (mode === "PLUS" && delta < 0) {
         const err = new Error("COUNT_PLUS_ONLY");
@@ -5003,14 +5066,15 @@ app.post("/api/warehouse/inventory/count", auth, async (req, res) => {
           discrepancyId = created.id;
 
           if (delta > 0) {
-            const now = new Date();
+            const now = manufactured || new Date();
+            const normalizedExpires = expires || now;
             await tx.warehouseReceivingLine.create({
               data: {
                 itemId: item,
                 qty: Math.trunc(delta),
                 remainingQty: Math.trunc(delta),
                 manufacturedAt: now,
-                expiresAt: now,
+                expiresAt: normalizedExpires,
                 status: "PENDING",
                 sourceType: "INVENTORY_PLUS",
                 discrepancyId: created.id,
@@ -5030,6 +5094,18 @@ app.post("/api/warehouse/inventory/count", auth, async (req, res) => {
     console.error("inventory count error:", err);
     if (err.code === "BAD_QTY") {
       return res.status(400).json({ message: "BAD_QTY" });
+    }
+    if (err.code === "COUNT_ITEM_NOT_IN_LOCATION") {
+      return res.status(400).json({ message: "COUNT_ITEM_NOT_IN_LOCATION", code: "COUNT_ITEM_NOT_IN_LOCATION" });
+    }
+    if (err.code === "COUNT_CELL_NOT_EMPTY") {
+      return res.status(400).json({ message: "COUNT_CELL_NOT_EMPTY", code: "COUNT_CELL_NOT_EMPTY" });
+    }
+    if (err.code === "COUNT_DATE_MISMATCH") {
+      return res.status(400).json({ message: "COUNT_DATE_MISMATCH", code: "COUNT_DATE_MISMATCH" });
+    }
+    if (err.code === "MANUFACTURED_AT_REQUIRED") {
+      return res.status(400).json({ message: "MANUFACTURED_AT_REQUIRED" });
     }
     if (err.code === "COUNT_PLUS_ONLY") {
       return res.status(400).json({ message: "COUNT_PLUS_ONLY", code: "COUNT_PLUS_ONLY" });
