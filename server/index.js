@@ -2540,41 +2540,63 @@ app.post("/api/warehouse/requests", auth, async (req, res) => {
 
     // 1. Р В РЎСџР РЋР вЂљР В РЎвЂР В Р вЂ Р В РЎвЂўР В РўвЂР В РЎвЂР В РЎВ Р В РЎвЂ”Р В РЎвЂўР В Р’В·Р В РЎвЂР РЋРІР‚В Р В РЎвЂР В РЎвЂ Р В РЎвЂ Р В РЎвЂ”Р РЋР вЂљР В РЎвЂўР В Р вЂ Р В Р’ВµР РЋР вЂљР РЋР РЏР В Р’ВµР В РЎВ Р В РЎвЂќР В РЎвЂўР В Р’В»Р В РЎвЂР РЋРІР‚РЋР В Р’ВµР РЋР С“Р РЋРІР‚С™Р В Р вЂ Р В РЎвЂў
     const preparedItems = [];
+    const validationItems = [];
 
     for (const it of items) {
       const q = Number(it.quantity);
+      const name = String(it.name || "").trim();
+      const rawItemId = it.itemId;
+      const itemId =
+        rawItemId !== undefined && rawItemId !== null && rawItemId !== ""
+          ? Number(rawItemId)
+          : null;
+
+      if (!name) {
+        return res.status(400).json({ message: "??????? ????? ??? ??????." });
+      }
 
       if (!Number.isFinite(q) || !Number.isInteger(q) || q <= 0) {
         return res.status(400).json({
-          message: `Р В РЎв„ўР В РЎвЂўР В Р’В»Р В РЎвЂР РЋРІР‚РЋР В Р’ВµР РЋР С“Р РЋРІР‚С™Р В Р вЂ Р В РЎвЂў Р В РЎвЂ”Р В РЎвЂў Р В РЎвЂ”Р В РЎвЂўР В Р’В·Р В РЎвЂР РЋРІР‚В Р В РЎвЂР В РЎвЂ "${it.name || ""}" Р В РўвЂР В РЎвЂўР В Р’В»Р В Р’В¶Р В Р вЂ¦Р В РЎвЂў Р В Р’В±Р РЋРІР‚в„–Р РЋРІР‚С™Р РЋР Р‰ Р В РЎвЂ”Р В РЎвЂўР В Р’В»Р В РЎвЂўР В Р’В¶Р В РЎвЂР РЋРІР‚С™Р В Р’ВµР В Р’В»Р РЋР Р‰Р В Р вЂ¦Р РЋРІР‚в„–Р В РЎВ Р РЋРІР‚В Р В Р’ВµР В Р’В»Р РЋРІР‚в„–Р В РЎВ Р РЋРІР‚РЋР В РЎвЂР РЋР С“Р В Р’В»Р В РЎвЂўР В РЎВ`,
+          message: `?????????? ?? ??????? "${name}" ?????? ???? ????????????? ????? ??????.`,
         });
       }
 
       preparedItems.push({
-        name: it.name,
+        name,
+        quantity: q,
+        unit: it.unit || null,
+      });
+      validationItems.push({
+        itemId: Number.isFinite(itemId) ? itemId : null,
+        name,
         quantity: q,
         unit: it.unit || null,
       });
     }
 
-    // 2. Р В РІР‚СћР РЋР С“Р В Р’В»Р В РЎвЂ Р РЋР РЉР РЋРІР‚С™Р В РЎвЂў Р В Р вЂ Р РЋРІР‚в„–Р В РўвЂР В Р’В°Р РЋРІР‚РЋР В Р’В° (ISSUE) Р Р†Р вЂљРІР‚Сњ Р В РЎвЂ”Р РЋР вЂљР В РЎвЂўР В Р вЂ Р В Р’ВµР РЋР вЂљР РЋР РЏР В Р’ВµР В РЎВ Р В РЎвЂўР РЋР С“Р РЋРІР‚С™Р В Р’В°Р РЋРІР‚С™Р В РЎвЂќР В РЎвЂ
     if (type === "ISSUE") {
-      for (const it of preparedItems) {
-        if (!it.name) continue;
+      for (const it of validationItems) {
+        let invItem = null;
 
-        const invItem = await prisma.item.findFirst({
-          where: { name: it.name },
-        });
+        if (it.itemId) {
+          invItem = await prisma.item.findUnique({ where: { id: it.itemId } });
+        }
 
-        // Р В Р’ВµР РЋР С“Р В Р’В»Р В РЎвЂ Р РЋРІР‚С™Р В РЎвЂўР В Р вЂ Р В Р’В°Р РЋР вЂљР В Р’В° Р В Р вЂ¦Р В Р’ВµР РЋРІР‚С™ Р В Р вЂ  Р В Р вЂ¦Р В РЎвЂўР В РЎВР В Р’ВµР В Р вЂ¦Р В РЎвЂќР В Р’В»Р В Р’В°Р РЋРІР‚С™Р РЋРЎвЂњР РЋР вЂљР В Р’Вµ Р Р†Р вЂљРІР‚Сњ Р В РЎвЂ”Р РЋР вЂљР В РЎвЂўР В РЎвЂ”Р РЋРЎвЂњР РЋР С“Р В РЎвЂќР В Р’В°Р В Р’ВµР В РЎВ Р В РЎвЂ”Р РЋР вЂљР В РЎвЂўР В Р вЂ Р В Р’ВµР РЋР вЂљР В РЎвЂќР РЋРЎвЂњ
+        if (!invItem && it.name) {
+          invItem = await prisma.item.findFirst({ where: { name: it.name } });
+        }
+
         if (!invItem) continue;
 
-        const currentStock = await getCurrentStockForItem(invItem.id);
+        const currentStock =
+          invItem.category === "TMC"
+            ? await getTmcStockForItem(invItem.id)
+            : await getCurrentStockForItem(invItem.id);
         const current = currentStock ?? 0;
 
         if (current < it.quantity) {
           return res.status(400).json({
-            message: `Р В РЎСљР В Р’ВµР В РўвЂР В РЎвЂўР РЋР С“Р РЋРІР‚С™Р В Р’В°Р РЋРІР‚С™Р В РЎвЂўР РЋРІР‚РЋР В Р вЂ¦Р В РЎвЂў Р В РЎвЂўР РЋР С“Р РЋРІР‚С™Р В Р’В°Р РЋРІР‚С™Р В РЎвЂќР В Р’В° Р В РЎвЂ”Р В РЎвЂў Р РЋРІР‚С™Р В РЎвЂўР В Р вЂ Р В Р’В°Р РЋР вЂљР РЋРЎвЂњ "${it.name}". Р В РЎСљР В Р’В° Р РЋР С“Р В РЎвЂќР В Р’В»Р В Р’В°Р В РўвЂР В Р’Вµ ${current} ${invItem.unit || "Р РЋРІвЂљВ¬Р РЋРІР‚С™."}, Р В Р вЂ  Р В Р’В·Р В Р’В°Р РЋР РЏР В Р вЂ Р В РЎвЂќР В Р’Вµ Р РЋРЎвЂњР В РЎвЂќР В Р’В°Р В Р’В·Р В Р’В°Р В Р вЂ¦Р В РЎвЂў ${it.quantity}.`,
+            message: `???????????? ??????? ?? ??????? "${invItem.name}". ???????? ${current} ${invItem.unit || "??."}, ????????? ${it.quantity}.`,
           });
         }
       }

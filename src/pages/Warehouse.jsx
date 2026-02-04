@@ -201,13 +201,9 @@ export default function Warehouse() {
   // ===== ЗАЯВКИ НА СКЛАД =====
 
   const [requestForm, setRequestForm] = useState({
-
-    title: "",
-
+    itemId: "",
     quantity: "",
-
     description: "",
-
   });
 
 
@@ -283,6 +279,8 @@ export default function Warehouse() {
   const [inventoryLoading, setInventoryLoading] = useState(true);
 
   const [inventoryError, setInventoryError] = useState("");
+
+  const [tmcStock, setTmcStock] = useState([]);
 
   const [showImportModal, setShowImportModal] = useState(false);
 
@@ -637,6 +635,22 @@ export default function Warehouse() {
 
   };
 
+  const loadTmcStock = async () => {
+    try {
+      const res = await fetch(`${API}/tmc/stock`, {
+        headers: { Authorization: authHeaders.Authorization },
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        throw new Error(data.message || "Ошибка загрузки ТМЦ");
+      }
+      setTmcStock(data || []);
+    } catch (e) {
+      console.error(e);
+      setError(e.message || "Ошибка загрузки ТМЦ");
+    }
+  };
+
 
 
   const loadSuppliers = async () => {
@@ -744,6 +758,7 @@ export default function Warehouse() {
     loadTasks();
 
     loadInventory();
+    loadTmcStock();
 
     // eslint-disable-next-line react-hooks/exhaustive-deps
 
@@ -865,56 +880,45 @@ export default function Warehouse() {
 
     try {
 
-      const title = requestForm.title.trim();
-
-
-
-      if (!title) {
-
+      const selectedItem = selectedTmcItem;
+      if (!selectedItem) {
         setSaving(false);
-
-        return setError("Укажите товар или название заявки.");
-
+        return setError("???????? ????? ?? ???.");
       }
 
-
-
+      const title = selectedItem.name;
       const qty = Number(requestForm.quantity);
-
-
+      const available = Number(selectedItem.currentStock ?? 0);
 
       if (!Number.isFinite(qty) || !Number.isInteger(qty) || qty <= 0) {
-
         setSaving(false);
-
-        return setError("Количество должно быть положительным целым числом.");
-
+        return setError("?????????? ?????? ???? ????????????? ????? ??????.");
       }
 
+      if (available <= 0) {
+        setSaving(false);
+        return setError("?? ????????? ??????? ??? ???????.");
+      }
 
+      if (qty > available) {
+        setSaving(false);
+        return setError(
+          `???????????? ???????. ???????? ${available} ${selectedItem.unit || "??."}.`
+        );
+      }
 
       const body = {
-
         title,
-
         type: "ISSUE",
-
         comment: requestForm.description?.trim() || null,
-
         items: [
-
           {
-
+            itemId: selectedItem.id,
             name: title,
-
             quantity: qty,
-
-            unit: "шт",
-
+            unit: selectedItem.unit || "??",
           },
-
         ],
-
       };
 
 
@@ -942,13 +946,9 @@ export default function Warehouse() {
 
 
       setRequestForm({
-
-        title: "",
-
+        itemId: "",
         quantity: "",
-
         description: "",
-
       });
 
 
@@ -1141,12 +1141,10 @@ export default function Warehouse() {
 
   // Товары, у которых текущий остаток > 0 (для выпадающего списка в заявке)
 
-  const availableStockItems = useMemo(
-
-    () => inventoryStock.filter((row) => row.currentStock > 0),
-
-    [inventoryStock]
-
+  const tmcStockItems = useMemo(() => tmcStock || [], [tmcStock]);
+  const selectedTmcItem = useMemo(
+    () => tmcStockItems.find((it) => String(it.id) === String(requestForm.itemId)),
+    [tmcStockItems, requestForm.itemId]
   );
 
 
@@ -2578,45 +2576,29 @@ export default function Warehouse() {
                 >
 
                   <div className="form__group">
-
-                    <label className="form__label">Название / Товар</label>
-
-                    <input
-
-                      type="text"
-
-                      className="form__input"
-
-                      list="warehouse-items-list"
-
-                      value={requestForm.title}
-
+                    <label className="form__label">????? (???)</label>
+                    <select
+                      className="form__select"
+                      value={requestForm.itemId}
                       onChange={(e) =>
-
                         setRequestForm({
-
                           ...requestForm,
-
-                          title: e.target.value,
-
+                          itemId: e.target.value,
                         })
-
                       }
-
-                      placeholder="Что требуется?"
-
-                    />
-
-                    <datalist id="warehouse-items-list">
-
-                      {availableStockItems.map((item) => (
-
-                        <option key={item.id} value={item.name} />
-
+                    >
+                      <option value="">???????? ?????</option>
+                      {tmcStockItems.map((item) => (
+                        <option key={item.id} value={item.id}>
+                          {item.name} (???????: {item.currentStock} {item.unit || "??"})
+                        </option>
                       ))}
-
-                    </datalist>
-
+                    </select>
+                    {selectedTmcItem && (
+                      <div className="form__hint">
+                        ???????: {selectedTmcItem.currentStock} {selectedTmcItem.unit || "??"}
+                      </div>
+                    )}
                   </div>
 
 
