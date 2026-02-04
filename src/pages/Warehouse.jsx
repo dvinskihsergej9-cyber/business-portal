@@ -830,6 +830,14 @@ export default function Warehouse() {
 
 
   useEffect(() => {
+    if (section !== "requests") return;
+    loadTmcStock();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [section]);
+
+
+
+  useEffect(() => {
 
     if (section !== "inventory") return;
 
@@ -2644,12 +2652,21 @@ export default function Warehouse() {
 
                   <div className="form__group">
                     <label className="form__label">Товар (ТМЦ)</label>
+                    <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
                     <input
                       className="form__input"
                       placeholder="Поиск по ТМЦ..."
                       value={requestItemQuery}
                       onChange={(e) => setRequestItemQuery(e.target.value)}
                     />
+                      <button
+                        type="button"
+                        className="btn btn--secondary btn--sm"
+                        onClick={loadTmcStock}
+                      >
+                        ????????
+                      </button>
+                    </div>
                     <select
                       className="form__select"
                       value={requestForm.itemId}
@@ -2705,6 +2722,20 @@ export default function Warehouse() {
                       placeholder="Сколько?"
 
                     />
+
+                    {selectedTmcItem &&
+                      Number(requestForm.quantity) > Number(selectedTmcItem.currentStock ?? 0) && (
+                        <div className="form__hint" style={{ color: "#dc2626" }}>
+                          ????????? ?????? ???????. ???????? {selectedTmcItem.currentStock} {selectedTmcItem.unit || "??"}.
+                        </div>
+                      )}
+
+                    {selectedTmcItem && Number(selectedTmcItem.currentStock ?? 0) <= 0 && (
+                      <div className="form__hint" style={{ color: "#dc2626" }}>
+                        ?? ???? ??????? ?????? ??? ???????. ????? ??????? ?????? ?? ??????????.
+                      </div>
+                    )}
+
 
                   
 
