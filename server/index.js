@@ -4882,29 +4882,70 @@ app.post("/api/tmc/seed-defaults", auth, requireAdmin, async (req, res) => {
 // ===== DISCREPANCY CLOSE =====
 app.put("/api/warehouse/discrepancies/:id/close", auth, async (req, res) => {
   try {
-    if (!["ADMIN", "EMPLOYEE"].includes(req.user?.role)) {
-      return res.status(403).json({ message: "FORBIDDEN" });
-    }
     const id = Number(req.params.id);
     const { closeNote } = req.body || {};
     if (!id || Number.isNaN(id)) {
-      return res.status(400).json({ message: "BAD_DISCREPANCY_ID" });
+      return res.status(400).json({ message: "Некорректный идентификатор расхождения." });
     }
 
-    await prisma.stockDiscrepancy.update({
+    const discrepancy = await prisma.stockDiscrepancy.findUnique({
       where: { id },
-      data: {
-        status: "CLOSED",
-        closedAt: new Date(),
-        closedByUserId: req.user?.id || null,
-        closeNote: closeNote || null,
-      },
+      include: { item: true, location: true },
+    });
+    if (!discrepancy) {
+      return res.status(404).json({ message: "Расхождение не найдено." });
+    }
+
+    if (discrepancy.status === "CLOSED") {
+      return res.json({ ok: true, alreadyClosed: true });
+    }
+
+    if (!["ADMIN", "EMPLOYEE"].includes(req.user?.role)) {
+      return res.status(403).json({ message: "Недостаточно прав." });
+    }
+
+    if (discrepancy.delta < 0 && req.user?.role !== "ADMIN") {
+      return res
+        .status(403)
+        .json({ message: "Только администратор может подтвердить списание." });
+    }
+
+    await prisma.$transaction(async (tx) => {
+      if (discrepancy.delta < 0) {
+        if (!discrepancy.locationId) {
+          const err = new Error("NO_LOCATION");
+          err.code = "NO_LOCATION";
+          throw err;
+        }
+        await stockService.createMovementInTx(tx, {
+          opId: `DISC:${discrepancy.id}:ADJ`,
+          type: "ADJUSTMENT",
+          itemId: discrepancy.itemId,
+          qty: Math.trunc(discrepancy.delta),
+          locationId: discrepancy.locationId,
+          comment: "Инвентаризация - (подтверждено администратором)",
+          userId: req.user?.id || null,
+        });
+      }
+
+      await tx.stockDiscrepancy.update({
+        where: { id: discrepancy.id },
+        data: {
+          status: "CLOSED",
+          closedAt: new Date(),
+          closedByUserId: req.user?.id || null,
+          closeNote: closeNote || null,
+        },
+      });
     });
 
     res.json({ ok: true });
   } catch (err) {
     console.error("discrepancy close error:", err);
-    res.status(500).json({ message: "DISCREPANCY_CLOSE_ERROR" });
+    if (err.code === "NO_LOCATION") {
+      return res.status(400).json({ message: "Для расхождения не указана ячейка." });
+    }
+    res.status(500).json({ message: "Не удалось закрыть расхождение." });
   }
 });
 

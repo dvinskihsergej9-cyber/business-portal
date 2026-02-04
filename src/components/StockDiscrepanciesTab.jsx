@@ -167,15 +167,31 @@ export default function StockDiscrepanciesTab() {
                     {row.sessionId || "-"}
                   </td>
                   <td data-label="actions" style={tdStyle}>
-                    {status === "OPEN" && ["ADMIN", "EMPLOYEE"].includes(user?.role) && (
+                    {status === "OPEN" && row.delta < 0 && user?.role === "ADMIN" && (
                       <button
                         type="button"
-                        className="btn btn--secondary"
+                        className="btn btn--primary"
                         onClick={() => setCloseTarget(row)}
                       >
-                        {"\u0417\u0430\u043a\u0440\u044b\u0442\u044c"}
+                        {"\u041f\u043e\u0434\u0442\u0432\u0435\u0440\u0434\u0438\u0442\u044c \u0441\u043f\u0438\u0441\u0430\u043d\u0438\u0435"}
                       </button>
                     )}
+                    {status === "OPEN" && row.delta < 0 && user?.role !== "ADMIN" && (
+                      <div style={{ fontSize: 12, color: "#94a3b8" }}>
+                        {"\u0422\u043e\u043b\u044c\u043a\u043e \u0430\u0434\u043c\u0438\u043d"}
+                      </div>
+                    )}
+                    {status === "OPEN" &&
+                      row.delta >= 0 &&
+                      ["ADMIN", "EMPLOYEE"].includes(user?.role) && (
+                        <button
+                          type="button"
+                          className="btn btn--secondary"
+                          onClick={() => setCloseTarget(row)}
+                        >
+                          {"\u0417\u0430\u043a\u0440\u044b\u0442\u044c"}
+                        </button>
+                      )}
                   </td>
                 </tr>
               ))}
@@ -187,9 +203,15 @@ export default function StockDiscrepanciesTab() {
       {closeTarget && (
         <div style={modalOverlay}>
           <div style={modalPanel}>
-            <h4 style={{ marginTop: 0 }}>{"\u0417\u0430\u043a\u0440\u044b\u0442\u044c \u0440\u0430\u0441\u0445\u043e\u0436\u0434\u0435\u043d\u0438\u0435"}</h4>
+            <h4 style={{ marginTop: 0 }}>
+              {closeTarget?.delta < 0
+                ? "\u041f\u043e\u0434\u0442\u0432\u0435\u0440\u0434\u0438\u0442\u044c \u0441\u043f\u0438\u0441\u0430\u043d\u0438\u0435"
+                : "\u0417\u0430\u043a\u0440\u044b\u0442\u044c \u0440\u0430\u0441\u0445\u043e\u0436\u0434\u0435\u043d\u0438\u0435"}
+            </h4>
             <p style={{ marginTop: 0 }}>
-              {"\u0423\u043a\u0430\u0436\u0438\u0442\u0435 \u043f\u0440\u0438\u0447\u0438\u043d\u0443 \u0438\u043b\u0438 \u043a\u043e\u043c\u043c\u0435\u043d\u0442\u0430\u0440\u0438\u0439 \u043a \u0437\u0430\u043a\u0440\u044b\u0442\u0438\u044e."}
+              {closeTarget?.delta < 0
+                ? "\u041f\u043e\u0441\u043b\u0435 \u043f\u043e\u0434\u0442\u0432\u0435\u0440\u0436\u0434\u0435\u043d\u0438\u044f \u043e\u0441\u0442\u0430\u0442\u043a\u0438 \u0431\u0443\u0434\u0443\u0442 \u0441\u043f\u0438\u0441\u0430\u043d\u044b."
+                : "\u0423\u043a\u0430\u0436\u0438\u0442\u0435 \u043f\u0440\u0438\u0447\u0438\u043d\u0443 \u0438\u043b\u0438 \u043a\u043e\u043c\u043c\u0435\u043d\u0442\u0430\u0440\u0438\u0439 \u043a \u0437\u0430\u043a\u0440\u044b\u0442\u0438\u044e."}
             </p>
             <textarea
               style={modalTextarea}
