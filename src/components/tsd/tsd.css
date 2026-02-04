@@ -378,11 +378,10 @@
 }
 
 .tsd-action-bar {
-  position: fixed;
-  bottom: calc(env(safe-area-inset-bottom, 0px) + 12px);
-  left: 50%;
-  transform: translateX(-50%);
-  width: min(740px, 92vw);
+  position: static;
+  width: 100%;
+  max-width: 740px;
+  margin: 12px auto 0;
   background: rgba(255, 255, 255, 0.95);
   border: 1px solid var(--tsd-border);
   border-radius: 16px;
@@ -390,6 +389,16 @@
   display: grid;
   gap: 10px;
   box-shadow: var(--tsd-shadow);
+  z-index: 1;
+}
+
+.tsd-page .tsd-action-bar {
+  position: fixed;
+  bottom: calc(env(safe-area-inset-bottom, 0px) + 12px);
+  left: 50%;
+  transform: translateX(-50%);
+  width: min(740px, 92vw);
+  margin: 0;
   z-index: 30;
 }
 
