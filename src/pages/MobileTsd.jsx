@@ -1313,42 +1313,37 @@ export default function MobileTsd() {
         </div>
       )}
 
-      {countState.step === 3 &&
-        countState.done &&
-        (countState.delta > 0 || countState.mode === "PLUS") &&
-        !countState.placeDone && (
-          <div className="tsd-action-bar">
-            <button
-              type="button"
-              className="tsd-btn tsd-btn--primary"
-              onClick={handleQuickPlace}
-              disabled={countState.placing}
-            >
-              {countState.placing ? "Размещаем..." : "Разместить сейчас"}
-            </button>
-          </div>
-        )}
-
       {countState.done && (
         <div className="tsd-action-bar">
+          {(countState.delta > 0 || countState.mode === "PLUS") &&
+            !countState.placeDone && (
+              <button
+                type="button"
+                className="tsd-btn tsd-btn--primary"
+                onClick={handleQuickPlace}
+                disabled={countState.placing}
+              >
+                {countState.placing ? "Размещаем..." : "Разместить сейчас"}
+              </button>
+            )}
           <button
             type="button"
-            className="tsd-btn tsd-btn--primary"
+            className="tsd-btn tsd-btn--secondary"
             onClick={() =>
-            setCountState((prev) => ({
-              ...prev,
-              item: null,
-              qty: "",
-              step: 1,
-              done: false,
-              delta: null,
-              receivingLineId: null,
-              placing: false,
-              placeDone: false,
-              placeError: "",
-            }))
-          }
-        >
+              setCountState((prev) => ({
+                ...prev,
+                item: null,
+                qty: "",
+                step: 1,
+                done: false,
+                delta: null,
+                receivingLineId: null,
+                placing: false,
+                placeDone: false,
+                placeError: "",
+              }))
+            }
+          >
             Следующий товар
           </button>
         </div>
