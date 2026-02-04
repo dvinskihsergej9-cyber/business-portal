@@ -4980,18 +4980,26 @@ app.post("/api/warehouse/inventory/count", auth, async (req, res) => {
       const current = await stockService.getItemLocationQty(tx, item, location);
       delta = normalizedQty - current;
 
-      const locationItems = await tx.warehouseItemStock.findMany({
-        where: { locationId: location },
-        include: { item: true },
-      });
-      const sameItem = locationItems.find((row) => row.itemId === item);
+      const locationStock = await stockService.getLocationStock(location);
+      const nonZeroStock = (locationStock || []).filter((row) => row.qty > 0);
+      const sameItemStock = nonZeroStock.find(
+        (row) => row.item?.id === item
+      );
+      const effectiveMode =
+        mode === "AUTO"
+          ? delta > 0
+            ? "PLUS"
+            : delta < 0
+              ? "MINUS"
+              : "AUTO"
+          : mode;
 
-      if (mode === "MINUS" && !sameItem) {
+      if (effectiveMode === "MINUS" && !sameItemStock) {
         const err = new Error("COUNT_ITEM_NOT_IN_LOCATION");
         err.code = "COUNT_ITEM_NOT_IN_LOCATION";
         throw err;
       }
-      if (mode === "PLUS" && !sameItem && locationItems.length > 0) {
+      if (effectiveMode === "PLUS" && !sameItemStock && nonZeroStock.length > 0) {
         const err = new Error("COUNT_CELL_NOT_EMPTY");
         err.code = "COUNT_CELL_NOT_EMPTY";
         throw err;
@@ -4999,7 +5007,7 @@ app.post("/api/warehouse/inventory/count", auth, async (req, res) => {
 
       let manufactured = null;
       let expires = null;
-      if (mode === "PLUS") {
+      if (effectiveMode === "PLUS") {
         if (!manufacturedAt) {
           const err = new Error("MANUFACTURED_AT_REQUIRED");
           err.code = "MANUFACTURED_AT_REQUIRED";
@@ -5017,18 +5025,30 @@ app.post("/api/warehouse/inventory/count", auth, async (req, res) => {
         }
       }
 
-      if (mode === "PLUS" && sameItem && manufactured) {
-        const mismatch =
-          (sameItem.manufacturedAt &&
-            new Date(sameItem.manufacturedAt).toISOString().slice(0, 10) !==
-              manufactured.toISOString().slice(0, 10)) ||
-          (sameItem.expiresAt &&
-            new Date(sameItem.expiresAt).toISOString().slice(0, 10) !==
-              (expires || manufactured).toISOString().slice(0, 10));
-        if (mismatch && !allowDiffDate) {
-          const err = new Error("COUNT_DATE_MISMATCH");
-          err.code = "COUNT_DATE_MISMATCH";
-          throw err;
+      if (effectiveMode === "PLUS" && sameItemStock && manufactured) {
+        const lastPlaced = await tx.warehouseReceivingLine.findFirst({
+          where: {
+            status: "PLACED",
+            locationId: location,
+            itemId: item,
+          },
+          orderBy: { createdAt: "desc" },
+        });
+        if (lastPlaced) {
+          const lastManufactured = lastPlaced.manufacturedAt;
+          const lastExpires = lastPlaced.expiresAt;
+          const mismatch =
+            (lastManufactured &&
+              new Date(lastManufactured).toISOString().slice(0, 10) !==
+                manufactured.toISOString().slice(0, 10)) ||
+            (lastExpires &&
+              new Date(lastExpires).toISOString().slice(0, 10) !==
+                (expires || manufactured).toISOString().slice(0, 10));
+          if (mismatch && !allowDiffDate) {
+            const err = new Error("COUNT_DATE_MISMATCH");
+            err.code = "COUNT_DATE_MISMATCH";
+            throw err;
+          }
         }
       }
 

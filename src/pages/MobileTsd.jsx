@@ -277,6 +277,7 @@ export default function MobileTsd() {
         ...prev,
         location: data.entity,
         step: 1,
+        allowDifferentDate: false,
         loading: false,
       }));
     } catch (err) {
@@ -299,6 +300,7 @@ export default function MobileTsd() {
         ...prev,
         item: data.entity,
         step: 2,
+        allowDifferentDate: false,
         loading: false,
       }));
     } catch (err) {
@@ -361,6 +363,9 @@ export default function MobileTsd() {
           throw new Error(
             "В ячейке есть этот товар с другой датой. Повторите подтверждение, если уверены."
           );
+        }
+        if (data.message === "MANUFACTURED_AT_REQUIRED") {
+          throw new Error("Укажите дату изготовления для пересчета в плюс.");
         }
         if (data.code === "COUNT_PLUS_ONLY") {
           throw new Error("Выбран пересчет в плюс, а разница в минус. Выберите другой тип.");
@@ -1089,6 +1094,7 @@ export default function MobileTsd() {
                         ...prev,
                         location: selected,
                         step: 1,
+                        allowDifferentDate: false,
                       }));
                     }
                   }}
@@ -1130,6 +1136,7 @@ export default function MobileTsd() {
                   setCountState((prev) => ({
                     ...prev,
                     mode: event.target.value,
+                    allowDifferentDate: false,
                   }))
                 }
               >
@@ -1138,7 +1145,7 @@ export default function MobileTsd() {
                 <option value="MINUS">В минус</option>
               </select>
             </div>
-            {countState.mode === "PLUS" && (
+            {countState.mode !== "MINUS" && (
               <div className="tsd-inline tsd-inline--two">
                 <div>
                   <label className="tsd-scanner__label">Дата изготовления</label>
