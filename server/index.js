@@ -4992,12 +4992,14 @@ app.post("/api/warehouse/inventory/count", auth, async (req, res) => {
       manufacturedAt,
       expiresAt,
       allowDifferentDate,
+      qtyIsDelta,
     } = req.body || {};
     const location = Number(locationId);
     const item = Number(itemId);
     const amount = Number(qty);
     const mode = String(inventoryType || "AUTO").toUpperCase();
     const allowDiffDate = Boolean(allowDifferentDate);
+    const isDelta = Boolean(qtyIsDelta);
 
     if (!location || !item || !Number.isFinite(amount) || amount < 0) {
       return res.status(400).json({ message: "BAD_REQUEST" });
@@ -5020,7 +5022,11 @@ app.post("/api/warehouse/inventory/count", auth, async (req, res) => {
 
     await prisma.$transaction(async (tx) => {
       const current = await stockService.getItemLocationQty(tx, item, location);
-      delta = normalizedQty - current;
+      if (isDelta && mode === "PLUS") {
+        delta = Math.trunc(amount);
+      } else {
+        delta = normalizedQty - current;
+      }
 
       const locationStock = await stockService.getLocationStock(location);
       const nonZeroStock = (locationStock || []).filter((row) => row.qty > 0);

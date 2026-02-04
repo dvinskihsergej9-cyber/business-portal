@@ -350,6 +350,7 @@ export default function MobileTsd() {
           manufacturedAt: countState.manufacturedAt || null,
           expiresAt: countState.expiresAt || countState.manufacturedAt || null,
           allowDifferentDate: countState.allowDifferentDate,
+          qtyIsDelta: countState.mode === "PLUS",
         }),
       });
       const data = await res.json();
@@ -373,7 +374,7 @@ export default function MobileTsd() {
           throw new Error("Укажите дату изготовления для пересчета в плюс.");
         }
         if (data.code === "COUNT_PLUS_ONLY") {
-          throw new Error("Выбран пересчет в плюс, а разница в минус. Выберите другой тип.");
+          throw new Error("В режиме \"в плюс\" укажите количество добавления (дельту).");
         }
         if (data.code === "COUNT_MINUS_ONLY") {
           throw new Error("Выбран пересчет в минус, а разница в плюс. Выберите другой тип.");
@@ -1237,7 +1238,11 @@ export default function MobileTsd() {
               </div>
             )}
             <div className="tsd-qty-input">
-              <label className="tsd-scanner__label">Количество</label>
+              <label className="tsd-scanner__label">
+                {countState.mode === "PLUS"
+                  ? "Добавить (дельта)"
+                  : "Количество"}
+              </label>
               <input
                 className="tsd-input"
                 type="number"
