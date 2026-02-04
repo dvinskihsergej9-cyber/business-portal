@@ -52,7 +52,6 @@ function AppRoutesWithBackground() {
           <Route path="/contacts" element={<Contacts />} />
           <Route path="/refund" element={<Refund />} />
 
-          {/* публичные страницы */}
           <Route path="/login" element={<Login />} />
           <Route
             path="/register"
@@ -84,7 +83,6 @@ function AppRoutesWithBackground() {
             }
           />
 
-          {/* всё остальное под Layout и защитой */}
           <Route
             path="/*"
             element={
@@ -94,23 +92,8 @@ function AppRoutesWithBackground() {
             }
           >
             <Route index element={<Navigate to="/warehouse" replace />} />
-
-            {/* главная больше не отдельный раздел */}
-            <Route path="dashboard" element={<Navigate to="/warehouse" replace />} />
-            <Route path="profile" element={<Navigate to="/warehouse" replace />} />
-            <Route path="leave" element={<Navigate to="/warehouse" replace />} />
-            <Route path="payments" element={<Navigate to="/warehouse" replace />} />
-
-            {/* отключенные разделы редиректим в склад */}
-            <Route path="hr" element={<Navigate to="/warehouse" replace />} />
-            <Route path="accounting" element={<Navigate to="/warehouse" replace />} />
-            <Route path="documents" element={<Navigate to="/warehouse" replace />} />
-            <Route path="legal" element={<Navigate to="/warehouse" replace />} />
-            <Route path="support" element={<Navigate to="/warehouse" replace />} />
             <Route path="warehouse" element={<Warehouse />} />
             <Route path="warehouse/tsd" element={<MobileTsd />} />
-
-            {/* админка пользователей */}
             <Route
               path="admin/users"
               element={
@@ -127,14 +110,10 @@ function AppRoutesWithBackground() {
                 </ProtectedRoute>
               }
             />
-
-            {/* фолбэк внутри защищенной части */}
             <Route path="*" element={<Navigate to="/warehouse" replace />} />
           </Route>
 
           <Route path="/403" element={<Page403 />} />
-
-          {/* фолбэк */}
           <Route path="*" element={<Navigate to="/" replace />} />
         </Routes>
       </div>
