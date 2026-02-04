@@ -78,6 +78,10 @@ const PICK_STEPS = ["Ячейка", "Товар", "Кол-во", "Подтвер
     expiresAt: "",
     allowDifferentDate: false,
     delta: null,
+    receivingLineId: null,
+    placing: false,
+    placeDone: false,
+    placeError: "",
     loading: false,
     error: "",
     done: false,
@@ -382,6 +386,9 @@ export default function MobileTsd() {
         done: true,
         step: 3,
         delta: data.delta ?? null,
+        receivingLineId: data.receivingLineId ?? null,
+        placeDone: false,
+        placeError: "",
       }));
     } catch (err) {
       setCountState((prev) => ({
@@ -522,6 +529,51 @@ export default function MobileTsd() {
         ...prev,
         error: err.message,
         loading: false,
+      }));
+    }
+  };
+
+  const handleQuickPlace = async () => {
+    if (!countState.receivingLineId || !countState.location) return;
+    try {
+      setCountState((prev) => ({
+        ...prev,
+        placing: true,
+        placeError: "",
+      }));
+      const res = await fetch(`${API_BASE}/warehouse/putaway/from-receiving`, {
+        method: "POST",
+        headers: authHeaders,
+        body: JSON.stringify({
+          receivingLineId: countState.receivingLineId,
+          locationId: countState.location.id,
+          qty: Math.abs(Number(countState.delta) || 0),
+          allowMix: countState.allowDifferentDate,
+        }),
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        if (data.message === "LOCATION_OCCUPIED") {
+          throw new Error("Ячейка занята другим товаром.");
+        }
+        if (data.message === "LOCATION_CONFLICT_CONFIRM") {
+          throw new Error("В ячейке есть товар с другой датой. Подтвердите размещение.");
+        }
+        if (data.message === "BAD_QTY") {
+          throw new Error("Некорректное количество.");
+        }
+        throw new Error(data.message || "Не удалось разместить.");
+      }
+      setCountState((prev) => ({
+        ...prev,
+        placing: false,
+        placeDone: true,
+      }));
+    } catch (err) {
+      setCountState((prev) => ({
+        ...prev,
+        placing: false,
+        placeError: err.message || "Не удалось разместить.",
       }));
     }
   };
@@ -1062,6 +1114,11 @@ export default function MobileTsd() {
             qty: "",
             step: 0,
             done: false,
+            delta: null,
+            receivingLineId: null,
+            placing: false,
+            placeDone: false,
+            placeError: "",
           }))
         }
         onBack={() => setMode(null)}
@@ -1210,6 +1267,16 @@ export default function MobileTsd() {
                     : "Пересчет сохранен. Расхождений нет."}
               </div>
             )}
+            {countState.placeError && (
+              <div className="tsd-alert tsd-alert--error">
+                {countState.placeError}
+              </div>
+            )}
+            {countState.placeDone && (
+              <div className="tsd-alert tsd-alert--success">
+                Размещение выполнено. Остатки обновлены.
+              </div>
+            )}
           </>
         )}
       </div>
@@ -1241,21 +1308,42 @@ export default function MobileTsd() {
         </div>
       )}
 
+      {countState.step === 3 &&
+        countState.done &&
+        countState.delta > 0 &&
+        !countState.placeDone && (
+          <div className="tsd-action-bar">
+            <button
+              type="button"
+              className="tsd-btn tsd-btn--primary"
+              onClick={handleQuickPlace}
+              disabled={countState.placing}
+            >
+              {countState.placing ? "Размещаем..." : "Разместить сейчас"}
+            </button>
+          </div>
+        )}
+
       {countState.done && (
         <div className="tsd-action-bar">
           <button
             type="button"
             className="tsd-btn tsd-btn--primary"
             onClick={() =>
-              setCountState((prev) => ({
-                ...prev,
-                item: null,
-                qty: "",
-                step: 1,
-                done: false,
-              }))
-            }
-          >
+            setCountState((prev) => ({
+              ...prev,
+              item: null,
+              qty: "",
+              step: 1,
+              done: false,
+              delta: null,
+              receivingLineId: null,
+              placing: false,
+              placeDone: false,
+              placeError: "",
+            }))
+          }
+        >
             Следующий товар
           </button>
         </div>

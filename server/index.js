@@ -5016,6 +5016,7 @@ app.post("/api/warehouse/inventory/count", auth, async (req, res) => {
 
     let delta = 0;
     let discrepancyId = null;
+    let receivingLineId = null;
 
     await prisma.$transaction(async (tx) => {
       const current = await stockService.getItemLocationQty(tx, item, location);
@@ -5134,7 +5135,7 @@ app.post("/api/warehouse/inventory/count", auth, async (req, res) => {
           if (delta > 0) {
             const now = manufactured || new Date();
             const normalizedExpires = expires || now;
-            await tx.warehouseReceivingLine.create({
+            const line = await tx.warehouseReceivingLine.create({
               data: {
                 itemId: item,
                 qty: Math.trunc(delta),
@@ -5148,14 +5149,33 @@ app.post("/api/warehouse/inventory/count", auth, async (req, res) => {
                 createdById: req.user?.id || null,
               },
             });
+            receivingLineId = line.id;
           }
         } else {
           discrepancyId = existing.id;
+          if (delta > 0) {
+            const line = await tx.warehouseReceivingLine.findFirst({
+              where: {
+                discrepancyId: existing.id,
+                status: "PENDING",
+                remainingQty: { gt: 0 },
+              },
+              orderBy: { createdAt: "desc" },
+            });
+            receivingLineId = line?.id || null;
+          }
         }
       }
     });
 
-    res.json({ locationId: location, itemId: item, qty: normalizedQty, delta, discrepancyId });
+    res.json({
+      locationId: location,
+      itemId: item,
+      qty: normalizedQty,
+      delta,
+      discrepancyId,
+      receivingLineId,
+    });
   } catch (err) {
     console.error("inventory count error:", err);
     if (err.code === "BAD_QTY") {
