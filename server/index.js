@@ -5075,6 +5075,11 @@ app.post("/api/warehouse/inventory/count", auth, async (req, res) => {
           },
           orderBy: { createdAt: "desc" },
         });
+        if (!lastPlaced && !allowDiffDate) {
+          const err = new Error("COUNT_DATE_MISMATCH");
+          err.code = "COUNT_DATE_MISMATCH";
+          throw err;
+        }
         if (lastPlaced) {
           const lastManufactured = lastPlaced.manufacturedAt;
           const lastExpires = lastPlaced.expiresAt;

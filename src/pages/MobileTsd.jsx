@@ -77,6 +77,7 @@ const PICK_STEPS = ["Ячейка", "Товар", "Кол-во", "Подтвер
     manufacturedAt: "",
     expiresAt: "",
     allowDifferentDate: false,
+    delta: null,
     loading: false,
     error: "",
     done: false,
@@ -380,6 +381,7 @@ export default function MobileTsd() {
         loading: false,
         done: true,
         step: 3,
+        delta: data.delta ?? null,
       }));
     } catch (err) {
       setCountState((prev) => ({
@@ -1201,7 +1203,11 @@ export default function MobileTsd() {
             <ItemCard item={countState.item} qty={Number(countState.qty) || 0} />
             {countState.done && (
               <div className="tsd-alert tsd-alert--success">
-                Пересчет сохранен.
+                {countState.delta > 0
+                  ? "Плюс отправлен в размещение. Разместите товар в ячейку."
+                  : countState.delta < 0
+                    ? "Минус зафиксирован. Требуется подтверждение администратора."
+                    : "Пересчет сохранен. Расхождений нет."}
               </div>
             )}
           </>
