@@ -5113,7 +5113,7 @@ app.post("/api/warehouse/inventory/count", auth, async (req, res) => {
     if (err.code === "COUNT_MINUS_ONLY") {
       return res.status(400).json({ message: "COUNT_MINUS_ONLY", code: "COUNT_MINUS_ONLY" });
     }
-    res.status(500).json({ message: "INVENTORY_COUNT_ERROR" });
+    res.status(500).json({ message: "Ошибка инвентаризации. Повторите попытку." });
   }
 });
 
