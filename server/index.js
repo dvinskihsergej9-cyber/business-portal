@@ -45,7 +45,7 @@ function createToken(user) {
 async function auth(req, res, next) {
   const header = req.headers["authorization"];
   if (!header) {
-    return res.status(401).json({ message: "????? ??????? ???????? ??????." });
+    return res.status(401).json({ message: "Требуется токен авторизации." });
   }
 
   const [type, token] = header.split(" ");
@@ -877,14 +877,14 @@ app.post("/api/safety/assignments/:id/remind", auth, requireHr, async (req, res)
     }
 
     if (!assignment.employee?.telegramChatId) {
-      return res.status(400).json({ message: "??? ?????????? ?? ?????? Telegram ID" });
+      return res.status(400).json({ message: "У сотрудника не указан Telegram ID" });
     }
     if (!assignment.dueDate) {
-      return res.status(400).json({ message: "??? ???? ??????????? ???????????" });
+      return res.status(400).json({ message: "Не указан срок напоминания" });
     }
 
     await sendSafetyReminderForAssignment(assignment, true);
-    return res.json({ message: "??????????? ??????????" });
+    return res.json({ message: "Напоминание отправлено" });
   } catch (err) {
     console.error("manual remind error:", err);
     return res.status(500).json({ message: "Failed to send reminder" });
@@ -1152,15 +1152,17 @@ async function sendSafetyReminderForAssignment(a, force = false) {
     if (hoursSince < 20) return false;
   }
 
-  const title = a.instruction?.title || "??????????";
+  const title = a.instruction?.title || "Инструктаж";
   const dueStr = due.toLocaleDateString("ru-RU");
   const lines = [
-    "??????????? ?? ???????????",
+    "Напоминание по инструктажу",
     "",
-    `??????????: ${title}`,
-    `?????????: ${a.employee.fullName}`,
-    `????: ${dueStr}`,
-    diffDays >= 0 ? `???? ????????: ${diffDays + 1}` : `?????????? ?? ${Math.abs(diffDays)} ??.`,
+    `Инструкция: ${title}`,
+    `Сотрудник: ${a.employee.fullName}`,
+    `Срок: ${dueStr}`,
+    diffDays >= 0
+      ? `Осталось дней: ${diffDays + 1}`
+      : `Просрочено на ${Math.abs(diffDays)} дн.`,
   ];
 
   const textMsg = lines.join("\n");
@@ -1597,7 +1599,7 @@ app.post("/api/register", async (req, res) => {
       const userPayload = await getUserPayload(user.id);
 
       res.status(201).json({
-        message: "???????????????????????? ????????????",
+        message: "Регистрация завершена",
         token,
         user: userPayload || {
           id: user.id,
@@ -1648,7 +1650,7 @@ app.post("/api/login", async (req, res) => {
       const userPayload = await getUserPayload(user.id);
 
       res.json({
-        message: "???????????????? ????????",
+        message: "Вход выполнен",
         token,
         user: userPayload || {
           id: user.id,
@@ -1670,12 +1672,12 @@ app.get("/api/profile", auth, async (req, res) => {
     try {
       const userPayload = await getUserPayload(req.user.id);
       if (!userPayload) {
-        return res.status(404).json({ message: "???????????????????????? ???? ????????????" });
+        return res.status(404).json({ message: "Пользователь не найден" });
       }
       res.json(userPayload);
     } catch (err) {
       console.error("profile error:", err);
-      res.status(500).json({ message: "???????????? ?????????????? ?????? ???????????????? ??????????????" });
+      res.status(500).json({ message: "Не удалось загрузить профиль пользователя" });
     }
   });
 
@@ -2552,12 +2554,12 @@ app.post("/api/warehouse/requests", auth, async (req, res) => {
           : null;
 
       if (!name) {
-        return res.status(400).json({ message: "??????? ????? ??? ??????." });
+        return res.status(400).json({ message: "Укажите название товара." });
       }
 
       if (!Number.isFinite(q) || !Number.isInteger(q) || q <= 0) {
         return res.status(400).json({
-          message: `?????????? ?? ??????? "${name}" ?????? ???? ????????????? ????? ??????.`,
+          message: `Количество для товара "${name}" должно быть положительным целым числом.`,
         });
       }
 
@@ -2596,7 +2598,7 @@ app.post("/api/warehouse/requests", auth, async (req, res) => {
 
         if (current < it.quantity) {
           return res.status(400).json({
-            message: `???????????? ??????? ?? ??????? "${invItem.name}". ???????? ${current} ${invItem.unit || "??."}, ????????? ${it.quantity}.`,
+            message: `Недостаточно остатка по товару "${invItem.name}". Доступно ${current} ${invItem.unit || "шт."}, запрошено ${it.quantity}.`,
           });
         }
       }
@@ -8265,7 +8267,7 @@ async function checkDbReadyForBackground() {
     await prisma.$queryRaw`SELECT "orgId" FROM "WarehouseTask" LIMIT 1`;
     return true;
   } catch (err) {
-    console.error("[DB ready check] ??????:", err?.message || err);
+    console.error("[DB ready check] Ошибка:", err?.message || err);
     return false;
   }
 }
@@ -8444,13 +8446,13 @@ async function startBackgroundTasks() {
   const ready = await checkDbReadyForBackground();
   if (!ready) {
     console.error(
-      "[DB ready check] ?? ?? ?????? ? ??????? ?????? ?? ???????? (????????? db:deploy)."
+      "[DB ready check] База не готова, фоновые задачи не запускаются (выполните db:deploy)."
     );
     return;
   }
 
   backgroundTasksStarted = true;
-  console.log("[DB ready check] OK, ????????? ??????? ??????.");
+  console.log("[DB ready check] OK, база готова.");
 
   setInterval(sendSafetyReminders, 1000 * 60 * 60); // ??? ? ???
   sendSafetyReminders();
@@ -8459,12 +8461,12 @@ async function startBackgroundTasks() {
   checkAutoReorders();
 
   setInterval(() => {
-    // 1) ??????????? ?? ??????? ??????
+    // 1) Напоминания по задачам склада
     checkWarehouseTaskNotifications().catch((err) =>
-      console.error("?????? ? checkWarehouseTaskNotifications:", err)
+      console.error("Ошибка в checkWarehouseTaskNotifications:", err)
     );
 
-    // 2) ??? ? ???? ? 18:00 ?????????? ????? ?? ??????????? ????????
+    // 2) В 09:00 и 18:00 отправлять сводку по низким остаткам
     const now = new Date();
     const hours = now.getHours(); // 0..23
     const minutes = now.getMinutes(); // 0..59
@@ -8474,7 +8476,7 @@ async function startBackgroundTasks() {
       lastLowStockReportDate = todayKey;
 
       sendDailyLowStockSummary().catch((err) =>
-        console.error("?????? ? sendDailyLowStockSummary:", err)
+        console.error("Ошибка в sendDailyLowStockSummary:", err)
       );
     }
   }, 60 * 1000);

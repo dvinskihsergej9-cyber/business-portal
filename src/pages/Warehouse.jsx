@@ -2664,7 +2664,7 @@ export default function Warehouse() {
                         className="btn btn--secondary btn--sm"
                         onClick={loadTmcStock}
                       >
-                        ????????
+                        Обновить
                       </button>
                     </div>
                     <select
@@ -2726,31 +2726,17 @@ export default function Warehouse() {
                     {selectedTmcItem &&
                       Number(requestForm.quantity) > Number(selectedTmcItem.currentStock ?? 0) && (
                         <div className="form__hint" style={{ color: "#dc2626" }}>
-                          ????????? ?????? ???????. ???????? {selectedTmcItem.currentStock} {selectedTmcItem.unit || "??"}.
+                          Недостаточно остатка. Доступно {selectedTmcItem.currentStock} {selectedTmcItem.unit || "шт."}.
                         </div>
                       )}
 
                     {selectedTmcItem && Number(selectedTmcItem.currentStock ?? 0) <= 0 && (
                       <div className="form__hint" style={{ color: "#dc2626" }}>
-                        ?? ???? ??????? ?????? ??? ???????. ????? ??????? ?????? ?? ??????????.
+                        На складе нет остатка для выдачи. Можно создать заявку на пополнение.
                       </div>
                     )}
 
 
-                  
-
-                    {selectedTmcItem &&
-                      Number(requestForm.quantity) > Number(selectedTmcItem.currentStock ?? 0) && (
-                        <div className="form__hint" style={{ color: "#dc2626" }}>
-                          ????????? ?????? ???????. ???????? {selectedTmcItem.currentStock} {selectedTmcItem.unit || "??"}.
-                        </div>
-                      )}
-
-                    {selectedTmcItem && Number(selectedTmcItem.currentStock ?? 0) <= 0 && (
-                      <div className="form__hint" style={{ color: "#dc2626" }}>
-                        ?? ???? ??????? ?????? ??? ???????. ????? ??????? ?????? ?? ??????????.
-                      </div>
-                    )}
 </div>
 
 
@@ -2814,7 +2800,7 @@ export default function Warehouse() {
                         onClick={handleCreateReplenishRequest}
                         style={{ marginLeft: 8 }}
                       >
-                        ??????? ?????? ?? ??????????
+                        Создать заявку на пополнение
                       </button>
                     ) : null}
                   </div>
