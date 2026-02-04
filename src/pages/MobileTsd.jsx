@@ -1315,7 +1315,7 @@ export default function MobileTsd() {
 
       {countState.step === 3 &&
         countState.done &&
-        countState.delta > 0 &&
+        (countState.delta > 0 || countState.mode === "PLUS") &&
         !countState.placeDone && (
           <div className="tsd-action-bar">
             <button
