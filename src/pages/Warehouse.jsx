@@ -205,6 +205,7 @@ export default function Warehouse() {
     quantity: "",
     description: "",
   });
+  const [requestItemQuery, setRequestItemQuery] = useState("");
 
 
 
@@ -883,7 +884,7 @@ export default function Warehouse() {
       const selectedItem = selectedTmcItem;
       if (!selectedItem) {
         setSaving(false);
-        return setError("???????? ????? ?? ???.");
+        return setError("Выберите товар из ТМЦ.");
       }
 
       const title = selectedItem.name;
@@ -892,18 +893,18 @@ export default function Warehouse() {
 
       if (!Number.isFinite(qty) || !Number.isInteger(qty) || qty <= 0) {
         setSaving(false);
-        return setError("?????????? ?????? ???? ????????????? ????? ??????.");
+        return setError("Количество должно быть положительным целым числом.");
       }
 
       if (available <= 0) {
         setSaving(false);
-        return setError("?? ????????? ??????? ??? ???????.");
+        return setError("По выбранной позиции нет остатка.");
       }
 
       if (qty > available) {
         setSaving(false);
         return setError(
-          `???????????? ???????. ???????? ${available} ${selectedItem.unit || "??."}.`
+          `Недостаточно остатка. Доступно ${available} ${selectedItem.unit || "шт."}.`
         );
       }
 
@@ -967,6 +968,65 @@ export default function Warehouse() {
 
     }
 
+  };
+
+  const handleCreateReplenishRequest = async () => {
+    try {
+      setSaving(true);
+      setError("");
+      setPostMessage("");
+
+      const selectedItem = selectedTmcItem;
+      if (!selectedItem) {
+        return setError("Выберите товар из ТМЦ.");
+      }
+
+      const qty = Number(requestForm.quantity);
+      const replenishQty =
+        Number.isFinite(qty) && qty > 0 ? Math.floor(qty) : 1;
+
+      const body = {
+        title: `Пополнение ТМЦ: ${selectedItem.name}`,
+        type: "INCOME",
+        comment: requestForm.description?.trim()
+          ? `Автозаявка на пополнение ТМЦ. ${requestForm.description.trim()}`
+          : "Автозаявка на пополнение ТМЦ.",
+        items: [
+          {
+            itemId: selectedItem.id,
+            name: selectedItem.name,
+            quantity: replenishQty,
+            unit: selectedItem.unit || "шт",
+          },
+        ],
+      };
+
+      const res = await fetch(`${API}/warehouse/requests`, {
+        method: "POST",
+        headers: authHeaders,
+        body: JSON.stringify(body),
+      });
+
+      const data = await res.json();
+      if (!res.ok) {
+        throw new Error(
+          data.message || "Не удалось создать заявку на пополнение."
+        );
+      }
+
+      setRequestForm({
+        itemId: "",
+        quantity: "",
+        description: "",
+      });
+      await loadRequests();
+      setPostMessage("Заявка на пополнение создана.");
+    } catch (e) {
+      console.error(e);
+      setError(e.message);
+    } finally {
+      setSaving(false);
+    }
   };
 
 
@@ -1142,6 +1202,13 @@ export default function Warehouse() {
   // Товары, у которых текущий остаток > 0 (для выпадающего списка в заявке)
 
   const tmcStockItems = useMemo(() => tmcStock || [], [tmcStock]);
+  const filteredTmcItems = useMemo(() => {
+    const q = requestItemQuery.trim().toLowerCase();
+    if (!q) return tmcStockItems;
+    return tmcStockItems.filter((item) =>
+      String(item.name || "").toLowerCase().includes(q)
+    );
+  }, [tmcStockItems, requestItemQuery]);
   const selectedTmcItem = useMemo(
     () => tmcStockItems.find((it) => String(it.id) === String(requestForm.itemId)),
     [tmcStockItems, requestForm.itemId]
@@ -2576,7 +2643,13 @@ export default function Warehouse() {
                 >
 
                   <div className="form__group">
-                    <label className="form__label">????? (???)</label>
+                    <label className="form__label">Товар (ТМЦ)</label>
+                    <input
+                      className="form__input"
+                      placeholder="Поиск по ТМЦ..."
+                      value={requestItemQuery}
+                      onChange={(e) => setRequestItemQuery(e.target.value)}
+                    />
                     <select
                       className="form__select"
                       value={requestForm.itemId}
@@ -2587,16 +2660,18 @@ export default function Warehouse() {
                         })
                       }
                     >
-                      <option value="">???????? ?????</option>
-                      {tmcStockItems.map((item) => (
+                      <option value="">Выберите товар</option>
+                      {filteredTmcItems.map((item) => (
                         <option key={item.id} value={item.id}>
-                          {item.name} (???????: {item.currentStock} {item.unit || "??"})
+                          {item.name} (остаток: {item.currentStock} {item.unit || "шт"})
+                          {Number(item.currentStock) <= 0 ? " — нет остатка" : ""}
                         </option>
                       ))}
                     </select>
                     {selectedTmcItem && (
                       <div className="form__hint">
-                        ???????: {selectedTmcItem.currentStock} {selectedTmcItem.unit || "??"}
+                        Остаток: {selectedTmcItem.currentStock}{" "}
+                        {selectedTmcItem.unit || "шт"}
                       </div>
                     )}
                   </div>
@@ -2631,7 +2706,21 @@ export default function Warehouse() {
 
                     />
 
-                  </div>
+                  
+
+                    {selectedTmcItem &&
+                      Number(requestForm.quantity) > Number(selectedTmcItem.currentStock ?? 0) && (
+                        <div className="form__hint" style={{ color: "#dc2626" }}>
+                          ????????? ?????? ???????. ???????? {selectedTmcItem.currentStock} {selectedTmcItem.unit || "??"}.
+                        </div>
+                      )}
+
+                    {selectedTmcItem && Number(selectedTmcItem.currentStock ?? 0) <= 0 && (
+                      <div className="form__hint" style={{ color: "#dc2626" }}>
+                        ?? ???? ??????? ?????? ??? ???????. ????? ??????? ?????? ?? ??????????.
+                      </div>
+                    )}
+</div>
 
 
 
@@ -2683,6 +2772,20 @@ export default function Warehouse() {
 
                     </button>
 
+                  
+                    {(selectedTmcItem && Number(selectedTmcItem.currentStock ?? 0) <= 0) ||
+                    (selectedTmcItem &&
+                      Number(requestForm.quantity) > Number(selectedTmcItem.currentStock ?? 0)) ? (
+                      <button
+                        type="button"
+                        className="btn btn--secondary"
+                        disabled={saving}
+                        onClick={handleCreateReplenishRequest}
+                        style={{ marginLeft: 8 }}
+                      >
+                        ??????? ?????? ?? ??????????
+                      </button>
+                    ) : null}
                   </div>
 
                 </form>
