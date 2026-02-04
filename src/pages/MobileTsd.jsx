@@ -1287,15 +1287,26 @@ export default function MobileTsd() {
 
       {countState.step === 2 && (
         <div className="tsd-action-bar">
-          <button
-            type="button"
-            className="tsd-btn tsd-btn--primary"
-            onClick={() =>
-              setCountState((prev) => ({ ...prev, step: 3 }))
-            }
-          >
-            Далее
-          </button>
+          {countState.mode === "MINUS" ? (
+            <button
+              type="button"
+              className="tsd-btn tsd-btn--primary"
+              onClick={handleCountSubmit}
+              disabled={countState.loading}
+            >
+              Подтвердить
+            </button>
+          ) : (
+            <button
+              type="button"
+              className="tsd-btn tsd-btn--primary"
+              onClick={() =>
+                setCountState((prev) => ({ ...prev, step: 3 }))
+              }
+            >
+              Далее
+            </button>
+          )}
         </div>
       )}
 
