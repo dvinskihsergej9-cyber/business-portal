@@ -73,7 +73,7 @@ const PICK_STEPS = ["Ячейка", "Товар", "Кол-во", "Подтвер
     location: null,
     item: null,
     qty: "",
-    mode: "AUTO",
+  mode: "PLUS",
     manufacturedAt: "",
     expiresAt: "",
     allowDifferentDate: false,
@@ -1200,12 +1200,11 @@ export default function MobileTsd() {
                   }))
                 }
               >
-                <option value="AUTO">Авто (по разнице)</option>
                 <option value="PLUS">В плюс</option>
                 <option value="MINUS">В минус</option>
               </select>
             </div>
-            {countState.mode !== "MINUS" && (
+            {countState.mode === "PLUS" && (
               <div className="tsd-inline tsd-inline--two">
                 <div>
                   <label className="tsd-scanner__label">Дата изготовления</label>
@@ -1241,7 +1240,7 @@ export default function MobileTsd() {
               <label className="tsd-scanner__label">
                 {countState.mode === "PLUS"
                   ? "Добавить (дельта)"
-                  : "Количество"}
+                  : "Факт (итог)"}
               </label>
               <input
                 className="tsd-input"

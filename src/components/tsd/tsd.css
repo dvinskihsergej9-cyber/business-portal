@@ -379,7 +379,7 @@
 
 .tsd-action-bar {
   position: fixed;
-  bottom: 16px;
+  bottom: calc(env(safe-area-inset-bottom, 0px) + 12px);
   left: 50%;
   transform: translateX(-50%);
   width: min(740px, 92vw);
@@ -390,6 +390,7 @@
   display: grid;
   gap: 10px;
   box-shadow: var(--tsd-shadow);
+  z-index: 30;
 }
 
 .tsd-action-bar__row {
