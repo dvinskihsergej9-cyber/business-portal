@@ -398,8 +398,6 @@
   width: 100%;
   max-width: 740px;
   margin: 0 auto;
-  left: auto;
-  transform: none;
   z-index: 30;
 }
 
