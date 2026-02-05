@@ -5,9 +5,9 @@ const API = API_BASE;
 
 const REQUEST_STATUS_OPTIONS = [
   { value: "NEW", label: "Новая" },
-  { value: "IN_PROGRESS", label: "В работе" },
-  { value: "DONE", label: "Завершена" },
-  { value: "REJECTED", label: "Отклонена" },
+  { value: "IN_PROGRESS", label: "Р’ рабоС‚е" },
+  { value: "DONE", label: "Р—аверС€ена" },
+  { value: "REJECTED", label: "ОС‚клонена" },
 ];
 
 function toDateInput(value) {
@@ -21,7 +21,6 @@ export default function AdminWarehousePanel() {
   const [activeTab, setActiveTab] = useState("items");
   const [items, setItems] = useState([]);
   const [locations, setLocations] = useState([]);
-  const [requests, setRequests] = useState([]);
   const [suppliers, setSuppliers] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
@@ -80,46 +79,37 @@ export default function AdminWarehousePanel() {
     try {
       setLoading(true);
       setError("");
-      const [itemsRes, locationsRes, requestsRes] = await Promise.all([
+      const [itemsRes, locationsRes] = await Promise.all([
         fetch(`${API}/admin/warehouse/items`, { headers: authHeaders }),
         fetch(`${API}/admin/warehouse/locations`, { headers: authHeaders }),
-        fetch(`${API}/admin/warehouse/requests`, { headers: authHeaders }),
       ]);
       const suppliersRes = await fetch(`${API}/suppliers`, {
         headers: authHeaders,
       });
       const itemsData = await itemsRes.json();
       const locationsData = await locationsRes.json();
-      const requestsData = await requestsRes.json();
       const suppliersData = await suppliersRes.json();
       if (!itemsRes.ok) {
         throw new Error(
           itemsData.message ||
-            "Ошибка загрузки товаров"
+            "ОС€ибка загрузки С‚оваров"
         );
       }
       if (!locationsRes.ok) {
         throw new Error(
           locationsData.message ||
-            "Ошибка загрузки ячеек"
-        );
-      }
-      if (!requestsRes.ok) {
-        throw new Error(
-          requestsData.message ||
-            "Ошибка загрузки заявок"
+            "ОС€ибка загрузки яС‡еек"
         );
       }
       setItems(itemsData);
       setLocations(locationsData);
-      setRequests(requestsData);
       if (suppliersRes.ok && Array.isArray(suppliersData)) {
         setSuppliers(suppliersData);
       }
     } catch (err) {
       setError(
         err.message ||
-          "Ошибка загрузки данных склада"
+          "ОС€ибка загрузки даннС‹С… склада"
       );
     } finally {
       setLoading(false);
@@ -190,7 +180,7 @@ export default function AdminWarehousePanel() {
       if (!res.ok) {
         throw new Error(
           data.message ||
-            "Ошибка обновления товара"
+            "ОС€ибка обновления С‚овара"
         );
       }
       setEditItem(null);
@@ -198,7 +188,7 @@ export default function AdminWarehousePanel() {
     } catch (err) {
       setError(
         err.message ||
-          "Ошибка обновления товара"
+          "ОС€ибка обновления С‚овара"
       );
     } finally {
       setSaving(false);
@@ -222,7 +212,7 @@ export default function AdminWarehousePanel() {
       if (!res.ok) {
         throw new Error(
           data.message ||
-            "Ошибка обновления ячейки"
+            "ОС€ибка обновления яС‡еР№ки"
         );
       }
       setEditLocation(null);
@@ -230,7 +220,7 @@ export default function AdminWarehousePanel() {
     } catch (err) {
       setError(
         err.message ||
-          "Ошибка обновления ячейки"
+          "ОС€ибка обновления яС‡еР№ки"
       );
     } finally {
       setSaving(false);
@@ -262,7 +252,7 @@ export default function AdminWarehousePanel() {
       if (!res.ok) {
         throw new Error(
           data.message ||
-            "Ошибка обновления заявки"
+            "ОС€ибка обновления заявки"
         );
       }
       setEditRequest(null);
@@ -270,7 +260,7 @@ export default function AdminWarehousePanel() {
     } catch (err) {
       setError(
         err.message ||
-          "Ошибка обновления заявки"
+          "ОС€ибка обновления заявки"
       );
     } finally {
       setSaving(false);
@@ -293,7 +283,7 @@ export default function AdminWarehousePanel() {
       if (!res.ok) {
         throw new Error(
           data.message ||
-            "Ошибка удаления товара"
+            "ОС€ибка удаления С‚овара"
         );
       }
       setDeleteItem(null);
@@ -301,7 +291,7 @@ export default function AdminWarehousePanel() {
     } catch (err) {
       setError(
         err.message ||
-          "Ошибка удаления товара"
+          "ОС€ибка удаления С‚овара"
       );
     } finally {
       setDeleting(false);
@@ -324,7 +314,7 @@ export default function AdminWarehousePanel() {
       if (!res.ok) {
         throw new Error(
           data.message ||
-            "Ошибка удаления ячейки"
+            "ОС€ибка удаления яС‡еР№ки"
         );
       }
       setDeleteLocation(null);
@@ -332,7 +322,7 @@ export default function AdminWarehousePanel() {
     } catch (err) {
       setError(
         err.message ||
-          "Ошибка удаления ячейки"
+          "ОС€ибка удаления яС‡еР№ки"
       );
     } finally {
       setDeleting(false);
@@ -343,40 +333,11 @@ export default function AdminWarehousePanel() {
     <div className="admin-console__card">
       <div className="admin-console__card-title">Склад</div>
       <div className="admin-console__card-text">
-        Редактирование товаров, ячеек и заявок.
+        РедакС‚ирование С‚оваров, яС‡еек и заявок.
       </div>
 
       <div className="admin-console__tabs admin-console__tabs--small">
-        <button
-          type="button"
-          className={
-            "admin-console__tab" +
-            (activeTab === "items" ? " admin-console__tab--active" : "")
-          }
-          onClick={() => setActiveTab("items")}
-        >
-          Товары
-        </button>
-        <button
-          type="button"
-          className={
-            "admin-console__tab" +
-            (activeTab === "locations" ? " admin-console__tab--active" : "")
-          }
-          onClick={() => setActiveTab("locations")}
-        >
-          Ячейки
-        </button>
-        <button
-          type="button"
-          className={
-            "admin-console__tab" +
-            (activeTab === "requests" ? " admin-console__tab--active" : "")
-          }
-          onClick={() => setActiveTab("requests")}
-        >
-          Заявки
-        </button>
+
         <div style={{ display: "inline-flex", alignItems: "center", gap: 6 }}>
           <button
             type="button"
@@ -411,159 +372,10 @@ export default function AdminWarehousePanel() {
 
       {error && <div className="admin-alert admin-alert--error">{error}</div>}
       {loading && (
-        <div className="admin-muted">Загрузка...</div>
+        <div className="admin-muted">Р—агрузка...</div>
       )}
 
-      {!loading && activeTab === "items" && (
-        <div className="admin-table-wrapper">
-          <table className="admin-table">
-            <thead>
-              <tr>
-                <th>Товар</th>
-                <th>SKU</th>
-                <th>Штрихкод</th>
-                <th>Ед.</th>
-                <th></th>
-              </tr>
-            </thead>
-            <tbody>
-              {items.map((item) => (
-                <tr key={item.id}>
-                  <td data-label="Товар">
-                    <div className="admin-table__title">{item.name}</div>
-                    <div className="admin-table__meta">ID: {item.id}</div>
-                  </td>
-                  <td data-label="SKU">{item.sku || "-"}</td>
-                  <td data-label="Штрихкод">{item.barcode || "-"}</td>
-                  <td data-label="Ед.">{item.unit || "-"}</td>
-                  <td data-label="Действия" className="admin-table__actions">
-                    <button
-                      type="button"
-                      className="admin-btn admin-btn--secondary"
-                      onClick={() => setEditItem(item)}
-                    >
-                      Редактировать
-                    </button>
-                    <button
-                      type="button"
-                      className="admin-btn admin-btn--danger"
-                      onClick={() => setDeleteItem(item)}
-                    >
-                      Удалить
-                    </button>
-                  </td>
-                </tr>
-              ))}
-              {!items.length && (
-                <tr>
-                  <td colSpan="5" className="admin-muted">
-                    Нет товаров.
-                  </td>
-                </tr>
-              )}
-            </tbody>
-          </table>
-        </div>
-      )}
-
-      {!loading && activeTab === "locations" && (
-        <div className="admin-table-wrapper">
-          <table className="admin-table">
-            <thead>
-              <tr>
-                <th>Ячейка</th>
-                <th>Код</th>
-                <th>Зона</th>
-                <th>Ряд</th>
-                <th></th>
-              </tr>
-            </thead>
-            <tbody>
-              {locations.map((loc) => (
-                <tr key={loc.id}>
-                  <td data-label="Ячейка">
-                    <div className="admin-table__title">{loc.name}</div>
-                    <div className="admin-table__meta">ID: {loc.id}</div>
-                  </td>
-                  <td data-label="Код">{loc.code || "-"}</td>
-                  <td data-label="Зона">{loc.zone || "-"}</td>
-                  <td data-label="Ряд">{loc.aisle || "-"}</td>
-                  <td data-label="Действия" className="admin-table__actions">
-                    <button
-                      type="button"
-                      className="admin-btn admin-btn--secondary"
-                      onClick={() => setEditLocation(loc)}
-                    >
-                      Редактировать
-                    </button>
-                    <button
-                      type="button"
-                      className="admin-btn admin-btn--danger"
-                      onClick={() => setDeleteLocation(loc)}
-                    >
-                      Удалить
-                    </button>
-                  </td>
-                </tr>
-              ))}
-              {!locations.length && (
-                <tr>
-                  <td colSpan="5" className="admin-muted">
-                    Нет ячеек.
-                  </td>
-                </tr>
-              )}
-            </tbody>
-          </table>
-        </div>
-      )}
-
-      {!loading && activeTab === "requests" && (
-        <div className="admin-table-wrapper">
-          <table className="admin-table">
-            <thead>
-              <tr>
-                <th>Заявка</th>
-                <th>Тип</th>
-                <th>Статус</th>
-                <th>Автор</th>
-                <th></th>
-              </tr>
-            </thead>
-            <tbody>
-              {requests.map((req) => (
-                <tr key={req.id}>
-                  <td data-label="Заявка">
-                    <div className="admin-table__title">{req.title}</div>
-                    <div className="admin-table__meta">ID: {req.id}</div>
-                  </td>
-                  <td data-label="Тип">{req.type}</td>
-                  <td data-label="Статус">{req.status}</td>
-                  <td data-label="Автор">{req.createdBy?.name || "-"}</td>
-                  <td data-label="Действия" className="admin-table__actions">
-                    <button
-                      type="button"
-                      className="admin-btn admin-btn--secondary"
-                      onClick={() => setEditRequest(req)}
-                    >
-                      Открыть
-                    </button>
-                  </td>
-                </tr>
-              ))}
-              {!requests.length && (
-                <tr>
-                  <td colSpan="5" className="admin-muted">
-                    Нет заявок.
-                  </td>
-                </tr>
-              )}
-            </tbody>
-          </table>
-        </div>
-      )}
-
-      {editItem && (
+{editItem && (
         <div className="admin-modal">
           <div className="admin-modal__panel">
             <div className="admin-modal__header">
@@ -839,7 +651,7 @@ export default function AdminWarehousePanel() {
             <div className="admin-modal__header">
               <div>
                 <div className="admin-modal__title">
-                  Редактировать ячейку
+                  РедакС‚ироваС‚ь яС‡еР№ку
                 </div>
                 <div className="admin-modal__subtitle">{editLocation.name}</div>
               </div>
@@ -848,7 +660,7 @@ export default function AdminWarehousePanel() {
                   className="admin-btn admin-btn--ghost"
                   onClick={() => setEditLocation(null)}
                 >
-                  ✕
+                  вњ•
                 </button>
             </div>
             <div className="admin-form">
@@ -882,7 +694,7 @@ export default function AdminWarehousePanel() {
               </div>
               <div className="admin-form__row">
                 <div>
-                  <label className="admin-label">Зона</label>
+                  <label className="admin-label">Р—она</label>
                   <input
                     className="admin-input"
                     value={locationForm.zone}
@@ -910,7 +722,7 @@ export default function AdminWarehousePanel() {
               </div>
               <div className="admin-form__row">
                 <div>
-                  <label className="admin-label">Стеллаж</label>
+                  <label className="admin-label">СС‚еллаж</label>
                   <input
                     className="admin-input"
                     value={locationForm.rack}
@@ -939,7 +751,7 @@ export default function AdminWarehousePanel() {
               <div className="admin-divider" />
               <div>
                 <div className="admin-label" style={{ fontWeight: 600 }}>
-                  {"Автозаказ"}
+                  {"АвС‚озаказ"}
                 </div>
                 <label className="admin-checkbox">
                   <input
@@ -952,18 +764,18 @@ export default function AdminWarehousePanel() {
                       }))
                     }
                   />
-                  {"Включить автозаказ"}
+                  {"Р’клюС‡иС‚ь авС‚озаказ"}
                 </label>
                 {editItem.autoReorderActive && (
                   <div className="admin-muted" style={{ marginTop: 6 }}>
-                    {"Автозаказ активен"}
+                    {"АвС‚озаказ акС‚ивен"}
                   </div>
                 )}
               </div>
               <div className="admin-form__row">
                 <div>
                   <label className="admin-label">
-                    {"Мин. остаток для автозаказа"}
+                    {"Мин. осС‚аС‚ок для авС‚озаказа"}
                   </label>
                   <input
                     className="admin-input"
@@ -979,7 +791,7 @@ export default function AdminWarehousePanel() {
                 </div>
                 <div>
                   <label className="admin-label">
-                    {"Поставщик"}
+                    {"ПосС‚авС‰ик"}
                   </label>
                   <select
                     className="admin-select"
@@ -991,7 +803,7 @@ export default function AdminWarehousePanel() {
                       }))
                     }
                   >
-                    <option value="">{"Выберите поставщика"}</option>
+                    <option value="">{"Р’С‹бериС‚е посС‚авС‰ика"}</option>
                     {suppliers.map((s) => (
                       <option key={s.id} value={s.id}>
                         {s.name}
@@ -1003,7 +815,7 @@ export default function AdminWarehousePanel() {
               <div className="admin-form__row">
                 <div>
                   <label className="admin-label">
-                    {"Контактное лицо"}
+                    {"КонС‚акС‚ное лиС†о"}
                   </label>
                   <input
                     className="admin-input"
@@ -1018,7 +830,7 @@ export default function AdminWarehousePanel() {
                 </div>
                 <div>
                   <label className="admin-label">
-                    {"Email для автозаказа"}
+                    {"Email для авС‚озаказа"}
                   </label>
                   <input
                     className="admin-input"
@@ -1034,7 +846,7 @@ export default function AdminWarehousePanel() {
               </div>
               <div>
                 <label className="admin-label">
-                  {"Текст сообщения поставщику"}
+                  {"ТексС‚ сообС‰ения посС‚авС‰ику"}
                 </label>
                 <textarea
                   className="admin-input"
@@ -1060,7 +872,7 @@ export default function AdminWarehousePanel() {
                       }))
                     }
                   />
-                  {"Сбросить флаг автозаказа"}
+                  {"СбросиС‚ь С„лаг авС‚озаказа"}
                 </label>
               )}
             </div>
@@ -1070,7 +882,7 @@ export default function AdminWarehousePanel() {
                 className="admin-btn admin-btn--ghost"
                 onClick={() => setEditLocation(null)}
               >
-                Отмена
+                ОС‚мена
               </button>
               <button
                 type="button"
@@ -1079,8 +891,8 @@ export default function AdminWarehousePanel() {
                 disabled={saving}
               >
                 {saving
-                  ? "Сохранение..."
-                  : "Сохранить"}
+                  ? "СоС…ранение..."
+                  : "СоС…раниС‚ь"}
               </button>
             </div>
           </div>
@@ -1093,7 +905,7 @@ export default function AdminWarehousePanel() {
             <div className="admin-modal__header">
               <div>
                 <div className="admin-modal__title">
-                  Редактировать заявку
+                  РедакС‚ироваС‚ь заявку
                 </div>
                 <div className="admin-modal__subtitle">{editRequest.title}</div>
               </div>
@@ -1108,7 +920,7 @@ export default function AdminWarehousePanel() {
             <div className="admin-form">
               <div className="admin-form__row">
                 <div>
-                  <label className="admin-label">Статус</label>
+                  <label className="admin-label">СС‚аС‚ус</label>
                   <select
                     className="admin-select"
                     value={requestForm.status}
@@ -1127,7 +939,7 @@ export default function AdminWarehousePanel() {
                   </select>
                 </div>
                 <div>
-                  <label className="admin-label">Желаемая дата</label>
+                  <label className="admin-label">Р–елаемая даС‚а</label>
                   <input
                     className="admin-input"
                     type="date"
@@ -1142,7 +954,7 @@ export default function AdminWarehousePanel() {
                 </div>
               </div>
               <div>
-                <label className="admin-label">Комментарий к статусу</label>
+                <label className="admin-label">КомменС‚ариР№ к сС‚аС‚усу</label>
                 <input
                   className="admin-input"
                   value={requestForm.statusComment}
@@ -1155,7 +967,7 @@ export default function AdminWarehousePanel() {
                 />
               </div>
               <div>
-                <label className="admin-label">Комментарий</label>
+                <label className="admin-label">КомменС‚ариР№</label>
                 <input
                   className="admin-input"
                   value={requestForm.comment}
@@ -1170,7 +982,7 @@ export default function AdminWarehousePanel() {
               <div className="admin-divider" />
               <div>
                 <div className="admin-label" style={{ fontWeight: 600 }}>
-                  {"Автозаказ"}
+                  {"АвС‚озаказ"}
                 </div>
                 <label className="admin-checkbox">
                   <input
@@ -1183,18 +995,18 @@ export default function AdminWarehousePanel() {
                       }))
                     }
                   />
-                  {"Включить автозаказ"}
+                  {"Р’клюС‡иС‚ь авС‚озаказ"}
                 </label>
                 {editItem.autoReorderActive && (
                   <div className="admin-muted" style={{ marginTop: 6 }}>
-                    {"Автозаказ активен"}
+                    {"АвС‚озаказ акС‚ивен"}
                   </div>
                 )}
               </div>
               <div className="admin-form__row">
                 <div>
                   <label className="admin-label">
-                    {"Мин. остаток для автозаказа"}
+                    {"Мин. осС‚аС‚ок для авС‚озаказа"}
                   </label>
                   <input
                     className="admin-input"
@@ -1210,7 +1022,7 @@ export default function AdminWarehousePanel() {
                 </div>
                 <div>
                   <label className="admin-label">
-                    {"Поставщик"}
+                    {"ПосС‚авС‰ик"}
                   </label>
                   <select
                     className="admin-select"
@@ -1222,7 +1034,7 @@ export default function AdminWarehousePanel() {
                       }))
                     }
                   >
-                    <option value="">{"Выберите поставщика"}</option>
+                    <option value="">{"Р’С‹бериС‚е посС‚авС‰ика"}</option>
                     {suppliers.map((s) => (
                       <option key={s.id} value={s.id}>
                         {s.name}
@@ -1234,7 +1046,7 @@ export default function AdminWarehousePanel() {
               <div className="admin-form__row">
                 <div>
                   <label className="admin-label">
-                    {"Контактное лицо"}
+                    {"КонС‚акС‚ное лиС†о"}
                   </label>
                   <input
                     className="admin-input"
@@ -1249,7 +1061,7 @@ export default function AdminWarehousePanel() {
                 </div>
                 <div>
                   <label className="admin-label">
-                    {"Email для автозаказа"}
+                    {"Email для авС‚озаказа"}
                   </label>
                   <input
                     className="admin-input"
@@ -1265,7 +1077,7 @@ export default function AdminWarehousePanel() {
               </div>
               <div>
                 <label className="admin-label">
-                  {"Текст сообщения поставщику"}
+                  {"ТексС‚ сообС‰ения посС‚авС‰ику"}
                 </label>
                 <textarea
                   className="admin-input"
@@ -1291,7 +1103,7 @@ export default function AdminWarehousePanel() {
                       }))
                     }
                   />
-                  {"Сбросить флаг автозаказа"}
+                  {"СбросиС‚ь С„лаг авС‚озаказа"}
                 </label>
               )}
             </div>
@@ -1301,7 +1113,7 @@ export default function AdminWarehousePanel() {
                 className="admin-btn admin-btn--ghost"
                 onClick={() => setEditRequest(null)}
               >
-                Отмена
+                ОС‚мена
               </button>
               <button
                 type="button"
@@ -1310,8 +1122,8 @@ export default function AdminWarehousePanel() {
                 disabled={saving}
               >
                 {saving
-                  ? "Сохранение..."
-                  : "Сохранить"}
+                  ? "СоС…ранение..."
+                  : "СоС…раниС‚ь"}
               </button>
             </div>
           </div>
@@ -1322,7 +1134,7 @@ export default function AdminWarehousePanel() {
         <div className="admin-modal">
           <div className="admin-modal__panel admin-modal__panel--danger">
             <div className="admin-modal__title">
-              Удалить товар
+              УдалиС‚ь С‚овар
             </div>
             <div className="admin-modal__subtitle">{deleteItem.name}</div>
             <div className="admin-modal__actions">
@@ -1331,7 +1143,7 @@ export default function AdminWarehousePanel() {
                 className="admin-btn admin-btn--ghost"
                 onClick={() => setDeleteItem(null)}
               >
-                Отмена
+                ОС‚мена
               </button>
               <button
                 type="button"
@@ -1341,7 +1153,7 @@ export default function AdminWarehousePanel() {
               >
                 {deleting
                   ? "Удаление..."
-                  : "Удалить"}
+                  : "УдалиС‚ь"}
               </button>
             </div>
           </div>
@@ -1352,7 +1164,7 @@ export default function AdminWarehousePanel() {
         <div className="admin-modal">
           <div className="admin-modal__panel admin-modal__panel--danger">
             <div className="admin-modal__title">
-              Удалить ячейку
+              УдалиС‚ь яС‡еР№ку
             </div>
             <div className="admin-modal__subtitle">{deleteLocation.name}</div>
             <div className="admin-modal__actions">
@@ -1361,7 +1173,7 @@ export default function AdminWarehousePanel() {
                 className="admin-btn admin-btn--ghost"
                 onClick={() => setDeleteLocation(null)}
               >
-                Отмена
+                ОС‚мена
               </button>
               <button
                 type="button"
@@ -1371,7 +1183,7 @@ export default function AdminWarehousePanel() {
               >
                 {deleting
                   ? "Удаление..."
-                  : "Удалить"}
+                  : "УдалиС‚ь"}
               </button>
             </div>
           </div>
@@ -1380,6 +1192,7 @@ export default function AdminWarehousePanel() {
     </div>
   );
 }
+
 
 
 

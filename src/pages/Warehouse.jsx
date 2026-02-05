@@ -23,28 +23,26 @@ import TmcTab from "../components/TmcTab";
 const API = API_BASE;
 
 const WAREHOUSE_EMOJI = {
-  requests: "📦",
-  tasks: "✅",
+  tasks: "вњ…",
   inventory: "🧾",
-  items: "📚",
+  items: "рџ“љ",
   movement: "\uD83D\uDCE6",
   transactions: "\uD83D\uDD01",
   revision: "\uD83E\uDDFE",
   tmc: "\uD83D\uDCCE",
-  locations: "📍",
+  locations: "рџ“Ќ",
   queue: "🚚",
-  tsd: "📱",
+  tsd: "рџ“±",
   qr: "🏷️",
-  receive: "📦",
+  receive: "рџ“¦",
   ship: "🚚",
   audit: "🧾",
-  moves: "🔁",
+  moves: "рџ”Ѓ",
   suppliers: "🏭",
-  docs: "🗂️",
+  docs: "рџ—‚️",
 };
 
 const WAREHOUSE_ICON_FALLBACK = {
-  requests: "REQ",
   tasks: "TASK",
   inventory: "INV",
   items: "ITEM",
@@ -91,11 +89,11 @@ function WarehouseTileIcon({ name }) {
 
 const TYPE_LABELS = {
 
-  ISSUE: "Выдача расходных материалов (РМ)",
+  ISSUE: "Р’С‹даС‡а расС…однС‹С… маС‚ериалов (РМ)",
 
-  RETURN: "Возврат на склад",
+  RETURN: "Р’озвраС‚ на склад",
 
-  INCOME: "Приход (приёмка)",
+  INCOME: "ПриС…од (приС‘мка)",
 
 };
 
@@ -105,17 +103,17 @@ const STATUS_LABELS = {
 
   NEW: "Новая",
 
-  IN_PROGRESS: "В работе",
+  IN_PROGRESS: "Р’ рабоС‚е",
 
-  DONE: "Выполнена",
+  DONE: "Р’С‹полнена",
 
-  REJECTED: "Отклонена",
+  REJECTED: "ОС‚клонена",
 
-  PENDING: "Ожидает",
+  PENDING: "ОжидаеС‚",
 
   APPROVED: "Одобрено",
 
-  COMPLETED: "Выдано",
+  COMPLETED: "Р’С‹дано",
 
 };
 
@@ -125,11 +123,11 @@ const STATUS_OPTIONS = [
 
   { value: "NEW", label: "Новая" },
 
-  { value: "IN_PROGRESS", label: "В работе" },
+  { value: "IN_PROGRESS", label: "Р’ рабоС‚е" },
 
-  { value: "DONE", label: "Выполнена" },
+  { value: "DONE", label: "Р’С‹полнена" },
 
-  { value: "REJECTED", label: "Отклонена" },
+  { value: "REJECTED", label: "ОС‚клонена" },
 
 ];
 
@@ -137,13 +135,13 @@ const STATUS_OPTIONS = [
 
 const TASK_STATUS_LABELS = {
 
-  NEW: "Не выполнена",
+  NEW: "Не вС‹полнена",
 
-  IN_PROGRESS: "В работе",
+  IN_PROGRESS: "Р’ рабоС‚е",
 
-  DONE: "Выполнена",
+  DONE: "Р’С‹полнена",
 
-  CANCELLED: "Отменена",
+  CANCELLED: "ОС‚менена",
 
 };
 
@@ -151,24 +149,24 @@ const TASK_STATUS_LABELS = {
 
 const TASK_STATUS_OPTIONS = [
 
-  { value: "NEW", label: "Не выполнена" },
+  { value: "NEW", label: "Не вС‹полнена" },
 
-  { value: "IN_PROGRESS", label: "В работе" },
+  { value: "IN_PROGRESS", label: "Р’ рабоС‚е" },
 
-  { value: "DONE", label: "Выполнена" },
+  { value: "DONE", label: "Р’С‹полнена" },
 
-  { value: "CANCELLED", label: "Отменена" },
+  { value: "CANCELLED", label: "ОС‚менена" },
 
 ];
 
 
 
 const PO_STATUS_LABELS = {
-  DRAFT: "Не получен",
-  SENT: "Не получен",
-  PARTIAL: "Частично",
-  RECEIVED: "Получен",
-  CLOSED: "Получен",
+  DRAFT: "Не полуС‡ен",
+  SENT: "Не полуС‡ен",
+  PARTIAL: "ЧасС‚иС‡но",
+  RECEIVED: "ПолуС‡ен",
+  CLOSED: "ПолуС‡ен",
 };
 
 
@@ -183,8 +181,6 @@ export default function Warehouse() {
 
 
   const [section, setSection] = useState("");
-
-  const requestsRef = useRef(null);
   const tasksRef = useRef(null);
   const inventoryRef = useRef(null);
   const locationsRef = useRef(null);
@@ -194,44 +190,9 @@ export default function Warehouse() {
   const revisionRef = useRef(null);
   const tmcRef = useRef(null);
 
-  const [requestsTab, setRequestsTab] = useState("new"); // 'new' | 'journal'
 
 
-
-  // ===== ЗАЯВКИ НА СКЛАД =====
-
-  const [requestForm, setRequestForm] = useState({
-    itemId: "",
-    quantity: "",
-    description: "",
-  });
-  const [requestItemQuery, setRequestItemQuery] = useState("");
-
-
-
-  const [myList, setMyList] = useState([]);
-
-  const [allList, setAllList] = useState([]);
-
-  const [filterStatus, setFilterStatus] = useState("ALL");
-
-  const [filterText, setFilterText] = useState("");
-
-  const [loading, setLoading] = useState(true);
-
-  const [saving, setSaving] = useState(false);
-
-  const [statusSavingId, setStatusSavingId] = useState(null);
-
-  const [error, setError] = useState("");
-
-  const [postingId, setPostingId] = useState(null);
-
-  const [postMessage, setPostMessage] = useState("");
-
-
-
-  // ===== ЗАДАЧИ СКЛАДА =====
+  // ===== Р—АЯР’КР НА СКР›АР” =====
 
   const [taskForm, setTaskForm] = useState({
 
@@ -271,7 +232,7 @@ export default function Warehouse() {
 
 
 
-  // ===== ИНВЕНТАРИЗАЦИЯ / ОСТАТКИ / ПОСТАВЩИКИ / ЗАКУПКИ =====
+  // ===== РНР’Р•НТАРРР—АЦРЯ / ОСТАТКР / ПОСТАР’ЩРКР / Р—АКУПКР =====
 
   const [inventoryItems, setInventoryItems] = useState([]);
 
@@ -282,6 +243,8 @@ export default function Warehouse() {
   const [inventoryError, setInventoryError] = useState("");
 
   const [tmcStock, setTmcStock] = useState([]);
+
+  const [error, setError] = useState("");
 
   const [showImportModal, setShowImportModal] = useState(false);
 
@@ -314,7 +277,6 @@ export default function Warehouse() {
 
   useEffect(() => {
     const refMap = {
-      requests: requestsRef,
       tasks: tasksRef,
       inventory: inventoryRef,
       items: inventoryRef,
@@ -370,7 +332,7 @@ export default function Warehouse() {
 
 
 
-  // Поставщики
+  // ПосС‚авС‰ики
 
   const [suppliers, setSuppliers] = useState([]);
 
@@ -394,7 +356,7 @@ export default function Warehouse() {
 
 
 
-  // Заказы поставщику
+  // Р—аказС‹ посС‚авС‰ику
 
   const [purchaseOrders, setPurchaseOrders] = useState([]);
 
@@ -422,83 +384,11 @@ export default function Warehouse() {
 
 
 
-  // ===== API: ЗАЯВКИ =====
-
-  const loadRequests = async () => {
-
-    try {
-
-      setLoading(true);
-
-      setError("");
-
-      setPostMessage("");
+  // ===== API: Р—АЯР’КР =====
 
 
 
-      const myRes = await fetch(`${API}/warehouse/requests/my`, {
-
-        headers: authHeaders,
-
-      });
-
-      const myData = await myRes.json();
-
-      if (!myRes.ok) {
-
-        throw new Error(myData.message || "Ошибка загрузки ваших заявок");
-
-      }
-
-      setMyList(myData);
-
-
-
-      if (isWarehouseManager) {
-
-        const allRes = await fetch(`${API}/warehouse/requests`, {
-
-          headers: { Authorization: authHeaders.Authorization },
-
-        });
-
-        const allData = await allRes.json();
-
-        if (!allRes.ok) {
-
-          throw new Error(
-
-            allData.message || "Ошибка загрузки складских заявок"
-
-          );
-
-        }
-
-        setAllList(allData);
-
-      } else {
-
-        setAllList([]);
-
-      }
-
-    } catch (e) {
-
-      console.error(e);
-
-      setError(e.message);
-
-    } finally {
-
-      setLoading(false);
-
-    }
-
-  };
-
-
-
-  // ===== API: ЗАДАЧИ =====
+  // ===== API: Р—АР”АЧР =====
 
   const loadTasks = async () => {
 
@@ -520,7 +410,7 @@ export default function Warehouse() {
 
       if (!myRes.ok) {
 
-        throw new Error(myData.message || "Ошибка загрузки ваших задач склада");
+        throw new Error(myData.message || "ОС€ибка загрузки ваС€иС… задаС‡ склада");
 
       }
 
@@ -540,7 +430,7 @@ export default function Warehouse() {
 
         if (!allRes.ok) {
 
-          throw new Error(allData.message || "Ошибка загрузки задач склада");
+          throw new Error(allData.message || "ОС€ибка загрузки задаС‡ склада");
 
         }
 
@@ -568,7 +458,7 @@ export default function Warehouse() {
 
 
 
-  // ===== API: ИНВЕНТАРИЗАЦИЯ / ОСТАТКИ =====
+  // ===== API: РНР’Р•НТАРРР—АЦРЯ / ОСТАТКР =====
 
   const loadInventory = async () => {
 
@@ -606,13 +496,13 @@ export default function Warehouse() {
 
       if (!itemsRes.ok) {
 
-        throw new Error(itemsData.message || "Ошибка загрузки товаров");
+        throw new Error(itemsData.message || "ОС€ибка загрузки С‚оваров");
 
       }
 
       if (!stockRes.ok) {
 
-        throw new Error(stockData.message || "Ошибка загрузки остатков");
+        throw new Error(stockData.message || "ОС€ибка загрузки осС‚аС‚ков");
 
       }
 
@@ -643,12 +533,12 @@ export default function Warehouse() {
       });
       const data = await res.json();
       if (!res.ok) {
-        throw new Error(data.message || "Ошибка загрузки ТМЦ");
+        throw new Error(data.message || "ОС€ибка загрузки ТМЦ");
       }
       setTmcStock(data || []);
     } catch (e) {
       console.error(e);
-      setError(e.message || "Ошибка загрузки ТМЦ");
+      setError(e.message || "ОС€ибка загрузки ТМЦ");
     }
   };
 
@@ -676,7 +566,7 @@ export default function Warehouse() {
 
       if (!res.ok) {
 
-        throw new Error(data.message || "Ошибка загрузки поставщиков");
+        throw new Error(data.message || "ОС€ибка загрузки посС‚авС‰иков");
 
       }
 
@@ -724,7 +614,7 @@ export default function Warehouse() {
 
         throw new Error(
 
-          data.message || "Ошибка загрузки заказов поставщику"
+          data.message || "ОС€ибка загрузки заказов посС‚авС‰ику"
 
         );
 
@@ -753,9 +643,6 @@ export default function Warehouse() {
   // ===== useEffects =====
 
   useEffect(() => {
-
-    loadRequests();
-
     loadTasks();
 
     loadInventory();
@@ -787,13 +674,13 @@ export default function Warehouse() {
 
         } else {
 
-          console.error("Ошибка загрузки номенклатуры:", data);
+          console.error("ОС€ибка загрузки номенклаС‚урС‹:", data);
 
         }
 
       } catch (e) {
 
-        console.error("Ошибка загрузки номенклатуры:", e);
+        console.error("ОС€ибка загрузки номенклаС‚урС‹:", e);
 
       }
 
@@ -826,17 +713,6 @@ export default function Warehouse() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
 
   }, [section]);
-
-
-
-  useEffect(() => {
-    if (section !== "requests") return;
-    loadTmcStock();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [section]);
-
-
-
   useEffect(() => {
 
     if (section !== "inventory") return;
@@ -873,358 +749,19 @@ export default function Warehouse() {
 
 
 
-  // ===== ХЕЛПЕРЫ ДЛЯ ЗАЯВОК =====
+  // ===== ХР•Р›ПР•РЫ Р”Р›Я Р—АЯР’ОК =====
 
-  const handleCreateRequest = async (e) => {
+  
 
-    e.preventDefault();
 
-    setSaving(true);
 
-    setError("");
+  
 
-    setPostMessage("");
 
 
+  // ТоварС‹, у коС‚орС‹С… С‚екуС‰иР№ осС‚аС‚ок > 0 (для вС‹падаюС‰его списка в заявке)
 
-    try {
-
-      const selectedItem = selectedTmcItem;
-      if (!selectedItem) {
-        setSaving(false);
-        return setError("Выберите товар из ТМЦ.");
-      }
-
-      const title = selectedItem.name;
-      const qty = Number(requestForm.quantity);
-      const available = Number(selectedItem.currentStock ?? 0);
-
-      if (!Number.isFinite(qty) || !Number.isInteger(qty) || qty <= 0) {
-        setSaving(false);
-        return setError("Количество должно быть положительным целым числом.");
-      }
-
-      if (available <= 0) {
-        setSaving(false);
-        return setError("По выбранной позиции нет остатка.");
-      }
-
-      if (qty > available) {
-        setSaving(false);
-        return setError(
-          `Недостаточно остатка. Доступно ${available} ${selectedItem.unit || "шт."}.`
-        );
-      }
-
-      const body = {
-        title,
-        type: "ISSUE",
-        comment: requestForm.description?.trim() || null,
-        items: [
-          {
-            itemId: selectedItem.id,
-            name: title,
-            quantity: qty,
-            unit: selectedItem.unit || "??",
-          },
-        ],
-      };
-
-
-
-      const res = await fetch(`${API}/warehouse/requests`, {
-
-        method: "POST",
-
-        headers: authHeaders,
-
-        body: JSON.stringify(body),
-
-      });
-
-
-
-      const data = await res.json();
-
-      if (!res.ok) {
-
-        throw new Error(data.message || "Ошибка создания заявки на склад");
-
-      }
-
-
-
-      setRequestForm({
-        itemId: "",
-        quantity: "",
-        description: "",
-      });
-
-
-
-      await loadRequests();
-
-    } catch (e) {
-
-      console.error(e);
-
-      setError(e.message);
-
-    } finally {
-
-      setSaving(false);
-
-    }
-
-  };
-
-  const handleCreateReplenishRequest = async () => {
-    try {
-      setSaving(true);
-      setError("");
-      setPostMessage("");
-
-      const selectedItem = selectedTmcItem;
-      if (!selectedItem) {
-        return setError("Выберите товар из ТМЦ.");
-      }
-
-      const qty = Number(requestForm.quantity);
-      const replenishQty =
-        Number.isFinite(qty) && qty > 0 ? Math.floor(qty) : 1;
-
-      const body = {
-        title: `Пополнение ТМЦ: ${selectedItem.name}`,
-        type: "INCOME",
-        comment: requestForm.description?.trim()
-          ? `Автозаявка на пополнение ТМЦ. ${requestForm.description.trim()}`
-          : "Автозаявка на пополнение ТМЦ.",
-        items: [
-          {
-            itemId: selectedItem.id,
-            name: selectedItem.name,
-            quantity: replenishQty,
-            unit: selectedItem.unit || "шт",
-          },
-        ],
-      };
-
-      const res = await fetch(`${API}/warehouse/requests`, {
-        method: "POST",
-        headers: authHeaders,
-        body: JSON.stringify(body),
-      });
-
-      const data = await res.json();
-      if (!res.ok) {
-        throw new Error(
-          data.message || "Не удалось создать заявку на пополнение."
-        );
-      }
-
-      setRequestForm({
-        itemId: "",
-        quantity: "",
-        description: "",
-      });
-      await loadRequests();
-      setPostMessage("Заявка на пополнение создана.");
-    } catch (e) {
-      console.error(e);
-      setError(e.message);
-    } finally {
-      setSaving(false);
-    }
-  };
-
-
-
-  const handleStatusChangeLocal = (id, newStatus) => {
-
-    setAllList((prev) =>
-
-      prev.map((r) => (r.id === id ? { ...r, status: newStatus } : r))
-
-    );
-
-  };
-
-
-
-  const handleStatusSave = async (id) => {
-
-    const row = allList.find((r) => r.id === id);
-
-    if (!row) return;
-
-
-
-    const statusComment =
-
-      prompt("Комментарий склада (необязательно):") || undefined;
-
-
-
-    setStatusSavingId(id);
-
-    setError("");
-
-    setPostMessage("");
-
-
-
-    try {
-
-      const res = await fetch(`${API}/warehouse/requests/${id}/status`, {
-
-        method: "PUT",
-
-        headers: authHeaders,
-
-        body: JSON.stringify({
-
-          status: row.status,
-
-          statusComment,
-
-        }),
-
-      });
-
-
-
-      const data = await res.json();
-
-      if (!res.ok) {
-
-        throw new Error(data.message || "Ошибка изменения статуса");
-
-      }
-
-
-
-      await loadRequests();
-
-    } catch (e) {
-
-      console.error(e);
-
-      setError(e.message);
-
-    } finally {
-
-      setStatusSavingId(null);
-
-    }
-
-  };
-
-
-
-  const statusBadgeClass = (status) => {
-
-    if (status === "REJECTED") return "badge badge--rejected";
-
-    if (status === "DONE" || status === "COMPLETED" || status === "APPROVED")
-
-      return "badge badge--approved";
-
-    if (status === "IN_PROGRESS" || status === "PENDING")
-
-      return "badge badge--pending";
-
-    return "badge badge--pending";
-
-  };
-
-
-
-  const statusLabel = (status) => {
-
-    return STATUS_LABELS[status] || status;
-
-  };
-
-
-
-  // какой список показывать
-
-  const listForTab = isWarehouseManager ? allList : myList;
-
-
-
-  const filteredRequests = useMemo(() => {
-
-    let res = listForTab;
-
-
-
-    if (filterStatus !== "ALL") {
-
-      res = res.filter((r) => r.status === filterStatus);
-
-    }
-
-
-
-    if (filterText.trim()) {
-
-      const q = filterText.trim().toLowerCase();
-
-      res = res.filter((r) => {
-
-        const text = [
-
-          r.title,
-
-          r.description,
-
-          r.author?.name,
-
-          r.author?.email,
-
-        ]
-
-          .filter(Boolean)
-
-          .join(" ")
-
-          .toLowerCase();
-
-
-
-        return text.includes(q);
-
-      });
-
-    }
-
-
-
-    return res;
-
-  }, [listForTab, filterStatus, filterText]);
-
-
-
-  // Товары, у которых текущий остаток > 0 (для выпадающего списка в заявке)
-
-  const tmcStockItems = useMemo(() => tmcStock || [], [tmcStock]);
-  const filteredTmcItems = useMemo(() => {
-    const q = requestItemQuery.trim().toLowerCase();
-    if (!q) return tmcStockItems;
-    return tmcStockItems.filter((item) =>
-      String(item.name || "").toLowerCase().includes(q)
-    );
-  }, [tmcStockItems, requestItemQuery]);
-  const selectedTmcItem = useMemo(
-    () => tmcStockItems.find((it) => String(it.id) === String(requestForm.itemId)),
-    [tmcStockItems, requestForm.itemId]
-  );
-
-
-
-  // ===== ХЕЛПЕРЫ ДЛЯ ЗАДАЧ =====
+  // ===== ХР•Р›ПР•РЫ Р”Р›Я Р—АР”АЧ =====
 
   const handleCreateTask = async (e) => {
 
@@ -1270,7 +807,7 @@ export default function Warehouse() {
 
       if (!res.ok) {
 
-        throw new Error(data.message || "Ошибка создания задачи");
+        throw new Error(data.message || "ОС€ибка создания задаС‡и");
 
       }
 
@@ -1354,7 +891,7 @@ export default function Warehouse() {
 
       if (!res.ok) {
 
-        throw new Error(data.message || "Ошибка обновления статуса задачи");
+        throw new Error(data.message || "ОС€ибка обновления сС‚аС‚уса задаС‡и");
 
       }
 
@@ -1462,7 +999,7 @@ export default function Warehouse() {
 
 
 
-  // ===== ХЕЛПЕРЫ ДЛЯ ИНВЕНТАРИЗАЦИИ / ЗАКУПОК =====
+  // ===== ХР•Р›ПР•РЫ Р”Р›Я РНР’Р•НТАРРР—АЦРР / Р—АКУПОК =====
 
   const handleCreateItem = async (e) => {
 
@@ -1476,25 +1013,25 @@ export default function Warehouse() {
 
       if (!itemForm.name.trim()) {
 
-        return setInventoryError("Наименование товара обязательно.");
+        return setInventoryError("Наименование С‚овара обязаС‚ельно.");
 
       }
 
       if (!itemForm.sku.trim()) {
 
-        return setInventoryError("Артикул (SKU) обязателен.");
+        return setInventoryError("АрС‚икул (SKU) обязаС‚елен.");
 
       }
 
       if (!itemForm.barcode.trim()) {
 
-        return setInventoryError("Штрихкод обязателен.");
+        return setInventoryError("ШС‚риС…код обязаС‚елен.");
 
       }
 
       if (!itemForm.unit.trim()) {
 
-        return setInventoryError("Единица измерения обязательна.");
+        return setInventoryError("Р•диниС†а измерения обязаС‚ельна.");
 
       }
 
@@ -1512,7 +1049,7 @@ export default function Warehouse() {
 
         return setInventoryError(
 
-          "Минимальный остаток должен быть положительным числом."
+          "МинимальнС‹Р№ осС‚аС‚ок должен бС‹С‚ь положиС‚ельнС‹м С‡ислом."
 
         );
 
@@ -1524,7 +1061,7 @@ export default function Warehouse() {
 
         return setInventoryError(
 
-          "Максимальный остаток должен быть положительным числом."
+          "МаксимальнС‹Р№ осС‚аС‚ок должен бС‹С‚ь положиС‚ельнС‹м С‡ислом."
 
         );
 
@@ -1536,7 +1073,7 @@ export default function Warehouse() {
 
         return setInventoryError(
 
-          "Цена за единицу должна быть положительным числом."
+          "Цена за единиС†у должна бС‹С‚ь положиС‚ельнС‹м С‡ислом."
 
         );
 
@@ -1580,7 +1117,7 @@ export default function Warehouse() {
 
       if (!res.ok) {
 
-        throw new Error(data.message || "Ошибка создания товара");
+        throw new Error(data.message || "ОС€ибка создания С‚овара");
 
       }
 
@@ -1632,7 +1169,7 @@ export default function Warehouse() {
 
       if (!movementForm.itemId || !movementForm.quantity) {
 
-        return setInventoryError("Выберите товар и укажите количество.");
+        return setInventoryError("Р’С‹бериС‚е С‚овар и укажиС‚е колиС‡есС‚во.");
 
       }
 
@@ -1690,7 +1227,7 @@ export default function Warehouse() {
 
         throw new Error(
 
-          data.message || "Ошибка создания движения по складу"
+          data.message || "ОС€ибка создания движения по складу"
 
         );
 
@@ -1784,7 +1321,7 @@ export default function Warehouse() {
 
     const confirmed = window.confirm(
 
-      `Удалить товар "${itemName}" и все движения по нему?`
+      `УдалиС‚ь С‚овар "${itemName}" и все движения по нему?`
 
     );
 
@@ -1824,7 +1361,7 @@ export default function Warehouse() {
 
         throw new Error(
 
-          (data && data.message) || "Ошибка при удалении товара"
+          (data && data.message) || "ОС€ибка при удалении С‚овара"
 
         );
 
@@ -1864,7 +1401,7 @@ export default function Warehouse() {
 
       if (!res.ok) {
 
-        let errorMessage = "Не удалось сформировать файл заказа";
+        let errorMessage = "Не удалось сС„ормироваС‚ь С„аР№л заказа";
 
         try {
 
@@ -1922,7 +1459,7 @@ export default function Warehouse() {
 
       pricePerUnit: item.defaultPrice || "",
 
-      comment: "Поступление товара",
+      comment: "ПосС‚упление С‚овара",
 
     });
 
@@ -1990,7 +1527,7 @@ export default function Warehouse() {
 
       if (!supplierForm.name.trim()) {
 
-        return setSuppliersError("Название поставщика обязательно.");
+        return setSuppliersError("Название посС‚авС‰ика обязаС‚ельно.");
 
       }
 
@@ -2028,7 +1565,7 @@ export default function Warehouse() {
 
       if (!res.ok) {
 
-        throw new Error(data.message || "Ошибка создания поставщика");
+        throw new Error(data.message || "ОС€ибка создания посС‚авС‰ика");
 
       }
 
@@ -2074,7 +1611,7 @@ export default function Warehouse() {
 
       setSuppliersError(
 
-        "Сначала создайте хотя бы одного поставщика ниже на странице."
+        "СнаС‡ала создаР№С‚е С…оС‚я бС‹ одного посС‚авС‰ика ниже на сС‚раниС†е."
 
       );
 
@@ -2106,7 +1643,7 @@ export default function Warehouse() {
 
           name: row.name,
 
-          unit: row.unit || "шт",
+          unit: row.unit || "С€С‚",
 
           orderQty,
 
@@ -2124,7 +1661,7 @@ export default function Warehouse() {
 
       setInventoryError(
 
-        "Нет товаров ниже минимального остатка, заказ не требуется."
+        "НеС‚ С‚оваров ниже минимального осС‚аС‚ка, заказ не С‚ребуеС‚ся."
 
       );
 
@@ -2144,7 +1681,7 @@ export default function Warehouse() {
 
   const handlePurchaseOrderStatusReceived = async (orderId) => {
 
-    const ok = window.confirm("Провести заказ и оприходовать товар на склад?");
+    const ok = window.confirm("ПровесС‚и заказ и оприС…одоваС‚ь С‚овар на склад?");
 
     if (!ok) return;
 
@@ -2174,7 +1711,7 @@ export default function Warehouse() {
 
         throw new Error(
 
-          data.message || "Ошибка смены статуса заказа поставщику"
+          data.message || "ОС€ибка сменС‹ сС‚аС‚уса заказа посС‚авС‰ику"
 
         );
 
@@ -2206,7 +1743,7 @@ export default function Warehouse() {
 
       const db = b.createdAt ? new Date(b.createdAt).getTime() : 0;
 
-      return db - da; // новые сверху
+      return db - da; // новС‹е сверС…у
 
     });
 
@@ -2228,7 +1765,7 @@ export default function Warehouse() {
 
         <p className="page-subtitle">
 
-          Заявки, задачи и учёт остатков на складе.
+          Р—аявки, задаС‡и и уС‡С‘С‚ осС‚аС‚ков на складе.
 
         </p>
 
@@ -2236,50 +1773,11 @@ export default function Warehouse() {
 
 
 
-      {/* Верхние карточки-подразделы склада */}
+      {/* Р’ерС…ние карС‚оС‡ки-подразделС‹ склада */}
 
       <div className="warehouse-section">
 
-        <div className="warehouse-grid">
-
-          <button
-
-            type="button"
-
-            className={
-
-              "warehouse-card" +
-
-              (section === "requests" ? " warehouse-card--active" : "")
-
-            }
-
-            onClick={() => setSection("requests")}
-
-          >
-
-            <div className="warehouse-card__icon">
-
-              <WarehouseTileIcon name="requests" />
-            </div>
-
-            <div className="warehouse-card__body">
-
-              <div className="warehouse-card__title">Заявки на склад</div>
-
-              <div className="warehouse-card__subtitle">
-
-                Создание заявок и контроль выдачи расходных материалов.
-
-              </div>
-
-            </div>
-
-          </button>
-
-
-
-          <button
+        <div className="warehouse-grid"><button
 
             type="button"
 
@@ -2302,11 +1800,11 @@ export default function Warehouse() {
 
             <div className="warehouse-card__body">
 
-              <div className="warehouse-card__title">Задачи склада</div>
+              <div className="warehouse-card__title">Р—адаС‡и склада</div>
 
               <div className="warehouse-card__subtitle">
 
-                Назначение задач, сроки и напоминания в Telegram.
+                НазнаС‡ение задаС‡, сроки и напоминания в Telegram.
 
               </div>
 
@@ -2339,11 +1837,11 @@ export default function Warehouse() {
 
             <div className="warehouse-card__body">
 
-              <div className="warehouse-card__title">Остатки</div>
+              <div className="warehouse-card__title">ОсС‚аС‚ки</div>
 
               <div className="warehouse-card__subtitle">
 
-                Текущие остатки по складу.
+                ТекуС‰ие осС‚аС‚ки по складу.
 
               </div>
 
@@ -2363,9 +1861,9 @@ export default function Warehouse() {
               <WarehouseTileIcon name="items" />
             </div>
             <div className="warehouse-card__body">
-              <div className="warehouse-card__title">Номенклатура</div>
+              <div className="warehouse-card__title">НоменклаС‚ура</div>
               <div className="warehouse-card__subtitle">
-                Справочник товаров.
+                СправоС‡ник С‚оваров.
               </div>
             </div>
           </button>
@@ -2403,9 +1901,9 @@ export default function Warehouse() {
               <WarehouseTileIcon name="transactions" />
             </div>
             <div className="warehouse-card__body">
-              <div className="warehouse-card__title">Транзакции</div>
+              <div className="warehouse-card__title">ТранзакС†ии</div>
               <div className="warehouse-card__subtitle">
-                Все действия по ячейкам и товару.
+                Р’се деР№сС‚вия по яС‡еР№кам и С‚овару.
               </div>
             </div>
           </button>
@@ -2462,9 +1960,9 @@ export default function Warehouse() {
               <WarehouseTileIcon name="suppliers" />
             </div>
             <div className="warehouse-card__body">
-              <div className="warehouse-card__title">Поставщики</div>
+              <div className="warehouse-card__title">ПосС‚авС‰ики</div>
               <div className="warehouse-card__subtitle">
-                Поставщики и заказы поставщику.
+                ПосС‚авС‰ики и заказС‹ посС‚авС‰ику.
               </div>
             </div>
           </button>
@@ -2490,11 +1988,11 @@ export default function Warehouse() {
             </div>
             <div className="warehouse-card__body">
 
-              <div className="warehouse-card__title">{"\С\п\р\а\в\о\ч\н\и\к \я\ч\е\е\к"}</div>
+              <div className="warehouse-card__title">{"\С\п\р\а\в\о\С‡\н\и\к \я\С‡\е\е\к"}</div>
 
               <div className="warehouse-card__subtitle">
 
-                {"\С\о\з\д\а\н\и\е \я\ч\е\е\к \и \п\е\ч\а\т\ь QR-\э\т\и\к\е\т\о\к\."}
+                {"\С\о\з\д\а\н\и\е \я\С‡\е\е\к \и \п\е\С‡\а\С‚\ь QR-\э\С‚\и\к\е\С‚\о\к\."}
 
               </div>
 
@@ -2529,13 +2027,13 @@ export default function Warehouse() {
 
     <div className="warehouse-card__title">
 
-      Машины поставщиков в очереди
+      МаС€инС‹ посС‚авС‰иков в оС‡ереди
 
     </div>
 
     <div className="warehouse-card__subtitle">
 
-      Очередь на разгрузку, ворота и время.
+      ОС‡ередь на разгрузку, вороС‚а и время.
 
     </div>
 
@@ -2566,11 +2064,11 @@ export default function Warehouse() {
 
   <div className="warehouse-card__body">
 
-    <div className="warehouse-card__title">Мобильный ТСД</div>
+    <div className="warehouse-card__title">МобильнС‹Р№ ТСР”</div>
 
     <div className="warehouse-card__subtitle">
 
-      Сканирование штрихкодов и быстрые операции.
+      Сканирование С€С‚риС…кодов и бС‹сС‚рС‹е операС†ии.
 
     </div>
 
@@ -2582,508 +2080,10 @@ export default function Warehouse() {
 
       </div>
 
-
-
-            {/* ====== ЗАЯВКИ ====== */}
-
-      {section === "requests" && (
-
-        <div className="requests-section" ref={requestsRef}>
-
-          {/* Вкладки внутри раздела заявок */}
-
-          <div className="tabs tabs--sm" style={{ marginBottom: 16 }}>
-            <button
-              type="button"
-              className={
-                "tabs__btn " +
-                (requestsTab === "new" ? "tabs__btn--active" : "")
-              }
-              onClick={() => setRequestsTab("new")}
-            >
-              Новая заявка
-            </button>
-            <button
-              type="button"
-              className={
-                "tabs__btn " +
-                (requestsTab === "journal" ? "tabs__btn--active" : "")
-              }
-              onClick={() => setRequestsTab("journal")}
-            >
-              Журнал заявок
-            </button>
-          </div>
-          {/* Вкладка: Новая заявка */}
-
-          {requestsTab === "new" && (
-
-            <div className="card card--1c">
-
-              <div className="card1c__header">Новая заявка</div>
-
-              <div className="card1c__body">
-
-                {error && (
-
-                  <div
-
-                    className="alert alert--danger"
-
-                    style={{ marginBottom: 12 }}
-
-                  >
-
-                    {error}
-
-                  </div>
-
-                )}
-
-
-
-                <form
-
-                  onSubmit={handleCreateRequest}
-
-                  className="form request-form-1c"
-
-                >
-
-                  <div className="form__group">
-                    <label className="form__label">Товар (ТМЦ)</label>
-                    <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
-                    <input
-                      className="form__input"
-                      placeholder="Поиск по ТМЦ..."
-                      value={requestItemQuery}
-                      onChange={(e) => setRequestItemQuery(e.target.value)}
-                    />
-                      <button
-                        type="button"
-                        className="btn btn--secondary btn--sm"
-                        onClick={loadTmcStock}
-                      >
-                        Обновить
-                      </button>
-                    </div>
-                    <select
-                      className="form__select"
-                      value={requestForm.itemId}
-                      onChange={(e) =>
-                        setRequestForm({
-                          ...requestForm,
-                          itemId: e.target.value,
-                        })
-                      }
-                    >
-                      <option value="">Выберите товар</option>
-                      {filteredTmcItems.map((item) => (
-                        <option key={item.id} value={item.id}>
-                          {item.name} (остаток: {item.currentStock} {item.unit || "шт"})
-                          {Number(item.currentStock) <= 0 ? " — нет остатка" : ""}
-                        </option>
-                      ))}
-                    </select>
-                    {selectedTmcItem && (
-                      <div className="form__hint">
-                        Остаток: {selectedTmcItem.currentStock}{" "}
-                        {selectedTmcItem.unit || "шт"}
-                      </div>
-                    )}
-                  </div>
-
-
-
-                  <div className="form__group">
-
-                    <label className="form__label">Количество</label>
-
-                    <input
-
-                      type="number"
-
-                      className="form__input"
-
-                      value={requestForm.quantity}
-
-                      onChange={(e) =>
-
-                        setRequestForm({
-
-                          ...requestForm,
-
-                          quantity: e.target.value,
-
-                        })
-
-                      }
-
-                      placeholder="Сколько?"
-
-                    />
-
-                    {selectedTmcItem &&
-                      Number(requestForm.quantity) > Number(selectedTmcItem.currentStock ?? 0) && (
-                        <div className="form__hint" style={{ color: "#dc2626" }}>
-                          Недостаточно остатка. Доступно {selectedTmcItem.currentStock} {selectedTmcItem.unit || "шт."}.
-                        </div>
-                      )}
-
-                    {selectedTmcItem && Number(selectedTmcItem.currentStock ?? 0) <= 0 && (
-                      <div className="form__hint" style={{ color: "#dc2626" }}>
-                        На складе нет остатка для выдачи. Можно создать заявку на пополнение.
-                      </div>
-                    )}
-
-
-</div>
-
-
-
-                  <div className="form__group">
-
-                    <label className="form__label">Комментарий</label>
-
-                    <textarea
-
-                      className="form__textarea"
-
-                      rows={3}
-
-                      value={requestForm.description}
-
-                      onChange={(e) =>
-
-                        setRequestForm({
-
-                          ...requestForm,
-
-                          description: e.target.value,
-
-                        })
-
-                      }
-
-                      placeholder="Детали, сроки, для чего..."
-
-                    />
-
-                  </div>
-
-
-
-                  <div className="request-form-1c__actions">
-
-                    <button
-
-                      type="submit"
-
-                      className="btn btn--primary"
-
-                      disabled={saving}
-
-                    >
-
-                      {saving ? "Отправка..." : "Отправить заявку"}
-
-                    </button>
-
-                  
-                    {(selectedTmcItem && Number(selectedTmcItem.currentStock ?? 0) <= 0) ||
-                    (selectedTmcItem &&
-                      Number(requestForm.quantity) > Number(selectedTmcItem.currentStock ?? 0)) ? (
-                      <button
-                        type="button"
-                        className="btn btn--secondary"
-                        disabled={saving}
-                        onClick={handleCreateReplenishRequest}
-                        style={{ marginLeft: 8 }}
-                      >
-                        Создать заявку на пополнение
-                      </button>
-                    ) : null}
-                  </div>
-
-                </form>
-
-              </div>
-
-            </div>
-
-          )}
-
-
-
-                              {/* Вкладка: Журнал заявок */}
-
-          {requestsTab === "journal" && (
-
-            <div className="card card--1c">
-
-              <div className="card1c__header">Журнал заявок</div>
-
-              <div className="card1c__body">
-
-                {/* Фильтры */}
-
-                <div
-
-                  style={{
-
-                    display: "flex",
-
-                    gap: 16,
-
-                    alignItems: "flex-end",
-
-                    marginBottom: 12,
-
-                  }}
-
-                >
-
-                  <div>
-
-                    <label className="form__label">Статус</label>
-
-                    <select
-
-                      className="form__select"
-
-                      value={filterStatus}
-
-                      onChange={(e) => setFilterStatus(e.target.value)}
-
-                    >
-
-                      <option value="ALL">Все статусы</option>
-
-                      {STATUS_OPTIONS.map((opt) => (
-
-                        <option key={opt.value} value={opt.value}>
-
-                          {opt.label}
-
-                        </option>
-
-                      ))}
-
-                    </select>
-
-                  </div>
-
-
-
-                  <div style={{ flex: 1 }}>
-
-                    <label className="form__label">Поиск</label>
-
-                    <input
-
-                      type="text"
-
-                      className="form__input"
-
-                      placeholder="Товар, комментарий, автор..."
-
-                      value={filterText}
-
-                      onChange={(e) => setFilterText(e.target.value)}
-
-                    />
-
-                  </div>
-
-                </div>
-
-
-
-                {loading ? (
-
-                  <p>Загрузка...</p>
-
-                ) : filteredRequests.length === 0 ? (
-
-                  <p className="text-muted">Заявок не найдено.</p>
-
-                ) : (
-
-                  <div className="table-wrapper requests-journal-table">
-
-                    <table className="table">
-
-                      <thead>
-
-                        <tr>
-
-                          <th style={{ width: 40 }}>№</th>
-
-                          <th style={{ width: 170 }}>Дата</th>
-
-                          <th style={{ width: 110 }}>Статус</th>
-
-                          <th style={{ width: 200 }}>Автор</th>
-
-                          <th>Товар / заявка</th>
-
-                          <th style={{ width: 70 }}>Кол-во</th>
-
-                          <th style={{ width: 220 }}>Комментарий</th>
-
-                        </tr>
-
-                      </thead>
-
-                      <tbody>
-
-                        {filteredRequests.map((req, index) => {
-
-                          // автор (новые заявки: createdBy, старые: author)
-
-                          const createdBy = req.createdBy || req.author;
-
-
-
-                          // общее количество по позициям заявки
-
-                          const totalQty =
-
-                            Array.isArray(req.items) && req.items.length
-
-                              ? req.items.reduce(
-
-                                  (sum, it) =>
-
-                                    sum + (Number(it.quantity) || 0),
-
-                                  0
-
-                                )
-
-                              : req.quantity != null
-
-                              ? req.quantity
-
-                              : null;
-
-
-
-                          // комментарий пользователя
-
-                          const requestComment =
-
-                            req.comment ?? req.description;
-
-
-
-                          // заголовок/товар
-
-                          const title =
-
-                            req.title ||
-
-                            (Array.isArray(req.items) &&
-
-                              req.items[0] &&
-
-                              req.items[0].name) ||
-
-                            "-";
-
-
-
-                          return (
-
-                            <tr key={req.id} className="requests-journal-row">
-
-                              <td data-label="index">{index + 1}</td>
-
-                              <td data-label="date">
-
-                                {req.createdAt
-
-                                  ? new Date(
-
-                                      req.createdAt
-
-                                    ).toLocaleString("ru-RU", {
-
-                                      day: "2-digit",
-
-                                      month: "2-digit",
-
-                                      year: "numeric",
-
-                                      hour: "2-digit",
-
-                                      minute: "2-digit",
-
-                                    })
-
-                                  : "-"}
-
-                              </td>
-
-                              <td data-label="status">{statusLabel(req.status)}</td>
-
-                              <td data-label="author">
-
-                                {createdBy?.name ||
-
-                                  createdBy?.email ||
-
-                                  "-"}
-
-                              </td>
-
-                              <td data-label="title">{title}</td>
-
-                              <td data-label="qty" style={{ textAlign: "right" }}>
-
-                                {totalQty != null && totalQty !== 0
-
-                                  ? totalQty
-
-                                  : "-"}
-
-                              </td>
-
-                              <td data-label="comment">{requestComment || "-"}</td>
-
-                            </tr>
-
-                          );
-
-                        })}
-
-                      </tbody>
-
-                    </table>
-
-                  </div>
-
-                )}
-
-              </div>
-
-            </div>
-
-          )}
-
-        </div>
-
-      )}
-
-
-
-                  {/* ====== ЗАДАЧИ ====== */}
-
       {section === "tasks" && (
-
         <div className="tasks-section" ref={tasksRef}>
 
-          {/* Вкладки: Новая задача / Журнал задач */}
+          {/* Р’кладки: Новая задаС‡а / Р–урнал задаС‡ */}
 
           <div className="tabs tabs--sm" style={{ marginBottom: 16 }}>
 
@@ -3101,7 +2101,7 @@ export default function Warehouse() {
 
             >
 
-              Новая задача
+              Новая задаС‡а
 
             </button>
 
@@ -3121,7 +2121,7 @@ export default function Warehouse() {
 
             >
 
-              Журнал задач
+              Р–урнал задаС‡
 
             </button>
 
@@ -3129,13 +2129,13 @@ export default function Warehouse() {
 
 
 
-          {/* Вкладка: Новая задача */}
+          {/* Р’кладка: Новая задаС‡а */}
 
           {taskView === "new" && (
 
             <div className="card card--1c">
 
-              <div className="card1c__header">Новая задача</div>
+              <div className="card1c__header">Новая задаС‡а</div>
 
               <div className="card1c__body">
 
@@ -3167,7 +2167,7 @@ export default function Warehouse() {
 
                   <div className="form__group">
 
-                    <label className="form__label">Заголовок</label>
+                    <label className="form__label">Р—аголовок</label>
 
                     <input
 
@@ -3183,7 +2183,7 @@ export default function Warehouse() {
 
                       }
 
-                      placeholder="Что сделать?"
+                      placeholder="ЧС‚о сделаС‚ь?"
 
                       required
 
@@ -3217,7 +2217,7 @@ export default function Warehouse() {
 
                       }
 
-                      placeholder="Подробности..."
+                      placeholder="ПодробносС‚и..."
 
                     />
 
@@ -3227,7 +2227,7 @@ export default function Warehouse() {
 
                   <div className="form__group">
 
-                    <label className="form__label">Срок (дата и время)</label>
+                    <label className="form__label">Срок (даС‚а и время)</label>
 
                     <input
 
@@ -3251,7 +2251,7 @@ export default function Warehouse() {
 
                   <div className="form__group">
 
-                    <label className="form__label">Исполнитель (имя)</label>
+                    <label className="form__label">РсполниС‚ель (имя)</label>
 
                     <input
 
@@ -3273,7 +2273,7 @@ export default function Warehouse() {
 
                       }
 
-                      placeholder="Иван Иванов"
+                      placeholder="Рван Рванов"
 
                     />
 
@@ -3285,7 +2285,7 @@ export default function Warehouse() {
 
                     <label className="form__label">
 
-                      ID исполнителя в Telegram
+                      ID исполниС‚еля в Telegram
 
                     </label>
 
@@ -3329,7 +2329,7 @@ export default function Warehouse() {
 
                     >
 
-                      {taskSaving ? "Создание..." : "Создать задачу"}
+                      {taskSaving ? "Создание..." : "СоздаС‚ь задаС‡у"}
 
                     </button>
 
@@ -3345,17 +2345,17 @@ export default function Warehouse() {
 
 
 
-          {/* Вкладка: Журнал задач (таблица как История движений) */}
+          {/* Р’кладка: Р–урнал задаС‡ (С‚аблиС†а как РсС‚ория движениР№) */}
 
           {taskView === "journal" && (
 
             <div className="card card--1c">
 
-              <div className="card1c__header">Журнал задач</div>
+              <div className="card1c__header">Р–урнал задаС‡</div>
 
               <div className="card1c__body">
 
-                {/* Фильтры сверху, в стиле Истории движений */}
+                {/* ФильС‚рС‹ сверС…у, в сС‚иле РсС‚ории движениР№ */}
 
                 <div
 
@@ -3377,7 +2377,7 @@ export default function Warehouse() {
 
                   <div>
 
-                    <label className="form__label">Статус</label>
+                    <label className="form__label">СС‚аС‚ус</label>
 
                     <select
 
@@ -3389,7 +2389,7 @@ export default function Warehouse() {
 
                     >
 
-                      <option value="ALL">Все статусы</option>
+                      <option value="ALL">Р’се сС‚аС‚усС‹</option>
 
                       {TASK_STATUS_OPTIONS.map((opt) => (
 
@@ -3411,7 +2411,7 @@ export default function Warehouse() {
 
                     <div>
 
-                      <label className="form__label">Список задач</label>
+                      <label className="form__label">Список задаС‡</label>
 
                       <select
 
@@ -3423,9 +2423,9 @@ export default function Warehouse() {
 
                       >
 
-                        <option value="my">Мои задачи</option>
+                        <option value="my">Мои задаС‡и</option>
 
-                        <option value="all">Все задачи</option>
+                        <option value="all">Р’се задаС‡и</option>
 
                       </select>
 
@@ -3445,7 +2445,7 @@ export default function Warehouse() {
 
                       className="form__input"
 
-                      placeholder="Заголовок, исполнитель, автор..."
+                      placeholder="Р—аголовок, исполниС‚ель, авС‚ор..."
 
                       value={taskFilterText}
 
@@ -3461,11 +2461,11 @@ export default function Warehouse() {
 
                 {tasksLoading ? (
 
-                  <p>Загрузка...</p>
+                  <p>Р—агрузка...</p>
 
                 ) : filteredTasks.length === 0 ? (
 
-                  <p className="text-muted">Задач не найдено.</p>
+                  <p className="text-muted">Р—адаС‡ не наР№дено.</p>
 
                 ) : (
 
@@ -3477,25 +2477,25 @@ export default function Warehouse() {
 
                         <tr>
 
-                          <th style={{ width: 40 }}>№</th>
+                          <th style={{ width: 40 }}>в„–</th>
 
-                          <th style={{ width: 170 }}>Дата</th>
+                          <th style={{ width: 170 }}>Р”аС‚а</th>
 
-                          <th style={{ width: 110 }}>Статус</th>
+                          <th style={{ width: 110 }}>СС‚аС‚ус</th>
 
                           <th style={{ width: 170 }}>Срок</th>
 
-                          <th>Задача</th>
+                          <th>Р—адаС‡а</th>
 
-                          <th style={{ width: 180 }}>Исполнитель</th>
+                          <th style={{ width: 180 }}>РсполниС‚ель</th>
 
-                          <th style={{ width: 200 }}>Автор</th>
+                          <th style={{ width: 200 }}>АвС‚ор</th>
 
                           <th style={{ width: 260 }}>Описание</th>
 
                           {isWarehouseManager && (
 
-  <th style={{ width: 190 }}>Действия</th>
+  <th style={{ width: 190 }}>Р”еР№сС‚вия</th>
 
 )}
 
@@ -3595,7 +2595,7 @@ export default function Warehouse() {
 
                                   >
 
-                                    (просрочено)
+                                    (просроС‡ено)
 
                                   </span>
 
@@ -3701,7 +2701,7 @@ export default function Warehouse() {
 
 
 
-            {/* ====== ОЧЕРЕДЬ МАШИН ПОСТАВЩИКОВ ====== */}
+            {/* ====== ОЧР•РР•Р”Ь МАШРН ПОСТАР’ЩРКОР’ ====== */}
 
       {section === "locations" && (
 
@@ -3731,7 +2731,7 @@ export default function Warehouse() {
 
   <div className="tsd-section" ref={tsdRef}>
 
-    {/* сюда вынесем отдельный компонент, чтобы не раздувать файл */}
+    {/* сюда вС‹несем оС‚дельнС‹Р№ компоненС‚, С‡С‚обС‹ не раздуваС‚ь С„аР№л */}
 
     <MobileTsdTab />
 
@@ -3760,13 +2760,13 @@ export default function Warehouse() {
 
 
 
-      {/* ====== ОСТАТКИ / ИНВЕНТАРИЗАЦИЯ / ЗАКУПКИ ====== */}
+      {/* ====== ОСТАТКР / РНР’Р•НТАРРР—АЦРЯ / Р—АКУПКР ====== */}
 
       {["inventory","items","movement","suppliers"].includes(section) && (
 
         <div className="inventory-section" ref={inventoryRef}>
 
-          {/* Внутренние вкладки */}
+          {/* Р’нуС‚ренние вкладки */}
 
           
           {inventoryTab === "movement" && (
@@ -3778,7 +2778,7 @@ export default function Warehouse() {
                 }
                 onClick={() => setMovementTab("movementsHistory")}
               >
-                История движений
+                РсС‚ория движениР№
               </button>
             </div>
           )}
@@ -3792,7 +2792,7 @@ export default function Warehouse() {
                 }
                 onClick={() => setSuppliersTab("suppliers")}
               >
-                Поставщики
+                ПосС‚авС‰ики
               </button>
               <button
                 type="button"
@@ -3801,14 +2801,14 @@ export default function Warehouse() {
                 }
                 onClick={() => setSuppliersTab("orders")}
               >
-                Заказы поставщику
+                Р—аказС‹ посС‚авС‰ику
               </button>
             </div>
           )}
 
 
 
-          {/* ===== Вкладка 1: Номенклатура ===== */}
+          {/* ===== Р’кладка 1: НоменклаС‚ура ===== */}
 
 {inventoryTab === "items" && (
 
@@ -3832,7 +2832,7 @@ export default function Warehouse() {
 
         <h2 className="card__title" style={{ margin: 0 }}>
 
-          Номенклатура
+          НоменклаС‚ура
 
         </h2>
 
@@ -3844,7 +2844,7 @@ export default function Warehouse() {
 
         >
 
-          Импорт из Excel
+          РмпорС‚ из Excel
 
         </button>
 
@@ -3870,11 +2870,11 @@ export default function Warehouse() {
 
 
 
-    {/* Форма "Новый товар" теперь на всю ширину */}
+    {/* Форма "НовС‹Р№ С‚овар" С‚еперь на всю С€ирину */}
 
     <div className="card card--1c" style={{ gridColumn: "span 2" }}>
 
-      <div className="card1c__header">Новый товар</div>
+      <div className="card1c__header">НовС‹Р№ С‚овар</div>
 
       <div className="card1c__body">
 
@@ -3902,7 +2902,7 @@ export default function Warehouse() {
 
               }
 
-              placeholder="Например: Бумага А4"
+              placeholder="Например: Р‘умага А4"
 
             />
 
@@ -3912,7 +2912,7 @@ export default function Warehouse() {
 
           <div className="form__group">
 
-            <label className="form__label">Артикул (SKU)</label>
+            <label className="form__label">АрС‚икул (SKU)</label>
 
             <input
 
@@ -3934,7 +2934,7 @@ export default function Warehouse() {
 
           <div className="form__group">
 
-            <label className="form__label">Штрихкод</label>
+            <label className="form__label">ШС‚риС…код</label>
 
             <input
 
@@ -3956,7 +2956,7 @@ export default function Warehouse() {
 
           <div className="form__group">
 
-            <label className="form__label">Ед. изм.</label>
+            <label className="form__label">Р•д. изм.</label>
 
             <input
 
@@ -3970,7 +2970,7 @@ export default function Warehouse() {
 
               }
 
-              placeholder="шт, кг..."
+              placeholder="С€С‚, кг..."
 
             />
 
@@ -3980,7 +2980,7 @@ export default function Warehouse() {
 
           <div className="form__group">
 
-            <label className="form__label">Цена (по умолчанию)</label>
+            <label className="form__label">Цена (по умолС‡анию)</label>
 
             <input
 
@@ -4012,7 +3012,7 @@ export default function Warehouse() {
 
           <div className="form__group">
 
-            <label className="form__label">Мин. остаток</label>
+            <label className="form__label">Мин. осС‚аС‚ок</label>
 
             <input
 
@@ -4042,7 +3042,7 @@ export default function Warehouse() {
 
           <div className="form__group">
 
-            <label className="form__label">Макс. остаток</label>
+            <label className="form__label">Макс. осС‚аС‚ок</label>
 
             <input
 
@@ -4074,7 +3074,7 @@ export default function Warehouse() {
 
             <button type="submit" className="btn btn--primary">
 
-              Создать товар
+              СоздаС‚ь С‚овар
 
             </button>
 
@@ -4092,13 +3092,13 @@ export default function Warehouse() {
 
 
 
-          {/* ===== Вкладка 2: Остатки (1С + печать акта ревизии) ===== */}
+          {/* ===== Р’кладка 2: ОсС‚аС‚ки (1С + пеС‡аС‚ь акС‚а ревизии) ===== */}
 
           {inventoryTab === "stock" && <StockAuditTab />}
 
 
 
-          {/* ===== Вкладка 3: Движение товара (только форма) ===== */}
+          {/* ===== Р’кладка 3: Р”вижение С‚овара (С‚олько С„орма) ===== */}
 
           {false && inventoryTab === "movement" && movementTab === "movements" && (
 
@@ -4122,7 +3122,7 @@ export default function Warehouse() {
 
                 >
 
-                  <span>Движение товара</span>
+                  <span>Р”вижение С‚овара</span>
 
                   <button
 
@@ -4134,7 +3134,7 @@ export default function Warehouse() {
 
                       console.log(
 
-                        "CLICK ПО ЗАКУПУ, showReceiveModal было:",
+                        "CLICK ПО Р—АКУПУ, showReceiveModal бС‹ло:",
 
                         showReceiveModal
 
@@ -4146,7 +3146,7 @@ export default function Warehouse() {
 
                   >
 
-                    Закуп по заказу
+                    Р—акуп по заказу
 
                   </button>
 
@@ -4180,7 +3180,7 @@ export default function Warehouse() {
 
                     <div className="form__group">
 
-                      <label className="form__label">Тип операции</label>
+                      <label className="form__label">Тип операС†ии</label>
 
                       <select
 
@@ -4202,11 +3202,11 @@ export default function Warehouse() {
 
                       >
 
-                        <option value="INCOME">Приход</option>
+                        <option value="INCOME">ПриС…од</option>
 
-                        <option value="ISSUE">Расход</option>
+                        <option value="ISSUE">РасС…од</option>
 
-                        <option value="ADJUSTMENT">Корректировка</option>
+                        <option value="ADJUSTMENT">КоррекС‚ировка</option>
 
                       </select>
 
@@ -4238,13 +3238,13 @@ export default function Warehouse() {
 
                       >
 
-                        <option value="">-- Выберите товар --</option>
+                        <option value="">-- Р’С‹бериС‚е С‚овар --</option>
 
                         {inventoryItems.map((it) => (
 
                           <option key={it.id} value={it.id}>
 
-                            {it.name} (Остаток:{" "}
+                            {it.name} (ОсС‚аС‚ок:?????????? ?????
 
                             {currentStockForItem(it.id)} {it.unit})
 
@@ -4260,7 +3260,7 @@ export default function Warehouse() {
 
                     <div className="form__group">
 
-                      <label className="form__label">Количество</label>
+                      <label className="form__label">КолиС‡есС‚во</label>
 
                       <div style={{ flex: 1 }}>
 
@@ -4296,7 +3296,7 @@ export default function Warehouse() {
 
                     <div className="form__group">
 
-                      <label className="form__label">Комментарий</label>
+                      <label className="form__label">КомменС‚ариР№</label>
 
                       <input
 
@@ -4326,7 +3326,7 @@ export default function Warehouse() {
 
                       <button type="submit" className="btn btn--primary">
 
-                        Провести движение
+                        ПровесС‚и движение
 
                       </button>
 
@@ -4344,17 +3344,17 @@ export default function Warehouse() {
 
 
 
-          {/* ===== Вкладка 4: История движений (1С) ===== */}
+          {/* ===== Р’кладка 4: РсС‚ория движениР№ (1С) ===== */}
 
           {inventoryTab === "movement" && movementTab === "movementsHistory" && <StockMovementsHistoryTab />}
 
-          {/* ===== Вкладка 5: Поставщики ===== */}
+          {/* ===== Р’кладка 5: ПосС‚авС‰ики ===== */}
           {inventoryTab === "suppliers" && suppliersTab === "suppliers" && (
             <div className="grid-2">
 
               <div className="card card--1c" style={{ gridColumn: "span 2" }}>
 
-                <div className="card1c__header">Поставщики</div>
+                <div className="card1c__header">ПосС‚авС‰ики</div>
 
                 <div className="card1c__body">
 
@@ -4408,7 +3408,7 @@ export default function Warehouse() {
 
                         }
 
-                        placeholder="ООО Поставщик"
+                        placeholder="ООО ПосС‚авС‰ик"
 
                       />
 
@@ -4418,7 +3418,7 @@ export default function Warehouse() {
 
                     <div className="form__group">
 
-                      <label className="form__label">ИНН</label>
+                      <label className="form__label">РНН</label>
 
                       <input
 
@@ -4446,7 +3446,7 @@ export default function Warehouse() {
 
                     <div className="form__group">
 
-                      <label className="form__label">Телефон</label>
+                      <label className="form__label">ТелеС„он</label>
 
                       <input
 
@@ -4502,7 +3502,7 @@ export default function Warehouse() {
 
                     <div className="form__group">
 
-                      <label className="form__label">Комментарий</label>
+                      <label className="form__label">КомменС‚ариР№</label>
 
                       <input
 
@@ -4522,7 +3522,7 @@ export default function Warehouse() {
 
                         }
 
-                        placeholder="Условия оплаты, контакты менеджера..."
+                        placeholder="Условия оплаС‚С‹, конС‚акС‚С‹ менеджера..."
 
                       />
 
@@ -4534,7 +3534,7 @@ export default function Warehouse() {
 
                       <button type="submit" className="btn btn--primary">
 
-                        Сохранить поставщика
+                        СоС…раниС‚ь посС‚авС‰ика
 
                       </button>
 
@@ -4546,11 +3546,11 @@ export default function Warehouse() {
 
                   {suppliersLoading ? (
 
-                    <p>Загрузка...</p>
+                    <p>Р—агрузка...</p>
 
                   ) : suppliers.length === 0 ? (
 
-                    <p className="text-muted">Поставщиков пока нет.</p>
+                    <p className="text-muted">ПосС‚авС‰иков пока неС‚.</p>
 
                   ) : (
 
@@ -4566,9 +3566,9 @@ export default function Warehouse() {
 
                             <th>Название</th>
 
-                            <th>ИНН</th>
+                            <th>РНН</th>
 
-                            <th>Телефон</th>
+                            <th>ТелеС„он</th>
 
                             <th>Email</th>
 
@@ -4614,7 +3614,7 @@ export default function Warehouse() {
 
 
 
-                    {/* ===== Вкладка 6: Заказы поставщику ===== */}
+                    {/* ===== Р’кладка 6: Р—аказС‹ посС‚авС‰ику ===== */}
 
           {inventoryTab === "suppliers" && suppliersTab === "orders" && (
 
@@ -4622,7 +3622,7 @@ export default function Warehouse() {
 
               <div className="card card--1c" style={{ gridColumn: "span 2" }}>
 
-                <div className="card1c__header">Заказы поставщику</div>
+                <div className="card1c__header">Р—аказС‹ посС‚авС‰ику</div>
 
                 <div className="card1c__body">
 
@@ -4650,7 +3650,7 @@ export default function Warehouse() {
 
                     >
 
-                      Создать заказ поставщику
+                      СоздаС‚ь заказ посС‚авС‰ику
 
                     </button>
 
@@ -4662,7 +3662,7 @@ export default function Warehouse() {
 
                     >
 
-                      Скачать заказ (Low Stock)
+                      СкаС‡аС‚ь заказ (Low Stock)
 
                     </button>
 
@@ -4690,11 +3690,11 @@ export default function Warehouse() {
 
                   {purchaseOrdersLoading ? (
 
-                    <p>Загрузка заказов...</p>
+                    <p>Р—агрузка заказов...</p>
 
                   ) : sortedPurchaseOrders.length === 0 ? (
 
-                    <p className="text-muted">Заказов пока нет.</p>
+                    <p className="text-muted">Р—аказов пока неС‚.</p>
 
                   ) : (
 
@@ -4708,11 +3708,11 @@ export default function Warehouse() {
 
                             <th>ID</th>
 
-                            <th>Время</th>
+                            <th>Р’ремя</th>
 
-                            <th>Поставщик</th>
+                            <th>ПосС‚авС‰ик</th>
 
-                            <th>Статус</th>
+                            <th>СС‚аС‚ус</th>
 
                             <th></th>
 
@@ -4744,7 +3744,7 @@ export default function Warehouse() {
 
                                 })
 
-                              : "Без даты";
+                              : "Р‘ез даС‚С‹";
 
 
 
@@ -4923,6 +3923,7 @@ export default function Warehouse() {
   );
 
 }
+
 
 
 
