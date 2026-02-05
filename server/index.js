@@ -2751,9 +2751,15 @@ async function autoPostRequestToStock(requestId, userId) {
     }
 
     // Р В Р’ВР РЋРІР‚В°Р В Р’ВµР В РЎВ Р РЋРІР‚С™Р В РЎвЂўР В Р вЂ Р В Р’В°Р РЋР вЂљ Р В Р вЂ  Р В Р вЂ¦Р В РЎвЂўР В РЎВР В Р’ВµР В Р вЂ¦Р В РЎвЂќР В Р’В»Р В Р’В°Р РЋРІР‚С™Р РЋРЎвЂњР РЋР вЂљР В Р’Вµ Р В РЎвЂ”Р В РЎвЂў Р РЋРІР‚С™Р В РЎвЂўР РЋРІР‚РЋР В Р вЂ¦Р В РЎвЂўР В РЎВР РЋРЎвЂњ Р В РЎвЂР В РЎВР В Р’ВµР В Р вЂ¦Р В РЎвЂ
-    const invItem = await prisma.item.findFirst({
-      where: { name: item.name },
+    let invItem = await prisma.item.findFirst({
+      where: { name: item.name, category: "TMC" },
     });
+
+    if (!invItem) {
+      invItem = await prisma.item.findFirst({
+        where: { name: item.name },
+      });
+    }
 
     if (!invItem) {
       console.warn(
