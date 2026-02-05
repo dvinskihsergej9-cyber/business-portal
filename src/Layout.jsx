@@ -13,11 +13,15 @@ export default function Layout() {
       to: "/warehouse",
       roles: ["EMPLOYEE", "HR", "ACCOUNTING", "ADMIN"],
     },
-    // вкладку "Профиль" убрали из меню
+    {
+      label: "ТМЦ и РМ",
+      to: "/tmc",
+      roles: ["EMPLOYEE", "HR", "ACCOUNTING", "ADMIN"],
+    },
     {
       label: "Администрирование",
       to: "/admin",
-      roles: ["ADMIN"], // видно только ADMIN
+      roles: ["ADMIN"],
     },
   ];
 
@@ -27,6 +31,7 @@ export default function Layout() {
 
   const pageTitle = useMemo(() => {
     if (location.pathname.startsWith("/admin")) return "Администрирование";
+    if (location.pathname.startsWith("/tmc")) return "ТМЦ и РМ";
     if (location.pathname.startsWith("/warehouse")) return "Склад";
     return "Портал";
   }, [location.pathname]);

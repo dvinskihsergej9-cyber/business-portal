@@ -28,6 +28,7 @@ import Page403 from "./pages/Page403";
 import AdminConsole from "./pages/AdminConsole";
 
 import Warehouse from "./pages/Warehouse";
+import TmcRm from "./pages/TmcRm";
 import MobileTsd from "./pages/MobileTsd";
 
 function AppRoutesWithBackground() {
@@ -92,8 +93,27 @@ function AppRoutesWithBackground() {
             }
           >
             <Route index element={<Navigate to="/warehouse" replace />} />
-            <Route path="warehouse" element={<Warehouse />} />
+            <Route
+              path="warehouse"
+              element={
+                <Warehouse
+                  allowedSections={[
+                    "tasks",
+                    "inventory",
+                    "items",
+                    "movement",
+                    "transactions",
+                    "revision",
+                    "suppliers",
+                    "locations",
+                    "queue",
+                    "tsd",
+                  ]}
+                />
+              }
+            />
             <Route path="warehouse/tsd" element={<MobileTsd />} />
+            <Route path="tmc" element={<TmcRm />} />
             <Route
               path="admin/users"
               element={

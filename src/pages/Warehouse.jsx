@@ -23,24 +23,24 @@ import TmcTab from "../components/TmcTab";
 const API = API_BASE;
 
 const WAREHOUSE_EMOJI = {
-  requests: "📦",
-  tasks: "✅",
-  inventory: "🧾",
-  items: "📚",
-  movement: "\uD83D\uDCE6",
-  transactions: "\uD83D\uDD01",
-  revision: "\uD83E\uDDFE",
-  tmc: "\uD83D\uDCCE",
-  locations: "📍",
-  queue: "🚚",
-  tsd: "📱",
-  qr: "🏷️",
-  receive: "📦",
-  ship: "🚚",
-  audit: "🧾",
-  moves: "🔁",
-  suppliers: "🏭",
-  docs: "🗂️",
+  requests: "??",
+  tasks: "?",
+  inventory: "??",
+  items: "??",
+  movement: "??",
+  transactions: "??",
+  revision: "??",
+  tmc: "??",
+  locations: "??",
+  queue: "??",
+  tsd: "??",
+  qr: "???",
+  receive: "??",
+  ship: "??",
+  audit: "??",
+  moves: "??",
+  suppliers: "??",
+  docs: "???",
 };
 
 const WAREHOUSE_ICON_FALLBACK = {
@@ -90,33 +90,21 @@ function WarehouseTileIcon({ name }) {
 
 
 const TYPE_LABELS = {
-
-  ISSUE: "Выдача расходных материалов (РМ)",
-
-  RETURN: "Возврат на склад",
-
-  INCOME: "Приход (приёмка)",
-
+  ISSUE: "?????? ????????? ?????????? (??)",
+  RETURN: "??????? ?? ?????",
+  INCOME: "?????? (???????)",
 };
 
 
 
 const STATUS_LABELS = {
-
-  NEW: "Новая",
-
-  IN_PROGRESS: "В работе",
-
-  DONE: "Выполнена",
-
-  REJECTED: "Отклонена",
-
-  PENDING: "Ожидает",
-
-  APPROVED: "Одобрено",
-
-  COMPLETED: "Выдано",
-
+  NEW: "?????",
+  IN_PROGRESS: "? ??????",
+  DONE: "?????????",
+  REJECTED: "?????????",
+  PENDING: "???????",
+  APPROVED: "????????",
+  COMPLETED: "??????",
 };
 
 
@@ -164,15 +152,19 @@ const TASK_STATUS_OPTIONS = [
 
 
 const PO_STATUS_LABELS = {
-  DRAFT: "Не получен",
-  SENT: "Не получен",
-  PARTIAL: "Частично",
-  RECEIVED: "Получен",
-  CLOSED: "Получен",
+  DRAFT: "?? ???????",
+  SENT: "?? ???????",
+  PARTIAL: "????????",
+  RECEIVED: "???????",
+  CLOSED: "???????",
 };
 
 
-export default function Warehouse() {
+export default function Warehouse({
+  allowedSections,
+  pageTitle = "Склад",
+  pageSubtitle = "Задачи и учёт остатков на складе.",
+}) {
 
   const { user } = useAuth();
 
@@ -182,7 +174,39 @@ export default function Warehouse() {
 
 
 
+  const defaultSections = [
+    "tasks",
+    "inventory",
+    "items",
+    "movement",
+    "transactions",
+    "revision",
+    "suppliers",
+    "locations",
+    "queue",
+    "tsd",
+    "requests",
+    "tmc",
+  ];
+
+  const sections = useMemo(() => {
+    if (Array.isArray(allowedSections) && allowedSections.length > 0) {
+      return allowedSections;
+    }
+    return defaultSections;
+  }, [allowedSections]);
+
+  const sectionSet = useMemo(() => new Set(sections), [sections]);
+
   const [section, setSection] = useState("");
+
+  useEffect(() => {
+    if (!sections || sections.length === 0) return;
+    if (!section || !sections.includes(section)) {
+      setSection(sections[0]);
+    }
+  }, [section, sections]);
+
 
   const requestsRef = useRef(null);
   const tasksRef = useRef(null);
@@ -2224,12 +2248,10 @@ export default function Warehouse() {
 
       <div className="page-header">
 
-        <h1 className="page-title">Склад</h1>
+        <h1 className="page-title">{pageTitle}</h1>
 
         <p className="page-subtitle">
-
-          Заявки, задачи и учёт остатков на складе.
-
+          {pageSubtitle}
         </p>
 
       </div>
@@ -2240,353 +2262,95 @@ export default function Warehouse() {
 
       <div className="warehouse-section">
 
-        <div className="warehouse-grid">
-
-          <button
-
-            type="button"
-
-            className={
-
-              "warehouse-card" +
-
-              (section === "requests" ? " warehouse-card--active" : "")
-
-            }
-
-            onClick={() => setSection("requests")}
-
-          >
-
-            <div className="warehouse-card__icon">
-
-              <WarehouseTileIcon name="requests" />
-            </div>
-
-            <div className="warehouse-card__body">
-
-              <div className="warehouse-card__title">Заявки на склад</div>
-
-              <div className="warehouse-card__subtitle">
-
-                Создание заявок и контроль выдачи расходных материалов.
-
-              </div>
-
-            </div>
-
-          </button>
-
-
-
-          <button
-
-            type="button"
-
-            className={
-
-              "warehouse-card" +
-
-              (section === "tasks" ? " warehouse-card--active" : "")
-
-            }
-
-            onClick={() => setSection("tasks")}
-
-          >
-
-            <div className="warehouse-card__icon">
-
-              <WarehouseTileIcon name="tasks" />
-            </div>
-
-            <div className="warehouse-card__body">
-
-              <div className="warehouse-card__title">Задачи склада</div>
-
-              <div className="warehouse-card__subtitle">
-
-                Назначение задач, сроки и напоминания в Telegram.
-
-              </div>
-
-            </div>
-
-          </button>
-
-
-
-          <button
-
-            type="button"
-
-            className={
-
-              "warehouse-card" +
-
-              (section === "inventory" ? " warehouse-card--active" : "")
-
-            }
-
-            onClick={() => setSection("inventory")}
-
-          >
-
-            <div className="warehouse-card__icon">
-
-              <WarehouseTileIcon name="inventory" />
-            </div>
-
-            <div className="warehouse-card__body">
-
-              <div className="warehouse-card__title">Остатки</div>
-
-              <div className="warehouse-card__subtitle">
-
-                Текущие остатки по складу.
-
-              </div>
-
-            </div>
-
-          </button>
-
-          <button
-            type="button"
-            className={
-              "warehouse-card" +
-              (section === "items" ? " warehouse-card--active" : "")
-            }
-            onClick={() => setSection("items")}
-          >
-            <div className="warehouse-card__icon">
-              <WarehouseTileIcon name="items" />
-            </div>
-            <div className="warehouse-card__body">
-              <div className="warehouse-card__title">Номенклатура</div>
-              <div className="warehouse-card__subtitle">
-                Справочник товаров.
-              </div>
-            </div>
-          </button>
-
-          <button
-            type="button"
-            className={
-              "warehouse-card" +
-              (section === "movement" ? " warehouse-card--active" : "")
-            }
-            onClick={() => setSection("movement")}
-          >
-            <div className="warehouse-card__icon">
-              <WarehouseTileIcon name="movement" />
-            </div>
-            <div className="warehouse-card__body">
-              <div className="warehouse-card__title">
-                {"\u0418\u0441\u0442\u043e\u0440\u0438\u044f \u0434\u0432\u0438\u0436\u0435\u043d\u0438\u0439"}
-              </div>
-              <div className="warehouse-card__subtitle">
-                {"\u0416\u0443\u0440\u043d\u0430\u043b \u043e\u043f\u0435\u0440\u0430\u0446\u0438\u0439 \u043f\u043e \u0441\u043a\u043b\u0430\u0434\u0443."}
-              </div>
-            </div>
-          </button>
-
-          <button
-            type="button"
-            className={
-              "warehouse-card" +
-              (section === "transactions" ? " warehouse-card--active" : "")
-            }
-            onClick={() => setSection("transactions")}
-          >
-            <div className="warehouse-card__icon">
-              <WarehouseTileIcon name="transactions" />
-            </div>
-            <div className="warehouse-card__body">
-              <div className="warehouse-card__title">Транзакции</div>
-              <div className="warehouse-card__subtitle">
-                Все действия по ячейкам и товару.
-              </div>
-            </div>
-          </button>
-
-          <button
-            type="button"
-            className={
-              "warehouse-card" +
-              (section === "revision" ? " warehouse-card--active" : "")
-            }
-            onClick={() => setSection("revision")}
-          >
-            <div className="warehouse-card__icon">
-              <WarehouseTileIcon name="revision" />
-            </div>
-            <div className="warehouse-card__body">
-              <div className="warehouse-card__title">{"\u0420\u0435\u0432\u0438\u0437\u0438\u044f"}</div>
-              <div className="warehouse-card__subtitle">
-                {"\u0421\u043d\u0438\u043c\u043e\u043a \u0440\u0430\u0441\u0445\u043e\u0436\u0434\u0435\u043d\u0438\u0439 \u043f\u043e \u043a\u043e\u043d\u0442\u0440\u043e\u043b\u044e \u044f\u0447\u0435\u0435\u043a."}
-              </div>
-            </div>
-          </button>
-
-          <button
-            type="button"
-            className={
-              "warehouse-card" +
-              (section === "tmc" ? " warehouse-card--active" : "")
-            }
-            onClick={() => setSection("tmc")}
-          >
-            <div className="warehouse-card__icon">
-              <WarehouseTileIcon name="tmc" />
-            </div>
-            <div className="warehouse-card__body">
-              <div className="warehouse-card__title">{"\u0422\u041c\u0426"}</div>
-              <div className="warehouse-card__subtitle">
-                {"\u0420\u0430\u0441\u0445\u043e\u0434\u043d\u044b\u0435 \u043c\u0430\u0442\u0435\u0440\u0438\u0430\u043b\u044b \u0434\u043b\u044f \u043e\u0442\u0434\u0435\u043b\u043e\u0432 \u0438 \u0441\u043e\u0442\u0440\u0443\u0434\u043d\u0438\u043a\u043e\u0432."}
-              </div>
-            </div>
-          </button>
-
-
-
-          <button
-            type="button"
-            className={
-              "warehouse-card" +
-              (section === "suppliers" ? " warehouse-card--active" : "")
-            }
-            onClick={() => setSection("suppliers")}
-          >
-            <div className="warehouse-card__icon">
-              <WarehouseTileIcon name="suppliers" />
-            </div>
-            <div className="warehouse-card__body">
-              <div className="warehouse-card__title">Поставщики</div>
-              <div className="warehouse-card__subtitle">
-                Поставщики и заказы поставщику.
-              </div>
-            </div>
-          </button>
-
-          <button
-
-            type="button"
-
-            className={
-
-              "warehouse-card" +
-
-              (section === "locations" ? " warehouse-card--active" : "")
-
-            }
-
-            onClick={() => setSection("locations")}
-
-          >
-
-            <div className="warehouse-card__icon">
-              <WarehouseTileIcon name="locations" />
-            </div>
-            <div className="warehouse-card__body">
-
-              <div className="warehouse-card__title">{"\С\п\р\а\в\о\ч\н\и\к \я\ч\е\е\к"}</div>
-
-              <div className="warehouse-card__subtitle">
-
-                {"\С\о\з\д\а\н\и\е \я\ч\е\е\к \и \п\е\ч\а\т\ь QR-\э\т\и\к\е\т\о\к\."}
-
-              </div>
-
-            </div>
-
-          </button>
-
-
-
-          <button
-
-  type="button"
-
-  className={
-
-    "warehouse-card" +
-
-    (section === "queue" ? " warehouse-card--active" : "")
-
-  }
-
-  onClick={() => setSection("queue")}
-
->
-
-  <div className="warehouse-card__icon">
-
-    <WarehouseTileIcon name="queue" />
-  </div>
-
-  <div className="warehouse-card__body">
-
-    <div className="warehouse-card__title">
-
-      Машины поставщиков в очереди
-
-    </div>
-
-    <div className="warehouse-card__subtitle">
-
-      Очередь на разгрузку, ворота и время.
-
-    </div>
-
-  </div>
-
-</button>
-
-<button
-
-  type="button"
-
-  className={
-
-    "warehouse-card" +
-
-    (section === "tsd" ? " warehouse-card--active" : "")
-
-  }
-
-  onClick={() => setSection("tsd")}
-
->
-
-  <div className="warehouse-card__icon">
-
-    <WarehouseTileIcon name="tsd" />
-  </div>
-
-  <div className="warehouse-card__body">
-
-    <div className="warehouse-card__title">Мобильный ТСД</div>
-
-    <div className="warehouse-card__subtitle">
-
-      Сканирование штрихкодов и быстрые операции.
-
-    </div>
-
-  </div>
-
-</button>
-
+                <div className="warehouse-grid">
+          {[
+            {
+              key: "requests",
+              title: "Заявки на склад",
+              subtitle: "Создание заявок и контроль выдачи расходных материалов.",
+            },
+            {
+              key: "tasks",
+              title: "Задачи склада",
+              subtitle: "Назначение задач, сроки и напоминания в Telegram.",
+            },
+            {
+              key: "inventory",
+              title: "Остатки",
+              subtitle: "Текущие остатки по складу.",
+            },
+            {
+              key: "items",
+              title: "Номенклатура",
+              subtitle: "Справочник товаров.",
+            },
+            {
+              key: "movement",
+              title: "История движений",
+              subtitle: "Журнал операций по складу.",
+            },
+            {
+              key: "transactions",
+              title: "Транзакции",
+              subtitle: "Все действия по ячейкам и товару.",
+            },
+            {
+              key: "revision",
+              title: "Ревизия",
+              subtitle: "Снимок расхождений по контролю ячеек.",
+            },
+            {
+              key: "tmc",
+              title: "ТМЦ",
+              subtitle: "Расходные материалы для отделов и сотрудников.",
+            },
+            {
+              key: "suppliers",
+              title: "Поставщики",
+              subtitle: "Поставщики и заказы поставщику.",
+            },
+            {
+              key: "locations",
+              title: "Справочник ячеек",
+              subtitle: "Создание ячеек и печать QR-этикеток.",
+            },
+            {
+              key: "queue",
+              title: "Машины поставщиков в очереди",
+              subtitle: "Очередь на разгрузку, ворота и время.",
+            },
+            {
+              key: "tsd",
+              title: "Мобильный ТСД",
+              subtitle: "Сканирование штрихкодов и быстрые операции.",
+            },
+          ]
+            .filter((card) => sectionSet.has(card.key))
+            .map((card) => (
+              <button
+                key={card.key}
+                type="button"
+                className={
+                  "warehouse-card" +
+                  (section === card.key ? " warehouse-card--active" : "")
+                }
+                onClick={() => setSection(card.key)}
+              >
+                <div className="warehouse-card__icon">
+                  <WarehouseTileIcon name={card.key} />
+                </div>
+                <div className="warehouse-card__body">
+                  <div className="warehouse-card__title">{card.title}</div>
+                  <div className="warehouse-card__subtitle">
+                    {card.subtitle}
+                  </div>
+                </div>
+              </button>
+            ))}
         </div>
+{/* ====== ЗАЯВКИ ====== */}
 
-      </div>
-
-
-
-            {/* ====== ЗАЯВКИ ====== */}
-
-      {section === "requests" && (
+      {sectionSet.has("requests") && section === "requests" && (
 
         <div className="requests-section" ref={requestsRef}>
 
@@ -3079,7 +2843,7 @@ export default function Warehouse() {
 
                   {/* ====== ЗАДАЧИ ====== */}
 
-      {section === "tasks" && (
+      {sectionSet.has("tasks") && section === "tasks" && (
 
         <div className="tasks-section" ref={tasksRef}>
 
@@ -3703,7 +3467,7 @@ export default function Warehouse() {
 
             {/* ====== ОЧЕРЕДЬ МАШИН ПОСТАВЩИКОВ ====== */}
 
-      {section === "locations" && (
+      {sectionSet.has("locations") && section === "locations" && (
 
         <div className="locations-section" ref={locationsRef}>
 
@@ -3715,7 +3479,7 @@ export default function Warehouse() {
 
 
 
-      {section === "queue" && (
+      {sectionSet.has("queue") && section === "queue" && (
 
         <div className="queue-section" ref={queueRef}>
 
@@ -3727,7 +3491,7 @@ export default function Warehouse() {
 
 
 
-      {section === "tsd" && (
+      {sectionSet.has("tsd") && section === "tsd" && (
 
   <div className="tsd-section" ref={tsdRef}>
 
@@ -3739,19 +3503,19 @@ export default function Warehouse() {
 
 )}
 
-      {section === "transactions" && (
+      {sectionSet.has("transactions") && section === "transactions" && (
         <div className="inventory-section" ref={transactionsRef}>
           <StockTransactionsTab />
         </div>
       )}
 
-      {section === "revision" && (
+      {sectionSet.has("revision") && section === "revision" && (
         <div className="inventory-section" ref={revisionRef}>
           <StockRevisionTab />
         </div>
       )}
 
-      {section === "tmc" && (
+      {sectionSet.has("tmc") && section === "tmc" && (
         <div className="inventory-section" ref={tmcRef}>
           <TmcTab />
         </div>
@@ -3762,7 +3526,7 @@ export default function Warehouse() {
 
       {/* ====== ОСТАТКИ / ИНВЕНТАРИЗАЦИЯ / ЗАКУПКИ ====== */}
 
-      {["inventory","items","movement","suppliers"].includes(section) && (
+      {sectionSet.has(section) && ["inventory","items","movement","suppliers"].includes(section) && (
 
         <div className="inventory-section" ref={inventoryRef}>
 
