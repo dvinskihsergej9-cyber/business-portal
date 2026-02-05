@@ -9,17 +9,17 @@ export default function Layout() {
   const [drawerOpen, setDrawerOpen] = useState(false);
   const menu = [
     {
-      label: "Склад",
+      label: "\u0421\u043a\u043b\u0430\u0434",
       to: "/warehouse",
       roles: ["EMPLOYEE", "HR", "ACCOUNTING", "ADMIN"],
     },
     {
-      label: "ТМЦ и РМ",
+      label: "\u0422\u041c\u0426 \u0438 \u0420\u041c",
       to: "/tmc",
       roles: ["EMPLOYEE", "HR", "ACCOUNTING", "ADMIN"],
     },
     {
-      label: "Администрирование",
+      label: "\u0410\u0434\u043c\u0438\u043d\u0438\u0441\u0442\u0440\u0438\u0440\u043e\u0432\u0430\u043d\u0438\u0435",
       to: "/admin",
       roles: ["ADMIN"],
     },
@@ -30,10 +30,10 @@ export default function Layout() {
     : [];
 
   const pageTitle = useMemo(() => {
-    if (location.pathname.startsWith("/admin")) return "Администрирование";
-    if (location.pathname.startsWith("/tmc")) return "ТМЦ и РМ";
-    if (location.pathname.startsWith("/warehouse")) return "Склад";
-    return "Портал";
+    if (location.pathname.startsWith("/admin")) return "\u0410\u0434\u043c\u0438\u043d\u0438\u0441\u0442\u0440\u0438\u0440\u043e\u0432\u0430\u043d\u0438\u0435";
+    if (location.pathname.startsWith("/tmc")) return "\u0422\u041c\u0426 \u0438 \u0420\u041c";
+    if (location.pathname.startsWith("/warehouse")) return "\u0421\u043a\u043b\u0430\u0434";
+    return "\u041f\u043e\u0440\u0442\u0430\u043b";
   }, [location.pathname]);
 
   useEffect(() => {

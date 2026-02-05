@@ -23,24 +23,24 @@ import TmcTab from "../components/TmcTab";
 const API = API_BASE;
 
 const WAREHOUSE_EMOJI = {
-  requests: "??",
-  tasks: "?",
-  inventory: "??",
-  items: "??",
-  movement: "??",
-  transactions: "??",
-  revision: "??",
-  tmc: "??",
-  locations: "??",
-  queue: "??",
-  tsd: "??",
-  qr: "???",
-  receive: "??",
-  ship: "??",
-  audit: "??",
-  moves: "??",
-  suppliers: "??",
-  docs: "???",
+  requests: "📦",
+  tasks: "✅",
+  inventory: "🧾",
+  items: "📚",
+  movement: "\uD83D\uDCE6",
+  transactions: "\uD83D\uDD01",
+  revision: "\uD83E\uDDFE",
+  tmc: "\uD83D\uDCCE",
+  locations: "📍",
+  queue: "🚚",
+  tsd: "📱",
+  qr: "🏷️",
+  receive: "📦",
+  ship: "🚚",
+  audit: "🧾",
+  moves: "🔁",
+  suppliers: "🏭",
+  docs: "🗂️",
 };
 
 const WAREHOUSE_ICON_FALLBACK = {
@@ -90,21 +90,33 @@ function WarehouseTileIcon({ name }) {
 
 
 const TYPE_LABELS = {
-  ISSUE: "?????? ????????? ?????????? (??)",
-  RETURN: "??????? ?? ?????",
-  INCOME: "?????? (???????)",
+
+  ISSUE: "Выдача расходных материалов (РМ)",
+
+  RETURN: "Возврат на склад",
+
+  INCOME: "Приход (приёмка)",
+
 };
 
 
 
 const STATUS_LABELS = {
-  NEW: "?????",
-  IN_PROGRESS: "? ??????",
-  DONE: "?????????",
-  REJECTED: "?????????",
-  PENDING: "???????",
-  APPROVED: "????????",
-  COMPLETED: "??????",
+
+  NEW: "Новая",
+
+  IN_PROGRESS: "В работе",
+
+  DONE: "Выполнена",
+
+  REJECTED: "Отклонена",
+
+  PENDING: "Ожидает",
+
+  APPROVED: "Одобрено",
+
+  COMPLETED: "Выдано",
+
 };
 
 
@@ -152,18 +164,18 @@ const TASK_STATUS_OPTIONS = [
 
 
 const PO_STATUS_LABELS = {
-  DRAFT: "?? ???????",
-  SENT: "?? ???????",
-  PARTIAL: "????????",
-  RECEIVED: "???????",
-  CLOSED: "???????",
+  DRAFT: "Не получен",
+  SENT: "Не получен",
+  PARTIAL: "Частично",
+  RECEIVED: "Получен",
+  CLOSED: "Получен",
 };
 
 
 export default function Warehouse({
   allowedSections,
-  pageTitle = "Склад",
-  pageSubtitle = "Задачи и учёт остатков на складе.",
+  pageTitle = "\u0421\u043a\u043b\u0430\u0434",
+  pageSubtitle = "\u0417\u0430\u0434\u0430\u0447\u0438 \u0438 \u0443\u0447\u0451\u0442 \u043e\u0441\u0442\u0430\u0442\u043a\u043e\u0432 \u043d\u0430 \u0441\u043a\u043b\u0430\u0434\u0435.",
 }) {
 
   const { user } = useAuth();
@@ -175,18 +187,18 @@ export default function Warehouse({
 
 
   const defaultSections = [
+    "requests",
     "tasks",
     "inventory",
     "items",
     "movement",
     "transactions",
     "revision",
+    "tmc",
     "suppliers",
     "locations",
     "queue",
     "tsd",
-    "requests",
-    "tmc",
   ];
 
   const sections = useMemo(() => {
@@ -201,7 +213,7 @@ export default function Warehouse({
   const [section, setSection] = useState("");
 
   useEffect(() => {
-    if (!sections || sections.length === 0) return;
+    if (!sections || sections.length == 0) return;
     if (!section || !sections.includes(section)) {
       setSection(sections[0]);
     }
@@ -2262,68 +2274,20 @@ export default function Warehouse({
 
       <div className="warehouse-section">
 
-                <div className="warehouse-grid">
+        <div className="warehouse-grid">
           {[
-            {
-              key: "requests",
-              title: "Заявки на склад",
-              subtitle: "Создание заявок и контроль выдачи расходных материалов.",
-            },
-            {
-              key: "tasks",
-              title: "Задачи склада",
-              subtitle: "Назначение задач, сроки и напоминания в Telegram.",
-            },
-            {
-              key: "inventory",
-              title: "Остатки",
-              subtitle: "Текущие остатки по складу.",
-            },
-            {
-              key: "items",
-              title: "Номенклатура",
-              subtitle: "Справочник товаров.",
-            },
-            {
-              key: "movement",
-              title: "История движений",
-              subtitle: "Журнал операций по складу.",
-            },
-            {
-              key: "transactions",
-              title: "Транзакции",
-              subtitle: "Все действия по ячейкам и товару.",
-            },
-            {
-              key: "revision",
-              title: "Ревизия",
-              subtitle: "Снимок расхождений по контролю ячеек.",
-            },
-            {
-              key: "tmc",
-              title: "ТМЦ",
-              subtitle: "Расходные материалы для отделов и сотрудников.",
-            },
-            {
-              key: "suppliers",
-              title: "Поставщики",
-              subtitle: "Поставщики и заказы поставщику.",
-            },
-            {
-              key: "locations",
-              title: "Справочник ячеек",
-              subtitle: "Создание ячеек и печать QR-этикеток.",
-            },
-            {
-              key: "queue",
-              title: "Машины поставщиков в очереди",
-              subtitle: "Очередь на разгрузку, ворота и время.",
-            },
-            {
-              key: "tsd",
-              title: "Мобильный ТСД",
-              subtitle: "Сканирование штрихкодов и быстрые операции.",
-            },
+            { key: "requests", title: "\u0417\u0430\u044f\u0432\u043a\u0438 \u043d\u0430 \u0441\u043a\u043b\u0430\u0434", subtitle: "\u0421\u043e\u0437\u0434\u0430\u043d\u0438\u0435 \u0437\u0430\u044f\u0432\u043e\u043a \u0438 \u043a\u043e\u043d\u0442\u0440\u043e\u043b\u044c \u0432\u044b\u0434\u0430\u0447\u0438 \u0440\u0430\u0441\u0445\u043e\u0434\u043d\u044b\u0445 \u043c\u0430\u0442\u0435\u0440\u0438\u0430\u043b\u043e\u0432." },
+            { key: "tasks", title: "\u0417\u0430\u0434\u0430\u0447\u0438 \u0441\u043a\u043b\u0430\u0434\u0430", subtitle: "\u041d\u0430\u0437\u043d\u0430\u0447\u0435\u043d\u0438\u0435 \u0437\u0430\u0434\u0430\u0447, \u0441\u0440\u043e\u043a\u0438 \u0438 \u043d\u0430\u043f\u043e\u043c\u0438\u043d\u0430\u043d\u0438\u044f \u0432 Telegram." },
+            { key: "inventory", title: "\u041e\u0441\u0442\u0430\u0442\u043a\u0438", subtitle: "\u0422\u0435\u043a\u0443\u0449\u0438\u0435 \u043e\u0441\u0442\u0430\u0442\u043a\u0438 \u043f\u043e \u0441\u043a\u043b\u0430\u0434\u0443." },
+            { key: "items", title: "\u041d\u043e\u043c\u0435\u043d\u043a\u043b\u0430\u0442\u0443\u0440\u0430", subtitle: "\u0421\u043f\u0440\u0430\u0432\u043e\u0447\u043d\u0438\u043a \u0442\u043e\u0432\u0430\u0440\u043e\u0432." },
+            { key: "movement", title: "\u0418\u0441\u0442\u043e\u0440\u0438\u044f \u0434\u0432\u0438\u0436\u0435\u043d\u0438\u0439", subtitle: "\u0416\u0443\u0440\u043d\u0430\u043b \u043e\u043f\u0435\u0440\u0430\u0446\u0438\u0439 \u043f\u043e \u0441\u043a\u043b\u0430\u0434\u0443." },
+            { key: "transactions", title: "\u0422\u0440\u0430\u043d\u0437\u0430\u043a\u0446\u0438\u0438", subtitle: "\u0412\u0441\u0435 \u0434\u0435\u0439\u0441\u0442\u0432\u0438\u044f \u043f\u043e \u044f\u0447\u0435\u0439\u043a\u0430\u043c \u0438 \u0442\u043e\u0432\u0430\u0440\u0443." },
+            { key: "revision", title: "\u0420\u0435\u0432\u0438\u0437\u0438\u044f", subtitle: "\u0421\u043d\u0438\u043c\u043e\u043a \u0440\u0430\u0441\u0445\u043e\u0436\u0434\u0435\u043d\u0438\u0439 \u043f\u043e \u043a\u043e\u043d\u0442\u0440\u043e\u043b\u044e \u044f\u0447\u0435\u0435\u043a." },
+            { key: "tmc", title: "\u0422\u041c\u0426", subtitle: "\u0420\u0430\u0441\u0445\u043e\u0434\u043d\u044b\u0435 \u043c\u0430\u0442\u0435\u0440\u0438\u0430\u043b\u044b \u0434\u043b\u044f \u043e\u0442\u0434\u0435\u043b\u043e\u0432 \u0438 \u0441\u043e\u0442\u0440\u0434\u043d\u0438\u043a\u043e\u0432." },
+            { key: "suppliers", title: "\u041f\u043e\u0441\u0442\u0430\u0432\u0449\u0438\u043a\u0438", subtitle: "\u041f\u043e\u0441\u0442\u0430\u0432\u0449\u0438\u043a\u0438 \u0438 \u0437\u0430\u043a\u0430\u0437\u044b \u043f\u043e\u0441\u0442\u0430\u0432\u0449\u0438\u043a\u0443." },
+            { key: "locations", title: "\u0421\u043f\u0440\u0430\u0432\u043e\u0447\u043d\u0438\u043a \u044f\u0447\u0435\u0435\u043a", subtitle: "\u0421\u043e\u0437\u0434\u0430\u043d\u0438\u0435 \u044f\u0447\u0435\u0435\u043a \u0438 \u043f\u0435\u0447\u0430\u0442\u044c QR-\u044d\u0442\u0438\u043a\u0435\u0442\u043e\u043a." },
+            { key: "queue", title: "\u041c\u0430\u0448\u0438\u043d\u044b \u043f\u043e\u0441\u0442\u0430\u0432\u0449\u0438\u043a\u043e\u0432 \u0432 \u043e\u0447\u0435\u0440\u0435\u0434\u0438", subtitle: "\u041e\u0447\u0435\u0440\u0435\u0434\u044c \u043d\u0430 \u0440\u0430\u0437\u0433\u0440\u0443\u0437\u043a\u0443, \u0432\u043e\u0440\u043e\u0442\u0430 \u0438 \u0432\u0440\u0435\u043c\u044f." },
+            { key: "tsd", title: "\u041c\u043e\u0431\u0438\u043b\u044c\u043d\u044b\u0439 \u0422\u0421\u0414", subtitle: "\u0421\u043a\u0430\u043d\u0438\u0440\u043e\u0432\u0430\u043d\u0438\u0435 \u0448\u0442\u0440\u0438\u0445\u043a\u043e\u0434\u043e\u0432 \u0438 \u0431\u044b\u0441\u0442\u0440\u044b\u0435 \u043e\u043f\u0435\u0440\u0430\u0446\u0438\u0438." },
           ]
             .filter((card) => sectionSet.has(card.key))
             .map((card) => (
@@ -2348,7 +2312,10 @@ export default function Warehouse({
               </button>
             ))}
         </div>
-{/* ====== ЗАЯВКИ ====== */}
+
+      </div>
+
+        {/* ======    ЗАЯВКИ ====== */}
 
       {sectionSet.has("requests") && section === "requests" && (
 
