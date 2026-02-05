@@ -2765,21 +2765,31 @@ async function autoPostRequestToStock(requestId, userId) {
     // Р В РІР‚СћР РЋР С“Р В Р’В»Р В РЎвЂ Р РЋР РЉР РЋРІР‚С™Р В РЎвЂў Р РЋР вЂљР В Р’В°Р РЋР С“Р РЋРІР‚В¦Р В РЎвЂўР В РўвЂ Р Р†Р вЂљРІР‚Сњ Р В РЎвЂ”Р РЋР вЂљР В РЎвЂўР В Р вЂ Р В Р’ВµР РЋР вЂљР РЋР РЏР В Р’ВµР В РЎВ, Р РЋРІР‚В¦Р В Р вЂ Р В Р’В°Р РЋРІР‚С™Р В РЎвЂР РЋРІР‚С™ Р В Р’В»Р В РЎвЂ Р В РЎвЂўР РЋР С“Р РЋРІР‚С™Р В Р’В°Р РЋРІР‚С™Р В РЎвЂќР В Р’В°
     if (movementType === "ISSUE") {
       try {
-        const stockInfo = await calculateStockAfterMovement(
-          invItem.id,
-          "ISSUE",
-          q
-        );
-
-        if (stockInfo.newStock < 0) {
-          console.warn(
-            `[Warehouse] Р В РЎСљР В Р’ВµР В РўвЂР В РЎвЂўР РЋР С“Р РЋРІР‚С™Р В Р’В°Р РЋРІР‚С™Р В РЎвЂўР РЋРІР‚РЋР В Р вЂ¦Р В РЎвЂў Р В РЎвЂўР РЋР С“Р РЋРІР‚С™Р В Р’В°Р РЋРІР‚С™Р В РЎвЂќР В Р’В° Р В РЎвЂ”Р В РЎвЂў "${item.name}" Р В РЎвЂ”Р РЋР вЂљР В РЎвЂ Р В Р’В°Р В Р вЂ Р РЋРІР‚С™Р В РЎвЂў-Р РЋР С“Р В РЎвЂ”Р В РЎвЂР РЋР С“Р В Р’В°Р В Р вЂ¦Р В РЎвЂР В РЎвЂ Р В РЎвЂ”Р В РЎвЂў Р В Р’В·Р В Р’В°Р РЋР РЏР В Р вЂ Р В РЎвЂќР В Р’Вµ #${id} (Р В Р’ВµР РЋР С“Р РЋРІР‚С™Р РЋР Р‰ ${stockInfo.current}, Р В Р вЂ¦Р РЋРЎвЂњР В Р’В¶Р В Р вЂ¦Р В РЎвЂў ${q})`
+        if (invItem.category === "TMC") {
+          const current = await getTmcStockForItem(invItem.id);
+          if (current < q) {
+            console.warn(
+              `[Warehouse] Insufficient stock for "${item.name}" in request #${id} (have ${current}, need ${q})`
+            );
+            continue;
+          }
+        } else {
+          const stockInfo = await calculateStockAfterMovement(
+            invItem.id,
+            "ISSUE",
+            q
           );
-          continue;
+
+          if (stockInfo.newStock < 0) {
+            console.warn(
+              `[Warehouse] Insufficient stock for "${item.name}" in request #${id} (have ${stockInfo.current}, need ${q})`
+            );
+            continue;
+          }
         }
       } catch (e) {
         console.error(
-          `[Warehouse] Р В РЎвЂєР РЋРІвЂљВ¬Р В РЎвЂР В Р’В±Р В РЎвЂќР В Р’В° Р РЋР вЂљР В Р’В°Р РЋР С“Р РЋРІР‚РЋР РЋРІР‚ВР РЋРІР‚С™Р В Р’В° Р В РЎвЂўР РЋР С“Р РЋРІР‚С™Р В Р’В°Р РЋРІР‚С™Р В РЎвЂќР В Р’В° Р В РЎвЂ”Р В РЎвЂў "${item.name}" Р В РЎвЂ”Р РЋР вЂљР В РЎвЂ Р В Р’В°Р В Р вЂ Р РЋРІР‚С™Р В РЎвЂў-Р В РЎвЂ”Р РЋР вЂљР В РЎвЂўР В Р вЂ Р В Р’ВµР В РўвЂР В Р’ВµР В Р вЂ¦Р В РЎвЂР В РЎвЂ Р В Р’В·Р В Р’В°Р РЋР РЏР В Р вЂ Р В РЎвЂќР В РЎвЂ #${id}:`,
+          `[Warehouse] Stock check error for request #${id}:`,
           e
         );
         continue;
