@@ -1,4 +1,4 @@
-﻿
+
 
 import { useEffect, useMemo, useRef, useState, Fragment } from "react";
 
@@ -24,22 +24,22 @@ const API = API_BASE;
 
 const WAREHOUSE_EMOJI = {
   tasks: "вњ…",
-  inventory: "рџ§ѕ",
+  inventory: "🧾",
   items: "рџ“љ",
   movement: "\uD83D\uDCE6",
   transactions: "\uD83D\uDD01",
   revision: "\uD83E\uDDFE",
   tmc: "\uD83D\uDCCE",
   locations: "рџ“Ќ",
-  queue: "рџљљ",
+  queue: "🚚",
   tsd: "рџ“±",
-  qr: "рџЏ·пёЏ",
+  qr: "🏷️",
   receive: "рџ“¦",
-  ship: "рџљљ",
-  audit: "рџ§ѕ",
+  ship: "🚚",
+  audit: "🧾",
   moves: "рџ”Ѓ",
-  suppliers: "рџЏ­",
-  docs: "рџ—‚пёЏ",
+  suppliers: "🏭",
+  docs: "рџ—‚️",
 };
 
 const WAREHOUSE_ICON_FALLBACK = {
@@ -64,7 +64,7 @@ const WAREHOUSE_ICON_FALLBACK = {
 
 function WarehouseTileIcon({ name }) {
   const emoji = WAREHOUSE_EMOJI[name];
-  const fallback = WAREHOUSE_ICON_FALLBACK[name] || "вЂў";
+  const fallback = WAREHOUSE_ICON_FALLBACK[name] || "•";
 
   if (!emoji) {
     return (
@@ -89,11 +89,11 @@ function WarehouseTileIcon({ name }) {
 
 const TYPE_LABELS = {
 
-  ISSUE: "Р’С‹РґР°С‡Р° СЂР°СЃС…РѕРґРЅС‹С… РјР°С‚РµСЂРёР°Р»РѕРІ (Р Рњ)",
+  ISSUE: "Р’С‹даС‡а расС…однС‹С… маС‚ериалов (РМ)",
 
-  RETURN: "Р’РѕР·РІСЂР°С‚ РЅР° СЃРєР»Р°Рґ",
+  RETURN: "Р’озвраС‚ на склад",
 
-  INCOME: "РџСЂРёС…РѕРґ (РїСЂРёС‘РјРєР°)",
+  INCOME: "ПриС…од (приС‘мка)",
 
 };
 
@@ -101,19 +101,19 @@ const TYPE_LABELS = {
 
 const STATUS_LABELS = {
 
-  NEW: "РќРѕРІР°СЏ",
+  NEW: "Новая",
 
-  IN_PROGRESS: "Р’ СЂР°Р±РѕС‚Рµ",
+  IN_PROGRESS: "Р’ рабоС‚е",
 
-  DONE: "Р’С‹РїРѕР»РЅРµРЅР°",
+  DONE: "Р’С‹полнена",
 
-  REJECTED: "РћС‚РєР»РѕРЅРµРЅР°",
+  REJECTED: "ОС‚клонена",
 
-  PENDING: "РћР¶РёРґР°РµС‚",
+  PENDING: "ОжидаеС‚",
 
-  APPROVED: "РћРґРѕР±СЂРµРЅРѕ",
+  APPROVED: "Одобрено",
 
-  COMPLETED: "Р’С‹РґР°РЅРѕ",
+  COMPLETED: "Р’С‹дано",
 
 };
 
@@ -121,13 +121,13 @@ const STATUS_LABELS = {
 
 const STATUS_OPTIONS = [
 
-  { value: "NEW", label: "РќРѕРІР°СЏ" },
+  { value: "NEW", label: "Новая" },
 
-  { value: "IN_PROGRESS", label: "Р’ СЂР°Р±РѕС‚Рµ" },
+  { value: "IN_PROGRESS", label: "Р’ рабоС‚е" },
 
-  { value: "DONE", label: "Р’С‹РїРѕР»РЅРµРЅР°" },
+  { value: "DONE", label: "Р’С‹полнена" },
 
-  { value: "REJECTED", label: "РћС‚РєР»РѕРЅРµРЅР°" },
+  { value: "REJECTED", label: "ОС‚клонена" },
 
 ];
 
@@ -135,13 +135,13 @@ const STATUS_OPTIONS = [
 
 const TASK_STATUS_LABELS = {
 
-  NEW: "РќРµ РІС‹РїРѕР»РЅРµРЅР°",
+  NEW: "Не вС‹полнена",
 
-  IN_PROGRESS: "Р’ СЂР°Р±РѕС‚Рµ",
+  IN_PROGRESS: "Р’ рабоС‚е",
 
-  DONE: "Р’С‹РїРѕР»РЅРµРЅР°",
+  DONE: "Р’С‹полнена",
 
-  CANCELLED: "РћС‚РјРµРЅРµРЅР°",
+  CANCELLED: "ОС‚менена",
 
 };
 
@@ -149,24 +149,24 @@ const TASK_STATUS_LABELS = {
 
 const TASK_STATUS_OPTIONS = [
 
-  { value: "NEW", label: "РќРµ РІС‹РїРѕР»РЅРµРЅР°" },
+  { value: "NEW", label: "Не вС‹полнена" },
 
-  { value: "IN_PROGRESS", label: "Р’ СЂР°Р±РѕС‚Рµ" },
+  { value: "IN_PROGRESS", label: "Р’ рабоС‚е" },
 
-  { value: "DONE", label: "Р’С‹РїРѕР»РЅРµРЅР°" },
+  { value: "DONE", label: "Р’С‹полнена" },
 
-  { value: "CANCELLED", label: "РћС‚РјРµРЅРµРЅР°" },
+  { value: "CANCELLED", label: "ОС‚менена" },
 
 ];
 
 
 
 const PO_STATUS_LABELS = {
-  DRAFT: "РќРµ РїРѕР»СѓС‡РµРЅ",
-  SENT: "РќРµ РїРѕР»СѓС‡РµРЅ",
-  PARTIAL: "Р§Р°СЃС‚РёС‡РЅРѕ",
-  RECEIVED: "РџРѕР»СѓС‡РµРЅ",
-  CLOSED: "РџРѕР»СѓС‡РµРЅ",
+  DRAFT: "Не полуС‡ен",
+  SENT: "Не полуС‡ен",
+  PARTIAL: "ЧасС‚иС‡но",
+  RECEIVED: "ПолуС‡ен",
+  CLOSED: "ПолуС‡ен",
 };
 
 
@@ -192,7 +192,7 @@ export default function Warehouse() {
 
 
 
-  // ===== Р—РђРЇР’РљР РќРђ РЎРљР›РђР” =====
+  // ===== Р—АЯР’КР НА СКР›АР” =====
 
   const [taskForm, setTaskForm] = useState({
 
@@ -232,7 +232,7 @@ export default function Warehouse() {
 
 
 
-  // ===== РРќР’Р•РќРўРђР РР—РђР¦РРЇ / РћРЎРўРђРўРљР / РџРћРЎРўРђР’Р©РРљР / Р—РђРљРЈРџРљР =====
+  // ===== РНР’Р•НТАРРР—АЦРЯ / ОСТАТКР / ПОСТАР’ЩРКР / Р—АКУПКР =====
 
   const [inventoryItems, setInventoryItems] = useState([]);
 
@@ -332,7 +332,7 @@ export default function Warehouse() {
 
 
 
-  // РџРѕСЃС‚Р°РІС‰РёРєРё
+  // ПосС‚авС‰ики
 
   const [suppliers, setSuppliers] = useState([]);
 
@@ -356,7 +356,7 @@ export default function Warehouse() {
 
 
 
-  // Р—Р°РєР°Р·С‹ РїРѕСЃС‚Р°РІС‰РёРєСѓ
+  // Р—аказС‹ посС‚авС‰ику
 
   const [purchaseOrders, setPurchaseOrders] = useState([]);
 
@@ -384,11 +384,11 @@ export default function Warehouse() {
 
 
 
-  // ===== API: Р—РђРЇР’РљР =====
+  // ===== API: Р—АЯР’КР =====
 
 
 
-  // ===== API: Р—РђР”РђР§Р =====
+  // ===== API: Р—АР”АЧР =====
 
   const loadTasks = async () => {
 
@@ -410,7 +410,7 @@ export default function Warehouse() {
 
       if (!myRes.ok) {
 
-        throw new Error(myData.message || "РћС€РёР±РєР° Р·Р°РіСЂСѓР·РєРё РІР°С€РёС… Р·Р°РґР°С‡ СЃРєР»Р°РґР°");
+        throw new Error(myData.message || "ОС€ибка загрузки ваС€иС… задаС‡ склада");
 
       }
 
@@ -430,7 +430,7 @@ export default function Warehouse() {
 
         if (!allRes.ok) {
 
-          throw new Error(allData.message || "РћС€РёР±РєР° Р·Р°РіСЂСѓР·РєРё Р·Р°РґР°С‡ СЃРєР»Р°РґР°");
+          throw new Error(allData.message || "ОС€ибка загрузки задаС‡ склада");
 
         }
 
@@ -458,7 +458,7 @@ export default function Warehouse() {
 
 
 
-  // ===== API: РРќР’Р•РќРўРђР РР—РђР¦РРЇ / РћРЎРўРђРўРљР =====
+  // ===== API: РНР’Р•НТАРРР—АЦРЯ / ОСТАТКР =====
 
   const loadInventory = async () => {
 
@@ -496,13 +496,13 @@ export default function Warehouse() {
 
       if (!itemsRes.ok) {
 
-        throw new Error(itemsData.message || "РћС€РёР±РєР° Р·Р°РіСЂСѓР·РєРё С‚РѕРІР°СЂРѕРІ");
+        throw new Error(itemsData.message || "ОС€ибка загрузки С‚оваров");
 
       }
 
       if (!stockRes.ok) {
 
-        throw new Error(stockData.message || "РћС€РёР±РєР° Р·Р°РіСЂСѓР·РєРё РѕСЃС‚Р°С‚РєРѕРІ");
+        throw new Error(stockData.message || "ОС€ибка загрузки осС‚аС‚ков");
 
       }
 
@@ -533,12 +533,12 @@ export default function Warehouse() {
       });
       const data = await res.json();
       if (!res.ok) {
-        throw new Error(data.message || "РћС€РёР±РєР° Р·Р°РіСЂСѓР·РєРё РўРњР¦");
+        throw new Error(data.message || "ОС€ибка загрузки ТМЦ");
       }
       setTmcStock(data || []);
     } catch (e) {
       console.error(e);
-      setError(e.message || "РћС€РёР±РєР° Р·Р°РіСЂСѓР·РєРё РўРњР¦");
+      setError(e.message || "ОС€ибка загрузки ТМЦ");
     }
   };
 
@@ -566,7 +566,7 @@ export default function Warehouse() {
 
       if (!res.ok) {
 
-        throw new Error(data.message || "РћС€РёР±РєР° Р·Р°РіСЂСѓР·РєРё РїРѕСЃС‚Р°РІС‰РёРєРѕРІ");
+        throw new Error(data.message || "ОС€ибка загрузки посС‚авС‰иков");
 
       }
 
@@ -614,7 +614,7 @@ export default function Warehouse() {
 
         throw new Error(
 
-          data.message || "РћС€РёР±РєР° Р·Р°РіСЂСѓР·РєРё Р·Р°РєР°Р·РѕРІ РїРѕСЃС‚Р°РІС‰РёРєСѓ"
+          data.message || "ОС€ибка загрузки заказов посС‚авС‰ику"
 
         );
 
@@ -674,13 +674,13 @@ export default function Warehouse() {
 
         } else {
 
-          console.error("РћС€РёР±РєР° Р·Р°РіСЂСѓР·РєРё РЅРѕРјРµРЅРєР»Р°С‚СѓСЂС‹:", data);
+          console.error("ОС€ибка загрузки номенклаС‚урС‹:", data);
 
         }
 
       } catch (e) {
 
-        console.error("РћС€РёР±РєР° Р·Р°РіСЂСѓР·РєРё РЅРѕРјРµРЅРєР»Р°С‚СѓСЂС‹:", e);
+        console.error("ОС€ибка загрузки номенклаС‚урС‹:", e);
 
       }
 
@@ -749,7 +749,7 @@ export default function Warehouse() {
 
 
 
-  // ===== РҐР•Р›РџР•Р Р« Р”Р›РЇ Р—РђРЇР’РћРљ =====
+  // ===== ХР•Р›ПР•РЫ Р”Р›Я Р—АЯР’ОК =====
 
   
 
@@ -759,9 +759,9 @@ export default function Warehouse() {
 
 
 
-  // РўРѕРІР°СЂС‹, Сѓ РєРѕС‚РѕСЂС‹С… С‚РµРєСѓС‰РёР№ РѕСЃС‚Р°С‚РѕРє > 0 (РґР»СЏ РІС‹РїР°РґР°СЋС‰РµРіРѕ СЃРїРёСЃРєР° РІ Р·Р°СЏРІРєРµ)
+  // ТоварС‹, у коС‚орС‹С… С‚екуС‰иР№ осС‚аС‚ок > 0 (для вС‹падаюС‰его списка в заявке)
 
-  // ===== РҐР•Р›РџР•Р Р« Р”Р›РЇ Р—РђР”РђР§ =====
+  // ===== ХР•Р›ПР•РЫ Р”Р›Я Р—АР”АЧ =====
 
   const handleCreateTask = async (e) => {
 
@@ -807,7 +807,7 @@ export default function Warehouse() {
 
       if (!res.ok) {
 
-        throw new Error(data.message || "РћС€РёР±РєР° СЃРѕР·РґР°РЅРёСЏ Р·Р°РґР°С‡Рё");
+        throw new Error(data.message || "ОС€ибка создания задаС‡и");
 
       }
 
@@ -891,7 +891,7 @@ export default function Warehouse() {
 
       if (!res.ok) {
 
-        throw new Error(data.message || "РћС€РёР±РєР° РѕР±РЅРѕРІР»РµРЅРёСЏ СЃС‚Р°С‚СѓСЃР° Р·Р°РґР°С‡Рё");
+        throw new Error(data.message || "ОС€ибка обновления сС‚аС‚уса задаС‡и");
 
       }
 
@@ -999,7 +999,7 @@ export default function Warehouse() {
 
 
 
-  // ===== РҐР•Р›РџР•Р Р« Р”Р›РЇ РРќР’Р•РќРўРђР РР—РђР¦РР / Р—РђРљРЈРџРћРљ =====
+  // ===== ХР•Р›ПР•РЫ Р”Р›Я РНР’Р•НТАРРР—АЦРР / Р—АКУПОК =====
 
   const handleCreateItem = async (e) => {
 
@@ -1013,25 +1013,25 @@ export default function Warehouse() {
 
       if (!itemForm.name.trim()) {
 
-        return setInventoryError("РќР°РёРјРµРЅРѕРІР°РЅРёРµ С‚РѕРІР°СЂР° РѕР±СЏР·Р°С‚РµР»СЊРЅРѕ.");
+        return setInventoryError("Наименование С‚овара обязаС‚ельно.");
 
       }
 
       if (!itemForm.sku.trim()) {
 
-        return setInventoryError("РђСЂС‚РёРєСѓР» (SKU) РѕР±СЏР·Р°С‚РµР»РµРЅ.");
+        return setInventoryError("АрС‚икул (SKU) обязаС‚елен.");
 
       }
 
       if (!itemForm.barcode.trim()) {
 
-        return setInventoryError("РЁС‚СЂРёС…РєРѕРґ РѕР±СЏР·Р°С‚РµР»РµРЅ.");
+        return setInventoryError("ШС‚риС…код обязаС‚елен.");
 
       }
 
       if (!itemForm.unit.trim()) {
 
-        return setInventoryError("Р•РґРёРЅРёС†Р° РёР·РјРµСЂРµРЅРёСЏ РѕР±СЏР·Р°С‚РµР»СЊРЅР°.");
+        return setInventoryError("Р•диниС†а измерения обязаС‚ельна.");
 
       }
 
@@ -1049,7 +1049,7 @@ export default function Warehouse() {
 
         return setInventoryError(
 
-          "РњРёРЅРёРјР°Р»СЊРЅС‹Р№ РѕСЃС‚Р°С‚РѕРє РґРѕР»Р¶РµРЅ Р±С‹С‚СЊ РїРѕР»РѕР¶РёС‚РµР»СЊРЅС‹Рј С‡РёСЃР»РѕРј."
+          "МинимальнС‹Р№ осС‚аС‚ок должен бС‹С‚ь положиС‚ельнС‹м С‡ислом."
 
         );
 
@@ -1061,7 +1061,7 @@ export default function Warehouse() {
 
         return setInventoryError(
 
-          "РњР°РєСЃРёРјР°Р»СЊРЅС‹Р№ РѕСЃС‚Р°С‚РѕРє РґРѕР»Р¶РµРЅ Р±С‹С‚СЊ РїРѕР»РѕР¶РёС‚РµР»СЊРЅС‹Рј С‡РёСЃР»РѕРј."
+          "МаксимальнС‹Р№ осС‚аС‚ок должен бС‹С‚ь положиС‚ельнС‹м С‡ислом."
 
         );
 
@@ -1073,7 +1073,7 @@ export default function Warehouse() {
 
         return setInventoryError(
 
-          "Р¦РµРЅР° Р·Р° РµРґРёРЅРёС†Сѓ РґРѕР»Р¶РЅР° Р±С‹С‚СЊ РїРѕР»РѕР¶РёС‚РµР»СЊРЅС‹Рј С‡РёСЃР»РѕРј."
+          "Цена за единиС†у должна бС‹С‚ь положиС‚ельнС‹м С‡ислом."
 
         );
 
@@ -1117,7 +1117,7 @@ export default function Warehouse() {
 
       if (!res.ok) {
 
-        throw new Error(data.message || "РћС€РёР±РєР° СЃРѕР·РґР°РЅРёСЏ С‚РѕРІР°СЂР°");
+        throw new Error(data.message || "ОС€ибка создания С‚овара");
 
       }
 
@@ -1169,7 +1169,7 @@ export default function Warehouse() {
 
       if (!movementForm.itemId || !movementForm.quantity) {
 
-        return setInventoryError("Р’С‹Р±РµСЂРёС‚Рµ С‚РѕРІР°СЂ Рё СѓРєР°Р¶РёС‚Рµ РєРѕР»РёС‡РµСЃС‚РІРѕ.");
+        return setInventoryError("Р’С‹бериС‚е С‚овар и укажиС‚е колиС‡есС‚во.");
 
       }
 
@@ -1227,7 +1227,7 @@ export default function Warehouse() {
 
         throw new Error(
 
-          data.message || "РћС€РёР±РєР° СЃРѕР·РґР°РЅРёСЏ РґРІРёР¶РµРЅРёСЏ РїРѕ СЃРєР»Р°РґСѓ"
+          data.message || "ОС€ибка создания движения по складу"
 
         );
 
@@ -1321,7 +1321,7 @@ export default function Warehouse() {
 
     const confirmed = window.confirm(
 
-      `РЈРґР°Р»РёС‚СЊ С‚РѕРІР°СЂ "${itemName}" Рё РІСЃРµ РґРІРёР¶РµРЅРёСЏ РїРѕ РЅРµРјСѓ?`
+      `УдалиС‚ь С‚овар "${itemName}" и все движения по нему?`
 
     );
 
@@ -1361,7 +1361,7 @@ export default function Warehouse() {
 
         throw new Error(
 
-          (data && data.message) || "РћС€РёР±РєР° РїСЂРё СѓРґР°Р»РµРЅРёРё С‚РѕРІР°СЂР°"
+          (data && data.message) || "ОС€ибка при удалении С‚овара"
 
         );
 
@@ -1401,7 +1401,7 @@ export default function Warehouse() {
 
       if (!res.ok) {
 
-        let errorMessage = "РќРµ СѓРґР°Р»РѕСЃСЊ СЃС„РѕСЂРјРёСЂРѕРІР°С‚СЊ С„Р°Р№Р» Р·Р°РєР°Р·Р°";
+        let errorMessage = "Не удалось сС„ормироваС‚ь С„аР№л заказа";
 
         try {
 
@@ -1459,7 +1459,7 @@ export default function Warehouse() {
 
       pricePerUnit: item.defaultPrice || "",
 
-      comment: "РџРѕСЃС‚СѓРїР»РµРЅРёРµ С‚РѕРІР°СЂР°",
+      comment: "ПосС‚упление С‚овара",
 
     });
 
@@ -1527,7 +1527,7 @@ export default function Warehouse() {
 
       if (!supplierForm.name.trim()) {
 
-        return setSuppliersError("РќР°Р·РІР°РЅРёРµ РїРѕСЃС‚Р°РІС‰РёРєР° РѕР±СЏР·Р°С‚РµР»СЊРЅРѕ.");
+        return setSuppliersError("Название посС‚авС‰ика обязаС‚ельно.");
 
       }
 
@@ -1565,7 +1565,7 @@ export default function Warehouse() {
 
       if (!res.ok) {
 
-        throw new Error(data.message || "РћС€РёР±РєР° СЃРѕР·РґР°РЅРёСЏ РїРѕСЃС‚Р°РІС‰РёРєР°");
+        throw new Error(data.message || "ОС€ибка создания посС‚авС‰ика");
 
       }
 
@@ -1611,7 +1611,7 @@ export default function Warehouse() {
 
       setSuppliersError(
 
-        "РЎРЅР°С‡Р°Р»Р° СЃРѕР·РґР°Р№С‚Рµ С…РѕС‚СЏ Р±С‹ РѕРґРЅРѕРіРѕ РїРѕСЃС‚Р°РІС‰РёРєР° РЅРёР¶Рµ РЅР° СЃС‚СЂР°РЅРёС†Рµ."
+        "СнаС‡ала создаР№С‚е С…оС‚я бС‹ одного посС‚авС‰ика ниже на сС‚раниС†е."
 
       );
 
@@ -1661,7 +1661,7 @@ export default function Warehouse() {
 
       setInventoryError(
 
-        "РќРµС‚ С‚РѕРІР°СЂРѕРІ РЅРёР¶Рµ РјРёРЅРёРјР°Р»СЊРЅРѕРіРѕ РѕСЃС‚Р°С‚РєР°, Р·Р°РєР°Р· РЅРµ С‚СЂРµР±СѓРµС‚СЃСЏ."
+        "НеС‚ С‚оваров ниже минимального осС‚аС‚ка, заказ не С‚ребуеС‚ся."
 
       );
 
@@ -1681,7 +1681,7 @@ export default function Warehouse() {
 
   const handlePurchaseOrderStatusReceived = async (orderId) => {
 
-    const ok = window.confirm("РџСЂРѕРІРµСЃС‚Рё Р·Р°РєР°Р· Рё РѕРїСЂРёС…РѕРґРѕРІР°С‚СЊ С‚РѕРІР°СЂ РЅР° СЃРєР»Р°Рґ?");
+    const ok = window.confirm("ПровесС‚и заказ и оприС…одоваС‚ь С‚овар на склад?");
 
     if (!ok) return;
 
@@ -1711,7 +1711,7 @@ export default function Warehouse() {
 
         throw new Error(
 
-          data.message || "РћС€РёР±РєР° СЃРјРµРЅС‹ СЃС‚Р°С‚СѓСЃР° Р·Р°РєР°Р·Р° РїРѕСЃС‚Р°РІС‰РёРєСѓ"
+          data.message || "ОС€ибка сменС‹ сС‚аС‚уса заказа посС‚авС‰ику"
 
         );
 
@@ -1743,7 +1743,7 @@ export default function Warehouse() {
 
       const db = b.createdAt ? new Date(b.createdAt).getTime() : 0;
 
-      return db - da; // РЅРѕРІС‹Рµ СЃРІРµСЂС…Сѓ
+      return db - da; // новС‹е сверС…у
 
     });
 
@@ -1761,11 +1761,11 @@ export default function Warehouse() {
 
       <div className="page-header">
 
-        <h1 className="page-title">РЎРєР»Р°Рґ</h1>
+        <h1 className="page-title">Склад</h1>
 
         <p className="page-subtitle">
 
-          Р—Р°СЏРІРєРё, Р·Р°РґР°С‡Рё Рё СѓС‡С‘С‚ РѕСЃС‚Р°С‚РєРѕРІ РЅР° СЃРєР»Р°РґРµ.
+          Р—аявки, задаС‡и и уС‡С‘С‚ осС‚аС‚ков на складе.
 
         </p>
 
@@ -1773,7 +1773,7 @@ export default function Warehouse() {
 
 
 
-      {/* Р’РµСЂС…РЅРёРµ РєР°СЂС‚РѕС‡РєРё-РїРѕРґСЂР°Р·РґРµР»С‹ СЃРєР»Р°РґР° */}
+      {/* Р’ерС…ние карС‚оС‡ки-подразделС‹ склада */}
 
       <div className="warehouse-section">
 
@@ -1800,11 +1800,11 @@ export default function Warehouse() {
 
             <div className="warehouse-card__body">
 
-              <div className="warehouse-card__title">Р—Р°РґР°С‡Рё СЃРєР»Р°РґР°</div>
+              <div className="warehouse-card__title">Р—адаС‡и склада</div>
 
               <div className="warehouse-card__subtitle">
 
-                РќР°Р·РЅР°С‡РµРЅРёРµ Р·Р°РґР°С‡, СЃСЂРѕРєРё Рё РЅР°РїРѕРјРёРЅР°РЅРёСЏ РІ Telegram.
+                НазнаС‡ение задаС‡, сроки и напоминания в Telegram.
 
               </div>
 
@@ -1837,11 +1837,11 @@ export default function Warehouse() {
 
             <div className="warehouse-card__body">
 
-              <div className="warehouse-card__title">РћСЃС‚Р°С‚РєРё</div>
+              <div className="warehouse-card__title">ОсС‚аС‚ки</div>
 
               <div className="warehouse-card__subtitle">
 
-                РўРµРєСѓС‰РёРµ РѕСЃС‚Р°С‚РєРё РїРѕ СЃРєР»Р°РґСѓ.
+                ТекуС‰ие осС‚аС‚ки по складу.
 
               </div>
 
@@ -1861,9 +1861,9 @@ export default function Warehouse() {
               <WarehouseTileIcon name="items" />
             </div>
             <div className="warehouse-card__body">
-              <div className="warehouse-card__title">РќРѕРјРµРЅРєР»Р°С‚СѓСЂР°</div>
+              <div className="warehouse-card__title">НоменклаС‚ура</div>
               <div className="warehouse-card__subtitle">
-                РЎРїСЂР°РІРѕС‡РЅРёРє С‚РѕРІР°СЂРѕРІ.
+                СправоС‡ник С‚оваров.
               </div>
             </div>
           </button>
@@ -1901,9 +1901,9 @@ export default function Warehouse() {
               <WarehouseTileIcon name="transactions" />
             </div>
             <div className="warehouse-card__body">
-              <div className="warehouse-card__title">РўСЂР°РЅР·Р°РєС†РёРё</div>
+              <div className="warehouse-card__title">ТранзакС†ии</div>
               <div className="warehouse-card__subtitle">
-                Р’СЃРµ РґРµР№СЃС‚РІРёСЏ РїРѕ СЏС‡РµР№РєР°Рј Рё С‚РѕРІР°СЂСѓ.
+                Р’се деР№сС‚вия по яС‡еР№кам и С‚овару.
               </div>
             </div>
           </button>
@@ -1960,9 +1960,9 @@ export default function Warehouse() {
               <WarehouseTileIcon name="suppliers" />
             </div>
             <div className="warehouse-card__body">
-              <div className="warehouse-card__title">РџРѕСЃС‚Р°РІС‰РёРєРё</div>
+              <div className="warehouse-card__title">ПосС‚авС‰ики</div>
               <div className="warehouse-card__subtitle">
-                РџРѕСЃС‚Р°РІС‰РёРєРё Рё Р·Р°РєР°Р·С‹ РїРѕСЃС‚Р°РІС‰РёРєСѓ.
+                ПосС‚авС‰ики и заказС‹ посС‚авС‰ику.
               </div>
             </div>
           </button>
@@ -1988,11 +1988,11 @@ export default function Warehouse() {
             </div>
             <div className="warehouse-card__body">
 
-              <div className="warehouse-card__title">{"\РЎ\Рї\СЂ\Р°\РІ\Рѕ\С‡\РЅ\Рё\Рє \СЏ\С‡\Рµ\Рµ\Рє"}</div>
+              <div className="warehouse-card__title">{"\С\п\р\а\в\о\С‡\н\и\к \я\С‡\е\е\к"}</div>
 
               <div className="warehouse-card__subtitle">
 
-                {"\РЎ\Рѕ\Р·\Рґ\Р°\РЅ\Рё\Рµ \СЏ\С‡\Рµ\Рµ\Рє \Рё \Рї\Рµ\С‡\Р°\С‚\СЊ QR-\СЌ\С‚\Рё\Рє\Рµ\С‚\Рѕ\Рє\."}
+                {"\С\о\з\д\а\н\и\е \я\С‡\е\е\к \и \п\е\С‡\а\С‚\ь QR-\э\С‚\и\к\е\С‚\о\к\."}
 
               </div>
 
@@ -2027,13 +2027,13 @@ export default function Warehouse() {
 
     <div className="warehouse-card__title">
 
-      РњР°С€РёРЅС‹ РїРѕСЃС‚Р°РІС‰РёРєРѕРІ РІ РѕС‡РµСЂРµРґРё
+      МаС€инС‹ посС‚авС‰иков в оС‡ереди
 
     </div>
 
     <div className="warehouse-card__subtitle">
 
-      РћС‡РµСЂРµРґСЊ РЅР° СЂР°Р·РіСЂСѓР·РєСѓ, РІРѕСЂРѕС‚Р° Рё РІСЂРµРјСЏ.
+      ОС‡ередь на разгрузку, вороС‚а и время.
 
     </div>
 
@@ -2064,11 +2064,11 @@ export default function Warehouse() {
 
   <div className="warehouse-card__body">
 
-    <div className="warehouse-card__title">РњРѕР±РёР»СЊРЅС‹Р№ РўРЎР”</div>
+    <div className="warehouse-card__title">МобильнС‹Р№ ТСР”</div>
 
     <div className="warehouse-card__subtitle">
 
-      РЎРєР°РЅРёСЂРѕРІР°РЅРёРµ С€С‚СЂРёС…РєРѕРґРѕРІ Рё Р±С‹СЃС‚СЂС‹Рµ РѕРїРµСЂР°С†РёРё.
+      Сканирование С€С‚риС…кодов и бС‹сС‚рС‹е операС†ии.
 
     </div>
 
@@ -2083,7 +2083,7 @@ export default function Warehouse() {
       {section === "tasks" && (
         <div className="tasks-section" ref={tasksRef}>
 
-          {/* Р’РєР»Р°РґРєРё: РќРѕРІР°СЏ Р·Р°РґР°С‡Р° / Р–СѓСЂРЅР°Р» Р·Р°РґР°С‡ */}
+          {/* Р’кладки: Новая задаС‡а / Р–урнал задаС‡ */}
 
           <div className="tabs tabs--sm" style={{ marginBottom: 16 }}>
 
@@ -2101,7 +2101,7 @@ export default function Warehouse() {
 
             >
 
-              РќРѕРІР°СЏ Р·Р°РґР°С‡Р°
+              Новая задаС‡а
 
             </button>
 
@@ -2121,7 +2121,7 @@ export default function Warehouse() {
 
             >
 
-              Р–СѓСЂРЅР°Р» Р·Р°РґР°С‡
+              Р–урнал задаС‡
 
             </button>
 
@@ -2129,13 +2129,13 @@ export default function Warehouse() {
 
 
 
-          {/* Р’РєР»Р°РґРєР°: РќРѕРІР°СЏ Р·Р°РґР°С‡Р° */}
+          {/* Р’кладка: Новая задаС‡а */}
 
           {taskView === "new" && (
 
             <div className="card card--1c">
 
-              <div className="card1c__header">РќРѕРІР°СЏ Р·Р°РґР°С‡Р°</div>
+              <div className="card1c__header">Новая задаС‡а</div>
 
               <div className="card1c__body">
 
@@ -2167,7 +2167,7 @@ export default function Warehouse() {
 
                   <div className="form__group">
 
-                    <label className="form__label">Р—Р°РіРѕР»РѕРІРѕРє</label>
+                    <label className="form__label">Р—аголовок</label>
 
                     <input
 
@@ -2183,7 +2183,7 @@ export default function Warehouse() {
 
                       }
 
-                      placeholder="Р§С‚Рѕ СЃРґРµР»Р°С‚СЊ?"
+                      placeholder="ЧС‚о сделаС‚ь?"
 
                       required
 
@@ -2195,7 +2195,7 @@ export default function Warehouse() {
 
                   <div className="form__group">
 
-                    <label className="form__label">РћРїРёСЃР°РЅРёРµ</label>
+                    <label className="form__label">Описание</label>
 
                     <textarea
 
@@ -2217,7 +2217,7 @@ export default function Warehouse() {
 
                       }
 
-                      placeholder="РџРѕРґСЂРѕР±РЅРѕСЃС‚Рё..."
+                      placeholder="ПодробносС‚и..."
 
                     />
 
@@ -2227,7 +2227,7 @@ export default function Warehouse() {
 
                   <div className="form__group">
 
-                    <label className="form__label">РЎСЂРѕРє (РґР°С‚Р° Рё РІСЂРµРјСЏ)</label>
+                    <label className="form__label">Срок (даС‚а и время)</label>
 
                     <input
 
@@ -2251,7 +2251,7 @@ export default function Warehouse() {
 
                   <div className="form__group">
 
-                    <label className="form__label">РСЃРїРѕР»РЅРёС‚РµР»СЊ (РёРјСЏ)</label>
+                    <label className="form__label">РсполниС‚ель (имя)</label>
 
                     <input
 
@@ -2273,7 +2273,7 @@ export default function Warehouse() {
 
                       }
 
-                      placeholder="РРІР°РЅ РРІР°РЅРѕРІ"
+                      placeholder="Рван Рванов"
 
                     />
 
@@ -2285,7 +2285,7 @@ export default function Warehouse() {
 
                     <label className="form__label">
 
-                      ID РёСЃРїРѕР»РЅРёС‚РµР»СЏ РІ Telegram
+                      ID исполниС‚еля в Telegram
 
                     </label>
 
@@ -2309,7 +2309,7 @@ export default function Warehouse() {
 
                       }
 
-                      placeholder="РќР°РїСЂРёРјРµСЂ: 514030529"
+                      placeholder="Например: 514030529"
 
                     />
 
@@ -2329,7 +2329,7 @@ export default function Warehouse() {
 
                     >
 
-                      {taskSaving ? "РЎРѕР·РґР°РЅРёРµ..." : "РЎРѕР·РґР°С‚СЊ Р·Р°РґР°С‡Сѓ"}
+                      {taskSaving ? "Создание..." : "СоздаС‚ь задаС‡у"}
 
                     </button>
 
@@ -2345,17 +2345,17 @@ export default function Warehouse() {
 
 
 
-          {/* Р’РєР»Р°РґРєР°: Р–СѓСЂРЅР°Р» Р·Р°РґР°С‡ (С‚Р°Р±Р»РёС†Р° РєР°Рє РСЃС‚РѕСЂРёСЏ РґРІРёР¶РµРЅРёР№) */}
+          {/* Р’кладка: Р–урнал задаС‡ (С‚аблиС†а как РсС‚ория движениР№) */}
 
           {taskView === "journal" && (
 
             <div className="card card--1c">
 
-              <div className="card1c__header">Р–СѓСЂРЅР°Р» Р·Р°РґР°С‡</div>
+              <div className="card1c__header">Р–урнал задаС‡</div>
 
               <div className="card1c__body">
 
-                {/* Р¤РёР»СЊС‚СЂС‹ СЃРІРµСЂС…Сѓ, РІ СЃС‚РёР»Рµ РСЃС‚РѕСЂРёРё РґРІРёР¶РµРЅРёР№ */}
+                {/* ФильС‚рС‹ сверС…у, в сС‚иле РсС‚ории движениР№ */}
 
                 <div
 
@@ -2377,7 +2377,7 @@ export default function Warehouse() {
 
                   <div>
 
-                    <label className="form__label">РЎС‚Р°С‚СѓСЃ</label>
+                    <label className="form__label">СС‚аС‚ус</label>
 
                     <select
 
@@ -2389,7 +2389,7 @@ export default function Warehouse() {
 
                     >
 
-                      <option value="ALL">Р’СЃРµ СЃС‚Р°С‚СѓСЃС‹</option>
+                      <option value="ALL">Р’се сС‚аС‚усС‹</option>
 
                       {TASK_STATUS_OPTIONS.map((opt) => (
 
@@ -2411,7 +2411,7 @@ export default function Warehouse() {
 
                     <div>
 
-                      <label className="form__label">РЎРїРёСЃРѕРє Р·Р°РґР°С‡</label>
+                      <label className="form__label">Список задаС‡</label>
 
                       <select
 
@@ -2423,9 +2423,9 @@ export default function Warehouse() {
 
                       >
 
-                        <option value="my">РњРѕРё Р·Р°РґР°С‡Рё</option>
+                        <option value="my">Мои задаС‡и</option>
 
-                        <option value="all">Р’СЃРµ Р·Р°РґР°С‡Рё</option>
+                        <option value="all">Р’се задаС‡и</option>
 
                       </select>
 
@@ -2437,7 +2437,7 @@ export default function Warehouse() {
 
                   <div style={{ flex: 1, minWidth: 200 }}>
 
-                    <label className="form__label">РџРѕРёСЃРє</label>
+                    <label className="form__label">Поиск</label>
 
                     <input
 
@@ -2445,7 +2445,7 @@ export default function Warehouse() {
 
                       className="form__input"
 
-                      placeholder="Р—Р°РіРѕР»РѕРІРѕРє, РёСЃРїРѕР»РЅРёС‚РµР»СЊ, Р°РІС‚РѕСЂ..."
+                      placeholder="Р—аголовок, исполниС‚ель, авС‚ор..."
 
                       value={taskFilterText}
 
@@ -2461,11 +2461,11 @@ export default function Warehouse() {
 
                 {tasksLoading ? (
 
-                  <p>Р—Р°РіСЂСѓР·РєР°...</p>
+                  <p>Р—агрузка...</p>
 
                 ) : filteredTasks.length === 0 ? (
 
-                  <p className="text-muted">Р—Р°РґР°С‡ РЅРµ РЅР°Р№РґРµРЅРѕ.</p>
+                  <p className="text-muted">Р—адаС‡ не наР№дено.</p>
 
                 ) : (
 
@@ -2479,23 +2479,23 @@ export default function Warehouse() {
 
                           <th style={{ width: 40 }}>в„–</th>
 
-                          <th style={{ width: 170 }}>Р”Р°С‚Р°</th>
+                          <th style={{ width: 170 }}>Р”аС‚а</th>
 
-                          <th style={{ width: 110 }}>РЎС‚Р°С‚СѓСЃ</th>
+                          <th style={{ width: 110 }}>СС‚аС‚ус</th>
 
-                          <th style={{ width: 170 }}>РЎСЂРѕРє</th>
+                          <th style={{ width: 170 }}>Срок</th>
 
-                          <th>Р—Р°РґР°С‡Р°</th>
+                          <th>Р—адаС‡а</th>
 
-                          <th style={{ width: 180 }}>РСЃРїРѕР»РЅРёС‚РµР»СЊ</th>
+                          <th style={{ width: 180 }}>РсполниС‚ель</th>
 
-                          <th style={{ width: 200 }}>РђРІС‚РѕСЂ</th>
+                          <th style={{ width: 200 }}>АвС‚ор</th>
 
-                          <th style={{ width: 260 }}>РћРїРёСЃР°РЅРёРµ</th>
+                          <th style={{ width: 260 }}>Описание</th>
 
                           {isWarehouseManager && (
 
-  <th style={{ width: 190 }}>Р”РµР№СЃС‚РІРёСЏ</th>
+  <th style={{ width: 190 }}>Р”еР№сС‚вия</th>
 
 )}
 
@@ -2595,7 +2595,7 @@ export default function Warehouse() {
 
                                   >
 
-                                    (РїСЂРѕСЃСЂРѕС‡РµРЅРѕ)
+                                    (просроС‡ено)
 
                                   </span>
 
@@ -2701,7 +2701,7 @@ export default function Warehouse() {
 
 
 
-            {/* ====== РћР§Р•Р Р•Р”Р¬ РњРђРЁРРќ РџРћРЎРўРђР’Р©РРљРћР’ ====== */}
+            {/* ====== ОЧР•РР•Р”Ь МАШРН ПОСТАР’ЩРКОР’ ====== */}
 
       {section === "locations" && (
 
@@ -2731,7 +2731,7 @@ export default function Warehouse() {
 
   <div className="tsd-section" ref={tsdRef}>
 
-    {/* СЃСЋРґР° РІС‹РЅРµСЃРµРј РѕС‚РґРµР»СЊРЅС‹Р№ РєРѕРјРїРѕРЅРµРЅС‚, С‡С‚РѕР±С‹ РЅРµ СЂР°Р·РґСѓРІР°С‚СЊ С„Р°Р№Р» */}
+    {/* сюда вС‹несем оС‚дельнС‹Р№ компоненС‚, С‡С‚обС‹ не раздуваС‚ь С„аР№л */}
 
     <MobileTsdTab />
 
@@ -2760,13 +2760,13 @@ export default function Warehouse() {
 
 
 
-      {/* ====== РћРЎРўРђРўРљР / РРќР’Р•РќРўРђР РР—РђР¦РРЇ / Р—РђРљРЈРџРљР ====== */}
+      {/* ====== ОСТАТКР / РНР’Р•НТАРРР—АЦРЯ / Р—АКУПКР ====== */}
 
       {["inventory","items","movement","suppliers"].includes(section) && (
 
         <div className="inventory-section" ref={inventoryRef}>
 
-          {/* Р’РЅСѓС‚СЂРµРЅРЅРёРµ РІРєР»Р°РґРєРё */}
+          {/* Р’нуС‚ренние вкладки */}
 
           
           {inventoryTab === "movement" && (
@@ -2778,7 +2778,7 @@ export default function Warehouse() {
                 }
                 onClick={() => setMovementTab("movementsHistory")}
               >
-                РСЃС‚РѕСЂРёСЏ РґРІРёР¶РµРЅРёР№
+                РсС‚ория движениР№
               </button>
             </div>
           )}
@@ -2792,7 +2792,7 @@ export default function Warehouse() {
                 }
                 onClick={() => setSuppliersTab("suppliers")}
               >
-                РџРѕСЃС‚Р°РІС‰РёРєРё
+                ПосС‚авС‰ики
               </button>
               <button
                 type="button"
@@ -2801,14 +2801,14 @@ export default function Warehouse() {
                 }
                 onClick={() => setSuppliersTab("orders")}
               >
-                Р—Р°РєР°Р·С‹ РїРѕСЃС‚Р°РІС‰РёРєСѓ
+                Р—аказС‹ посС‚авС‰ику
               </button>
             </div>
           )}
 
 
 
-          {/* ===== Р’РєР»Р°РґРєР° 1: РќРѕРјРµРЅРєР»Р°С‚СѓСЂР° ===== */}
+          {/* ===== Р’кладка 1: НоменклаС‚ура ===== */}
 
 {inventoryTab === "items" && (
 
@@ -2832,7 +2832,7 @@ export default function Warehouse() {
 
         <h2 className="card__title" style={{ margin: 0 }}>
 
-          РќРѕРјРµРЅРєР»Р°С‚СѓСЂР°
+          НоменклаС‚ура
 
         </h2>
 
@@ -2844,7 +2844,7 @@ export default function Warehouse() {
 
         >
 
-          РРјРїРѕСЂС‚ РёР· Excel
+          РмпорС‚ из Excel
 
         </button>
 
@@ -2870,11 +2870,11 @@ export default function Warehouse() {
 
 
 
-    {/* Р¤РѕСЂРјР° "РќРѕРІС‹Р№ С‚РѕРІР°СЂ" С‚РµРїРµСЂСЊ РЅР° РІСЃСЋ С€РёСЂРёРЅСѓ */}
+    {/* Форма "НовС‹Р№ С‚овар" С‚еперь на всю С€ирину */}
 
     <div className="card card--1c" style={{ gridColumn: "span 2" }}>
 
-      <div className="card1c__header">РќРѕРІС‹Р№ С‚РѕРІР°СЂ</div>
+      <div className="card1c__header">НовС‹Р№ С‚овар</div>
 
       <div className="card1c__body">
 
@@ -2888,7 +2888,7 @@ export default function Warehouse() {
 
           <div className="form__group">
 
-            <label className="form__label">РќР°РёРјРµРЅРѕРІР°РЅРёРµ</label>
+            <label className="form__label">Наименование</label>
 
             <input
 
@@ -2902,7 +2902,7 @@ export default function Warehouse() {
 
               }
 
-              placeholder="РќР°РїСЂРёРјРµСЂ: Р‘СѓРјР°РіР° Рђ4"
+              placeholder="Например: Р‘умага А4"
 
             />
 
@@ -2912,7 +2912,7 @@ export default function Warehouse() {
 
           <div className="form__group">
 
-            <label className="form__label">РђСЂС‚РёРєСѓР» (SKU)</label>
+            <label className="form__label">АрС‚икул (SKU)</label>
 
             <input
 
@@ -2934,7 +2934,7 @@ export default function Warehouse() {
 
           <div className="form__group">
 
-            <label className="form__label">РЁС‚СЂРёС…РєРѕРґ</label>
+            <label className="form__label">ШС‚риС…код</label>
 
             <input
 
@@ -2956,7 +2956,7 @@ export default function Warehouse() {
 
           <div className="form__group">
 
-            <label className="form__label">Р•Рґ. РёР·Рј.</label>
+            <label className="form__label">Р•д. изм.</label>
 
             <input
 
@@ -2970,7 +2970,7 @@ export default function Warehouse() {
 
               }
 
-              placeholder="С€С‚, РєРі..."
+              placeholder="С€С‚, кг..."
 
             />
 
@@ -2980,7 +2980,7 @@ export default function Warehouse() {
 
           <div className="form__group">
 
-            <label className="form__label">Р¦РµРЅР° (РїРѕ СѓРјРѕР»С‡Р°РЅРёСЋ)</label>
+            <label className="form__label">Цена (по умолС‡анию)</label>
 
             <input
 
@@ -3012,7 +3012,7 @@ export default function Warehouse() {
 
           <div className="form__group">
 
-            <label className="form__label">РњРёРЅ. РѕСЃС‚Р°С‚РѕРє</label>
+            <label className="form__label">Мин. осС‚аС‚ок</label>
 
             <input
 
@@ -3042,7 +3042,7 @@ export default function Warehouse() {
 
           <div className="form__group">
 
-            <label className="form__label">РњР°РєСЃ. РѕСЃС‚Р°С‚РѕРє</label>
+            <label className="form__label">Макс. осС‚аС‚ок</label>
 
             <input
 
@@ -3074,7 +3074,7 @@ export default function Warehouse() {
 
             <button type="submit" className="btn btn--primary">
 
-              РЎРѕР·РґР°С‚СЊ С‚РѕРІР°СЂ
+              СоздаС‚ь С‚овар
 
             </button>
 
@@ -3092,13 +3092,13 @@ export default function Warehouse() {
 
 
 
-          {/* ===== Р’РєР»Р°РґРєР° 2: РћСЃС‚Р°С‚РєРё (1РЎ + РїРµС‡Р°С‚СЊ Р°РєС‚Р° СЂРµРІРёР·РёРё) ===== */}
+          {/* ===== Р’кладка 2: ОсС‚аС‚ки (1С + пеС‡аС‚ь акС‚а ревизии) ===== */}
 
           {inventoryTab === "stock" && <StockAuditTab />}
 
 
 
-          {/* ===== Р’РєР»Р°РґРєР° 3: Р”РІРёР¶РµРЅРёРµ С‚РѕРІР°СЂР° (С‚РѕР»СЊРєРѕ С„РѕСЂРјР°) ===== */}
+          {/* ===== Р’кладка 3: Р”вижение С‚овара (С‚олько С„орма) ===== */}
 
           {false && inventoryTab === "movement" && movementTab === "movements" && (
 
@@ -3122,7 +3122,7 @@ export default function Warehouse() {
 
                 >
 
-                  <span>Р”РІРёР¶РµРЅРёРµ С‚РѕРІР°СЂР°</span>
+                  <span>Р”вижение С‚овара</span>
 
                   <button
 
@@ -3134,7 +3134,7 @@ export default function Warehouse() {
 
                       console.log(
 
-                        "CLICK РџРћ Р—РђРљРЈРџРЈ, showReceiveModal Р±С‹Р»Рѕ:",
+                        "CLICK ПО Р—АКУПУ, showReceiveModal бС‹ло:",
 
                         showReceiveModal
 
@@ -3146,7 +3146,7 @@ export default function Warehouse() {
 
                   >
 
-                    Р—Р°РєСѓРї РїРѕ Р·Р°РєР°Р·Сѓ
+                    Р—акуп по заказу
 
                   </button>
 
@@ -3180,7 +3180,7 @@ export default function Warehouse() {
 
                     <div className="form__group">
 
-                      <label className="form__label">РўРёРї РѕРїРµСЂР°С†РёРё</label>
+                      <label className="form__label">Тип операС†ии</label>
 
                       <select
 
@@ -3202,11 +3202,11 @@ export default function Warehouse() {
 
                       >
 
-                        <option value="INCOME">РџСЂРёС…РѕРґ</option>
+                        <option value="INCOME">ПриС…од</option>
 
-                        <option value="ISSUE">Р Р°СЃС…РѕРґ</option>
+                        <option value="ISSUE">РасС…од</option>
 
-                        <option value="ADJUSTMENT">РљРѕСЂСЂРµРєС‚РёСЂРѕРІРєР°</option>
+                        <option value="ADJUSTMENT">КоррекС‚ировка</option>
 
                       </select>
 
@@ -3216,7 +3216,7 @@ export default function Warehouse() {
 
                     <div className="form__group">
 
-                      <label className="form__label">РўРѕРІР°СЂ</label>
+                      <label className="form__label">Товар</label>
 
                       <select
 
@@ -3238,13 +3238,13 @@ export default function Warehouse() {
 
                       >
 
-                        <option value="">-- Р’С‹Р±РµСЂРёС‚Рµ С‚РѕРІР°СЂ --</option>
+                        <option value="">-- Р’С‹бериС‚е С‚овар --</option>
 
                         {inventoryItems.map((it) => (
 
                           <option key={it.id} value={it.id}>
 
-                            {it.name} (РћСЃС‚Р°С‚РѕРє:{" "}
+                            {it.name} (ОсС‚аС‚ок:?????????? ?????
 
                             {currentStockForItem(it.id)} {it.unit})
 
@@ -3260,7 +3260,7 @@ export default function Warehouse() {
 
                     <div className="form__group">
 
-                      <label className="form__label">РљРѕР»РёС‡РµСЃС‚РІРѕ</label>
+                      <label className="form__label">КолиС‡есС‚во</label>
 
                       <div style={{ flex: 1 }}>
 
@@ -3284,7 +3284,7 @@ export default function Warehouse() {
 
                           }
 
-                          placeholder="РќР°РїСЂРёРјРµСЂ: 5 РёР»Рё -5"
+                          placeholder="Например: 5 или -5"
 
                         />
 
@@ -3296,7 +3296,7 @@ export default function Warehouse() {
 
                     <div className="form__group">
 
-                      <label className="form__label">РљРѕРјРјРµРЅС‚Р°СЂРёР№</label>
+                      <label className="form__label">КомменС‚ариР№</label>
 
                       <input
 
@@ -3326,7 +3326,7 @@ export default function Warehouse() {
 
                       <button type="submit" className="btn btn--primary">
 
-                        РџСЂРѕРІРµСЃС‚Рё РґРІРёР¶РµРЅРёРµ
+                        ПровесС‚и движение
 
                       </button>
 
@@ -3344,17 +3344,17 @@ export default function Warehouse() {
 
 
 
-          {/* ===== Р’РєР»Р°РґРєР° 4: РСЃС‚РѕСЂРёСЏ РґРІРёР¶РµРЅРёР№ (1РЎ) ===== */}
+          {/* ===== Р’кладка 4: РсС‚ория движениР№ (1С) ===== */}
 
           {inventoryTab === "movement" && movementTab === "movementsHistory" && <StockMovementsHistoryTab />}
 
-          {/* ===== Р’РєР»Р°РґРєР° 5: РџРѕСЃС‚Р°РІС‰РёРєРё ===== */}
+          {/* ===== Р’кладка 5: ПосС‚авС‰ики ===== */}
           {inventoryTab === "suppliers" && suppliersTab === "suppliers" && (
             <div className="grid-2">
 
               <div className="card card--1c" style={{ gridColumn: "span 2" }}>
 
-                <div className="card1c__header">РџРѕСЃС‚Р°РІС‰РёРєРё</div>
+                <div className="card1c__header">ПосС‚авС‰ики</div>
 
                 <div className="card1c__body">
 
@@ -3388,7 +3388,7 @@ export default function Warehouse() {
 
                     <div className="form__group">
 
-                      <label className="form__label">РќР°Р·РІР°РЅРёРµ</label>
+                      <label className="form__label">Название</label>
 
                       <input
 
@@ -3408,7 +3408,7 @@ export default function Warehouse() {
 
                         }
 
-                        placeholder="РћРћРћ РџРѕСЃС‚Р°РІС‰РёРє"
+                        placeholder="ООО ПосС‚авС‰ик"
 
                       />
 
@@ -3418,7 +3418,7 @@ export default function Warehouse() {
 
                     <div className="form__group">
 
-                      <label className="form__label">РРќРќ</label>
+                      <label className="form__label">РНН</label>
 
                       <input
 
@@ -3446,7 +3446,7 @@ export default function Warehouse() {
 
                     <div className="form__group">
 
-                      <label className="form__label">РўРµР»РµС„РѕРЅ</label>
+                      <label className="form__label">ТелеС„он</label>
 
                       <input
 
@@ -3502,7 +3502,7 @@ export default function Warehouse() {
 
                     <div className="form__group">
 
-                      <label className="form__label">РљРѕРјРјРµРЅС‚Р°СЂРёР№</label>
+                      <label className="form__label">КомменС‚ариР№</label>
 
                       <input
 
@@ -3522,7 +3522,7 @@ export default function Warehouse() {
 
                         }
 
-                        placeholder="РЈСЃР»РѕРІРёСЏ РѕРїР»Р°С‚С‹, РєРѕРЅС‚Р°РєС‚С‹ РјРµРЅРµРґР¶РµСЂР°..."
+                        placeholder="Условия оплаС‚С‹, конС‚акС‚С‹ менеджера..."
 
                       />
 
@@ -3534,7 +3534,7 @@ export default function Warehouse() {
 
                       <button type="submit" className="btn btn--primary">
 
-                        РЎРѕС…СЂР°РЅРёС‚СЊ РїРѕСЃС‚Р°РІС‰РёРєР°
+                        СоС…раниС‚ь посС‚авС‰ика
 
                       </button>
 
@@ -3546,11 +3546,11 @@ export default function Warehouse() {
 
                   {suppliersLoading ? (
 
-                    <p>Р—Р°РіСЂСѓР·РєР°...</p>
+                    <p>Р—агрузка...</p>
 
                   ) : suppliers.length === 0 ? (
 
-                    <p className="text-muted">РџРѕСЃС‚Р°РІС‰РёРєРѕРІ РїРѕРєР° РЅРµС‚.</p>
+                    <p className="text-muted">ПосС‚авС‰иков пока неС‚.</p>
 
                   ) : (
 
@@ -3564,11 +3564,11 @@ export default function Warehouse() {
 
                             <th>ID</th>
 
-                            <th>РќР°Р·РІР°РЅРёРµ</th>
+                            <th>Название</th>
 
-                            <th>РРќРќ</th>
+                            <th>РНН</th>
 
-                            <th>РўРµР»РµС„РѕРЅ</th>
+                            <th>ТелеС„он</th>
 
                             <th>Email</th>
 
@@ -3614,7 +3614,7 @@ export default function Warehouse() {
 
 
 
-                    {/* ===== Р’РєР»Р°РґРєР° 6: Р—Р°РєР°Р·С‹ РїРѕСЃС‚Р°РІС‰РёРєСѓ ===== */}
+                    {/* ===== Р’кладка 6: Р—аказС‹ посС‚авС‰ику ===== */}
 
           {inventoryTab === "suppliers" && suppliersTab === "orders" && (
 
@@ -3622,7 +3622,7 @@ export default function Warehouse() {
 
               <div className="card card--1c" style={{ gridColumn: "span 2" }}>
 
-                <div className="card1c__header">Р—Р°РєР°Р·С‹ РїРѕСЃС‚Р°РІС‰РёРєСѓ</div>
+                <div className="card1c__header">Р—аказС‹ посС‚авС‰ику</div>
 
                 <div className="card1c__body">
 
@@ -3650,7 +3650,7 @@ export default function Warehouse() {
 
                     >
 
-                      РЎРѕР·РґР°С‚СЊ Р·Р°РєР°Р· РїРѕСЃС‚Р°РІС‰РёРєСѓ
+                      СоздаС‚ь заказ посС‚авС‰ику
 
                     </button>
 
@@ -3662,7 +3662,7 @@ export default function Warehouse() {
 
                     >
 
-                      РЎРєР°С‡Р°С‚СЊ Р·Р°РєР°Р· (Low Stock)
+                      СкаС‡аС‚ь заказ (Low Stock)
 
                     </button>
 
@@ -3690,11 +3690,11 @@ export default function Warehouse() {
 
                   {purchaseOrdersLoading ? (
 
-                    <p>Р—Р°РіСЂСѓР·РєР° Р·Р°РєР°Р·РѕРІ...</p>
+                    <p>Р—агрузка заказов...</p>
 
                   ) : sortedPurchaseOrders.length === 0 ? (
 
-                    <p className="text-muted">Р—Р°РєР°Р·РѕРІ РїРѕРєР° РЅРµС‚.</p>
+                    <p className="text-muted">Р—аказов пока неС‚.</p>
 
                   ) : (
 
@@ -3708,11 +3708,11 @@ export default function Warehouse() {
 
                             <th>ID</th>
 
-                            <th>Р’СЂРµРјСЏ</th>
+                            <th>Р’ремя</th>
 
-                            <th>РџРѕСЃС‚Р°РІС‰РёРє</th>
+                            <th>ПосС‚авС‰ик</th>
 
-                            <th>РЎС‚Р°С‚СѓСЃ</th>
+                            <th>СС‚аС‚ус</th>
 
                             <th></th>
 
@@ -3744,7 +3744,7 @@ export default function Warehouse() {
 
                                 })
 
-                              : "Р‘РµР· РґР°С‚С‹";
+                              : "Р‘ез даС‚С‹";
 
 
 
@@ -3856,7 +3856,7 @@ export default function Warehouse() {
 
 
 
-      {/* РњРѕРґР°Р»РєРё */}
+      {/* Модалки */}
 
       {showImportModal && (
 
