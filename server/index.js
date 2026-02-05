@@ -1,4 +1,4 @@
-import express from "express";
+﻿import express from "express";
 import cors from "cors";
 import bcrypt from "bcryptjs";
 import jwt from "jsonwebtoken";
@@ -1193,12 +1193,124 @@ async function sendSafetyReminders() {
 // Р РЋР С“Р РЋРІР‚С™Р В Р’В°Р РЋР вЂљР РЋРІР‚С™ Р РЋРІР‚С›Р В РЎвЂўР В Р вЂ¦Р В РЎвЂўР В Р вЂ Р РЋРІР‚в„–Р РЋРІР‚В¦ Р В Р’В·Р В Р’В°Р В РўвЂР В Р’В°Р РЋРІР‚РЋ Р В РЎвЂ”Р В Р’ВµР РЋР вЂљР В Р’ВµР В Р вЂ¦Р В РЎвЂўР РЋР С“Р В РЎвЂР В РЎВ Р В РЎвЂ”Р В РЎвЂўР РЋР С“Р В Р’В»Р В Р’Вµ Р В РЎвЂ”Р РЋР вЂљР В РЎвЂўР В Р вЂ Р В Р’ВµР РЋР вЂљР В РЎвЂќР В РЎвЂ Р В РЎвЂ“Р В РЎвЂўР РЋРІР‚С™Р В РЎвЂўР В Р вЂ Р В Р вЂ¦Р В РЎвЂўР РЋР С“Р РЋРІР‚С™Р В РЎвЂ Р В РІР‚ВР В РІР‚Сњ
 
 // Р В РЎвЂўР В Р’В±Р РЋР вЂљР В Р’В°Р В Р’В±Р В РЎвЂўР РЋРІР‚С™Р В РЎвЂќР В Р’В° callback_query (Р В РЎвЂќР В Р вЂ¦Р В РЎвЂўР В РЎвЂ”Р В РЎвЂќР В Р’В° "Р Р†РЎС™РІР‚В¦ Р В РІР‚в„ўР РЋРІР‚в„–Р В РЎвЂ”Р В РЎвЂўР В Р’В»Р В Р вЂ¦Р В Р’ВµР В Р вЂ¦Р В РЎвЂў")
+async function isTmcIssueRequest(request) {
+  if (!request || request.type !== "ISSUE") return false;
+  const items = request.items || [];
+  if (!items.length) return false;
+
+  for (const it of items) {
+    if (it.itemId) {
+      const item = await prisma.item.findUnique({ where: { id: it.itemId } });
+      if (item?.category === "TMC") return true;
+      continue;
+    }
+    if (it.name) {
+      const item = await prisma.item.findFirst({
+        where: { name: it.name, category: "TMC" },
+      });
+      if (item) return true;
+    }
+  }
+
+  return false;
+}
+
+function extractRequestIdFromTitle(title) {
+  if (!title) return null;
+  const match = String(title).match(/\u0417\u0430\u044f\u0432\u043a\u0430 \u0441\u043a\u043b\u0430\u0434\u0430 #(\d+)/);
+  if (!match) return null;
+  const id = Number(match[1]);
+  return Number.isFinite(id) ? id : null;
+}
+
 async function handleTelegramUpdate(update) {
   if (!update.callback_query) return;
 
   const { id: callbackId, data, from } = update.callback_query;
 
-  if (!data || !data.startsWith("done:")) {
+  if (!data) return;
+
+  // admin approval for TMC issue
+  if (data.startsWith("approve_issue:") || data.startsWith("reject_issue:")) {
+    const reqId = Number(data.split(":")[1]);
+    if (!reqId) return;
+
+    try {
+      const request = await prisma.warehouseRequest.findUnique({
+        where: { id: reqId },
+        include: { items: true },
+      });
+
+      if (!request) {
+        await fetch(`${TELEGRAM_API}/answerCallbackQuery`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            callback_query_id: callbackId,
+            text: "\u0417\u0430\u044f\u0432\u043a\u0430 \u043d\u0435 \u043d\u0430\u0439\u0434\u0435\u043d\u0430.",
+            show_alert: true,
+          }),
+        });
+        return;
+      }
+
+      if (data.startsWith("reject_issue:")) {
+        await prisma.warehouseRequest.update({
+          where: { id: reqId },
+          data: {
+            status: "REJECTED",
+            statusComment: "\u041e\u0442\u043a\u043b\u043e\u043d\u0435\u043d\u043e \u0430\u0434\u043c\u0438\u043d\u0438\u0441\u0442\u0440\u0430\u0442\u043e\u0440\u043e\u043c",
+          },
+        });
+        await fetch(`${TELEGRAM_API}/answerCallbackQuery`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            callback_query_id: callbackId,
+            text: "\u041e\u0442\u043a\u043b\u043e\u043d\u0435\u043d\u043e. \u0421\u043f\u0438\u0441\u0430\u043d\u0438\u0435 \u043d\u0435 \u0432\u044b\u043f\u043e\u043b\u043d\u0435\u043d\u043e.",
+            show_alert: false,
+          }),
+        });
+        return;
+      }
+
+      await autoPostRequestToStock(reqId, request.createdById);
+      await prisma.warehouseRequest.update({
+        where: { id: reqId },
+        data: {
+          status: "DONE",
+          statusComment: "\u0421\u043f\u0438\u0441\u0430\u043d\u043e \u043f\u043e \u043f\u043e\u0434\u0442\u0432\u0435\u0440\u0436\u0434\u0435\u043d\u0438\u044e \u0430\u0434\u043c\u0438\u043d\u0430",
+        },
+      });
+
+      await fetch(`${TELEGRAM_API}/answerCallbackQuery`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          callback_query_id: callbackId,
+          text: "\u0421\u043f\u0438\u0441\u0430\u043d\u0438\u0435 \u043f\u043e\u0434\u0442\u0432\u0435\u0440\u0436\u0434\u0435\u043d\u043e. \u041e\u0441\u0442\u0430\u0442\u043a\u0438 \u043e\u0431\u043d\u043e\u0432\u043b\u0435\u043d\u044b.",
+          show_alert: false,
+        }),
+      });
+      return;
+    } catch (err) {
+      console.error("[Telegram] approve_issue error:", err);
+      await fetch(`${TELEGRAM_API}/answerCallbackQuery`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          callback_query_id: callbackId,
+          text: "\u041e\u0448\u0438\u0431\u043a\u0430. \u041d\u0435 \u0443\u0434\u0430\u043b\u043e\u0441\u044c \u043e\u0431\u0440\u0430\u0431\u043e\u0442\u0430\u0442\u044c \u0437\u0430\u043f\u0440\u043e\u0441.",
+          show_alert: true,
+        }),
+      });
+      return;
+    }
+  }
+
+  const isIssueDone = data.startsWith("issue_done:");
+  const isDone = data.startsWith("done:");
+  if (!isIssueDone && !isDone) {
     return;
   }
 
@@ -1248,10 +1360,43 @@ async function handleTelegramUpdate(update) {
     });
 
     try {
-      const match = task.title.match(/\u0417\u0430\u044f\u0432\u043a\u0430 \u0441\u043a\u043b\u0430\u0434\u0430 #(\d+)/);
-      if (match && task.assignerId) {
-        const requestId = Number(match[1]);
-        if (requestId) {
+      const requestId = extractRequestIdFromTitle(task.title);
+      if (requestId) {
+        const request = await prisma.warehouseRequest.findUnique({
+          where: { id: requestId },
+          include: { items: true },
+        });
+
+        if (isIssueDone && (await isTmcIssueRequest(request))) {
+          const lines = [];
+          lines.push("\u{1F9FE} \u0417\u0430\u043f\u0440\u043e\u0441 \u043d\u0430 \u0441\u043f\u0438\u0441\u0430\u043d\u0438\u0435 \u0422\u041c\u0426");
+          lines.push(`\u0417\u0430\u044f\u0432\u043a\u0430 #${requestId}`);
+          if (request?.items?.length) {
+            lines.push("");
+            lines.push("\u041f\u043e\u0437\u0438\u0446\u0438\u0438:");
+            for (const it of request.items) {
+              lines.push(`- ${it.name} \u2014 ${it.quantity} ${it.unit || ""}`.trim());
+            }
+          }
+          const approvalText = lines.join("\n");
+
+          await sendWarehouseGroupMessage(approvalText, {
+            reply_markup: {
+              inline_keyboard: [
+                [
+                  {
+                    text: "\u0421\u043f\u0438\u0441\u0430\u0442\u044c",
+                    callback_data: `approve_issue:${requestId}`,
+                  },
+                  {
+                    text: "\u041e\u0442\u043a\u043b\u043e\u043d\u0438\u0442\u044c",
+                    callback_data: `reject_issue:${requestId}`,
+                  },
+                ],
+              ],
+            },
+          });
+        } else {
           await autoPostRequestToStock(requestId, task.assignerId);
         }
       }
@@ -1264,7 +1409,9 @@ async function handleTelegramUpdate(update) {
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
         callback_query_id: callbackId,
-        text: "\u0417\u0430\u0434\u0430\u0447\u0430 \u043e\u0442\u043c\u0435\u0447\u0435\u043d\u0430 \u043a\u0430\u043a \u0432\u044b\u043f\u043e\u043b\u043d\u0435\u043d\u043d\u0430\u044f.",
+        text: isIssueDone
+          ? "\u041e\u0442\u043c\u0435\u0447\u0435\u043d\u043e \u00ab\u0412\u044b\u0434\u0430\u043d\u043e\u00bb. \u041e\u0436\u0438\u0434\u0430\u0435\u0442 \u043f\u043e\u0434\u0442\u0432\u0435\u0440\u0436\u0434\u0435\u043d\u0438\u044f \u0430\u0434\u043c\u0438\u043d\u0430."
+          : "\u0417\u0430\u0434\u0430\u0447\u0430 \u043e\u0442\u043c\u0435\u0447\u0435\u043d\u0430 \u043a\u0430\u043a \u0432\u044b\u043f\u043e\u043b\u043d\u0435\u043d\u043d\u0430\u044f.",
         show_alert: false,
       }),
     });
@@ -2972,13 +3119,32 @@ app.post("/api/warehouse/tasks", auth, async (req, res) => {
 
     if (task.executorChatId) {
       const execText = buildWarehouseTaskAssignedTelegramText(task, { forExecutor: true });
+      let buttonText = "\u041e\u0442\u043c\u0435\u0442\u0438\u0442\u044c \u0432\u044b\u043f\u043e\u043b\u043d\u0435\u043d\u043e";
+      let callbackData = `done:${task.id}`;
+
+      try {
+        const requestId = extractRequestIdFromTitle(task.title);
+        if (requestId) {
+          const request = await prisma.warehouseRequest.findUnique({
+            where: { id: requestId },
+            include: { items: true },
+          });
+          if (await isTmcIssueRequest(request)) {
+            buttonText = "\u0412\u044b\u0434\u0430\u043d\u043e";
+            callbackData = `issue_done:${task.id}`;
+          }
+        }
+      } catch (e) {
+        console.error("[Telegram] cannot detect request for task:", e);
+      }
+
       sendTelegramMessage(task.executorChatId, execText, {
         reply_markup: {
           inline_keyboard: [
             [
               {
-                text: "\u041e\u0442\u043c\u0435\u0442\u0438\u0442\u044c \u0432\u044b\u043f\u043e\u043b\u043d\u0435\u043d\u043e",
-                callback_data: `done:${task.id}`,
+                text: buttonText,
+                callback_data: callbackData,
               },
             ],
           ],
