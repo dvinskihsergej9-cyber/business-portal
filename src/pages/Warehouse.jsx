@@ -2080,18 +2080,7 @@ export default function Warehouse() {
 
       </div>
 
-
-
-            {/* ====== Р—РђРЇР’РљР ====== */}>
-
-          {/* Р’РєР»Р°РґРєРё РІРЅСѓС‚СЂРё СЂР°Р·РґРµР»Р° Р·Р°СЏРІРѕРє */}
-
-          <div className="tabs tabs--sm" style={{ marginBottom: 16 }}>
-            <button
-              type="button"
-              className={
-                "tabs__btn " +{section === "tasks" && (
-
+      {section === "tasks" && (
         <div className="tasks-section" ref={tasksRef}>
 
           {/* Р’РєР»Р°РґРєРё: РќРѕРІР°СЏ Р·Р°РґР°С‡Р° / Р–СѓСЂРЅР°Р» Р·Р°РґР°С‡ */}
