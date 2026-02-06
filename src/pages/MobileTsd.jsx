@@ -6,6 +6,7 @@ import Stepper from "../components/tsd/Stepper";
 import Scanner from "../components/tsd/Scanner";
 import ItemCard from "../components/tsd/ItemCard";
 import LocationCard from "../components/tsd/LocationCard";
+import OrderFulfillmentFlow from "../components/tsd/OrderFulfillmentFlow";
 import StockDiscrepanciesTab from "../components/StockDiscrepanciesTab";
 import "../components/tsd/tsd.css";
 
@@ -51,6 +52,12 @@ const MODES = [
     title: "Отбор",
     subtitle: "Списание из ячейки",
     icon: "PCK",
+  },
+  {
+    id: "orders",
+    title: "Заказы",
+    subtitle: "Сборка, упаковка, этикетка",
+    icon: "ORD",
   },
   {
     id: "discrepancies",
@@ -2315,6 +2322,9 @@ export default function MobileTsd() {
     if (mode === "putaway") return renderPutaway();
     if (mode === "replenish") return renderReplenish();
     if (mode === "pick") return renderPick();
+    if (mode === "orders") {
+      return <OrderFulfillmentFlow authHeaders={authHeaders} onBack={() => setMode(null)} />;
+    }
     if (mode === "discrepancies") return renderDiscrepancies();
     return null;
   };

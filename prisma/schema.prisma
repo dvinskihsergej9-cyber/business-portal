@@ -38,6 +38,7 @@ model User {
   revisionItemsApplied StockRevisionItem[] @relation("RevisionItemAppliedBy")
   receivingLinesCreated WarehouseReceivingLine[] @relation("ReceivingLineCreatedBy")
   receivingLinesPlaced WarehouseReceivingLine[] @relation("ReceivingLinePlacedBy")
+  assignedOrders SalesOrder[] @relation("OrderAssignedTo")
 }
 
 // ============ SUBSCRIPTION ============
@@ -331,6 +332,7 @@ model Item {
   receivingDiscrepancies ReceivingDiscrepancy[]
   revisionItems      StockRevisionItem[]
   receivingLines     WarehouseReceivingLine[]
+  salesOrderLines    SalesOrderLine[]
 }
 
 model WarehouseLocation {
@@ -598,4 +600,59 @@ enum SupplierTruckStatus {
 enum ItemCategory {
   STOCK
   TMC
+}
+
+model SalesOrder {
+  id               Int              @id @default(autoincrement())
+  externalOrderId  String?          @unique
+  source           String           @default("MANUAL")
+  status           SalesOrderStatus @default(NEW)
+  orderNumber      String
+  customerName     String
+  customerPhone    String?
+  shippingAddress  String
+  deliveryComment  String?
+  assignedToUserId Int?
+  assignedToUser   User?            @relation("OrderAssignedTo", fields: [assignedToUserId], references: [id])
+  takenAt          DateTime?
+  pickedAt         DateTime?
+  packedAt         DateTime?
+  completedAt      DateTime?
+  boxCode          String?
+  boxType          String?
+  labelPrintedAt   DateTime?
+  createdAt        DateTime         @default(now())
+  updatedAt        DateTime         @updatedAt
+  lines            SalesOrderLine[]
+
+  @@index([status])
+  @@index([assignedToUserId])
+  @@index([createdAt])
+}
+
+model SalesOrderLine {
+  id            Int        @id @default(autoincrement())
+  orderId       Int
+  order         SalesOrder @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  itemId        Int?
+  item          Item?      @relation(fields: [itemId], references: [id])
+  requestedSku  String?
+  requestedName String?
+  qty           Int
+  pickedQty     Int        @default(0)
+  createdAt     DateTime   @default(now())
+  updatedAt     DateTime   @updatedAt
+
+  @@index([orderId])
+  @@index([itemId])
+}
+
+enum SalesOrderStatus {
+  NEW
+  IN_PICKING
+  PICKED
+  PACKED
+  READY_TO_SHIP
+  SHIPPED
+  CANCELLED
 }

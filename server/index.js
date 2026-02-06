@@ -912,6 +912,183 @@ async function getOrCreateReceivingLocation() {
   return location;
 }
 
+function escapeHtml(value) {
+  return String(value ?? "")
+    .replaceAll("&", "&amp;")
+    .replaceAll("<", "&lt;")
+    .replaceAll(">", "&gt;")
+    .replaceAll('"', "&quot;")
+    .replaceAll("'", "&#039;");
+}
+
+async function getItemLocationBalances(itemId) {
+  const movements = await prisma.stockMovement.findMany({
+    where: { itemId },
+    include: {
+      location: {
+        select: { id: true, name: true, code: true, zone: true, aisle: true, rack: true, level: true },
+      },
+    },
+    orderBy: { createdAt: "asc" },
+  });
+
+  const byLocation = new Map();
+  for (const movement of movements) {
+    if (!movement.locationId) continue;
+    const locationId = movement.locationId;
+    const current = byLocation.get(locationId) || {
+      locationId,
+      location: movement.location || null,
+      qty: 0,
+    };
+    if (movement.type === "INCOME" || movement.type === "ADJUSTMENT") {
+      current.qty += Number(movement.quantity) || 0;
+    } else if (movement.type === "ISSUE") {
+      current.qty -= Number(movement.quantity) || 0;
+    }
+    byLocation.set(locationId, current);
+  }
+
+  return Array.from(byLocation.values())
+    .filter((row) => row.qty > 0)
+    .sort((a, b) => {
+      const codeA = String(a.location?.code || a.location?.name || "");
+      const codeB = String(b.location?.code || b.location?.name || "");
+      return codeA.localeCompare(codeB, "ru");
+    });
+}
+
+async function buildOrderPickPlan(orderId) {
+  const order = await prisma.salesOrder.findUnique({
+    where: { id: orderId },
+    include: {
+      lines: {
+        include: { item: true },
+        orderBy: { id: "asc" },
+      },
+    },
+  });
+  if (!order) return null;
+
+  const plan = [];
+  for (const line of order.lines) {
+    const totalQty = Number(line.qty) || 0;
+    const pickedQty = Number(line.pickedQty) || 0;
+    const remaining = Math.max(0, totalQty - pickedQty);
+    if (remaining <= 0) continue;
+
+    if (!line.itemId) {
+      plan.push({
+        lineId: line.id,
+        itemId: null,
+        itemName: line.requestedName || "Неизвестный товар",
+        sku: line.requestedSku || null,
+        totalQty,
+        pickedQty,
+        remainingQty: remaining,
+        steps: [],
+        shortageQty: remaining,
+      });
+      continue;
+    }
+
+    const balances = await getItemLocationBalances(line.itemId);
+    let need = remaining;
+    const steps = [];
+
+    for (const balance of balances) {
+      if (need <= 0) break;
+      const pickQty = Math.min(need, Math.floor(balance.qty));
+      if (pickQty <= 0) continue;
+      steps.push({
+        locationId: balance.locationId,
+        locationCode: balance.location?.code || null,
+        locationName: balance.location?.name || null,
+        qty: pickQty,
+      });
+      need -= pickQty;
+    }
+
+    plan.push({
+      lineId: line.id,
+      itemId: line.itemId,
+      itemName: line.item?.name || line.requestedName || `Товар #${line.itemId}`,
+      sku: line.item?.sku || line.requestedSku || null,
+      totalQty,
+      pickedQty,
+      remainingQty: remaining,
+      steps,
+      shortageQty: Math.max(0, need),
+    });
+  }
+
+  return plan;
+}
+
+function buildOrderLabelHtml(order) {
+  const createdAt = order?.createdAt
+    ? new Date(order.createdAt).toLocaleString("ru-RU")
+    : "";
+  const linesHtml = (order?.lines || [])
+    .map((line, idx) => {
+      const name = line.item?.name || line.requestedName || `Товар #${line.itemId || "?"}`;
+      const sku = line.item?.sku || line.requestedSku || "";
+      return `
+        <tr>
+          <td>${idx + 1}</td>
+          <td>${escapeHtml(name)}</td>
+          <td>${escapeHtml(sku)}</td>
+          <td>${Number(line.qty) || 0}</td>
+        </tr>
+      `;
+    })
+    .join("");
+
+  return `<!doctype html>
+<html lang="ru">
+<head>
+  <meta charset="utf-8" />
+  <title>Этикетка заказа ${escapeHtml(order.orderNumber)}</title>
+  <style>
+    body { font-family: Arial, sans-serif; margin: 16px; color: #111; }
+    .label { border: 1px solid #111; border-radius: 8px; padding: 14px; max-width: 860px; }
+    h1 { font-size: 22px; margin: 0 0 8px 0; }
+    .meta { margin: 6px 0; font-size: 14px; }
+    table { width: 100%; border-collapse: collapse; margin-top: 12px; }
+    th, td { border: 1px solid #c7c7c7; padding: 6px; font-size: 13px; text-align: left; }
+    .barcode { margin-top: 12px; font-family: monospace; font-size: 18px; font-weight: 700; }
+    @media print { body { margin: 0; } .label { border: none; } }
+  </style>
+</head>
+<body>
+  <div class="label">
+    <h1>Заказ ${escapeHtml(order.orderNumber)}</h1>
+    <div class="meta"><b>Получатель:</b> ${escapeHtml(order.customerName)}</div>
+    <div class="meta"><b>Телефон:</b> ${escapeHtml(order.customerPhone || "")}</div>
+    <div class="meta"><b>Адрес:</b> ${escapeHtml(order.shippingAddress)}</div>
+    <div class="meta"><b>Комментарий:</b> ${escapeHtml(order.deliveryComment || "")}</div>
+    <div class="meta"><b>Коробка:</b> ${escapeHtml(order.boxCode || "-")} (${escapeHtml(order.boxType || "-")})</div>
+    <div class="meta"><b>Создан:</b> ${escapeHtml(createdAt)}</div>
+    <table>
+      <thead>
+        <tr>
+          <th>#</th>
+          <th>Товар</th>
+          <th>SKU</th>
+          <th>Кол-во</th>
+        </tr>
+      </thead>
+      <tbody>
+        ${linesHtml}
+      </tbody>
+    </table>
+    <div class="barcode">ORDER: ${escapeHtml(order.orderNumber)}</div>
+  </div>
+  <script>window.onload = () => window.print();</script>
+</body>
+</html>`;
+}
+
 
 function buildReceiveActHtml(order, rows, orgInfo) {
   const safeOrg = {
@@ -8274,6 +8451,436 @@ app.post("/api/purchase-orders/excel-file", auth, async (req, res) => {
       message: "Р В РЎвЂєР РЋРІвЂљВ¬Р В РЎвЂР В Р’В±Р В РЎвЂќР В Р’В° Р РЋР С“Р В Р’ВµР РЋР вЂљР В Р вЂ Р В Р’ВµР РЋР вЂљР В Р’В° Р В РЎвЂ”Р РЋР вЂљР В РЎвЂ Р РЋРІР‚С›Р В РЎвЂўР РЋР вЂљР В РЎВР В РЎвЂР РЋР вЂљР В РЎвЂўР В Р вЂ Р В Р’В°Р В Р вЂ¦Р В РЎвЂР В РЎвЂ Excel-Р В Р’В·Р В Р’В°Р В РЎвЂќР В Р’В°Р В Р’В·Р В Р’В° Р В РЎвЂ”Р В РЎвЂўР РЋР С“Р РЋРІР‚С™Р В Р’В°Р В Р вЂ Р РЋРІР‚В°Р В РЎвЂР В РЎвЂќР РЋРЎвЂњ",
       error: String(err),
     });
+  }
+});
+
+// ================== ORDER FULFILLMENT (SMB) ==================
+app.post("/api/orders/inbound", auth, async (req, res) => {
+  try {
+    if (!isWarehouseManager(req.user)) {
+      return res.status(403).json({ message: "NO_ACCESS" });
+    }
+
+    const {
+      externalOrderId,
+      source,
+      orderNumber,
+      customerName,
+      customerPhone,
+      shippingAddress,
+      deliveryComment,
+      items,
+    } = req.body || {};
+
+    if (!orderNumber || !customerName || !shippingAddress) {
+      return res.status(400).json({ message: "BAD_ORDER_HEADER" });
+    }
+    if (!Array.isArray(items) || items.length === 0) {
+      return res.status(400).json({ message: "BAD_ITEMS" });
+    }
+
+    const linesPayload = [];
+    for (const raw of items) {
+      const qty = Math.trunc(Number(raw.qty));
+      if (!Number.isFinite(qty) || qty <= 0) continue;
+      const byId = raw.itemId ? await prisma.item.findUnique({ where: { id: Number(raw.itemId) } }) : null;
+      const bySku = !byId && raw.sku
+        ? await prisma.item.findFirst({ where: { sku: String(raw.sku) } })
+        : null;
+      const byBarcode = !byId && !bySku && raw.barcode
+        ? await prisma.item.findFirst({ where: { barcode: String(raw.barcode) } })
+        : null;
+      const item = byId || bySku || byBarcode || null;
+      linesPayload.push({
+        itemId: item?.id || null,
+        requestedSku: raw.sku ? String(raw.sku) : item?.sku || null,
+        requestedName: raw.name ? String(raw.name) : item?.name || null,
+        qty,
+      });
+    }
+
+    if (linesPayload.length === 0) {
+      return res.status(400).json({ message: "BAD_ITEMS" });
+    }
+
+    const result = await prisma.$transaction(async (tx) => {
+      if (externalOrderId) {
+        const existing = await tx.salesOrder.findUnique({
+          where: { externalOrderId: String(externalOrderId) },
+          include: { lines: true },
+        });
+        if (existing) {
+          if (!["NEW", "IN_PICKING"].includes(existing.status)) {
+            const err = new Error("ORDER_LOCKED");
+            err.code = "ORDER_LOCKED";
+            throw err;
+          }
+
+          await tx.salesOrderLine.deleteMany({ where: { orderId: existing.id } });
+          await tx.salesOrderLine.createMany({
+            data: linesPayload.map((row) => ({
+              orderId: existing.id,
+              itemId: row.itemId,
+              requestedSku: row.requestedSku,
+              requestedName: row.requestedName,
+              qty: row.qty,
+            })),
+          });
+
+          return tx.salesOrder.update({
+            where: { id: existing.id },
+            data: {
+              source: source ? String(source) : existing.source,
+              orderNumber: String(orderNumber),
+              customerName: String(customerName),
+              customerPhone: customerPhone ? String(customerPhone) : null,
+              shippingAddress: String(shippingAddress),
+              deliveryComment: deliveryComment ? String(deliveryComment) : null,
+            },
+            include: {
+              assignedToUser: { select: { id: true, name: true, email: true } },
+              lines: { include: { item: true }, orderBy: { id: "asc" } },
+            },
+          });
+        }
+      }
+
+      return tx.salesOrder.create({
+        data: {
+          externalOrderId: externalOrderId ? String(externalOrderId) : null,
+          source: source ? String(source) : "MANUAL",
+          orderNumber: String(orderNumber),
+          customerName: String(customerName),
+          customerPhone: customerPhone ? String(customerPhone) : null,
+          shippingAddress: String(shippingAddress),
+          deliveryComment: deliveryComment ? String(deliveryComment) : null,
+          lines: {
+            create: linesPayload,
+          },
+        },
+        include: {
+          assignedToUser: { select: { id: true, name: true, email: true } },
+          lines: { include: { item: true }, orderBy: { id: "asc" } },
+        },
+      });
+    });
+
+    res.status(201).json({ ok: true, order: result });
+  } catch (err) {
+    if (err.code === "ORDER_LOCKED") {
+      return res.status(409).json({ message: "ORDER_LOCKED" });
+    }
+    console.error("orders inbound error:", err);
+    res.status(500).json({ message: "ORDERS_INBOUND_ERROR" });
+  }
+});
+
+app.get("/api/orders/queue", auth, async (req, res) => {
+  try {
+    const mineOnly = req.query.mine === "1";
+    const statusList = String(req.query.status || "NEW,IN_PICKING,PICKED,PACKED")
+      .split(",")
+      .map((s) => s.trim())
+      .filter(Boolean);
+
+    const where = {
+      status: { in: statusList },
+      ...(mineOnly ? { assignedToUserId: req.user.id } : {}),
+    };
+
+    const orders = await prisma.salesOrder.findMany({
+      where,
+      orderBy: [{ status: "asc" }, { createdAt: "asc" }],
+      include: {
+        assignedToUser: { select: { id: true, name: true, email: true } },
+        lines: { include: { item: true }, orderBy: { id: "asc" } },
+      },
+      take: 100,
+    });
+
+    res.json({ items: orders });
+  } catch (err) {
+    console.error("orders queue error:", err);
+    res.status(500).json({ message: "ORDERS_QUEUE_ERROR" });
+  }
+});
+
+app.post("/api/orders/:id/take", auth, async (req, res) => {
+  try {
+    const id = Number(req.params.id);
+    if (!id || Number.isNaN(id)) {
+      return res.status(400).json({ message: "BAD_ORDER_ID" });
+    }
+
+    const order = await prisma.salesOrder.findUnique({ where: { id } });
+    if (!order) return res.status(404).json({ message: "ORDER_NOT_FOUND" });
+    if (!["NEW", "IN_PICKING"].includes(order.status)) {
+      return res.status(400).json({ message: "ORDER_NOT_AVAILABLE" });
+    }
+    if (order.assignedToUserId && order.assignedToUserId !== req.user.id) {
+      return res.status(409).json({ message: "ORDER_ALREADY_ASSIGNED" });
+    }
+
+    const updated = await prisma.salesOrder.update({
+      where: { id },
+      data: {
+        assignedToUserId: req.user.id,
+        status: "IN_PICKING",
+        takenAt: order.takenAt || new Date(),
+      },
+      include: {
+        assignedToUser: { select: { id: true, name: true, email: true } },
+        lines: { include: { item: true }, orderBy: { id: "asc" } },
+      },
+    });
+
+    res.json({ ok: true, order: updated });
+  } catch (err) {
+    console.error("orders take error:", err);
+    res.status(500).json({ message: "ORDERS_TAKE_ERROR" });
+  }
+});
+
+app.get("/api/orders/:id/pick-plan", auth, async (req, res) => {
+  try {
+    const id = Number(req.params.id);
+    if (!id || Number.isNaN(id)) {
+      return res.status(400).json({ message: "BAD_ORDER_ID" });
+    }
+    const order = await prisma.salesOrder.findUnique({
+      where: { id },
+      include: { assignedToUser: { select: { id: true } } },
+    });
+    if (!order) return res.status(404).json({ message: "ORDER_NOT_FOUND" });
+    if (order.assignedToUserId && order.assignedToUserId !== req.user.id) {
+      return res.status(403).json({ message: "NOT_ASSIGNED_TO_YOU" });
+    }
+
+    const plan = await buildOrderPickPlan(id);
+    res.json({ items: plan || [] });
+  } catch (err) {
+    console.error("orders pick plan error:", err);
+    res.status(500).json({ message: "ORDERS_PICK_PLAN_ERROR" });
+  }
+});
+
+app.post("/api/orders/:id/pick-confirm", auth, async (req, res) => {
+  try {
+    const orderId = Number(req.params.id);
+    const { lineId, locationId, qty } = req.body || {};
+    const line = Number(lineId);
+    const location = Number(locationId);
+    const amount = Math.trunc(Number(qty));
+
+    if (!orderId || !line || !location || !Number.isFinite(amount) || amount <= 0) {
+      return res.status(400).json({ message: "BAD_REQUEST" });
+    }
+
+    const updated = await prisma.$transaction(async (tx) => {
+      const order = await tx.salesOrder.findUnique({
+        where: { id: orderId },
+        include: { lines: true },
+      });
+      if (!order) {
+        const err = new Error("ORDER_NOT_FOUND");
+        err.code = "ORDER_NOT_FOUND";
+        throw err;
+      }
+      if (order.assignedToUserId && order.assignedToUserId !== req.user.id) {
+        const err = new Error("NOT_ASSIGNED_TO_YOU");
+        err.code = "NOT_ASSIGNED_TO_YOU";
+        throw err;
+      }
+      if (!["IN_PICKING", "PICKED"].includes(order.status)) {
+        const err = new Error("BAD_STATUS");
+        err.code = "BAD_STATUS";
+        throw err;
+      }
+
+      const orderLine = order.lines.find((row) => row.id === line);
+      if (!orderLine) {
+        const err = new Error("LINE_NOT_FOUND");
+        err.code = "LINE_NOT_FOUND";
+        throw err;
+      }
+      if (!orderLine.itemId) {
+        const err = new Error("LINE_ITEM_NOT_LINKED");
+        err.code = "LINE_ITEM_NOT_LINKED";
+        throw err;
+      }
+
+      const remaining = Math.max(0, (Number(orderLine.qty) || 0) - (Number(orderLine.pickedQty) || 0));
+      if (amount > remaining) {
+        const err = new Error("QTY_EXCEEDS_REMAINING");
+        err.code = "QTY_EXCEEDS_REMAINING";
+        throw err;
+      }
+
+      await stockService.createMovementInTx(tx, {
+        opId: `ORDER:${orderId}:LINE:${line}:${Date.now()}`,
+        type: "ISSUE",
+        itemId: orderLine.itemId,
+        qty: amount,
+        locationId: location,
+        fromLocationId: location,
+        comment: `Отбор по заказу ${order.orderNumber}`,
+        refType: "ORDER",
+        refId: String(orderId),
+        userId: req.user?.id || null,
+      });
+
+      await tx.salesOrderLine.update({
+        where: { id: line },
+        data: { pickedQty: (Number(orderLine.pickedQty) || 0) + amount },
+      });
+
+      const freshLines = await tx.salesOrderLine.findMany({
+        where: { orderId },
+        orderBy: { id: "asc" },
+      });
+      const fullyPicked = freshLines.every((row) => Number(row.pickedQty) >= Number(row.qty));
+      if (fullyPicked) {
+        await tx.salesOrder.update({
+          where: { id: orderId },
+          data: { status: "PICKED", pickedAt: new Date() },
+        });
+      }
+
+      return tx.salesOrder.findUnique({
+        where: { id: orderId },
+        include: {
+          assignedToUser: { select: { id: true, name: true, email: true } },
+          lines: { include: { item: true }, orderBy: { id: "asc" } },
+        },
+      });
+    });
+
+    res.json({ ok: true, order: updated });
+  } catch (err) {
+    if (err.code === "ORDER_NOT_FOUND") return res.status(404).json({ message: "ORDER_NOT_FOUND" });
+    if (err.code === "LINE_NOT_FOUND") return res.status(404).json({ message: "LINE_NOT_FOUND" });
+    if (err.code === "NOT_ASSIGNED_TO_YOU") return res.status(403).json({ message: "NOT_ASSIGNED_TO_YOU" });
+    if (err.code === "BAD_STATUS") return res.status(400).json({ message: "ORDER_BAD_STATUS" });
+    if (err.code === "QTY_EXCEEDS_REMAINING") return res.status(400).json({ message: "QTY_EXCEEDS_REMAINING" });
+    if (err.code === "LINE_ITEM_NOT_LINKED") return res.status(400).json({ message: "LINE_ITEM_NOT_LINKED" });
+    if (err.code === "INSUFFICIENT_QTY") return res.status(400).json({ message: "INSUFFICIENT_QTY" });
+    console.error("orders pick confirm error:", err);
+    res.status(500).json({ message: "ORDERS_PICK_CONFIRM_ERROR" });
+  }
+});
+
+app.post("/api/orders/:id/pack", auth, async (req, res) => {
+  try {
+    const id = Number(req.params.id);
+    const { boxCode, boxType } = req.body || {};
+    if (!id || Number.isNaN(id)) {
+      return res.status(400).json({ message: "BAD_ORDER_ID" });
+    }
+    if (!boxCode) {
+      return res.status(400).json({ message: "BOX_CODE_REQUIRED" });
+    }
+
+    const order = await prisma.salesOrder.findUnique({
+      where: { id },
+      include: { lines: true },
+    });
+    if (!order) return res.status(404).json({ message: "ORDER_NOT_FOUND" });
+    if (order.assignedToUserId && order.assignedToUserId !== req.user.id) {
+      return res.status(403).json({ message: "NOT_ASSIGNED_TO_YOU" });
+    }
+
+    const allPicked = order.lines.every((row) => Number(row.pickedQty) >= Number(row.qty));
+    if (!allPicked) {
+      return res.status(400).json({ message: "ORDER_NOT_FULLY_PICKED" });
+    }
+
+    const updated = await prisma.salesOrder.update({
+      where: { id },
+      data: {
+        status: "PACKED",
+        boxCode: String(boxCode),
+        boxType: boxType ? String(boxType) : null,
+        packedAt: new Date(),
+      },
+      include: {
+        assignedToUser: { select: { id: true, name: true, email: true } },
+        lines: { include: { item: true }, orderBy: { id: "asc" } },
+      },
+    });
+
+    res.json({ ok: true, order: updated });
+  } catch (err) {
+    console.error("orders pack error:", err);
+    res.status(500).json({ message: "ORDERS_PACK_ERROR" });
+  }
+});
+
+app.get("/api/orders/:id/label", auth, async (req, res) => {
+  try {
+    const id = Number(req.params.id);
+    if (!id || Number.isNaN(id)) {
+      return res.status(400).json({ message: "BAD_ORDER_ID" });
+    }
+    const order = await prisma.salesOrder.findUnique({
+      where: { id },
+      include: {
+        lines: { include: { item: true }, orderBy: { id: "asc" } },
+      },
+    });
+    if (!order) return res.status(404).json({ message: "ORDER_NOT_FOUND" });
+    if (order.assignedToUserId && order.assignedToUserId !== req.user.id && !isWarehouseManager(req.user)) {
+      return res.status(403).json({ message: "NOT_ASSIGNED_TO_YOU" });
+    }
+
+    const html = buildOrderLabelHtml(order);
+    await prisma.salesOrder.update({
+      where: { id },
+      data: { labelPrintedAt: new Date() },
+    });
+
+    res.setHeader("Content-Type", "text/html; charset=utf-8");
+    res.send(html);
+  } catch (err) {
+    console.error("orders label error:", err);
+    res.status(500).json({ message: "ORDERS_LABEL_ERROR" });
+  }
+});
+
+app.post("/api/orders/:id/complete", auth, async (req, res) => {
+  try {
+    const id = Number(req.params.id);
+    if (!id || Number.isNaN(id)) {
+      return res.status(400).json({ message: "BAD_ORDER_ID" });
+    }
+
+    const order = await prisma.salesOrder.findUnique({
+      where: { id },
+      include: { lines: true },
+    });
+    if (!order) return res.status(404).json({ message: "ORDER_NOT_FOUND" });
+    if (order.assignedToUserId && order.assignedToUserId !== req.user.id) {
+      return res.status(403).json({ message: "NOT_ASSIGNED_TO_YOU" });
+    }
+    if (!["PACKED", "READY_TO_SHIP"].includes(order.status)) {
+      return res.status(400).json({ message: "ORDER_NOT_PACKED" });
+    }
+
+    const updated = await prisma.salesOrder.update({
+      where: { id },
+      data: {
+        status: "READY_TO_SHIP",
+        completedAt: new Date(),
+      },
+      include: {
+        assignedToUser: { select: { id: true, name: true, email: true } },
+        lines: { include: { item: true }, orderBy: { id: "asc" } },
+      },
+    });
+
+    res.json({ ok: true, order: updated });
+  } catch (err) {
+    console.error("orders complete error:", err);
+    res.status(500).json({ message: "ORDERS_COMPLETE_ERROR" });
   }
 });
 
