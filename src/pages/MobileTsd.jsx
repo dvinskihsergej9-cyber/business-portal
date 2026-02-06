@@ -50,14 +50,8 @@ const MODES = [
   {
     id: "pick",
     title: "Отбор",
-    subtitle: "Списание из ячейки",
-    icon: "PCK",
-  },
-  {
-    id: "orders",
-    title: "Заказы",
     subtitle: "Сборка, упаковка, этикетка",
-    icon: "ORD",
+    icon: "PCK",
   },
   {
     id: "discrepancies",
@@ -2178,125 +2172,7 @@ export default function MobileTsd() {
   );
 
   const renderPick = () => (
-    <>
-      <TsdHeader
-        title="Отбор"
-        subtitle="Списание из ячейки"
-        contextLabel="Ячейка"
-        contextValue={pickState.from?.name}
-        onChangeContext={() =>
-          setPickState((prev) => ({
-            ...prev,
-            from: null,
-            item: null,
-            qty: "",
-            step: 0,
-            done: false,
-          }))
-        }
-        onBack={() => setMode(null)}
-      />
-      <Stepper steps={PICK_STEPS} activeIndex={pickState.step} />
-
-      <div className="tsd-section">
-        {pickState.error && (
-          <div className="tsd-alert tsd-alert--error">{pickState.error}</div>
-        )}
-
-        {pickState.step === 0 && (
-          <Scanner
-            label="Сканируй ячейку"
-            onScan={handlePickFrom}
-            disabled={pickState.loading}
-          />
-        )}
-
-        {pickState.step === 1 && (
-          <>
-            <LocationCard location={pickState.from} />
-            <Scanner
-              label="Сканируй товар"
-              onScan={handlePickItem}
-              disabled={pickState.loading}
-            />
-          </>
-        )}
-
-        {pickState.step === 2 && (
-          <>
-            <LocationCard location={pickState.from} />
-            <ItemCard item={pickState.item} />
-            <div className="tsd-qty-input">
-              <label className="tsd-scanner__label">Количество</label>
-              <input
-                className="tsd-input"
-                type="number"
-                value={pickState.qty}
-                onChange={(event) =>
-                  setPickState((prev) => ({
-                    ...prev,
-                    qty: event.target.value,
-                  }))
-                }
-              />
-            </div>
-          </>
-        )}
-
-        {pickState.step === 3 && (
-          <>
-            <LocationCard location={pickState.from} />
-            <ItemCard item={pickState.item} qty={Number(pickState.qty) || 0} />
-            {pickState.done && (
-              <div className="tsd-alert tsd-alert--success">Отбор выполнен.</div>
-            )}
-          </>
-        )}
-      </div>
-
-      {pickState.step === 2 && (
-        <div className="tsd-action-bar">
-          <button
-            type="button"
-            className="tsd-btn tsd-btn--primary"
-            onClick={() => setPickState((prev) => ({ ...prev, step: 3 }))}
-          >
-            Далее
-          </button>
-        </div>
-      )}
-
-      {pickState.step === 3 && !pickState.done && (
-        <div className="tsd-action-bar">
-          <button
-            type="button"
-            className="tsd-btn tsd-btn--primary"
-            onClick={handlePickSubmit}
-            disabled={pickState.loading}
-          >
-            Подтвердить
-          </button>
-        </div>
-      )}
-
-      {pickState.done && (
-        <div className="tsd-action-bar">
-          <button
-            type="button"
-            className="tsd-btn tsd-btn--primary"
-            onClick={() =>
-              setPickState({
-                ...emptyPickState,
-                from: pickState.from,
-                step: 1,
-              })
-            }
-          >
-            Следующий товар
-          </button>
-        </div>
-      )}
-    </>
+    <OrderFulfillmentFlow authHeaders={authHeaders} onBack={() => setMode(null)} />
   );
 
   const renderDiscrepancies = () => (
@@ -2322,9 +2198,6 @@ export default function MobileTsd() {
     if (mode === "putaway") return renderPutaway();
     if (mode === "replenish") return renderReplenish();
     if (mode === "pick") return renderPick();
-    if (mode === "orders") {
-      return <OrderFulfillmentFlow authHeaders={authHeaders} onBack={() => setMode(null)} />;
-    }
     if (mode === "discrepancies") return renderDiscrepancies();
     return null;
   };
