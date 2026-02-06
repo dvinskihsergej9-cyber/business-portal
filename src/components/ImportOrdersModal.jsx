@@ -192,7 +192,7 @@ export default function ImportOrdersModal({ onClose, onImportSuccess }) {
               </button>
               <a
                 className="admin-btn admin-btn--secondary"
-                href="/templates/orders-import-template.csv"
+                href="/templates/orders-import-template.xlsx"
                 download
               >
                 Скачать шаблон
