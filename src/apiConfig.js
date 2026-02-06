@@ -38,6 +38,7 @@ export const normalizeErrorMessage = (err, fallback = "Ошибка запрос
   const message = String(err?.message || err || "").trim();
   if (!message) return fallback;
   const lower = message.toLowerCase();
+  const isAsciiOnly = /^[\x00-\x7F\s]*$/.test(message);
 
   if (lower.includes("string did not match")) {
     return "Некорректный адрес сервера.";
@@ -50,6 +51,9 @@ export const normalizeErrorMessage = (err, fallback = "Ошибка запрос
   }
   if (lower.includes("api unreachable")) {
     return "Не удалось подключиться к серверу.";
+  }
+  if (isAsciiOnly) {
+    return fallback;
   }
   return message;
 };
