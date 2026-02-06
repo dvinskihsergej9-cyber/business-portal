@@ -5,10 +5,10 @@ import ImportOrdersModal from "../ImportOrdersModal";
 const API = API_BASE;
 
 const REQUEST_STATUS_OPTIONS = [
-  { value: "NEW", label: "РќРѕРІР°СЏ" },
-  { value: "IN_PROGRESS", label: "Р’ СЂР°Р±РѕС‚Рµ" },
-  { value: "DONE", label: "Р—Р°РІРµСЂС€РµРЅР°" },
-  { value: "REJECTED", label: "РћС‚РєР»РѕРЅРµРЅР°" },
+  { value: "NEW", label: "Новая" },
+  { value: "IN_PROGRESS", label: "В работе" },
+  { value: "DONE", label: "Завершена" },
+  { value: "REJECTED", label: "Отклонена" },
 ];
 
 function toDateInput(value) {
@@ -401,9 +401,9 @@ export default function AdminWarehousePanel() {
 
   return (
     <div className="admin-console__card">
-      <div className="admin-console__card-title">РЎРєР»Р°Рґ</div>
+      <div className="admin-console__card-title">Склад</div>
       <div className="admin-console__card-text">
-        Р РµРґР°РєС‚РёСЂРѕРІР°РЅРёРµ С‚РѕРІР°СЂРѕРІ, СЏС‡РµРµРє Рё Р·Р°СЏРІРѕРє.
+        Редактирование товаров, ячеек и заявок.
       </div>
 
       <div className="admin-console__tabs admin-console__tabs--small">
@@ -447,7 +447,7 @@ export default function AdminWarehousePanel() {
         >
           Заказы
         </button>
-        <div style={{ display: "inline-flex", alignItems: "center", gap: 6 }}>
+        <div className="admin-console__tab-actions">
           <button
             type="button"
             className="admin-btn admin-btn--ghost"
@@ -480,46 +480,44 @@ export default function AdminWarehousePanel() {
       </div>
 
       {error && <div className="admin-alert admin-alert--error">{error}</div>}
-      {loading && (
-        <div className="admin-muted">Р—Р°РіСЂСѓР·РєР°...</div>
-      )}
+      {loading && <div className="admin-muted">Загрузка...</div>}
 
       {!loading && activeTab === "items" && (
         <div className="admin-table-wrapper">
           <table className="admin-table">
             <thead>
               <tr>
-                <th>РўРѕРІР°СЂ</th>
+                <th>Товар</th>
                 <th>SKU</th>
-                <th>РЁС‚СЂРёС…РєРѕРґ</th>
-                <th>Р•Рґ.</th>
+                <th>Штрихкод</th>
+                <th>Ед.</th>
                 <th></th>
               </tr>
             </thead>
             <tbody>
               {items.map((item) => (
                 <tr key={item.id}>
-                  <td data-label="РўРѕРІР°СЂ">
+                  <td data-label="Товар">
                     <div className="admin-table__title">{item.name}</div>
                     <div className="admin-table__meta">ID: {item.id}</div>
                   </td>
                   <td data-label="SKU">{item.sku || "-"}</td>
-                  <td data-label="РЁС‚СЂРёС…РєРѕРґ">{item.barcode || "-"}</td>
-                  <td data-label="Р•Рґ.">{item.unit || "-"}</td>
-                  <td data-label="Р”РµР№СЃС‚РІРёСЏ" className="admin-table__actions">
+                  <td data-label="Штрихкод">{item.barcode || "-"}</td>
+                  <td data-label="Ед.">{item.unit || "-"}</td>
+                  <td data-label="Действия" className="admin-table__actions">
                     <button
                       type="button"
                       className="admin-btn admin-btn--secondary"
                       onClick={() => setEditItem(item)}
                     >
-                      Р РµРґР°РєС‚РёСЂРѕРІР°С‚СЊ
+                      Редактировать
                     </button>
                     <button
                       type="button"
                       className="admin-btn admin-btn--danger"
                       onClick={() => setDeleteItem(item)}
                     >
-                      РЈРґР°Р»РёС‚СЊ
+                      Удалить
                     </button>
                   </td>
                 </tr>
@@ -527,7 +525,7 @@ export default function AdminWarehousePanel() {
               {!items.length && (
                 <tr>
                   <td colSpan="5" className="admin-muted">
-                    РќРµС‚ С‚РѕРІР°СЂРѕРІ.
+                    Нет товаров.
                   </td>
                 </tr>
               )}
@@ -541,37 +539,37 @@ export default function AdminWarehousePanel() {
           <table className="admin-table">
             <thead>
               <tr>
-                <th>РЇС‡РµР№РєР°</th>
-                <th>РљРѕРґ</th>
-                <th>Р—РѕРЅР°</th>
-                <th>Р СЏРґ</th>
+                <th>Ячейка</th>
+                <th>Код</th>
+                <th>Зона</th>
+                <th>Ряд</th>
                 <th></th>
               </tr>
             </thead>
             <tbody>
               {locations.map((loc) => (
                 <tr key={loc.id}>
-                  <td data-label="РЇС‡РµР№РєР°">
+                  <td data-label="Ячейка">
                     <div className="admin-table__title">{loc.name}</div>
                     <div className="admin-table__meta">ID: {loc.id}</div>
                   </td>
-                  <td data-label="РљРѕРґ">{loc.code || "-"}</td>
-                  <td data-label="Р—РѕРЅР°">{loc.zone || "-"}</td>
-                  <td data-label="Р СЏРґ">{loc.aisle || "-"}</td>
-                  <td data-label="Р”РµР№СЃС‚РІРёСЏ" className="admin-table__actions">
+                  <td data-label="Код">{loc.code || "-"}</td>
+                  <td data-label="Зона">{loc.zone || "-"}</td>
+                  <td data-label="Ряд">{loc.aisle || "-"}</td>
+                  <td data-label="Действия" className="admin-table__actions">
                     <button
                       type="button"
                       className="admin-btn admin-btn--secondary"
                       onClick={() => setEditLocation(loc)}
                     >
-                      Р РµРґР°РєС‚РёСЂРѕРІР°С‚СЊ
+                      Редактировать
                     </button>
                     <button
                       type="button"
                       className="admin-btn admin-btn--danger"
                       onClick={() => setDeleteLocation(loc)}
                     >
-                      РЈРґР°Р»РёС‚СЊ
+                      Удалить
                     </button>
                   </td>
                 </tr>
@@ -579,7 +577,7 @@ export default function AdminWarehousePanel() {
               {!locations.length && (
                 <tr>
                   <td colSpan="5" className="admin-muted">
-                    РќРµС‚ СЏС‡РµРµРє.
+                    Нет ячеек.
                   </td>
                 </tr>
               )}
@@ -593,30 +591,30 @@ export default function AdminWarehousePanel() {
           <table className="admin-table">
             <thead>
               <tr>
-                <th>Р—Р°СЏРІРєР°</th>
-                <th>РўРёРї</th>
-                <th>РЎС‚Р°С‚СѓСЃ</th>
-                <th>РђРІС‚РѕСЂ</th>
+                <th>Заявка</th>
+                <th>Тип</th>
+                <th>Статус</th>
+                <th>Автор</th>
                 <th></th>
               </tr>
             </thead>
             <tbody>
               {requests.map((req) => (
                 <tr key={req.id}>
-                  <td data-label="Р—Р°СЏРІРєР°">
+                  <td data-label="Заявка">
                     <div className="admin-table__title">{req.title}</div>
                     <div className="admin-table__meta">ID: {req.id}</div>
                   </td>
-                  <td data-label="РўРёРї">{req.type}</td>
-                  <td data-label="РЎС‚Р°С‚СѓСЃ">{req.status}</td>
-                  <td data-label="РђРІС‚РѕСЂ">{req.createdBy?.name || "-"}</td>
-                  <td data-label="Р”РµР№СЃС‚РІРёСЏ" className="admin-table__actions">
+                  <td data-label="Тип">{req.type}</td>
+                  <td data-label="Статус">{req.status}</td>
+                  <td data-label="Автор">{req.createdBy?.name || "-"}</td>
+                  <td data-label="Действия" className="admin-table__actions">
                     <button
                       type="button"
                       className="admin-btn admin-btn--secondary"
                       onClick={() => setEditRequest(req)}
                     >
-                      РћС‚РєСЂС‹С‚СЊ
+                      Открыть
                     </button>
                   </td>
                 </tr>
@@ -624,7 +622,7 @@ export default function AdminWarehousePanel() {
               {!requests.length && (
                 <tr>
                   <td colSpan="5" className="admin-muted">
-                    РќРµС‚ Р·Р°СЏРІРѕРє.
+                    Нет заявок.
                   </td>
                 </tr>
               )}
@@ -721,7 +719,7 @@ export default function AdminWarehousePanel() {
             <div className="admin-modal__header">
               <div>
                 <div className="admin-modal__title">
-                  Р РµРґР°РєС‚РёСЂРѕРІР°С‚СЊ С‚РѕРІР°СЂ
+                  Редактировать товар
                 </div>
                 <div className="admin-modal__subtitle">{editItem.name}</div>
               </div>
@@ -736,7 +734,7 @@ export default function AdminWarehousePanel() {
             <div className="admin-form">
               <div className="admin-form__row">
                 <div>
-                  <label className="admin-label">РќР°Р·РІР°РЅРёРµ</label>
+                  <label className="admin-label">Название</label>
                   <input
                     className="admin-input"
                     value={itemForm.name}
@@ -764,7 +762,7 @@ export default function AdminWarehousePanel() {
               </div>
               <div className="admin-form__row">
                 <div>
-                  <label className="admin-label">РЁС‚СЂРёС…РєРѕРґ</label>
+                  <label className="admin-label">Штрихкод</label>
                   <input
                     className="admin-input"
                     value={itemForm.barcode}
@@ -777,7 +775,7 @@ export default function AdminWarehousePanel() {
                   />
                 </div>
                 <div>
-                  <label className="admin-label">Р•РґРёРЅРёС†Р°</label>
+                  <label className="admin-label">Единица</label>
                   <input
                     className="admin-input"
                     value={itemForm.unit}
@@ -792,7 +790,7 @@ export default function AdminWarehousePanel() {
               </div>
               <div className="admin-form__row">
                 <div>
-                  <label className="admin-label">РњРёРЅ. РѕСЃС‚Р°С‚РѕРє</label>
+                  <label className="admin-label">Мин. остаток</label>
                   <input
                     className="admin-input"
                     type="number"
@@ -806,7 +804,7 @@ export default function AdminWarehousePanel() {
                   />
                 </div>
                 <div>
-                  <label className="admin-label">РњР°РєСЃ. РѕСЃС‚Р°С‚РѕРє</label>
+                  <label className="admin-label">Макс. остаток</label>
                   <input
                     className="admin-input"
                     type="number"
@@ -821,7 +819,7 @@ export default function AdminWarehousePanel() {
                 </div>
               </div>
               <div>
-                <label className="admin-label">Р¦РµРЅР° РїРѕ СѓРјРѕР»С‡Р°РЅРёСЋ</label>
+                <label className="admin-label">Цена по умолчанию</label>
                 <input
                   className="admin-input"
                   type="number"
@@ -837,7 +835,7 @@ export default function AdminWarehousePanel() {
               <div className="admin-divider" />
               <div>
                 <div className="admin-label" style={{ fontWeight: 600 }}>
-                  {"РђРІС‚РѕР·Р°РєР°Р·"}
+                  {"Автозаказ"}
                 </div>
                 <label className="admin-checkbox">
                   <input
@@ -850,18 +848,18 @@ export default function AdminWarehousePanel() {
                       }))
                     }
                   />
-                  {"Р’РєР»СЋС‡РёС‚СЊ Р°РІС‚РѕР·Р°РєР°Р·"}
+                  {"Включить автозаказ"}
                 </label>
                 {editItem.autoReorderActive && (
                   <div className="admin-muted" style={{ marginTop: 6 }}>
-                    {"РђРІС‚РѕР·Р°РєР°Р· Р°РєС‚РёРІРµРЅ"}
+                    {"Автозаказ активен"}
                   </div>
                 )}
               </div>
               <div className="admin-form__row">
                 <div>
                   <label className="admin-label">
-                    {"РњРёРЅ. РѕСЃС‚Р°С‚РѕРє РґР»СЏ Р°РІС‚РѕР·Р°РєР°Р·Р°"}
+                    {"Мин. остаток для автозаказа"}
                   </label>
                   <input
                     className="admin-input"
@@ -877,7 +875,7 @@ export default function AdminWarehousePanel() {
                 </div>
                 <div>
                   <label className="admin-label">
-                    {"РџРѕСЃС‚Р°РІС‰РёРє"}
+                    {"Поставщик"}
                   </label>
                   <select
                     className="admin-select"
@@ -889,7 +887,7 @@ export default function AdminWarehousePanel() {
                       }))
                     }
                   >
-                    <option value="">{"Р’С‹Р±РµСЂРёС‚Рµ РїРѕСЃС‚Р°РІС‰РёРєР°"}</option>
+                    <option value="">{"Выберите поставщика"}</option>
                     {suppliers.map((s) => (
                       <option key={s.id} value={s.id}>
                         {s.name}
@@ -901,7 +899,7 @@ export default function AdminWarehousePanel() {
               <div className="admin-form__row">
                 <div>
                   <label className="admin-label">
-                    {"РљРѕРЅС‚Р°РєС‚РЅРѕРµ Р»РёС†Рѕ"}
+                    {"Контактное лицо"}
                   </label>
                   <input
                     className="admin-input"
@@ -916,7 +914,7 @@ export default function AdminWarehousePanel() {
                 </div>
                 <div>
                   <label className="admin-label">
-                    {"Email РґР»СЏ Р°РІС‚РѕР·Р°РєР°Р·Р°"}
+                    {"Email для автозаказа"}
                   </label>
                   <input
                     className="admin-input"
@@ -932,7 +930,7 @@ export default function AdminWarehousePanel() {
               </div>
               <div>
                 <label className="admin-label">
-                  {"РўРµРєСЃС‚ СЃРѕРѕР±С‰РµРЅРёСЏ РїРѕСЃС‚Р°РІС‰РёРєСѓ"}
+                  {"Текст сообщения поставщику"}
                 </label>
                 <textarea
                   className="admin-input"
@@ -958,7 +956,7 @@ export default function AdminWarehousePanel() {
                       }))
                     }
                   />
-                  {"РЎР±СЂРѕСЃРёС‚СЊ С„Р»Р°Рі Р°РІС‚РѕР·Р°РєР°Р·Р°"}
+                  {"Сбросить флаг автозаказа"}
                 </label>
               )}
             </div>
@@ -968,7 +966,7 @@ export default function AdminWarehousePanel() {
                 className="admin-btn admin-btn--ghost"
                 onClick={() => setEditItem(null)}
               >
-                РћС‚РјРµРЅР°
+                Отмена
               </button>
               <button
                 type="button"
@@ -977,8 +975,8 @@ export default function AdminWarehousePanel() {
                 disabled={saving}
               >
                 {saving
-                  ? "РЎРѕС…СЂР°РЅРµРЅРёРµ..."
-                  : "РЎРѕС…СЂР°РЅРёС‚СЊ"}
+                  ? "Сохранение..."
+                  : "Сохранить"}
               </button>
             </div>
           </div>
@@ -991,7 +989,7 @@ export default function AdminWarehousePanel() {
             <div className="admin-modal__header">
               <div>
                 <div className="admin-modal__title">
-                  Р РµРґР°РєС‚РёСЂРѕРІР°С‚СЊ СЏС‡РµР№РєСѓ
+                  Редактировать ячейку
                 </div>
                 <div className="admin-modal__subtitle">{editLocation.name}</div>
               </div>
@@ -1006,7 +1004,7 @@ export default function AdminWarehousePanel() {
             <div className="admin-form">
               <div className="admin-form__row">
                 <div>
-                  <label className="admin-label">РќР°Р·РІР°РЅРёРµ</label>
+                  <label className="admin-label">Название</label>
                   <input
                     className="admin-input"
                     value={locationForm.name}
@@ -1019,7 +1017,7 @@ export default function AdminWarehousePanel() {
                   />
                 </div>
                 <div>
-                  <label className="admin-label">РљРѕРґ</label>
+                  <label className="admin-label">Код</label>
                   <input
                     className="admin-input"
                     value={locationForm.code}
@@ -1034,7 +1032,7 @@ export default function AdminWarehousePanel() {
               </div>
               <div className="admin-form__row">
                 <div>
-                  <label className="admin-label">Р—РѕРЅР°</label>
+                  <label className="admin-label">Зона</label>
                   <input
                     className="admin-input"
                     value={locationForm.zone}
@@ -1047,7 +1045,7 @@ export default function AdminWarehousePanel() {
                   />
                 </div>
                 <div>
-                  <label className="admin-label">Р СЏРґ</label>
+                  <label className="admin-label">Ряд</label>
                   <input
                     className="admin-input"
                     value={locationForm.aisle}
@@ -1062,7 +1060,7 @@ export default function AdminWarehousePanel() {
               </div>
               <div className="admin-form__row">
                 <div>
-                  <label className="admin-label">РЎС‚РµР»Р»Р°Р¶</label>
+                  <label className="admin-label">Стеллаж</label>
                   <input
                     className="admin-input"
                     value={locationForm.rack}
@@ -1075,7 +1073,7 @@ export default function AdminWarehousePanel() {
                   />
                 </div>
                 <div>
-                  <label className="admin-label">РЈСЂРѕРІРµРЅСЊ</label>
+                  <label className="admin-label">Уровень</label>
                   <input
                     className="admin-input"
                     value={locationForm.level}
@@ -1091,7 +1089,7 @@ export default function AdminWarehousePanel() {
               <div className="admin-divider" />
               <div>
                 <div className="admin-label" style={{ fontWeight: 600 }}>
-                  {"РђРІС‚РѕР·Р°РєР°Р·"}
+                  {"Автозаказ"}
                 </div>
                 <label className="admin-checkbox">
                   <input
@@ -1104,18 +1102,18 @@ export default function AdminWarehousePanel() {
                       }))
                     }
                   />
-                  {"Р’РєР»СЋС‡РёС‚СЊ Р°РІС‚РѕР·Р°РєР°Р·"}
+                  {"Включить автозаказ"}
                 </label>
                 {editItem.autoReorderActive && (
                   <div className="admin-muted" style={{ marginTop: 6 }}>
-                    {"РђРІС‚РѕР·Р°РєР°Р· Р°РєС‚РёРІРµРЅ"}
+                    {"Автозаказ активен"}
                   </div>
                 )}
               </div>
               <div className="admin-form__row">
                 <div>
                   <label className="admin-label">
-                    {"РњРёРЅ. РѕСЃС‚Р°С‚РѕРє РґР»СЏ Р°РІС‚РѕР·Р°РєР°Р·Р°"}
+                    {"Мин. остаток для автозаказа"}
                   </label>
                   <input
                     className="admin-input"
@@ -1131,7 +1129,7 @@ export default function AdminWarehousePanel() {
                 </div>
                 <div>
                   <label className="admin-label">
-                    {"РџРѕСЃС‚Р°РІС‰РёРє"}
+                    {"Поставщик"}
                   </label>
                   <select
                     className="admin-select"
@@ -1143,7 +1141,7 @@ export default function AdminWarehousePanel() {
                       }))
                     }
                   >
-                    <option value="">{"Р’С‹Р±РµСЂРёС‚Рµ РїРѕСЃС‚Р°РІС‰РёРєР°"}</option>
+                    <option value="">{"Выберите поставщика"}</option>
                     {suppliers.map((s) => (
                       <option key={s.id} value={s.id}>
                         {s.name}
@@ -1155,7 +1153,7 @@ export default function AdminWarehousePanel() {
               <div className="admin-form__row">
                 <div>
                   <label className="admin-label">
-                    {"РљРѕРЅС‚Р°РєС‚РЅРѕРµ Р»РёС†Рѕ"}
+                    {"Контактное лицо"}
                   </label>
                   <input
                     className="admin-input"
@@ -1170,7 +1168,7 @@ export default function AdminWarehousePanel() {
                 </div>
                 <div>
                   <label className="admin-label">
-                    {"Email РґР»СЏ Р°РІС‚РѕР·Р°РєР°Р·Р°"}
+                    {"Email для автозаказа"}
                   </label>
                   <input
                     className="admin-input"
@@ -1186,7 +1184,7 @@ export default function AdminWarehousePanel() {
               </div>
               <div>
                 <label className="admin-label">
-                  {"РўРµРєСЃС‚ СЃРѕРѕР±С‰РµРЅРёСЏ РїРѕСЃС‚Р°РІС‰РёРєСѓ"}
+                  {"Текст сообщения поставщику"}
                 </label>
                 <textarea
                   className="admin-input"
@@ -1212,7 +1210,7 @@ export default function AdminWarehousePanel() {
                       }))
                     }
                   />
-                  {"РЎР±СЂРѕСЃРёС‚СЊ С„Р»Р°Рі Р°РІС‚РѕР·Р°РєР°Р·Р°"}
+                  {"Сбросить флаг автозаказа"}
                 </label>
               )}
             </div>
@@ -1222,7 +1220,7 @@ export default function AdminWarehousePanel() {
                 className="admin-btn admin-btn--ghost"
                 onClick={() => setEditLocation(null)}
               >
-                РћС‚РјРµРЅР°
+                Отмена
               </button>
               <button
                 type="button"
@@ -1231,8 +1229,8 @@ export default function AdminWarehousePanel() {
                 disabled={saving}
               >
                 {saving
-                  ? "РЎРѕС…СЂР°РЅРµРЅРёРµ..."
-                  : "РЎРѕС…СЂР°РЅРёС‚СЊ"}
+                  ? "Сохранение..."
+                  : "Сохранить"}
               </button>
             </div>
           </div>
@@ -1245,7 +1243,7 @@ export default function AdminWarehousePanel() {
             <div className="admin-modal__header">
               <div>
                 <div className="admin-modal__title">
-                  Р РµРґР°РєС‚РёСЂРѕРІР°С‚СЊ Р·Р°СЏРІРєСѓ
+                  Редактировать заявку
                 </div>
                 <div className="admin-modal__subtitle">{editRequest.title}</div>
               </div>
@@ -1260,7 +1258,7 @@ export default function AdminWarehousePanel() {
             <div className="admin-form">
               <div className="admin-form__row">
                 <div>
-                  <label className="admin-label">РЎС‚Р°С‚СѓСЃ</label>
+                  <label className="admin-label">Статус</label>
                   <select
                     className="admin-select"
                     value={requestForm.status}
@@ -1279,7 +1277,7 @@ export default function AdminWarehousePanel() {
                   </select>
                 </div>
                 <div>
-                  <label className="admin-label">Р–РµР»Р°РµРјР°СЏ РґР°С‚Р°</label>
+                  <label className="admin-label">Желаемая дата</label>
                   <input
                     className="admin-input"
                     type="date"
@@ -1294,7 +1292,7 @@ export default function AdminWarehousePanel() {
                 </div>
               </div>
               <div>
-                <label className="admin-label">РљРѕРјРјРµРЅС‚Р°СЂРёР№ Рє СЃС‚Р°С‚СѓСЃСѓ</label>
+                <label className="admin-label">Комментарий к статусу</label>
                 <input
                   className="admin-input"
                   value={requestForm.statusComment}
@@ -1307,7 +1305,7 @@ export default function AdminWarehousePanel() {
                 />
               </div>
               <div>
-                <label className="admin-label">РљРѕРјРјРµРЅС‚Р°СЂРёР№</label>
+                <label className="admin-label">Комментарий</label>
                 <input
                   className="admin-input"
                   value={requestForm.comment}
@@ -1322,7 +1320,7 @@ export default function AdminWarehousePanel() {
               <div className="admin-divider" />
               <div>
                 <div className="admin-label" style={{ fontWeight: 600 }}>
-                  {"РђРІС‚РѕР·Р°РєР°Р·"}
+                  {"Автозаказ"}
                 </div>
                 <label className="admin-checkbox">
                   <input
@@ -1335,18 +1333,18 @@ export default function AdminWarehousePanel() {
                       }))
                     }
                   />
-                  {"Р’РєР»СЋС‡РёС‚СЊ Р°РІС‚РѕР·Р°РєР°Р·"}
+                  {"Включить автозаказ"}
                 </label>
                 {editItem.autoReorderActive && (
                   <div className="admin-muted" style={{ marginTop: 6 }}>
-                    {"РђРІС‚РѕР·Р°РєР°Р· Р°РєС‚РёРІРµРЅ"}
+                    {"Автозаказ активен"}
                   </div>
                 )}
               </div>
               <div className="admin-form__row">
                 <div>
                   <label className="admin-label">
-                    {"РњРёРЅ. РѕСЃС‚Р°С‚РѕРє РґР»СЏ Р°РІС‚РѕР·Р°РєР°Р·Р°"}
+                    {"Мин. остаток для автозаказа"}
                   </label>
                   <input
                     className="admin-input"
@@ -1362,7 +1360,7 @@ export default function AdminWarehousePanel() {
                 </div>
                 <div>
                   <label className="admin-label">
-                    {"РџРѕСЃС‚Р°РІС‰РёРє"}
+                    {"Поставщик"}
                   </label>
                   <select
                     className="admin-select"
@@ -1374,7 +1372,7 @@ export default function AdminWarehousePanel() {
                       }))
                     }
                   >
-                    <option value="">{"Р’С‹Р±РµСЂРёС‚Рµ РїРѕСЃС‚Р°РІС‰РёРєР°"}</option>
+                    <option value="">{"Выберите поставщика"}</option>
                     {suppliers.map((s) => (
                       <option key={s.id} value={s.id}>
                         {s.name}
@@ -1386,7 +1384,7 @@ export default function AdminWarehousePanel() {
               <div className="admin-form__row">
                 <div>
                   <label className="admin-label">
-                    {"РљРѕРЅС‚Р°РєС‚РЅРѕРµ Р»РёС†Рѕ"}
+                    {"Контактное лицо"}
                   </label>
                   <input
                     className="admin-input"
@@ -1401,7 +1399,7 @@ export default function AdminWarehousePanel() {
                 </div>
                 <div>
                   <label className="admin-label">
-                    {"Email РґР»СЏ Р°РІС‚РѕР·Р°РєР°Р·Р°"}
+                    {"Email для автозаказа"}
                   </label>
                   <input
                     className="admin-input"
@@ -1417,7 +1415,7 @@ export default function AdminWarehousePanel() {
               </div>
               <div>
                 <label className="admin-label">
-                  {"РўРµРєСЃС‚ СЃРѕРѕР±С‰РµРЅРёСЏ РїРѕСЃС‚Р°РІС‰РёРєСѓ"}
+                  {"Текст сообщения поставщику"}
                 </label>
                 <textarea
                   className="admin-input"
@@ -1443,7 +1441,7 @@ export default function AdminWarehousePanel() {
                       }))
                     }
                   />
-                  {"РЎР±СЂРѕСЃРёС‚СЊ С„Р»Р°Рі Р°РІС‚РѕР·Р°РєР°Р·Р°"}
+                  {"Сбросить флаг автозаказа"}
                 </label>
               )}
             </div>
@@ -1453,7 +1451,7 @@ export default function AdminWarehousePanel() {
                 className="admin-btn admin-btn--ghost"
                 onClick={() => setEditRequest(null)}
               >
-                РћС‚РјРµРЅР°
+                Отмена
               </button>
               <button
                 type="button"
@@ -1462,8 +1460,8 @@ export default function AdminWarehousePanel() {
                 disabled={saving}
               >
                 {saving
-                  ? "РЎРѕС…СЂР°РЅРµРЅРёРµ..."
-                  : "РЎРѕС…СЂР°РЅРёС‚СЊ"}
+                  ? "Сохранение..."
+                  : "Сохранить"}
               </button>
             </div>
           </div>
@@ -1474,7 +1472,7 @@ export default function AdminWarehousePanel() {
         <div className="admin-modal">
           <div className="admin-modal__panel admin-modal__panel--danger">
             <div className="admin-modal__title">
-              РЈРґР°Р»РёС‚СЊ С‚РѕРІР°СЂ
+              Удалить товар
             </div>
             <div className="admin-modal__subtitle">{deleteItem.name}</div>
             <div className="admin-modal__actions">
@@ -1483,7 +1481,7 @@ export default function AdminWarehousePanel() {
                 className="admin-btn admin-btn--ghost"
                 onClick={() => setDeleteItem(null)}
               >
-                РћС‚РјРµРЅР°
+                Отмена
               </button>
               <button
                 type="button"
@@ -1492,8 +1490,8 @@ export default function AdminWarehousePanel() {
                 disabled={deleting}
               >
                 {deleting
-                  ? "РЈРґР°Р»РµРЅРёРµ..."
-                  : "РЈРґР°Р»РёС‚СЊ"}
+                  ? "Удаление..."
+                  : "Удалить"}
               </button>
             </div>
           </div>
@@ -1504,7 +1502,7 @@ export default function AdminWarehousePanel() {
         <div className="admin-modal">
           <div className="admin-modal__panel admin-modal__panel--danger">
             <div className="admin-modal__title">
-              РЈРґР°Р»РёС‚СЊ СЏС‡РµР№РєСѓ
+              Удалить ячейку
             </div>
             <div className="admin-modal__subtitle">{deleteLocation.name}</div>
             <div className="admin-modal__actions">
@@ -1513,7 +1511,7 @@ export default function AdminWarehousePanel() {
                 className="admin-btn admin-btn--ghost"
                 onClick={() => setDeleteLocation(null)}
               >
-                РћС‚РјРµРЅР°
+                Отмена
               </button>
               <button
                 type="button"
@@ -1522,8 +1520,8 @@ export default function AdminWarehousePanel() {
                 disabled={deleting}
               >
                 {deleting
-                  ? "РЈРґР°Р»РµРЅРёРµ..."
-                  : "РЈРґР°Р»РёС‚СЊ"}
+                  ? "Удаление..."
+                  : "Удалить"}
               </button>
             </div>
           </div>

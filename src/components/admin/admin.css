@@ -295,13 +295,24 @@
   }
 
   .admin-console__tabs {
-    flex-wrap: nowrap;
-    overflow-x: auto;
+    flex-wrap: wrap;
+    overflow-x: visible;
     padding-bottom: 4px;
   }
 
   .admin-console__tab {
     white-space: nowrap;
+  }
+
+  .admin-console__tab-actions {
+    width: 100%;
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+  }
+
+  .admin-console__tabs--small .admin-console__tab {
+    flex: 1 1 auto;
   }
 
   .admin-invite-grid {
