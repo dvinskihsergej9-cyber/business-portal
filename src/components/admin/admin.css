@@ -312,7 +312,14 @@
   }
 
   .admin-console__tabs--small .admin-console__tab {
-    flex: 1 1 auto;
+    flex: 0 0 auto;
+    padding: 6px 10px;
+    font-size: 12px;
+  }
+
+  .admin-console__tab-actions .admin-btn {
+    padding: 6px 10px;
+    font-size: 12px;
   }
 
   .admin-invite-grid {

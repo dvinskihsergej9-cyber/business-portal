@@ -135,6 +135,18 @@ export default function AdminWarehousePanel() {
     }
   };
 
+  const normalizeError = (err, fallback) => {
+    const message = String(err?.message || "").trim();
+    if (!message) return fallback;
+    if (message.toLowerCase().includes("failed to fetch")) {
+      return "Не удалось подключиться к серверу.";
+    }
+    if (message.toLowerCase().includes("string did not match")) {
+      return "Некорректный адрес сервера.";
+    }
+    return message;
+  };
+
   const loadApiKeyInfo = async () => {
     try {
       setApiKeyLoading(true);
@@ -149,7 +161,7 @@ export default function AdminWarehousePanel() {
         lastRotatedAt: data?.lastRotatedAt || null,
       });
     } catch (err) {
-      setError(err.message || "РћС€РёР±РєР° Р·Р°РіСЂСѓР·РєРё РєР»СЋС‡Р°.");
+      setError(normalizeError(err, "Ошибка загрузки ключа."));
     } finally {
       setApiKeyLoading(false);
     }
@@ -174,7 +186,7 @@ export default function AdminWarehousePanel() {
         lastRotatedAt: data.lastRotatedAt || null,
       });
     } catch (err) {
-      setError(err.message || "РћС€РёР±РєР° РіРµРЅРµСЂР°С†РёРё РєР»СЋС‡Р°.");
+      setError(normalizeError(err, "Ошибка генерации ключа."));
     } finally {
       setApiKeyLoading(false);
     }
