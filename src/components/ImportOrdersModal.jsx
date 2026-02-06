@@ -143,6 +143,10 @@ export default function ImportOrdersModal({ onClose, onImportSuccess }) {
     setImporting(true);
     try {
       const token = localStorage.getItem("token");
+      if (!token) {
+        alert("Нет авторизации. Перезайдите в систему.");
+        return;
+      }
       const res = await fetch(`${API_BASE}/orders/import-batch`, {
         method: "POST",
         headers: {
@@ -151,8 +155,16 @@ export default function ImportOrdersModal({ onClose, onImportSuccess }) {
         },
         body: JSON.stringify({ orders }),
       });
-      const data = await res.json();
-      if (!res.ok) throw new Error(data.message || "Ошибка импорта.");
+      let data = null;
+      try {
+        data = await res.json();
+      } catch {
+        data = null;
+      }
+      if (!res.ok) {
+        const message = data?.message || "Ошибка импорта.";
+        throw new Error(message);
+      }
       setResult(data);
       setStep(3);
       if (onImportSuccess) onImportSuccess();
@@ -261,6 +273,11 @@ export default function ImportOrdersModal({ onClose, onImportSuccess }) {
               >
                 {importing ? "Импорт..." : "Импортировать"}
               </button>
+              {errors.length > 0 && (
+                <div className="admin-muted" style={{ marginLeft: "auto" }}>
+                  Есть ошибки строк, но валидные заказы можно импортировать.
+                </div>
+              )}
             </div>
           </>
         )}
@@ -281,3 +298,7 @@ export default function ImportOrdersModal({ onClose, onImportSuccess }) {
     </div>
   );
 }
+
+
+
+
