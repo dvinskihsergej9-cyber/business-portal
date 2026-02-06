@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
-import { API_BASE } from "../../apiConfig";
+import { API_BASE, normalizeErrorMessage } from "../../apiConfig";
 import TsdHeader from "./TsdHeader";
 
 function OrderLineCard({ line, onConfirm, loading }) {
@@ -13,9 +13,7 @@ function OrderLineCard({ line, onConfirm, loading }) {
     <div className="tsd-card">
       <div className="tsd-card__body">
         <div className="tsd-card__title">{line.itemName}</div>
-        <div className="tsd-card__meta">
-          {line.sku ? `SKU: ${line.sku}` : "SKU: -"}
-        </div>
+        <div className="tsd-card__meta">{line.sku ? `SKU: ${line.sku}` : "SKU: -"}</div>
         <div className="tsd-card__meta">
           Ячейка: {line.locationCode || line.locationName || `#${line.locationId}`}
         </div>
@@ -59,18 +57,6 @@ export default function OrderFulfillmentFlow({ authHeaders, onBack }) {
   const [boxCode, setBoxCode] = useState("");
   const [boxType, setBoxType] = useState("");
 
-  const normalizeError = (err, fallback) => {
-    const message = String(err?.message || "").trim();
-    if (!message) return fallback;
-    if (message.toLowerCase().includes("failed to fetch")) {
-      return "Не удалось подключиться к серверу.";
-    }
-    if (message.toLowerCase().includes("string did not match")) {
-      return "Некорректный адрес сервера.";
-    }
-    return message;
-  };
-
   const canPack = useMemo(() => pickPlan.length === 0, [pickPlan.length]);
 
   const loadQueue = async () => {
@@ -85,7 +71,7 @@ export default function OrderFulfillmentFlow({ authHeaders, onBack }) {
       if (!res.ok) throw new Error(data.message || "Не удалось загрузить заказы");
       setOrders(data.items || []);
     } catch (err) {
-      setError(normalizeError(err, "Ошибка загрузки очереди заказов."));
+      setError(normalizeErrorMessage(err, "Ошибка загрузки очереди заказов."));
     } finally {
       setLoading(false);
     }
@@ -117,7 +103,7 @@ export default function OrderFulfillmentFlow({ authHeaders, onBack }) {
       }
       setPickPlan(flat);
     } catch (err) {
-      setError(normalizeError(err, "Ошибка построения маршрута отбора."));
+      setError(normalizeErrorMessage(err, "Ошибка построения маршрута отбора."));
     } finally {
       setLoading(false);
     }
@@ -142,7 +128,7 @@ export default function OrderFulfillmentFlow({ authHeaders, onBack }) {
       await loadPickPlan(orderId);
       await loadQueue();
     } catch (err) {
-      setError(normalizeError(err, "Ошибка при взятии заказа."));
+      setError(normalizeErrorMessage(err, "Ошибка при взятии заказа."));
     } finally {
       setLoading(false);
     }
@@ -168,7 +154,7 @@ export default function OrderFulfillmentFlow({ authHeaders, onBack }) {
       await loadPickPlan(selectedOrder.id);
       await loadQueue();
     } catch (err) {
-      setError(normalizeError(err, "Ошибка подтверждения отбора."));
+      setError(normalizeErrorMessage(err, "Ошибка подтверждения отбора."));
     } finally {
       setLoading(false);
     }
@@ -192,7 +178,7 @@ export default function OrderFulfillmentFlow({ authHeaders, onBack }) {
       setSelectedOrder(data.order);
       await loadQueue();
     } catch (err) {
-      setError(normalizeError(err, "Ошибка упаковки заказа."));
+      setError(normalizeErrorMessage(err, "Ошибка упаковки заказа."));
     } finally {
       setLoading(false);
     }
@@ -200,19 +186,23 @@ export default function OrderFulfillmentFlow({ authHeaders, onBack }) {
 
   const printLabel = async () => {
     if (!selectedOrder) return;
-    const res = await fetch(`${API_BASE}/orders/${selectedOrder.id}/label`, {
-      headers: authHeaders,
-    });
-    if (!res.ok) {
-      const data = await res.json();
-      setError(data.message || "Ошибка печати этикетки.");
-      return;
-    }
-    const html = await res.text();
-    const win = window.open("", "_blank");
-    if (win) {
-      win.document.write(html);
-      win.document.close();
+    try {
+      const res = await fetch(`${API_BASE}/orders/${selectedOrder.id}/label`, {
+        headers: authHeaders,
+      });
+      if (!res.ok) {
+        const data = await res.json();
+        setError(data.message || "Ошибка печати этикетки.");
+        return;
+      }
+      const html = await res.text();
+      const win = window.open("", "_blank");
+      if (win) {
+        win.document.write(html);
+        win.document.close();
+      }
+    } catch (err) {
+      setError(normalizeErrorMessage(err, "Ошибка печати этикетки."));
     }
   };
 
@@ -230,7 +220,7 @@ export default function OrderFulfillmentFlow({ authHeaders, onBack }) {
       setSelectedOrder(data.order);
       await loadQueue();
     } catch (err) {
-      setError(normalizeError(err, "Ошибка завершения заказа."));
+      setError(normalizeErrorMessage(err, "Ошибка завершения заказа."));
     } finally {
       setLoading(false);
     }
@@ -335,9 +325,7 @@ export default function OrderFulfillmentFlow({ authHeaders, onBack }) {
             <div className="tsd-card">
               <div className="tsd-card__body">
                 <div className="tsd-card__title">Маршрут отбора</div>
-                <div className="tsd-card__meta">
-                  Шагов: {pickPlan.length}
-                </div>
+                <div className="tsd-card__meta">Шагов: {pickPlan.length}</div>
               </div>
             </div>
 

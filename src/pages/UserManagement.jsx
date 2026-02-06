@@ -1,18 +1,50 @@
 import { useEffect, useState } from "react";
-import { API_BASE } from "../apiConfig";
+import { API_BASE, normalizeErrorMessage } from "../apiConfig";
 import { useAuth } from "../context/AuthContext";
 
 const API = API_BASE;
 
-const normalizeError = (err) => {
-  if (!err) return "Ошибка";
-  if (err.message === "Failed to fetch") {
-    return "Не удалось подключиться к API. Проверьте доступность сервера.";
+const ALL_ROLES = ["EMPLOYEE", "HR", "ACCOUNTING", "WAREHOUSE", "ADMIN"];
+
+const mapInviteError = (code) => {
+  switch (code) {
+    case "INVITE_EMAIL_REQUIRED":
+      return "Укажите почту";
+    case "BAD_INVITE":
+      return "Неверные данные";
+    case "EMAIL_ALREADY_EXISTS":
+      return "Почта уже занята";
+    case "INVITE_RATE_LIMIT":
+      return "Превышена частота отправки";
+    case "INVITE_GLOBAL_LIMIT":
+      return "Превышен общий лимит отправок";
+    case "INVITE_NOT_FOUND":
+      return "Приглашение не найдено";
+    case "INVITE_SEND_ERROR":
+      return "Не удалось отправить приглашение";
+    case "INVITE_RESEND_ERROR":
+      return "Не удалось переотправить приглашение";
+    case "INVITES_LOAD_ERROR":
+      return "Ошибка загрузки приглашений";
+    default:
+      return code;
   }
-  return err.message || "Ошибка";
 };
 
-const ALL_ROLES = ["EMPLOYEE", "HR", "ACCOUNTING", "WAREHOUSE", "ADMIN"];
+const roleLabel = (role) => {
+  switch (role) {
+    case "EMPLOYEE":
+      return "Сотрудник";
+    case "HR":
+      return "HR";
+    case "ACCOUNTING":
+      return "Бухгалтерия";
+    case "ADMIN":
+      return "Админ";
+    default:
+      return role;
+  }
+};
 
 export default function UserManagement() {
   const { user } = useAuth();
@@ -29,7 +61,6 @@ export default function UserManagement() {
   const [inviteSending, setInviteSending] = useState(false);
   const [inviteResendId, setInviteResendId] = useState(null);
 
-
   const token = localStorage.getItem("token");
   const headers = {
     "Content-Type": "application/json",
@@ -43,15 +74,12 @@ export default function UserManagement() {
       const res = await fetch(`${API}/users`, { headers });
       const data = await res.json();
       if (!res.ok) {
-        throw new Error(
-          data.message ||
-            "Ошибка загрузки пользователей"
-        );
+        throw new Error(data.message || "Ошибка загрузки пользователей");
       }
       setUsers(data);
     } catch (e) {
       console.error(e);
-      setError(normalizeError(e));
+      setError(normalizeErrorMessage(e, "Ошибка загрузки пользователей."));
     } finally {
       setLoading(false);
     }
@@ -69,12 +97,11 @@ export default function UserManagement() {
       setInvites(Array.isArray(data.items) ? data.items : []);
     } catch (e) {
       console.error(e);
-      setInvitesError(normalizeError(e));
+      setInvitesError(normalizeErrorMessage(e, "INVITES_LOAD_ERROR"));
     } finally {
       setInvitesLoading(false);
     }
   };
-
 
   useEffect(() => {
     loadUsers();
@@ -103,9 +130,7 @@ export default function UserManagement() {
       });
       const data = await res.json();
       if (!res.ok) {
-        throw new Error(
-          data.message || "Ошибка изменения роли"
-        );
+        throw new Error(data.message || "Ошибка изменения роли");
       }
 
       setUsers((prev) =>
@@ -113,12 +138,11 @@ export default function UserManagement() {
       );
     } catch (e) {
       console.error(e);
-      setError(e.message);
+      setError(normalizeErrorMessage(e, "Ошибка изменения роли."));
     } finally {
       setSavingId(null);
     }
   };
-
 
   const handleInviteSubmit = async () => {
     if (!inviteEmail) {
@@ -142,7 +166,7 @@ export default function UserManagement() {
       await loadInvites();
     } catch (e) {
       console.error(e);
-      setInvitesError(e.message);
+      setInvitesError(normalizeErrorMessage(e, "INVITE_SEND_ERROR"));
     } finally {
       setInviteSending(false);
     }
@@ -163,44 +187,9 @@ export default function UserManagement() {
       await loadInvites();
     } catch (e) {
       console.error(e);
-      setInvitesError(e.message);
+      setInvitesError(normalizeErrorMessage(e, "INVITE_RESEND_ERROR"));
     } finally {
       setInviteResendId(null);
-    }
-  };
-
-
-  const mapInviteError = (code) => {
-    switch (code) {
-      case "INVITE_EMAIL_REQUIRED":
-        return "Укажите email";
-      case "BAD_INVITE":
-        return "Неверные данные";
-      case "EMAIL_ALREADY_EXISTS":
-        return "Почта уже занята";
-      case "INVITE_RATE_LIMIT":
-        return "Превышена частота отправки";
-      case "INVITE_GLOBAL_LIMIT":
-        return "Превышен общий лимит отправок";
-      case "INVITE_NOT_FOUND":
-        return "Приглашение не найдено";
-      default:
-        return code;
-    }
-  };
-
-  const roleLabel = (role) => {
-    switch (role) {
-      case "EMPLOYEE":
-        return "Сотрудник";
-      case "HR":
-        return "HR";
-      case "ACCOUNTING":
-        return "Бухгалтерия";
-      case "ADMIN":
-        return "Админ";
-      default:
-        return role;
     }
   };
 
@@ -217,19 +206,19 @@ export default function UserManagement() {
       <h1>Управление пользователями</h1>
       <p>
         Здесь администратор может просматривать пользователей и менять их роли.
-      
+      </p>
 
       <div
         className="admin-console__card"
         style={{ marginTop: 16, marginBottom: 16 }}
       >
         <div style={{ fontWeight: 600, marginBottom: 8 }}>
-          {"Пригласить пользователя"}
+          Пригласить пользователя
         </div>
         <div className="admin-invite-grid">
           <input
             type="email"
-            placeholder="Email"
+            placeholder="Почта"
             value={inviteEmail}
             onChange={(e) => setInviteEmail(e.target.value)}
             className="admin-input"
@@ -251,9 +240,7 @@ export default function UserManagement() {
             disabled={inviteSending}
             className="admin-btn admin-btn--primary"
           >
-            {inviteSending
-              ? "Отправка..."
-              : "Пригласить"}
+            {inviteSending ? "Отправка..." : "Пригласить"}
           </button>
         </div>
         {invitesError && (
@@ -271,8 +258,6 @@ export default function UserManagement() {
         )}
       </div>
 
-</p>
-
       {error && (
         <div
           style={{
@@ -288,114 +273,126 @@ export default function UserManagement() {
         </div>
       )}
 
-      
-
       <div style={{ marginBottom: 16 }}>
-        <h3 style={{ marginBottom: 8 }}>{"Приглашения"}</h3>
+        <h3 style={{ marginBottom: 8 }}>Приглашения</h3>
         {invitesLoading ? (
-          <p>{"Загрузка..."}</p>
+          <p>Загрузка...</p>
         ) : invites.length === 0 ? (
-          <p>{"Приглашений пока нет."}</p>
+          <p>Приглашений пока нет.</p>
         ) : (
           <div className="admin-table-wrapper">
             <table className="admin-table admin-table--invites">
-            <thead>
-              <tr>
-                <th style={thStyle}>Email</th>
-                <th style={thStyle}>{"Роль"}</th>
-                <th style={thStyle}>{"Статус"}</th>
-                <th style={thStyle}>{"Создан"}</th>
-                <th style={thStyle}></th>
-              </tr>
-            </thead>
-            <tbody>
-              {invites.map((inv) => (
-                <tr key={inv.id}>
-                  <td data-label="Email" style={tdStyle}>{inv.email}</td>
-                  <td data-label="Роль" style={tdStyle}>{roleLabel(inv.role)} ({inv.role})</td>
-                  <td data-label="Статус" style={tdStyle}>{inv.status}</td>
-                  <td data-label="Создан" style={tdStyle}>
-                    {inv.createdAt
-                      ? new Date(inv.createdAt).toLocaleString()
-                      : "-"}
-                  </td>
-                  <td data-label="Действия" style={tdStyle} className="admin-table__actions">
-                    <button
-                      type="button"
-                      onClick={() => handleInviteResend(inv.id)}
-                      disabled={inviteResendId === inv.id}
-                      className="admin-btn admin-btn--secondary"
-                    >
-                      {inviteResendId === inv.id
-                        ? "Отправка..."
-                        : "Переотправить"}
-                    </button>
-                  </td>
+              <thead>
+                <tr>
+                  <th style={thStyle}>Email</th>
+                  <th style={thStyle}>Роль</th>
+                  <th style={thStyle}>Статус</th>
+                  <th style={thStyle}>Создан</th>
+                  <th style={thStyle}></th>
                 </tr>
-              ))}
-            </tbody>
-          </table>
+              </thead>
+              <tbody>
+                {invites.map((inv) => (
+                  <tr key={inv.id}>
+                    <td data-label="Email" style={tdStyle}>
+                      {inv.email}
+                    </td>
+                    <td data-label="Роль" style={tdStyle}>
+                      {roleLabel(inv.role)} ({inv.role})
+                    </td>
+                    <td data-label="Статус" style={tdStyle}>
+                      {inv.status}
+                    </td>
+                    <td data-label="Создан" style={tdStyle}>
+                      {inv.createdAt ? new Date(inv.createdAt).toLocaleString() : "-"}
+                    </td>
+                    <td
+                      data-label="Действия"
+                      style={tdStyle}
+                      className="admin-table__actions"
+                    >
+                      <button
+                        type="button"
+                        onClick={() => handleInviteResend(inv.id)}
+                        disabled={inviteResendId === inv.id}
+                        className="admin-btn admin-btn--secondary"
+                      >
+                        {inviteResendId === inv.id
+                          ? "Отправка..."
+                          : "Переотправить"}
+                      </button>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
           </div>
         )}
       </div>
 
-{loading ? (
+      {loading ? (
         <p>Загрузка пользователей...</p>
       ) : users.length === 0 ? (
         <p>Пользователей пока нет.</p>
       ) : (
         <div className="admin-table-wrapper">
           <table className="admin-table admin-table--users">
-          <thead>
-            <tr>
-              <th style={thStyle}>ID</th>
-              <th style={thStyle}>Имя</th>
-              <th style={thStyle}>Email</th>
-              <th style={thStyle}>Роль</th>
-              <th style={thStyle}>Создан</th>
-              <th style={thStyle}></th>
-            </tr>
-          </thead>
-          <tbody>
-            {users.map((u) => (
-              <tr key={u.id}>
-                <td data-label="ID" style={tdStyle}>{u.id}</td>
-                <td data-label="Имя" style={tdStyle}>{u.name}</td>
-                <td data-label="Email" style={tdStyle}>{u.email}</td>
-                <td data-label="Роль" style={tdStyle}>
-                  <select
-                    value={u.role}
-                    onChange={(e) => handleRoleChangeLocal(u.id, e.target.value)}
-                    className="admin-select"
-                    disabled={savingId === u.id}
-                  >
-                    {ALL_ROLES.map((r) => (
-                      <option key={r} value={r}>
-                        {roleLabel(r)} ({r})
-                      </option>
-                    ))}
-                  </select>
-                </td>
-                <td data-label="Создан" style={tdStyle}>
-                  {u.createdAt
-                    ? new Date(u.createdAt).toLocaleString()
-                    : "-"}
-                </td>
-                <td data-label="Действия" style={tdStyle} className="admin-table__actions">
-                  <button
-                    onClick={() => handleSaveRole(u.id)}
-                    disabled={savingId === u.id}
-                    className="admin-btn admin-btn--primary"
-                  >
-                    {savingId === u.id
-                      ? "Сохранение..."
-                      : "Сохранить"}
-                  </button>
-                </td>
+            <thead>
+              <tr>
+                <th style={thStyle}>ID</th>
+                <th style={thStyle}>Имя</th>
+                <th style={thStyle}>Email</th>
+                <th style={thStyle}>Роль</th>
+                <th style={thStyle}>Создан</th>
+                <th style={thStyle}></th>
               </tr>
-            ))}
-          </tbody>
-        </table>
+            </thead>
+            <tbody>
+              {users.map((u) => (
+                <tr key={u.id}>
+                  <td data-label="ID" style={tdStyle}>
+                    {u.id}
+                  </td>
+                  <td data-label="Имя" style={tdStyle}>
+                    {u.name}
+                  </td>
+                  <td data-label="Email" style={tdStyle}>
+                    {u.email}
+                  </td>
+                  <td data-label="Роль" style={tdStyle}>
+                    <select
+                      value={u.role}
+                      onChange={(e) => handleRoleChangeLocal(u.id, e.target.value)}
+                      className="admin-select"
+                      disabled={savingId === u.id}
+                    >
+                      {ALL_ROLES.map((r) => (
+                        <option key={r} value={r}>
+                          {roleLabel(r)} ({r})
+                        </option>
+                      ))}
+                    </select>
+                  </td>
+                  <td data-label="Создан" style={tdStyle}>
+                    {u.createdAt ? new Date(u.createdAt).toLocaleString() : "-"}
+                  </td>
+                  <td
+                    data-label="Действия"
+                    style={tdStyle}
+                    className="admin-table__actions"
+                  >
+                    <button
+                      onClick={() => handleSaveRole(u.id)}
+                      disabled={savingId === u.id}
+                      className="admin-btn admin-btn--primary"
+                    >
+                      {savingId === u.id ? "Сохранение..." : "Сохранить"}
+                    </button>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
         </div>
       )}
     </div>
@@ -413,6 +410,3 @@ const tdStyle = {
   padding: 8,
   borderTop: "1px solid #e5e7eb",
 };
-
-
-

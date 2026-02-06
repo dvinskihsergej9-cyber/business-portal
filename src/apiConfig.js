@@ -34,6 +34,26 @@ export const API_BASE = normalizedBase;
 
 const API_TIMEOUT_MS = 20_000;
 
+export const normalizeErrorMessage = (err, fallback = "Ошибка запроса.") => {
+  const message = String(err?.message || err || "").trim();
+  if (!message) return fallback;
+  const lower = message.toLowerCase();
+
+  if (lower.includes("string did not match")) {
+    return "Некорректный адрес сервера.";
+  }
+  if (lower.includes("failed to fetch") || lower.includes("networkerror")) {
+    return "Не удалось подключиться к серверу.";
+  }
+  if (lower.includes("aborterror") || lower.includes("timeout")) {
+    return "Превышено время ожидания ответа сервера.";
+  }
+  if (lower.includes("api unreachable")) {
+    return "Не удалось подключиться к серверу.";
+  }
+  return message;
+};
+
 export const apiFetch = async (path, options = {}) => {
   const normalizedPath = path.startsWith("/") ? path : `/${path}`;
   if (import.meta.env.DEV && normalizedPath.startsWith("/api/")) {
@@ -64,9 +84,9 @@ export const apiFetch = async (path, options = {}) => {
     });
   } catch (err) {
     if (err?.name === "AbortError") {
-      throw new Error("API unreachable. Check VITE_API_BASE");
+      throw new Error("Не удалось подключиться к серверу.");
     }
-    throw err;
+    throw new Error(normalizeErrorMessage(err, "Ошибка подключения к серверу."));
   } finally {
     clearTimeout(timeoutId);
   }

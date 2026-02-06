@@ -1,5 +1,5 @@
 ﻿import { useEffect, useMemo, useState } from "react";
-import { API_BASE } from "../../apiConfig";
+import { API_BASE, normalizeErrorMessage } from "../../apiConfig";
 import ImportOrdersModal from "../ImportOrdersModal";
 
 const API = API_BASE;
@@ -104,19 +104,19 @@ export default function AdminWarehousePanel() {
       if (!itemsRes.ok) {
         throw new Error(
           itemsData.message ||
-            "РћС€РёР±РєР° Р·Р°РіСЂСѓР·РєРё С‚РѕРІР°СЂРѕРІ"
+            "Ошибка загрузки товаров"
         );
       }
       if (!locationsRes.ok) {
         throw new Error(
           locationsData.message ||
-            "РћС€РёР±РєР° Р·Р°РіСЂСѓР·РєРё СЏС‡РµРµРє"
+            "Ошибка загрузки ячеек"
         );
       }
       if (!requestsRes.ok) {
         throw new Error(
           requestsData.message ||
-            "РћС€РёР±РєР° Р·Р°РіСЂСѓР·РєРё Р·Р°СЏРІРѕРє"
+            "Ошибка загрузки заявок"
         );
       }
       setItems(itemsData);
@@ -126,25 +126,10 @@ export default function AdminWarehousePanel() {
         setSuppliers(suppliersData);
       }
     } catch (err) {
-      setError(
-        err.message ||
-          "РћС€РёР±РєР° Р·Р°РіСЂСѓР·РєРё РґР°РЅРЅС‹С… СЃРєР»Р°РґР°"
-      );
+      setError(normalizeErrorMessage(err, "Ошибка загрузки данных склада."));
     } finally {
       setLoading(false);
     }
-  };
-
-  const normalizeError = (err, fallback) => {
-    const message = String(err?.message || "").trim();
-    if (!message) return fallback;
-    if (message.toLowerCase().includes("failed to fetch")) {
-      return "Не удалось подключиться к серверу.";
-    }
-    if (message.toLowerCase().includes("string did not match")) {
-      return "Некорректный адрес сервера.";
-    }
-    return message;
   };
 
   const loadApiKeyInfo = async () => {
@@ -153,7 +138,7 @@ export default function AdminWarehousePanel() {
       const res = await fetch(`${API}/integrations/api-key`, { headers: authHeaders });
       const data = await res.json();
       if (!res.ok) {
-        throw new Error(data.message || "РћС€РёР±РєР° Р·Р°РіСЂСѓР·РєРё РєР»СЋС‡Р°.");
+        throw new Error(data.message || "Ошибка загрузки ключа.");
       }
       setApiKeyInfo({
         hasKey: Boolean(data?.hasKey),
@@ -161,7 +146,7 @@ export default function AdminWarehousePanel() {
         lastRotatedAt: data?.lastRotatedAt || null,
       });
     } catch (err) {
-      setError(normalizeError(err, "Ошибка загрузки ключа."));
+      setError(normalizeErrorMessage(err, "Ошибка загрузки ключа."));
     } finally {
       setApiKeyLoading(false);
     }
@@ -177,7 +162,7 @@ export default function AdminWarehousePanel() {
       });
       const data = await res.json();
       if (!res.ok) {
-        throw new Error(data.message || "РћС€РёР±РєР° РіРµРЅРµСЂР°С†РёРё РєР»СЋС‡Р°.");
+        throw new Error(data.message || "Ошибка генерации ключа.");
       }
       setApiKeyValue(data.apiKey || "");
       setApiKeyInfo({
@@ -186,7 +171,7 @@ export default function AdminWarehousePanel() {
         lastRotatedAt: data.lastRotatedAt || null,
       });
     } catch (err) {
-      setError(normalizeError(err, "Ошибка генерации ключа."));
+      setError(normalizeErrorMessage(err, "Ошибка генерации ключа."));
     } finally {
       setApiKeyLoading(false);
     }
@@ -262,16 +247,13 @@ export default function AdminWarehousePanel() {
       if (!res.ok) {
         throw new Error(
           data.message ||
-            "РћС€РёР±РєР° РѕР±РЅРѕРІР»РµРЅРёСЏ С‚РѕРІР°СЂР°"
+            "Ошибка обновления товара"
         );
       }
       setEditItem(null);
       await loadAll();
     } catch (err) {
-      setError(
-        err.message ||
-          "РћС€РёР±РєР° РѕР±РЅРѕРІР»РµРЅРёСЏ С‚РѕРІР°СЂР°"
-      );
+      setError(normalizeErrorMessage(err, "Ошибка обновления товара."));
     } finally {
       setSaving(false);
     }
@@ -294,16 +276,13 @@ export default function AdminWarehousePanel() {
       if (!res.ok) {
         throw new Error(
           data.message ||
-            "РћС€РёР±РєР° РѕР±РЅРѕРІР»РµРЅРёСЏ СЏС‡РµР№РєРё"
+            "Ошибка обновления ячейки"
         );
       }
       setEditLocation(null);
       await loadAll();
     } catch (err) {
-      setError(
-        err.message ||
-          "РћС€РёР±РєР° РѕР±РЅРѕРІР»РµРЅРёСЏ СЏС‡РµР№РєРё"
-      );
+      setError(normalizeErrorMessage(err, "Ошибка обновления ячейки."));
     } finally {
       setSaving(false);
     }
@@ -334,16 +313,13 @@ export default function AdminWarehousePanel() {
       if (!res.ok) {
         throw new Error(
           data.message ||
-            "РћС€РёР±РєР° РѕР±РЅРѕРІР»РµРЅРёСЏ Р·Р°СЏРІРєРё"
+            "Ошибка обновления заявки"
         );
       }
       setEditRequest(null);
       await loadAll();
     } catch (err) {
-      setError(
-        err.message ||
-          "РћС€РёР±РєР° РѕР±РЅРѕРІР»РµРЅРёСЏ Р·Р°СЏРІРєРё"
-      );
+      setError(normalizeErrorMessage(err, "Ошибка обновления заявки."));
     } finally {
       setSaving(false);
     }
@@ -365,16 +341,13 @@ export default function AdminWarehousePanel() {
       if (!res.ok) {
         throw new Error(
           data.message ||
-            "РћС€РёР±РєР° СѓРґР°Р»РµРЅРёСЏ С‚РѕРІР°СЂР°"
+            "Ошибка удаления товара"
         );
       }
       setDeleteItem(null);
       await loadAll();
     } catch (err) {
-      setError(
-        err.message ||
-          "РћС€РёР±РєР° СѓРґР°Р»РµРЅРёСЏ С‚РѕРІР°СЂР°"
-      );
+      setError(normalizeErrorMessage(err, "Ошибка удаления товара."));
     } finally {
       setDeleting(false);
     }
@@ -396,16 +369,13 @@ export default function AdminWarehousePanel() {
       if (!res.ok) {
         throw new Error(
           data.message ||
-            "РћС€РёР±РєР° СѓРґР°Р»РµРЅРёСЏ СЏС‡РµР№РєРё"
+            "Ошибка удаления ячейки"
         );
       }
       setDeleteLocation(null);
       await loadAll();
     } catch (err) {
-      setError(
-        err.message ||
-          "РћС€РёР±РєР° СѓРґР°Р»РµРЅРёСЏ СЏС‡РµР№РєРё"
-      );
+      setError(normalizeErrorMessage(err, "Ошибка удаления ячейки."));
     } finally {
       setDeleting(false);
     }
@@ -462,10 +432,10 @@ export default function AdminWarehousePanel() {
         <div className="admin-console__tab-actions">
           <button
             type="button"
-            className="admin-btn admin-btn--ghost"
+            className="admin-console__tab admin-console__tab--action"
             onClick={loadAll}
           >
-            {"\u041e\u0431\u043d\u043e\u0432\u0438\u0442\u044c"}
+            {"Обновить"}
           </button>
           <button
             type="button"
@@ -1549,6 +1519,7 @@ export default function AdminWarehousePanel() {
     </div>
   );
 }
+
 
 
 
