@@ -8458,7 +8458,7 @@ app.post("/api/purchase-orders/excel-file", auth, async (req, res) => {
 app.post("/api/orders/inbound", auth, async (req, res) => {
   try {
     if (!isWarehouseManager(req.user)) {
-      return res.status(403).json({ message: "NO_ACCESS" });
+      return res.status(403).json({ message: "Нет доступа." });
     }
 
     const {
@@ -8473,10 +8473,10 @@ app.post("/api/orders/inbound", auth, async (req, res) => {
     } = req.body || {};
 
     if (!orderNumber || !customerName || !shippingAddress) {
-      return res.status(400).json({ message: "BAD_ORDER_HEADER" });
+      return res.status(400).json({ message: "Заполните номер заказа, получателя и адрес." });
     }
     if (!Array.isArray(items) || items.length === 0) {
-      return res.status(400).json({ message: "BAD_ITEMS" });
+      return res.status(400).json({ message: "Добавьте позиции заказа." });
     }
 
     const linesPayload = [];
@@ -8500,7 +8500,7 @@ app.post("/api/orders/inbound", auth, async (req, res) => {
     }
 
     if (linesPayload.length === 0) {
-      return res.status(400).json({ message: "BAD_ITEMS" });
+      return res.status(400).json({ message: "Добавьте позиции заказа." });
     }
 
     const result = await prisma.$transaction(async (tx) => {
@@ -8568,10 +8568,10 @@ app.post("/api/orders/inbound", auth, async (req, res) => {
     res.status(201).json({ ok: true, order: result });
   } catch (err) {
     if (err.code === "ORDER_LOCKED") {
-      return res.status(409).json({ message: "ORDER_LOCKED" });
+      return res.status(409).json({ message: "Заказ уже в работе или закрыт." });
     }
     console.error("orders inbound error:", err);
-    res.status(500).json({ message: "ORDERS_INBOUND_ERROR" });
+    res.status(500).json({ message: "Ошибка загрузки заказа." });
   }
 });
 
@@ -8601,7 +8601,7 @@ app.get("/api/orders/queue", auth, async (req, res) => {
     res.json({ items: orders });
   } catch (err) {
     console.error("orders queue error:", err);
-    res.status(500).json({ message: "ORDERS_QUEUE_ERROR" });
+    res.status(500).json({ message: "Ошибка загрузки очереди заказов." });
   }
 });
 
@@ -8609,16 +8609,16 @@ app.post("/api/orders/:id/take", auth, async (req, res) => {
   try {
     const id = Number(req.params.id);
     if (!id || Number.isNaN(id)) {
-      return res.status(400).json({ message: "BAD_ORDER_ID" });
+      return res.status(400).json({ message: "Некорректный ID заказа." });
     }
 
     const order = await prisma.salesOrder.findUnique({ where: { id } });
-    if (!order) return res.status(404).json({ message: "ORDER_NOT_FOUND" });
+    if (!order) return res.status(404).json({ message: "Заказ не найден." });
     if (!["NEW", "IN_PICKING"].includes(order.status)) {
-      return res.status(400).json({ message: "ORDER_NOT_AVAILABLE" });
+      return res.status(400).json({ message: "Заказ недоступен для взятия." });
     }
     if (order.assignedToUserId && order.assignedToUserId !== req.user.id) {
-      return res.status(409).json({ message: "ORDER_ALREADY_ASSIGNED" });
+      return res.status(409).json({ message: "Заказ уже взят другим сотрудником." });
     }
 
     const updated = await prisma.salesOrder.update({
@@ -8637,7 +8637,7 @@ app.post("/api/orders/:id/take", auth, async (req, res) => {
     res.json({ ok: true, order: updated });
   } catch (err) {
     console.error("orders take error:", err);
-    res.status(500).json({ message: "ORDERS_TAKE_ERROR" });
+    res.status(500).json({ message: "Ошибка при взятии заказа." });
   }
 });
 
@@ -8645,22 +8645,22 @@ app.get("/api/orders/:id/pick-plan", auth, async (req, res) => {
   try {
     const id = Number(req.params.id);
     if (!id || Number.isNaN(id)) {
-      return res.status(400).json({ message: "BAD_ORDER_ID" });
+      return res.status(400).json({ message: "Некорректный ID заказа." });
     }
     const order = await prisma.salesOrder.findUnique({
       where: { id },
       include: { assignedToUser: { select: { id: true } } },
     });
-    if (!order) return res.status(404).json({ message: "ORDER_NOT_FOUND" });
+    if (!order) return res.status(404).json({ message: "Заказ не найден." });
     if (order.assignedToUserId && order.assignedToUserId !== req.user.id) {
-      return res.status(403).json({ message: "NOT_ASSIGNED_TO_YOU" });
+      return res.status(403).json({ message: "Заказ закреплен за другим сотрудником." });
     }
 
     const plan = await buildOrderPickPlan(id);
     res.json({ items: plan || [] });
   } catch (err) {
     console.error("orders pick plan error:", err);
-    res.status(500).json({ message: "ORDERS_PICK_PLAN_ERROR" });
+    res.status(500).json({ message: "Ошибка построения маршрута отбора." });
   }
 });
 
@@ -8673,7 +8673,7 @@ app.post("/api/orders/:id/pick-confirm", auth, async (req, res) => {
     const amount = Math.trunc(Number(qty));
 
     if (!orderId || !line || !location || !Number.isFinite(amount) || amount <= 0) {
-      return res.status(400).json({ message: "BAD_REQUEST" });
+      return res.status(400).json({ message: "Некорректные параметры подтверждения." });
     }
 
     const updated = await prisma.$transaction(async (tx) => {
@@ -8757,15 +8757,15 @@ app.post("/api/orders/:id/pick-confirm", auth, async (req, res) => {
 
     res.json({ ok: true, order: updated });
   } catch (err) {
-    if (err.code === "ORDER_NOT_FOUND") return res.status(404).json({ message: "ORDER_NOT_FOUND" });
-    if (err.code === "LINE_NOT_FOUND") return res.status(404).json({ message: "LINE_NOT_FOUND" });
-    if (err.code === "NOT_ASSIGNED_TO_YOU") return res.status(403).json({ message: "NOT_ASSIGNED_TO_YOU" });
-    if (err.code === "BAD_STATUS") return res.status(400).json({ message: "ORDER_BAD_STATUS" });
-    if (err.code === "QTY_EXCEEDS_REMAINING") return res.status(400).json({ message: "QTY_EXCEEDS_REMAINING" });
-    if (err.code === "LINE_ITEM_NOT_LINKED") return res.status(400).json({ message: "LINE_ITEM_NOT_LINKED" });
-    if (err.code === "INSUFFICIENT_QTY") return res.status(400).json({ message: "INSUFFICIENT_QTY" });
+    if (err.code === "ORDER_NOT_FOUND") return res.status(404).json({ message: "Заказ не найден." });
+    if (err.code === "LINE_NOT_FOUND") return res.status(404).json({ message: "Строка заказа не найдена." });
+    if (err.code === "NOT_ASSIGNED_TO_YOU") return res.status(403).json({ message: "Заказ закреплен за другим сотрудником." });
+    if (err.code === "BAD_STATUS") return res.status(400).json({ message: "Заказ не в статусе отбора." });
+    if (err.code === "QTY_EXCEEDS_REMAINING") return res.status(400).json({ message: "Количество превышает остаток по строке." });
+    if (err.code === "LINE_ITEM_NOT_LINKED") return res.status(400).json({ message: "Строка заказа не связана с товаром." });
+    if (err.code === "INSUFFICIENT_QTY") return res.status(400).json({ message: "Недостаточно остатка в ячейке." });
     console.error("orders pick confirm error:", err);
-    res.status(500).json({ message: "ORDERS_PICK_CONFIRM_ERROR" });
+    res.status(500).json({ message: "Ошибка подтверждения отбора." });
   }
 });
 
@@ -8774,24 +8774,24 @@ app.post("/api/orders/:id/pack", auth, async (req, res) => {
     const id = Number(req.params.id);
     const { boxCode, boxType } = req.body || {};
     if (!id || Number.isNaN(id)) {
-      return res.status(400).json({ message: "BAD_ORDER_ID" });
+      return res.status(400).json({ message: "Некорректный ID заказа." });
     }
     if (!boxCode) {
-      return res.status(400).json({ message: "BOX_CODE_REQUIRED" });
+      return res.status(400).json({ message: "Укажите номер коробки." });
     }
 
     const order = await prisma.salesOrder.findUnique({
       where: { id },
       include: { lines: true },
     });
-    if (!order) return res.status(404).json({ message: "ORDER_NOT_FOUND" });
+    if (!order) return res.status(404).json({ message: "Заказ не найден." });
     if (order.assignedToUserId && order.assignedToUserId !== req.user.id) {
-      return res.status(403).json({ message: "NOT_ASSIGNED_TO_YOU" });
+      return res.status(403).json({ message: "Заказ закреплен за другим сотрудником." });
     }
 
     const allPicked = order.lines.every((row) => Number(row.pickedQty) >= Number(row.qty));
     if (!allPicked) {
-      return res.status(400).json({ message: "ORDER_NOT_FULLY_PICKED" });
+      return res.status(400).json({ message: "Сначала завершите отбор." });
     }
 
     const updated = await prisma.salesOrder.update({
@@ -8811,7 +8811,7 @@ app.post("/api/orders/:id/pack", auth, async (req, res) => {
     res.json({ ok: true, order: updated });
   } catch (err) {
     console.error("orders pack error:", err);
-    res.status(500).json({ message: "ORDERS_PACK_ERROR" });
+    res.status(500).json({ message: "Ошибка упаковки заказа." });
   }
 });
 
@@ -8819,7 +8819,7 @@ app.get("/api/orders/:id/label", auth, async (req, res) => {
   try {
     const id = Number(req.params.id);
     if (!id || Number.isNaN(id)) {
-      return res.status(400).json({ message: "BAD_ORDER_ID" });
+      return res.status(400).json({ message: "Некорректный ID заказа." });
     }
     const order = await prisma.salesOrder.findUnique({
       where: { id },
@@ -8827,9 +8827,9 @@ app.get("/api/orders/:id/label", auth, async (req, res) => {
         lines: { include: { item: true }, orderBy: { id: "asc" } },
       },
     });
-    if (!order) return res.status(404).json({ message: "ORDER_NOT_FOUND" });
+    if (!order) return res.status(404).json({ message: "Заказ не найден." });
     if (order.assignedToUserId && order.assignedToUserId !== req.user.id && !isWarehouseManager(req.user)) {
-      return res.status(403).json({ message: "NOT_ASSIGNED_TO_YOU" });
+      return res.status(403).json({ message: "Заказ закреплен за другим сотрудником." });
     }
 
     const html = buildOrderLabelHtml(order);
@@ -8842,7 +8842,7 @@ app.get("/api/orders/:id/label", auth, async (req, res) => {
     res.send(html);
   } catch (err) {
     console.error("orders label error:", err);
-    res.status(500).json({ message: "ORDERS_LABEL_ERROR" });
+    res.status(500).json({ message: "Ошибка печати этикетки." });
   }
 });
 
@@ -8850,19 +8850,19 @@ app.post("/api/orders/:id/complete", auth, async (req, res) => {
   try {
     const id = Number(req.params.id);
     if (!id || Number.isNaN(id)) {
-      return res.status(400).json({ message: "BAD_ORDER_ID" });
+      return res.status(400).json({ message: "Некорректный ID заказа." });
     }
 
     const order = await prisma.salesOrder.findUnique({
       where: { id },
       include: { lines: true },
     });
-    if (!order) return res.status(404).json({ message: "ORDER_NOT_FOUND" });
+    if (!order) return res.status(404).json({ message: "Заказ не найден." });
     if (order.assignedToUserId && order.assignedToUserId !== req.user.id) {
-      return res.status(403).json({ message: "NOT_ASSIGNED_TO_YOU" });
+      return res.status(403).json({ message: "Заказ закреплен за другим сотрудником." });
     }
     if (!["PACKED", "READY_TO_SHIP"].includes(order.status)) {
-      return res.status(400).json({ message: "ORDER_NOT_PACKED" });
+      return res.status(400).json({ message: "Сначала упакуйте заказ." });
     }
 
     const updated = await prisma.salesOrder.update({
@@ -8880,7 +8880,7 @@ app.post("/api/orders/:id/complete", auth, async (req, res) => {
     res.json({ ok: true, order: updated });
   } catch (err) {
     console.error("orders complete error:", err);
-    res.status(500).json({ message: "ORDERS_COMPLETE_ERROR" });
+    res.status(500).json({ message: "Ошибка завершения заказа." });
   }
 });
 
