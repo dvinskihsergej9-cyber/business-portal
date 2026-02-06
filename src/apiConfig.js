@@ -4,8 +4,13 @@ const envBase = import.meta.env.VITE_API_BASE?.trim();
 const devFallbackBase = `${window.location.protocol}//${window.location.hostname}:3001`;
 const prodFallbackBase = "https://business-portal-8nba.onrender.com";
 
-const rawBase = envBase || (import.meta.env.DEV ? devFallbackBase : prodFallbackBase);
+const rawBase = import.meta.env.PROD ? prodFallbackBase : (envBase || devFallbackBase);
 const cleanedBase = String(rawBase || "").trim().replace(/\s+/g, "");
+const rawLooksLikeEnv =
+  cleanedBase &&
+  !cleanedBase.startsWith("http://") &&
+  !cleanedBase.startsWith("https://") &&
+  !cleanedBase.startsWith("/");
 const needsProtocol =
   cleanedBase &&
   !cleanedBase.startsWith("http://") &&
@@ -17,6 +22,11 @@ let normalizedBase = trimmedBase.endsWith("/api") ? trimmedBase : `${trimmedBase
 try {
   new URL(normalizedBase);
 } catch {
+  const fallback = prodFallbackBase.replace(/\/+$/, "");
+  normalizedBase = fallback.endsWith("/api") ? fallback : `${fallback}/api`;
+}
+
+if (import.meta.env.PROD && rawLooksLikeEnv) {
   const fallback = prodFallbackBase.replace(/\/+$/, "");
   normalizedBase = fallback.endsWith("/api") ? fallback : `${fallback}/api`;
 }

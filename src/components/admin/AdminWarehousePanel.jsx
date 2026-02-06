@@ -25,7 +25,7 @@ export default function AdminWarehousePanel() {
   const [requests, setRequests] = useState([]);
   const [suppliers, setSuppliers] = useState([]);
   const [loading, setLoading] = useState(true);
-  const [error, setError] = useState("");
+  const [error, setError] = useState("");\r\n  const errorRef = useRef(null);
 
   const [editItem, setEditItem] = useState(null);
   const [editLocation, setEditLocation] = useState(null);
@@ -287,6 +287,16 @@ export default function AdminWarehousePanel() {
     });
   }, [editRequest]);
 
+  useEffect(() => {
+    if (!error) return;
+    const node = errorRef.current;
+    if (node?.scrollIntoView) {
+      node.scrollIntoView({ behavior: "smooth", block: "start" });
+    } else if (typeof window !== "undefined") {
+      window.scrollTo({ top: 0, behavior: "smooth" });
+    }
+  }, [error]);
+
   const handleSaveItem = async () => {
     if (!editItem) return;
     try {
@@ -518,7 +528,7 @@ export default function AdminWarehousePanel() {
         </div>
       </div>
 
-      {error && <div className="admin-alert admin-alert--error">{error}</div>}
+      {error && (\r\n        <div ref={errorRef} className="admin-alert admin-alert--error">\r\n          {error}\r\n        </div>\r\n      )}
       {loading && <div className="admin-muted">Загрузка...</div>}
 
       {!loading && activeTab === "items" && (
@@ -1659,6 +1669,9 @@ export default function AdminWarehousePanel() {
     </div>
   );
 }
+
+
+
 
 
 
