@@ -5,14 +5,21 @@ const devFallbackBase = `${window.location.protocol}//${window.location.hostname
 const prodFallbackBase = "https://business-portal-8nba.onrender.com";
 
 const rawBase = envBase || (import.meta.env.DEV ? devFallbackBase : prodFallbackBase);
+const cleanedBase = String(rawBase || "").trim().replace(/\s+/g, "");
 const needsProtocol =
-  rawBase &&
-  !rawBase.startsWith("http://") &&
-  !rawBase.startsWith("https://") &&
-  !rawBase.startsWith("/");
-const normalizedRawBase = needsProtocol ? `https://${rawBase}` : rawBase;
+  cleanedBase &&
+  !cleanedBase.startsWith("http://") &&
+  !cleanedBase.startsWith("https://") &&
+  !cleanedBase.startsWith("/");
+const normalizedRawBase = needsProtocol ? `https://${cleanedBase}` : cleanedBase;
 const trimmedBase = normalizedRawBase.replace(/\/+$/, "");
-const normalizedBase = trimmedBase.endsWith("/api") ? trimmedBase : `${trimmedBase}/api`;
+let normalizedBase = trimmedBase.endsWith("/api") ? trimmedBase : `${trimmedBase}/api`;
+try {
+  new URL(normalizedBase);
+} catch {
+  const fallback = prodFallbackBase.replace(/\/+$/, "");
+  normalizedBase = fallback.endsWith("/api") ? fallback : `${fallback}/api`;
+}
 
 const isLocalHost = ["localhost", "127.0.0.1"].includes(window.location.hostname);
 
