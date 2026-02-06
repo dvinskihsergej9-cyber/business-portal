@@ -162,7 +162,9 @@ export default function ImportOrdersModal({ onClose, onImportSuccess }) {
         data = null;
       }
       if (!res.ok) {
-        const message = data?.message || "Ошибка импорта.";
+        const statusInfo = res.status ? ` (HTTP ${res.status})` : "";
+        const message =
+          data?.message || `Ошибка импорта. Сервер не принял данные${statusInfo}.`;
         throw new Error(message);
       }
       setResult(data);
