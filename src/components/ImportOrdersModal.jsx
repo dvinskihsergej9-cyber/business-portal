@@ -48,6 +48,19 @@ export default function ImportOrdersModal({ onClose, onImportSuccess }) {
   const [importing, setImporting] = useState(false);
   const [result, setResult] = useState(null);
   const fileInputRef = useRef(null);
+  const localStorageKey = "orders_import_local";
+
+  const saveLocalImport = (payload) => {
+    try {
+      const existing = JSON.parse(localStorage.getItem(localStorageKey) || "[]");
+      const next = Array.isArray(existing) ? existing.concat(payload) : payload;
+      localStorage.setItem(localStorageKey, JSON.stringify(next));
+      return true;
+    } catch (err) {
+      console.error("local import save error:", err);
+      return false;
+    }
+  };
 
   const handleFileChange = async (event) => {
     const file = event.target.files[0];
@@ -155,6 +168,22 @@ export default function ImportOrdersModal({ onClose, onImportSuccess }) {
         },
         body: JSON.stringify({ orders }),
       });
+      if (res.status === 404) {
+        const ok = saveLocalImport(orders);
+        if (!ok) {
+          throw new Error("Импорт не удался. Сервер недоступен, локальное сохранение не удалось.");
+        }
+        setResult({
+          created: orders.length,
+          updated: 0,
+          errors: [],
+          localOnly: true,
+        });
+        setStep(3);
+        if (onImportSuccess) onImportSuccess();
+        return;
+      }
+
       let data = null;
       try {
         data = await res.json();
@@ -287,6 +316,11 @@ export default function ImportOrdersModal({ onClose, onImportSuccess }) {
         {step === 3 && result && (
           <div className="admin-form">
             <div className="admin-muted">Импорт завершен.</div>
+            {result.localOnly && (
+              <div className="admin-alert admin-alert--warning" style={{ marginTop: 8 }}>
+                Сервер заказов не настроен. Данные сохранены локально на этом устройстве.
+              </div>
+            )}
             <div>Создано: {result.created}</div>
             <div>Обновлено: {result.updated}</div>
             {result.errors && result.errors.length > 0 && (
