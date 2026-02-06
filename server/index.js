@@ -8715,6 +8715,139 @@ app.post("/api/integrations/orders/inbound", async (req, res) => {
   }
 });
 
+// ===== ADMIN: ORDERS IMPORT (JSON BATCH) =====
+app.post("/api/orders/import-batch", auth, requireAdmin, async (req, res) => {
+  try {
+    const { orders } = req.body || {};
+    if (!Array.isArray(orders) || orders.length === 0) {
+      return res.status(400).json({ message: "Добавьте заказы для импорта." });
+    }
+
+    let created = 0;
+    let updated = 0;
+    const errors = [];
+
+    for (let i = 0; i < orders.length; i += 1) {
+      const row = orders[i] || {};
+      const {
+        externalOrderId,
+        source,
+        orderNumber,
+        customerName,
+        customerPhone,
+        shippingAddress,
+        deliveryComment,
+        items,
+      } = row;
+
+      if (!orderNumber || !customerName || !shippingAddress) {
+        errors.push({ row: i + 1, error: "Заполните номер заказа, получателя и адрес." });
+        continue;
+      }
+      if (!Array.isArray(items) || items.length === 0) {
+        errors.push({ row: i + 1, error: "Добавьте позиции заказа." });
+        continue;
+      }
+
+      const linesPayload = [];
+      for (const raw of items) {
+        const qty = Math.trunc(Number(raw.qty));
+        if (!Number.isFinite(qty) || qty <= 0) continue;
+        const byId = raw.itemId ? await prisma.item.findUnique({ where: { id: Number(raw.itemId) } }) : null;
+        const bySku = !byId && raw.sku
+          ? await prisma.item.findFirst({ where: { sku: String(raw.sku) } })
+          : null;
+        const byBarcode = !byId && !bySku && raw.barcode
+          ? await prisma.item.findFirst({ where: { barcode: String(raw.barcode) } })
+          : null;
+        const item = byId || bySku || byBarcode || null;
+        linesPayload.push({
+          itemId: item?.id || null,
+          requestedSku: raw.sku ? String(raw.sku) : item?.sku || null,
+          requestedName: raw.name ? String(raw.name) : item?.name || null,
+          qty,
+        });
+      }
+
+      if (linesPayload.length === 0) {
+        errors.push({ row: i + 1, error: "Нет валидных строк заказа." });
+        continue;
+      }
+
+      try {
+        const result = await prisma.$transaction(async (tx) => {
+          if (externalOrderId) {
+            const existing = await tx.salesOrder.findUnique({
+              where: { externalOrderId: String(externalOrderId) },
+              include: { lines: true },
+            });
+            if (existing) {
+              if (!["NEW", "IN_PICKING"].includes(existing.status)) {
+                const err = new Error("ORDER_LOCKED");
+                err.code = "ORDER_LOCKED";
+                throw err;
+              }
+
+              await tx.salesOrderLine.deleteMany({ where: { orderId: existing.id } });
+              await tx.salesOrderLine.createMany({
+                data: linesPayload.map((line) => ({
+                  orderId: existing.id,
+                  itemId: line.itemId,
+                  requestedSku: line.requestedSku,
+                  requestedName: line.requestedName,
+                  qty: line.qty,
+                })),
+              });
+
+              const updatedOrder = await tx.salesOrder.update({
+                where: { id: existing.id },
+                data: {
+                  source: source ? String(source) : existing.source,
+                  orderNumber: String(orderNumber),
+                  customerName: String(customerName),
+                  customerPhone: customerPhone ? String(customerPhone) : null,
+                  shippingAddress: String(shippingAddress),
+                  deliveryComment: deliveryComment ? String(deliveryComment) : null,
+                },
+              });
+              return { mode: "updated", order: updatedOrder };
+            }
+          }
+
+          const createdOrder = await tx.salesOrder.create({
+            data: {
+              externalOrderId: externalOrderId ? String(externalOrderId) : null,
+              source: source ? String(source) : "IMPORT",
+              orderNumber: String(orderNumber),
+              customerName: String(customerName),
+              customerPhone: customerPhone ? String(customerPhone) : null,
+              shippingAddress: String(shippingAddress),
+              deliveryComment: deliveryComment ? String(deliveryComment) : null,
+              lines: { create: linesPayload },
+            },
+          });
+          return { mode: "created", order: createdOrder };
+        });
+
+        if (result.mode === "created") created += 1;
+        if (result.mode === "updated") updated += 1;
+      } catch (err) {
+        if (err.code === "ORDER_LOCKED") {
+          errors.push({ row: i + 1, error: "Заказ уже в работе или закрыт." });
+        } else {
+          errors.push({ row: i + 1, error: "Ошибка импорта заказа." });
+          console.error("orders import row error:", err);
+        }
+      }
+    }
+
+    res.json({ created, updated, errors });
+  } catch (err) {
+    console.error("orders import error:", err);
+    res.status(500).json({ message: "Ошибка импорта заказов." });
+  }
+});
+
 // ===== INTEGRATION API KEY (ORG-LEVEL) =====
 app.get("/api/integrations/api-key", auth, requireAdmin, async (req, res) => {
   try {
