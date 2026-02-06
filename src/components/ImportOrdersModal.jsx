@@ -1,12 +1,12 @@
-import { useRef, useState } from "react";
+﻿import { useRef, useState } from "react";
 import * as XLSX from "xlsx";
 import { API_BASE } from "../apiConfig";
 
 const HEADER_ALIASES = {
   ordernumber: "orderNumber",
   order: "orderNumber",
-  "номерзаказа": "orderNumber",
-  "заказ": "orderNumber",
+  номерзаказа: "orderNumber",
+  заказ: "orderNumber",
   customername: "customerName",
   получатель: "customerName",
   клиент: "customerName",
@@ -30,6 +30,8 @@ const HEADER_ALIASES = {
   количество: "qty",
   externalorderid: "externalOrderId",
   externalid: "externalOrderId",
+  внешнийid: "externalOrderId",
+  внешнийзаказ: "externalOrderId",
 };
 
 function normalizeHeader(value) {
@@ -180,6 +182,22 @@ export default function ImportOrdersModal({ onClose, onImportSuccess }) {
             <div className="admin-muted">
               Колонки: номер заказа, получатель, телефон, адрес, комментарий, SKU, наименование, количество.
             </div>
+            <div className="admin-form__row" style={{ marginTop: 12 }}>
+              <button
+                type="button"
+                className="admin-btn admin-btn--primary"
+                onClick={() => fileInputRef.current?.click()}
+              >
+                Выбрать файл
+              </button>
+              <a
+                className="admin-btn admin-btn--secondary"
+                href="/templates/orders-import-template.csv"
+                download
+              >
+                Скачать шаблон
+              </a>
+            </div>
             <input
               type="file"
               accept=".xlsx, .xls"
@@ -187,9 +205,6 @@ export default function ImportOrdersModal({ onClose, onImportSuccess }) {
               ref={fileInputRef}
               style={{ display: "none" }}
             />
-            <button type="button" className="admin-btn admin-btn--primary" onClick={() => fileInputRef.current?.click()}>
-              Выбрать файл
-            </button>
           </div>
         )}
 
@@ -219,7 +234,9 @@ export default function ImportOrdersModal({ onClose, onImportSuccess }) {
                   ))}
                   {!orders.length && (
                     <tr>
-                      <td colSpan="4" className="admin-muted">Нет валидных заказов.</td>
+                      <td colSpan="4" className="admin-muted">
+                        Нет валидных заказов.
+                      </td>
                     </tr>
                   )}
                 </tbody>
@@ -258,11 +275,6 @@ export default function ImportOrdersModal({ onClose, onImportSuccess }) {
                 Ошибки: {result.errors.length}
               </div>
             )}
-            <div className="admin-modal__actions">
-              <button type="button" className="admin-btn admin-btn--primary" onClick={onClose}>
-                Закрыть
-              </button>
-            </div>
           </div>
         )}
       </div>
