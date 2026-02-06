@@ -59,6 +59,18 @@ export default function OrderFulfillmentFlow({ authHeaders, onBack }) {
   const [boxCode, setBoxCode] = useState("");
   const [boxType, setBoxType] = useState("");
 
+  const normalizeError = (err, fallback) => {
+    const message = String(err?.message || "").trim();
+    if (!message) return fallback;
+    if (message.toLowerCase().includes("failed to fetch")) {
+      return "Не удалось подключиться к серверу.";
+    }
+    if (message.toLowerCase().includes("string did not match")) {
+      return "Некорректный адрес сервера.";
+    }
+    return message;
+  };
+
   const canPack = useMemo(() => pickPlan.length === 0, [pickPlan.length]);
 
   const loadQueue = async () => {
@@ -73,7 +85,7 @@ export default function OrderFulfillmentFlow({ authHeaders, onBack }) {
       if (!res.ok) throw new Error(data.message || "Не удалось загрузить заказы");
       setOrders(data.items || []);
     } catch (err) {
-      setError(err.message);
+      setError(normalizeError(err, "Ошибка загрузки очереди заказов."));
     } finally {
       setLoading(false);
     }
@@ -105,7 +117,7 @@ export default function OrderFulfillmentFlow({ authHeaders, onBack }) {
       }
       setPickPlan(flat);
     } catch (err) {
-      setError(err.message);
+      setError(normalizeError(err, "Ошибка построения маршрута отбора."));
     } finally {
       setLoading(false);
     }
@@ -130,7 +142,7 @@ export default function OrderFulfillmentFlow({ authHeaders, onBack }) {
       await loadPickPlan(orderId);
       await loadQueue();
     } catch (err) {
-      setError(err.message);
+      setError(normalizeError(err, "Ошибка при взятии заказа."));
     } finally {
       setLoading(false);
     }
@@ -156,7 +168,7 @@ export default function OrderFulfillmentFlow({ authHeaders, onBack }) {
       await loadPickPlan(selectedOrder.id);
       await loadQueue();
     } catch (err) {
-      setError(err.message);
+      setError(normalizeError(err, "Ошибка подтверждения отбора."));
     } finally {
       setLoading(false);
     }
@@ -180,7 +192,7 @@ export default function OrderFulfillmentFlow({ authHeaders, onBack }) {
       setSelectedOrder(data.order);
       await loadQueue();
     } catch (err) {
-      setError(err.message);
+      setError(normalizeError(err, "Ошибка упаковки заказа."));
     } finally {
       setLoading(false);
     }
@@ -193,7 +205,7 @@ export default function OrderFulfillmentFlow({ authHeaders, onBack }) {
     });
     if (!res.ok) {
       const data = await res.json();
-      setError(data.message || "Ошибка печати");
+      setError(data.message || "Ошибка печати этикетки.");
       return;
     }
     const html = await res.text();
@@ -218,7 +230,7 @@ export default function OrderFulfillmentFlow({ authHeaders, onBack }) {
       setSelectedOrder(data.order);
       await loadQueue();
     } catch (err) {
-      setError(err.message);
+      setError(normalizeError(err, "Ошибка завершения заказа."));
     } finally {
       setLoading(false);
     }
