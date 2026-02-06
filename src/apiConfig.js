@@ -1,4 +1,4 @@
-// src/apiConfig.js
+﻿// src/apiConfig.js
 const envBase = import.meta.env.VITE_API_BASE?.trim();
 
 const devFallbackBase = `${window.location.protocol}//${window.location.hostname}:3001`;
@@ -119,3 +119,6 @@ export const apiFetch = async (path, options = {}) => {
     clearTimeout(timeoutId);
   }
 };
+
+
+
