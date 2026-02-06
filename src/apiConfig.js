@@ -38,6 +38,7 @@ export const normalizeErrorMessage = (err, fallback = "Ошибка запрос
   const message = String(err?.message || err || "").trim();
   if (!message) return fallback;
   const lower = message.toLowerCase();
+  const hasCyrillic = /[А-Яа-яЁё]/.test(message);
   const isAsciiOnly = /^[\x00-\x7F\s]*$/.test(message);
 
   if (lower.includes("string did not match")) {
@@ -52,7 +53,7 @@ export const normalizeErrorMessage = (err, fallback = "Ошибка запрос
   if (lower.includes("api unreachable")) {
     return "Не удалось подключиться к серверу.";
   }
-  if (isAsciiOnly) {
+  if (!hasCyrillic && isAsciiOnly) {
     return fallback;
   }
   return message;
