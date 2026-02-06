@@ -514,6 +514,9 @@ model OrgProfile {
   inn           String
   kpp           String
   phone         String
+  apiKeyHash    String?
+  apiKeyHint    String?
+  apiKeyLastRotatedAt DateTime?
   updatedAt     DateTime @updatedAt
 }
 

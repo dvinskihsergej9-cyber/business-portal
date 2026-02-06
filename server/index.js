@@ -136,6 +136,16 @@ function hashResetToken(token) {
   return crypto.createHash("sha256").update(token).digest("hex");
 }
 
+function hashApiKey(token) {
+  return crypto.createHash("sha256").update(token).digest("hex");
+}
+
+function buildApiKeyHint(token) {
+  const value = String(token || "");
+  if (value.length <= 8) return value;
+  return `${value.slice(0, 4)}...${value.slice(-4)}`;
+}
+
 function createInviteToken() {
   return crypto.randomBytes(32).toString("hex");
 }
@@ -8572,6 +8582,189 @@ app.post("/api/orders/inbound", auth, async (req, res) => {
     }
     console.error("orders inbound error:", err);
     res.status(500).json({ message: "Ошибка загрузки заказа." });
+  }
+});
+
+// ===== INTEGRATION: ORDERS INBOUND (API KEY) =====
+app.post("/api/integrations/orders/inbound", async (req, res) => {
+  try {
+    const apiKey = req.headers["x-api-key"] || req.headers["X-Api-Key"];
+    if (!apiKey) {
+      return res.status(401).json({ message: "Требуется ключ интеграции." });
+    }
+    const profile = await prisma.orgProfile.findUnique({ where: { id: 1 } });
+    if (!profile?.apiKeyHash) {
+      return res.status(401).json({ message: "Ключ интеграции не настроен." });
+    }
+    const hash = hashApiKey(String(apiKey));
+    if (hash !== profile.apiKeyHash) {
+      return res.status(401).json({ message: "Некорректный ключ интеграции." });
+    }
+
+    const {
+      externalOrderId,
+      source,
+      orderNumber,
+      customerName,
+      customerPhone,
+      shippingAddress,
+      deliveryComment,
+      items,
+    } = req.body || {};
+
+    if (!orderNumber || !customerName || !shippingAddress) {
+      return res.status(400).json({ message: "Заполните номер заказа, получателя и адрес." });
+    }
+    if (!Array.isArray(items) || items.length === 0) {
+      return res.status(400).json({ message: "Добавьте позиции заказа." });
+    }
+
+    const linesPayload = [];
+    for (const raw of items) {
+      const qty = Math.trunc(Number(raw.qty));
+      if (!Number.isFinite(qty) || qty <= 0) continue;
+      const byId = raw.itemId ? await prisma.item.findUnique({ where: { id: Number(raw.itemId) } }) : null;
+      const bySku = !byId && raw.sku
+        ? await prisma.item.findFirst({ where: { sku: String(raw.sku) } })
+        : null;
+      const byBarcode = !byId && !bySku && raw.barcode
+        ? await prisma.item.findFirst({ where: { barcode: String(raw.barcode) } })
+        : null;
+      const item = byId || bySku || byBarcode || null;
+      linesPayload.push({
+        itemId: item?.id || null,
+        requestedSku: raw.sku ? String(raw.sku) : item?.sku || null,
+        requestedName: raw.name ? String(raw.name) : item?.name || null,
+        qty,
+      });
+    }
+
+    if (linesPayload.length === 0) {
+      return res.status(400).json({ message: "Добавьте позиции заказа." });
+    }
+
+    const result = await prisma.$transaction(async (tx) => {
+      if (externalOrderId) {
+        const existing = await tx.salesOrder.findUnique({
+          where: { externalOrderId: String(externalOrderId) },
+          include: { lines: true },
+        });
+        if (existing) {
+          if (!["NEW", "IN_PICKING"].includes(existing.status)) {
+            const err = new Error("ORDER_LOCKED");
+            err.code = "ORDER_LOCKED";
+            throw err;
+          }
+
+          await tx.salesOrderLine.deleteMany({ where: { orderId: existing.id } });
+          await tx.salesOrderLine.createMany({
+            data: linesPayload.map((row) => ({
+              orderId: existing.id,
+              itemId: row.itemId,
+              requestedSku: row.requestedSku,
+              requestedName: row.requestedName,
+              qty: row.qty,
+            })),
+          });
+
+          return tx.salesOrder.update({
+            where: { id: existing.id },
+            data: {
+              source: source ? String(source) : existing.source,
+              orderNumber: String(orderNumber),
+              customerName: String(customerName),
+              customerPhone: customerPhone ? String(customerPhone) : null,
+              shippingAddress: String(shippingAddress),
+              deliveryComment: deliveryComment ? String(deliveryComment) : null,
+            },
+            include: {
+              assignedToUser: { select: { id: true, name: true, email: true } },
+              lines: { include: { item: true }, orderBy: { id: "asc" } },
+            },
+          });
+        }
+      }
+
+      return tx.salesOrder.create({
+        data: {
+          externalOrderId: externalOrderId ? String(externalOrderId) : null,
+          source: source ? String(source) : "INTEGRATION",
+          orderNumber: String(orderNumber),
+          customerName: String(customerName),
+          customerPhone: customerPhone ? String(customerPhone) : null,
+          shippingAddress: String(shippingAddress),
+          deliveryComment: deliveryComment ? String(deliveryComment) : null,
+          lines: {
+            create: linesPayload,
+          },
+        },
+        include: {
+          assignedToUser: { select: { id: true, name: true, email: true } },
+          lines: { include: { item: true }, orderBy: { id: "asc" } },
+        },
+      });
+    });
+
+    res.status(201).json({ ok: true, order: result });
+  } catch (err) {
+    if (err.code === "ORDER_LOCKED") {
+      return res.status(409).json({ message: "Заказ уже в работе или закрыт." });
+    }
+    console.error("integration inbound error:", err);
+    res.status(500).json({ message: "Ошибка загрузки заказа." });
+  }
+});
+
+// ===== INTEGRATION API KEY (ORG-LEVEL) =====
+app.get("/api/integrations/api-key", auth, requireAdmin, async (req, res) => {
+  try {
+    const profile = await prisma.orgProfile.findUnique({ where: { id: 1 } });
+    res.json({
+      hasKey: Boolean(profile?.apiKeyHash),
+      hint: profile?.apiKeyHint || null,
+      lastRotatedAt: profile?.apiKeyLastRotatedAt || null,
+    });
+  } catch (err) {
+    console.error("get api key error:", err);
+    res.status(500).json({ message: "Ошибка получения ключа интеграции." });
+  }
+});
+
+app.post("/api/integrations/api-key/rotate", auth, requireAdmin, async (req, res) => {
+  try {
+    const rawKey = `bp_${crypto.randomBytes(24).toString("hex")}`;
+    const hash = hashApiKey(rawKey);
+    const hint = buildApiKeyHint(rawKey);
+
+    const updated = await prisma.orgProfile.upsert({
+      where: { id: 1 },
+      update: {
+        apiKeyHash: hash,
+        apiKeyHint: hint,
+        apiKeyLastRotatedAt: new Date(),
+      },
+      create: {
+        id: 1,
+        orgName: "",
+        legalAddress: "",
+        actualAddress: "",
+        inn: "",
+        kpp: "",
+        phone: "",
+        apiKeyHash: hash,
+        apiKeyHint: hint,
+        apiKeyLastRotatedAt: new Date(),
+      },
+    });
+
+    res.json({
+      apiKey: rawKey,
+      hint: updated.apiKeyHint,
+      lastRotatedAt: updated.apiKeyLastRotatedAt,
+    });
+  } catch (err) {
+    console.error("rotate api key error:", err);
+    res.status(500).json({ message: "Ошибка генерации ключа интеграции." });
   }
 });
 
