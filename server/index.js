@@ -1024,6 +1024,7 @@ async function buildOrderPickPlan(orderId) {
       itemId: line.itemId,
       itemName: line.item?.name || line.requestedName || `Товар #${line.itemId}`,
       sku: line.item?.sku || line.requestedSku || null,
+      barcode: line.item?.barcode || null,
       totalQty,
       pickedQty,
       remainingQty: remaining,

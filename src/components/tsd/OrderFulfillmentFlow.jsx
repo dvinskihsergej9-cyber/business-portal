@@ -1,62 +1,24 @@
-import { useEffect, useMemo, useState } from "react";
+﻿import { useEffect, useMemo, useState } from "react";
 import { API_BASE, normalizeErrorMessage } from "../../apiConfig";
 import TsdHeader from "./TsdHeader";
+import Scanner from "./Scanner";
 
-function OrderLineCard({ line, onConfirm, loading }) {
-  const [qty, setQty] = useState(line.qty);
-
-  useEffect(() => {
-    setQty(line.qty);
-  }, [line.qty]);
-
-  return (
-    <div className="tsd-card">
-      <div className="tsd-card__body">
-        <div className="tsd-card__title">{line.itemName}</div>
-        <div className="tsd-card__meta">{line.sku ? `SKU: ${line.sku}` : "SKU: -"}</div>
-        <div className="tsd-card__meta">
-          Ячейка: {line.locationCode || line.locationName || `#${line.locationId}`}
-        </div>
-        <div className="tsd-card__meta">К отбору: {line.qty}</div>
-      </div>
-      <div className="tsd-inline">
-        <input
-          className="tsd-input"
-          type="number"
-          min="1"
-          value={qty}
-          onChange={(event) => setQty(event.target.value)}
-          disabled={loading}
-        />
-        <button
-          type="button"
-          className="tsd-btn tsd-btn--primary"
-          disabled={loading}
-          onClick={() =>
-            onConfirm({
-              lineId: line.lineId,
-              locationId: line.locationId,
-              qty: Number(qty) || 0,
-            })
-          }
-        >
-          Подтвердить
-        </button>
-      </div>
-    </div>
-  );
-}
+const normalizeScan = (value) => String(value || "").trim().toLowerCase();
 
 export default function OrderFulfillmentFlow({ authHeaders, onBack }) {
   const [mineOnly, setMineOnly] = useState(false);
   const [orders, setOrders] = useState([]);
   const [selectedOrder, setSelectedOrder] = useState(null);
   const [pickPlan, setPickPlan] = useState([]);
+  const [currentIndex, setCurrentIndex] = useState(0);
+  const [locationScanned, setLocationScanned] = useState(false);
+  const [scannedQty, setScannedQty] = useState(0);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
   const [boxCode, setBoxCode] = useState("");
   const [boxType, setBoxType] = useState("");
 
+  const currentStep = pickPlan[currentIndex] || null;
   const canPack = useMemo(() => pickPlan.length === 0, [pickPlan.length]);
 
   const loadQueue = async () => {
@@ -92,8 +54,10 @@ export default function OrderFulfillmentFlow({ authHeaders, onBack }) {
         for (const step of item.steps || []) {
           flat.push({
             lineId: item.lineId,
+            itemId: item.itemId,
             itemName: item.itemName,
             sku: item.sku,
+            barcode: item.barcode || null,
             locationId: step.locationId,
             locationCode: step.locationCode,
             locationName: step.locationName,
@@ -101,7 +65,17 @@ export default function OrderFulfillmentFlow({ authHeaders, onBack }) {
           });
         }
       }
+
+      flat.sort((a, b) => {
+        const codeA = String(a.locationCode || a.locationName || "");
+        const codeB = String(b.locationCode || b.locationName || "");
+        return codeA.localeCompare(codeB, "ru");
+      });
+
       setPickPlan(flat);
+      setCurrentIndex(0);
+      setLocationScanned(false);
+      setScannedQty(0);
     } catch (err) {
       setError(normalizeErrorMessage(err, "Ошибка построения маршрута отбора."));
     } finally {
@@ -157,6 +131,46 @@ export default function OrderFulfillmentFlow({ authHeaders, onBack }) {
       setError(normalizeErrorMessage(err, "Ошибка подтверждения отбора."));
     } finally {
       setLoading(false);
+    }
+  };
+
+  const handleLocationScan = (value) => {
+    if (!currentStep) return;
+    const scanned = normalizeScan(value);
+    const code = normalizeScan(currentStep.locationCode);
+    const name = normalizeScan(currentStep.locationName);
+    const idValue = String(currentStep.locationId || "");
+    if (scanned === code || scanned === name || scanned === idValue) {
+      setLocationScanned(true);
+      setError("");
+      return;
+    }
+    setError("Скан не совпадает с ячейкой текущего шага.");
+  };
+
+  const handleItemScan = async (value) => {
+    if (!currentStep) return;
+    const scanned = normalizeScan(value);
+    const sku = normalizeScan(currentStep.sku);
+    const barcode = normalizeScan(currentStep.barcode);
+    if (scanned !== sku && scanned !== barcode) {
+      setError("Скан не совпадает с товаром текущего шага.");
+      return;
+    }
+
+    const nextQty = scannedQty + 1;
+    setScannedQty(nextQty);
+    setError("");
+
+    if (nextQty >= Number(currentStep.qty || 0)) {
+      await confirmPick({
+        lineId: currentStep.lineId,
+        locationId: currentStep.locationId,
+        qty: Number(currentStep.qty || 0),
+      });
+      setLocationScanned(false);
+      setScannedQty(0);
+      setCurrentIndex(0);
     }
   };
 
@@ -322,23 +336,51 @@ export default function OrderFulfillmentFlow({ authHeaders, onBack }) {
               </div>
             </div>
 
-            <div className="tsd-card">
-              <div className="tsd-card__body">
-                <div className="tsd-card__title">Маршрут отбора</div>
-                <div className="tsd-card__meta">Шагов: {pickPlan.length}</div>
+            {currentStep && (
+              <div className="tsd-card">
+                <div className="tsd-card__body">
+                  <div className="tsd-card__title">Шаг {currentIndex + 1} из {pickPlan.length}</div>
+                  <div className="tsd-card__meta">
+                    Ячейка: {currentStep.locationCode || currentStep.locationName || `#${currentStep.locationId}`}
+                  </div>
+                  <div className="tsd-card__meta">Товар: {currentStep.itemName}</div>
+                  <div className="tsd-card__meta">SKU: {currentStep.sku || "-"}</div>
+                  <div className="tsd-card__meta">К отбору: {currentStep.qty}</div>
+                  <div className="tsd-card__meta">Сканировано: {scannedQty}</div>
+                </div>
+                <div className="tsd-inline">
+                  <button
+                    type="button"
+                    className="tsd-btn tsd-btn--ghost"
+                    onClick={() => {
+                      setLocationScanned(false);
+                      setScannedQty(0);
+                      setError("");
+                    }}
+                  >
+                    Сбросить скан
+                  </button>
+                </div>
               </div>
-            </div>
+            )}
 
-            <div className="tsd-list">
-              {pickPlan.map((line, idx) => (
-                <OrderLineCard
-                  key={`${line.lineId}-${line.locationId}-${idx}`}
-                  line={line}
-                  onConfirm={confirmPick}
-                  loading={loading}
-                />
-              ))}
-            </div>
+            {currentStep && !locationScanned && (
+              <Scanner
+                label="Сканируй ячейку"
+                hint={`Нужна ячейка: ${currentStep.locationCode || currentStep.locationName || currentStep.locationId}`}
+                onScan={handleLocationScan}
+                disabled={loading}
+              />
+            )}
+
+            {currentStep && locationScanned && (
+              <Scanner
+                label="Сканируй товар"
+                hint={`Нужно: ${currentStep.qty} шт. Сканировано: ${scannedQty}`}
+                onScan={handleItemScan}
+                disabled={loading}
+              />
+            )}
 
             {canPack && (
               <div className="tsd-card">
@@ -372,7 +414,7 @@ export default function OrderFulfillmentFlow({ authHeaders, onBack }) {
                     disabled={loading}
                     onClick={printLabel}
                   >
-                    Печать этикетки
+                    Паспорт (PDF)
                   </button>
                   <button
                     type="button"
