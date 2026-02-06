@@ -43,6 +43,10 @@ export default function AdminWarehousePanel() {
   });
   const [apiKeyValue, setApiKeyValue] = useState("");
   const [apiKeyLoading, setApiKeyLoading] = useState(false);
+  const [ordersList, setOrdersList] = useState([]);
+  const [ordersLoading, setOrdersLoading] = useState(false);
+  const [ordersNotice, setOrdersNotice] = useState("");
+  const [ordersFilter, setOrdersFilter] = useState("ACTIVE");
 
   const [itemForm, setItemForm] = useState({
     name: "",
@@ -152,6 +156,52 @@ export default function AdminWarehousePanel() {
     }
   };
 
+  const loadOrdersList = async () => {
+    try {
+      setOrdersLoading(true);
+      setOrdersNotice("");
+      const statusList =
+        ordersFilter === "ALL"
+          ? ["NEW", "IN_PICKING", "PICKED", "PACKED", "READY_TO_SHIP", "SHIPPED", "CANCELLED"]
+          : ["NEW", "IN_PICKING", "PICKED", "PACKED", "READY_TO_SHIP"];
+      const res = await fetch(
+        `${API}/orders/queue?mine=0&status=${encodeURIComponent(statusList.join(","))}`,
+        { headers: authHeaders }
+      );
+      const data = await res.json();
+      if (!res.ok) {
+        throw new Error(data.message || "Ошибка загрузки списка заказов.");
+      }
+      setOrdersList(Array.isArray(data.items) ? data.items : []);
+    } catch (err) {
+      setError(normalizeErrorMessage(err, "Ошибка загрузки списка заказов."));
+    } finally {
+      setOrdersLoading(false);
+    }
+  };
+
+  const createTestOrder = async () => {
+    try {
+      setOrdersLoading(true);
+      setError("");
+      setOrdersNotice("");
+      const res = await fetch(`${API}/orders/test`, {
+        method: "POST",
+        headers: authHeaders,
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        throw new Error(data.message || "Ошибка создания тестового заказа.");
+      }
+      setOrdersNotice(`Тестовый заказ создан: ${data.order?.orderNumber || ""}`);
+      await loadOrdersList();
+    } catch (err) {
+      setError(normalizeErrorMessage(err, "Ошибка создания тестового заказа."));
+    } finally {
+      setOrdersLoading(false);
+    }
+  };
+
   const rotateApiKey = async () => {
     try {
       setApiKeyLoading(true);
@@ -185,8 +235,15 @@ export default function AdminWarehousePanel() {
   useEffect(() => {
     if (activeTab !== "orders") return;
     loadApiKeyInfo();
+    loadOrdersList();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [activeTab]);
+
+  useEffect(() => {
+    if (activeTab !== "orders") return;
+    loadOrdersList();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [ordersFilter]);
 
   useEffect(() => {
     if (!editItem) return;
@@ -692,6 +749,89 @@ export default function AdminWarehousePanel() {
           >
             Импортировать Excel
           </button>
+
+          <div className="admin-divider" />
+          <div className="admin-label" style={{ fontWeight: 600 }}>
+            Заказы
+          </div>
+          <div className="admin-muted" style={{ marginBottom: 8 }}>
+            Список актуальных заказов для сборки.
+          </div>
+          <div className="admin-form__row">
+            <div>
+              <label className="admin-label">Фильтр статусов</label>
+              <select
+                className="admin-select"
+                value={ordersFilter}
+                onChange={(event) => setOrdersFilter(event.target.value)}
+              >
+                <option value="ACTIVE">Активные</option>
+                <option value="ALL">Все</option>
+              </select>
+            </div>
+            <div style={{ display: "flex", alignItems: "end", gap: 8 }}>
+              <button
+                type="button"
+                className="admin-btn admin-btn--secondary"
+                onClick={loadOrdersList}
+                disabled={ordersLoading}
+              >
+                Обновить список
+              </button>
+              <button
+                type="button"
+                className="admin-btn admin-btn--primary"
+                onClick={createTestOrder}
+                disabled={ordersLoading}
+              >
+                Создать тестовый заказ
+              </button>
+            </div>
+          </div>
+          {ordersNotice && <div className="admin-muted">{ordersNotice}</div>}
+          {ordersLoading && <div className="admin-muted">Загрузка...</div>}
+          {!ordersLoading && (
+            <div className="admin-table-wrapper">
+              <table className="admin-table">
+                <thead>
+                  <tr>
+                    <th>Номер</th>
+                    <th>Статус</th>
+                    <th>Получатель</th>
+                    <th>Адрес</th>
+                    <th>Назначен</th>
+                    <th>Создан</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {ordersList.map((order) => (
+                    <tr key={order.id}>
+                      <td data-label="Номер">
+                        <div className="admin-table__title">{order.orderNumber}</div>
+                        <div className="admin-table__meta">ID: {order.id}</div>
+                      </td>
+                      <td data-label="Статус">{order.status}</td>
+                      <td data-label="Получатель">{order.customerName}</td>
+                      <td data-label="Адрес">{order.shippingAddress}</td>
+                      <td data-label="Назначен">
+                        {order.assignedToUser?.name || "Не назначен"}
+                      </td>
+                      <td data-label="Создан">
+                        {order.createdAt ? new Date(order.createdAt).toLocaleString("ru-RU") : "-"}
+                      </td>
+                    </tr>
+                  ))}
+                  {!ordersList.length && (
+                    <tr>
+                      <td colSpan="6" className="admin-muted">
+                        Нет заказов.
+                      </td>
+                    </tr>
+                  )}
+                </tbody>
+              </table>
+            </div>
+          )}
         </div>
       )}
 
@@ -710,7 +850,7 @@ export default function AdminWarehousePanel() {
                   className="admin-btn admin-btn--ghost"
                   onClick={() => setEditItem(null)}
                 >
-                  вњ•
+                  X
                 </button>
             </div>
             <div className="admin-form">
@@ -980,7 +1120,7 @@ export default function AdminWarehousePanel() {
                   className="admin-btn admin-btn--ghost"
                   onClick={() => setEditLocation(null)}
                 >
-                  вњ•
+                  X
                 </button>
             </div>
             <div className="admin-form">

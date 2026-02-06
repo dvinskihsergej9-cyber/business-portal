@@ -8848,6 +8848,48 @@ app.post("/api/orders/import-batch", auth, requireAdmin, async (req, res) => {
   }
 });
 
+// ===== ADMIN: CREATE TEST ORDER =====
+app.post("/api/orders/test", auth, requireAdmin, async (req, res) => {
+  try {
+    const items = await prisma.item.findMany({
+      take: 3,
+      orderBy: { id: "asc" },
+    });
+    if (!items.length) {
+      return res.status(400).json({ message: "Нет товаров для тестового заказа." });
+    }
+
+    const orderNumber = `TEST-${Date.now()}`;
+    const created = await prisma.salesOrder.create({
+      data: {
+        source: "TEST",
+        orderNumber,
+        customerName: "Тестовый получатель",
+        customerPhone: null,
+        shippingAddress: "Тестовый адрес",
+        deliveryComment: "Тестовый заказ",
+        lines: {
+          create: items.map((item) => ({
+            itemId: item.id,
+            requestedSku: item.sku || null,
+            requestedName: item.name || null,
+            qty: 1,
+          })),
+        },
+      },
+      include: {
+        assignedToUser: { select: { id: true, name: true, email: true } },
+        lines: { include: { item: true }, orderBy: { id: "asc" } },
+      },
+    });
+
+    res.status(201).json({ ok: true, order: created });
+  } catch (err) {
+    console.error("orders test error:", err);
+    res.status(500).json({ message: "Ошибка создания тестового заказа." });
+  }
+});
+
 // ===== INTEGRATION API KEY (ORG-LEVEL) =====
 app.get("/api/integrations/api-key", auth, requireAdmin, async (req, res) => {
   try {
