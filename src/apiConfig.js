@@ -5,7 +5,13 @@ const devFallbackBase = `${window.location.protocol}//${window.location.hostname
 const prodFallbackBase = "https://business-portal-8nba.onrender.com";
 
 const rawBase = envBase || (import.meta.env.DEV ? devFallbackBase : prodFallbackBase);
-const trimmedBase = rawBase.replace(/\/+$/, "");
+const needsProtocol =
+  rawBase &&
+  !rawBase.startsWith("http://") &&
+  !rawBase.startsWith("https://") &&
+  !rawBase.startsWith("/");
+const normalizedRawBase = needsProtocol ? `https://${rawBase}` : rawBase;
+const trimmedBase = normalizedRawBase.replace(/\/+$/, "");
 const normalizedBase = trimmedBase.endsWith("/api") ? trimmedBase : `${trimmedBase}/api`;
 
 const isLocalHost = ["localhost", "127.0.0.1"].includes(window.location.hostname);
