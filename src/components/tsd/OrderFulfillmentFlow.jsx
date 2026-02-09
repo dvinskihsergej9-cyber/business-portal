@@ -19,7 +19,9 @@ export default function OrderFulfillmentFlow({ authHeaders, onBack }) {
   const [boxType, setBoxType] = useState("");
 
   const currentStep = pickPlan[currentIndex] || null;
-  const canPack = useMemo(() => pickPlan.length === 0, [pickPlan.length]);
+  const canPack = useMemo(() => pickPlan.length === 0 && selectedOrder, [pickPlan.length, selectedOrder]);
+  const hasPlan = pickPlan.length > 0;
+  const showPlanMissing = selectedOrder && pickPlan.length === 0;
 
   const loadQueue = async () => {
     setLoading(true);
@@ -364,6 +366,12 @@ export default function OrderFulfillmentFlow({ authHeaders, onBack }) {
               </div>
             )}
 
+            {showPlanMissing && (
+              <div className="tsd-alert tsd-alert--warning">
+                Нет маршрута отбора. Проверьте, что у товаров есть ячейки и остатки.
+              </div>
+            )}
+
             {currentStep && !locationScanned && (
               <Scanner
                 label="Сканируй ячейку"
@@ -425,6 +433,19 @@ export default function OrderFulfillmentFlow({ authHeaders, onBack }) {
                     Завершить заказ
                   </button>
                 </div>
+              </div>
+            )}
+
+            {!hasPlan && (
+              <div className="tsd-inline">
+                <button
+                  type="button"
+                  className="tsd-btn tsd-btn--secondary"
+                  onClick={() => loadPickPlan(selectedOrder.id)}
+                  disabled={loading}
+                >
+                  Обновить маршрут
+                </button>
               </div>
             )}
           </>
