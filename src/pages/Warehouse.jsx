@@ -5,8 +5,6 @@ import { useEffect, useMemo, useRef, useState, Fragment } from "react";
 import { API_BASE } from "../apiConfig";
 import { useAuth } from "../context/AuthContext";
 
-import ImportItemsModal from "../components/ImportItemsModal";
-
 import PurchaseOrderModal from "../components/PurchaseOrderModal";
 
 import PurchaseOrderReceiveModal from "../components/PurchaseOrderReceiveModal";
@@ -26,7 +24,6 @@ const WAREHOUSE_EMOJI = {
   requests: "📦",
   tasks: "✅",
   inventory: "🧾",
-  items: "📚",
   movement: "\uD83D\uDCE6",
   transactions: "\uD83D\uDD01",
   revision: "\uD83E\uDDFE",
@@ -47,7 +44,6 @@ const WAREHOUSE_ICON_FALLBACK = {
   requests: "REQ",
   tasks: "TASK",
   inventory: "INV",
-  items: "ITEM",
   movement: "\uD83D\uDCE6",
   transactions: "\uD83D\uDD01",
   tmc: "\uD83D\uDCCE",
@@ -189,9 +185,7 @@ export default function Warehouse({
   const defaultSections = [
     "requests",
     "tasks",
-    "inventory",
-    "items",
-    "movement",
+    "inventory","movement",
     "transactions",
     "revision",
     "tmc",
@@ -319,9 +313,8 @@ export default function Warehouse({
 
   const [tmcStock, setTmcStock] = useState([]);
 
-  const [showImportModal, setShowImportModal] = useState(false);
 
-  const [inventoryTab, setInventoryTab] = useState("stock"); // stock | items | movement | suppliers
+  const [inventoryTab, setInventoryTab] = useState("stock"); // stock | movement | suppliers
   const [movementTab, setMovementTab] = useState("movementsHistory"); // movementsHistory
   const [suppliersTab, setSuppliersTab] = useState("suppliers"); // suppliers | orders
 
@@ -331,10 +324,6 @@ export default function Warehouse({
     }
     if (section === "inventory") {
       setInventoryTab("stock");
-      return;
-    }
-    if (section === "items") {
-      setInventoryTab("items");
       return;
     }
     if (section === "movement") {
@@ -352,9 +341,7 @@ export default function Warehouse({
     const refMap = {
       requests: requestsRef,
       tasks: tasksRef,
-      inventory: inventoryRef,
-      items: inventoryRef,
-      movement: inventoryRef,
+      inventory: inventoryRef,movement: inventoryRef,
       suppliers: inventoryRef,
       locations: locationsRef,
       queue: queueRef,
@@ -2279,7 +2266,6 @@ export default function Warehouse({
             { key: "requests", title: "\u0417\u0430\u044f\u0432\u043a\u0438 \u043d\u0430 \u0441\u043a\u043b\u0430\u0434", subtitle: "\u0421\u043e\u0437\u0434\u0430\u043d\u0438\u0435 \u0437\u0430\u044f\u0432\u043e\u043a \u0438 \u043a\u043e\u043d\u0442\u0440\u043e\u043b\u044c \u0432\u044b\u0434\u0430\u0447\u0438 \u0440\u0430\u0441\u0445\u043e\u0434\u043d\u044b\u0445 \u043c\u0430\u0442\u0435\u0440\u0438\u0430\u043b\u043e\u0432." },
             { key: "tasks", title: "\u0417\u0430\u0434\u0430\u0447\u0438 \u0441\u043a\u043b\u0430\u0434\u0430", subtitle: "\u041d\u0430\u0437\u043d\u0430\u0447\u0435\u043d\u0438\u0435 \u0437\u0430\u0434\u0430\u0447, \u0441\u0440\u043e\u043a\u0438 \u0438 \u043d\u0430\u043f\u043e\u043c\u0438\u043d\u0430\u043d\u0438\u044f \u0432 Telegram." },
             { key: "inventory", title: "\u041e\u0441\u0442\u0430\u0442\u043a\u0438", subtitle: "\u0422\u0435\u043a\u0443\u0449\u0438\u0435 \u043e\u0441\u0442\u0430\u0442\u043a\u0438 \u043f\u043e \u0441\u043a\u043b\u0430\u0434\u0443." },
-            { key: "items", title: "\u041d\u043e\u043c\u0435\u043d\u043a\u043b\u0430\u0442\u0443\u0440\u0430", subtitle: "\u0421\u043f\u0440\u0430\u0432\u043e\u0447\u043d\u0438\u043a \u0442\u043e\u0432\u0430\u0440\u043e\u0432." },
             { key: "movement", title: "\u0418\u0441\u0442\u043e\u0440\u0438\u044f \u0434\u0432\u0438\u0436\u0435\u043d\u0438\u0439", subtitle: "\u0416\u0443\u0440\u043d\u0430\u043b \u043e\u043f\u0435\u0440\u0430\u0446\u0438\u0439 \u043f\u043e \u0441\u043a\u043b\u0430\u0434\u0443." },
             { key: "transactions", title: "\u0422\u0440\u0430\u043d\u0437\u0430\u043a\u0446\u0438\u0438", subtitle: "\u0412\u0441\u0435 \u0434\u0435\u0439\u0441\u0442\u0432\u0438\u044f \u043f\u043e \u044f\u0447\u0435\u0439\u043a\u0430\u043c \u0438 \u0442\u043e\u0432\u0430\u0440\u0443." },
             { key: "revision", title: "\u0420\u0435\u0432\u0438\u0437\u0438\u044f", subtitle: "\u0421\u043d\u0438\u043c\u043e\u043a \u0440\u0430\u0441\u0445\u043e\u0436\u0434\u0435\u043d\u0438\u0439 \u043f\u043e \u043a\u043e\u043d\u0442\u0440\u043e\u043b\u044e \u044f\u0447\u0435\u0435\u043a." },
@@ -3493,7 +3479,7 @@ export default function Warehouse({
 
       {/* ====== ОСТАТКИ / ИНВЕНТАРИЗАЦИЯ / ЗАКУПКИ ====== */}
 
-      {sectionSet.has(section) && ["inventory","items","movement","suppliers"].includes(section) && (
+      {sectionSet.has(section) && ["inventory","movement","suppliers"].includes(section) && (
 
         <div className="inventory-section" ref={inventoryRef}>
 
@@ -3538,292 +3524,6 @@ export default function Warehouse({
           )}
 
 
-
-          {/* ===== Вкладка 1: Номенклатура ===== */}
-
-{inventoryTab === "items" && (
-
-  <div className="grid-2">
-
-    <div className="card" style={{ gridColumn: "span 2" }}>
-
-      <div
-
-        style={{
-
-          display: "flex",
-
-          gap: 16,
-
-          alignItems: "center",
-
-        }}
-
-      >
-
-        <h2 className="card__title" style={{ margin: 0 }}>
-
-          Номенклатура
-
-        </h2>
-
-        <button
-
-          className="btn btn--secondary"
-
-          onClick={() => setShowImportModal(true)}
-
-        >
-
-          Импорт из Excel
-
-        </button>
-
-      </div>
-
-      {inventoryError && (
-
-        <div
-
-          className="alert alert--danger"
-
-          style={{ marginTop: 16 }}
-
-        >
-
-          {inventoryError}
-
-        </div>
-
-      )}
-
-    </div>
-
-
-
-    {/* Форма "Новый товар" теперь на всю ширину */}
-
-    <div className="card card--1c" style={{ gridColumn: "span 2" }}>
-
-      <div className="card1c__header">Новый товар</div>
-
-      <div className="card1c__body">
-
-        <form
-
-          onSubmit={handleCreateItem}
-
-          className="form request-form-1c"
-
-        >
-
-          <div className="form__group">
-
-            <label className="form__label">Наименование</label>
-
-            <input
-
-              className="form__input"
-
-              value={itemForm.name}
-
-              onChange={(e) =>
-
-                setItemForm({ ...itemForm, name: e.target.value })
-
-              }
-
-              placeholder="Например: Бумага А4"
-
-            />
-
-          </div>
-
-
-
-          <div className="form__group">
-
-            <label className="form__label">Артикул (SKU)</label>
-
-            <input
-
-              className="form__input"
-
-              value={itemForm.sku}
-
-              onChange={(e) =>
-
-                setItemForm({ ...itemForm, sku: e.target.value })
-
-              }
-
-            />
-
-          </div>
-
-
-
-          <div className="form__group">
-
-            <label className="form__label">Штрихкод</label>
-
-            <input
-
-              className="form__input"
-
-              value={itemForm.barcode}
-
-              onChange={(e) =>
-
-                setItemForm({ ...itemForm, barcode: e.target.value })
-
-              }
-
-            />
-
-          </div>
-
-
-
-          <div className="form__group">
-
-            <label className="form__label">Ед. изм.</label>
-
-            <input
-
-              className="form__input"
-
-              value={itemForm.unit}
-
-              onChange={(e) =>
-
-                setItemForm({ ...itemForm, unit: e.target.value })
-
-              }
-
-              placeholder="шт, кг..."
-
-            />
-
-          </div>
-
-
-
-          <div className="form__group">
-
-            <label className="form__label">Цена (по умолчанию)</label>
-
-            <input
-
-              className="form__input"
-
-              type="number"
-
-              step="0.01"
-
-              value={itemForm.defaultPrice}
-
-              onChange={(e) =>
-
-                setItemForm({
-
-                  ...itemForm,
-
-                  defaultPrice: e.target.value,
-
-                })
-
-              }
-
-            />
-
-          </div>
-
-
-
-          <div className="form__group">
-
-            <label className="form__label">Мин. остаток</label>
-
-            <input
-
-              className="form__input"
-
-              type="number"
-
-              value={itemForm.minStock}
-
-              onChange={(e) =>
-
-                setItemForm({
-
-                  ...itemForm,
-
-                  minStock: e.target.value,
-
-                })
-
-              }
-
-            />
-
-          </div>
-
-
-
-          <div className="form__group">
-
-            <label className="form__label">Макс. остаток</label>
-
-            <input
-
-              className="form__input"
-
-              type="number"
-
-              value={itemForm.maxStock}
-
-              onChange={(e) =>
-
-                setItemForm({
-
-                  ...itemForm,
-
-                  maxStock: e.target.value,
-
-                })
-
-              }
-
-            />
-
-          </div>
-
-
-
-          <div className="request-form-1c__actions">
-
-            <button type="submit" className="btn btn--primary">
-
-              Создать товар
-
-            </button>
-
-          </div>
-
-        </form>
-
-      </div>
-
-    </div>
-
-  </div>
-
-)}
-
-
-
-          {/* ===== Вкладка 2: Остатки (1С + печать акта ревизии) ===== */}
 
           {inventoryTab === "stock" && <StockAuditTab />}
 
@@ -4587,23 +4287,6 @@ export default function Warehouse({
 
 
 
-      {/* Модалки */}
-
-      {showImportModal && (
-
-        <ImportItemsModal
-
-          onClose={() => {
-
-            setShowImportModal(false);
-
-            loadInventory();
-
-          }}
-
-        />
-
-      )}
 
 
 
@@ -4654,6 +4337,12 @@ export default function Warehouse({
   );
 
 }
+
+
+
+
+
+
 
 
 
