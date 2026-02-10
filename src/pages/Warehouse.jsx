@@ -2088,79 +2088,9 @@ export default function Warehouse({
 
 
   const handleOpenPurchaseOrder = () => {
-
     setInventoryError("");
-
-
-
-    if (!suppliers.length) {
-
-      setSuppliersError(
-
-        "Сначала создайте хотя бы одного поставщика ниже на странице."
-
-      );
-
-      return;
-
-    }
-
-
-
-    const itemsForOrder = inventoryStock
-
-      .map((row) => {
-
-        const orderQty = calculateOrderQtyForRow(row);
-
-        if (orderQty <= 0) return null;
-
-
-
-        const item = inventoryItems.find((it) => it.id === row.id);
-
-        const defaultPrice = item?.defaultPrice || 0;
-
-
-
-        return {
-
-          id: row.id,
-
-          name: row.name,
-
-          unit: row.unit || "шт",
-
-          orderQty,
-
-          price: defaultPrice,
-
-        };
-
-      })
-
-      .filter(Boolean);
-
-
-
-    if (!itemsForOrder.length) {
-
-      setInventoryError(
-
-        "Нет товаров ниже минимального остатка, заказ не требуется."
-
-      );
-
-      return;
-
-    }
-
-
-
-    setOrderItemsForModal(itemsForOrder);
-
+    setOrderItemsForModal([]);
     setShowOrderModal(true);
-
   };
 
 
@@ -4337,6 +4267,10 @@ export default function Warehouse({
   );
 
 }
+
+
+
+
 
 
 
