@@ -10,6 +10,7 @@
     "build": "vite build",
     "preview": "vite preview",
     "db:deploy": "prisma db push && prisma generate",
+    "reset:items": "node tools/reset-items.mjs",
     "smoke": "node tools/smoke-check.mjs",
     "e2e": "playwright test",
     "e2e:install": "playwright install chromium"
