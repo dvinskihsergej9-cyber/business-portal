@@ -40,7 +40,6 @@ export default function AdminWarehousePanel() {
   const [showOrdersImport, setShowOrdersImport] = useState(false);
   const [showItemsImport, setShowItemsImport] = useState(false);
   const [itemError, setItemError] = useState("");
-  const [resettingItems, setResettingItems] = useState(false);
 
   const [itemForm, setItemForm] = useState({
     name: "",
@@ -292,34 +291,6 @@ export default function AdminWarehousePanel() {
     }
   };
 
-  const handleResetSingleItem = async () => {
-    if (resettingItems) return;
-    const confirmText =
-      "Удалить все позиции и оставить один товар: Стартер 24V?";
-    if (typeof window !== "undefined" && !window.confirm(confirmText)) {
-      return;
-    }
-    try {
-      setResettingItems(true);
-      setItemError("");
-      const res = await fetch(`${API}/admin/warehouse/items/reset-single`, {
-        method: "POST",
-        headers: authHeaders,
-      });
-      const data = await res.json();
-      if (!res.ok) {
-        throw new Error(data.message || "Ошибка сброса номенклатуры");
-      }
-      if (typeof window !== "undefined") {
-        window.alert("Оставлен один товар: Стартер 24V.");
-      }
-      await loadAll();
-    } catch (err) {
-      setItemError(normalizeErrorMessage(err, "Ошибка сброса номенклатуры."));
-    } finally {
-      setResettingItems(false);
-    }
-  };
 
   const handleSaveLocation = async () => {
     if (!editLocation) return;
@@ -543,14 +514,6 @@ export default function AdminWarehousePanel() {
               onClick={() => setShowItemsImport(true)}
             >
               Импорт из Excel
-            </button>
-            <button
-              type="button"
-              className="admin-btn admin-btn--danger"
-              onClick={handleResetSingleItem}
-              disabled={resettingItems}
-            >
-              {resettingItems ? "Сброс..." : "Оставить только стартер"}
             </button>
           </div>
 
