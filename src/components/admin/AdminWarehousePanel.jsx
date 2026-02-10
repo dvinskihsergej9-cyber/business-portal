@@ -1,6 +1,7 @@
 ﻿import { useEffect, useMemo, useRef, useState } from "react";
 import { API_BASE, normalizeErrorMessage } from "../../apiConfig";
 import ImportOrdersModal from "../ImportOrdersModal";
+import ImportItemsModal from "../ImportItemsModal";
 
 const API = API_BASE;
 
@@ -37,6 +38,8 @@ export default function AdminWarehousePanel() {
   const [saving, setSaving] = useState(false);
   const [deleting, setDeleting] = useState(false);
   const [showOrdersImport, setShowOrdersImport] = useState(false);
+  const [showItemsImport, setShowItemsImport] = useState(false);
+  const [itemError, setItemError] = useState("");
 
   const [itemForm, setItemForm] = useState({
     name: "",
@@ -213,6 +216,81 @@ export default function AdminWarehousePanel() {
     }
   };
 
+  const handleCreateItem = async (event) => {
+    event.preventDefault();
+    setItemError("");
+    try {
+      if (!itemForm.name.trim()) {
+        return setItemError("Наименование товара обязательно.");
+      }
+      if (!itemForm.sku.trim()) {
+        return setItemError("Артикул (SKU) обязателен.");
+      }
+      if (!itemForm.barcode.trim()) {
+        return setItemError("Штрихкод обязателен.");
+      }
+      if (!itemForm.unit.trim()) {
+        return setItemError("Единица измерения обязательна.");
+      }
+
+      const minVal = Number(itemForm.minStock);
+      const maxVal = Number(itemForm.maxStock);
+      const priceVal = Number(String(itemForm.defaultPrice).replace(",", "."));
+
+      if (!Number.isFinite(minVal) || minVal <= 0) {
+        return setItemError("Минимальный остаток должен быть положительным числом.");
+      }
+      if (!Number.isFinite(maxVal) || maxVal <= 0) {
+        return setItemError("Максимальный остаток должен быть положительным числом.");
+      }
+      if (!Number.isFinite(priceVal) || priceVal <= 0) {
+        return setItemError("Цена за единицу должна быть положительным числом.");
+      }
+
+      const body = {
+        name: itemForm.name.trim(),
+        sku: itemForm.sku.trim(),
+        barcode: itemForm.barcode.trim(),
+        unit: itemForm.unit.trim(),
+        minStock: minVal,
+        maxStock: maxVal,
+        defaultPrice: priceVal,
+      };
+
+      const res = await fetch(`${API}/inventory/items`, {
+        method: "POST",
+        headers: authHeaders,
+        body: JSON.stringify(body),
+      });
+
+      const data = await res.json();
+      if (!res.ok) {
+        throw new Error(data.message || "Ошибка создания товара");
+      }
+
+      setItemForm({
+        name: "",
+        sku: "",
+        barcode: "",
+        unit: "",
+        minStock: "",
+        maxStock: "",
+        defaultPrice: "",
+        autoReorderEnabled: false,
+        autoReorderMin: "",
+        autoReorderSupplierId: "",
+        autoReorderContactName: "",
+        autoReorderContactEmail: "",
+        autoReorderMessage: "",
+        autoReorderReset: false,
+      });
+
+      await loadAll();
+    } catch (err) {
+      setItemError(normalizeErrorMessage(err, "Ошибка создания товара."));
+    }
+  };
+
   const handleSaveLocation = async () => {
     if (!editLocation) return;
     try {
@@ -352,7 +430,7 @@ export default function AdminWarehousePanel() {
           }
           onClick={() => setActiveTab("items")}
         >
-          Товары
+          Номенклатура
         </button>
         <button
           type="button"
@@ -424,54 +502,182 @@ export default function AdminWarehousePanel() {
       {loading && <div className="admin-muted">Загрузка...</div>}
 
       {!loading && activeTab === "items" && (
-        <div className="admin-table-wrapper">
-          <table className="admin-table">
-            <thead>
-              <tr>
-                <th>Товар</th>
-                <th>SKU</th>
-                <th>Штрихкод</th>
-                <th>Ед.</th>
-                <th></th>
-              </tr>
-            </thead>
-            <tbody>
-              {items.map((item) => (
-                <tr key={item.id}>
-                  <td data-label="Товар">
-                    <div className="admin-table__title">{item.name}</div>
-                    <div className="admin-table__meta">ID: {item.id}</div>
-                  </td>
-                  <td data-label="SKU">{item.sku || "-"}</td>
-                  <td data-label="Штрихкод">{item.barcode || "-"}</td>
-                  <td data-label="Ед.">{item.unit || "-"}</td>
-                  <td data-label="Действия" className="admin-table__actions">
-                    <button
-                      type="button"
-                      className="admin-btn admin-btn--secondary"
-                      onClick={() => setEditItem(item)}
-                    >
-                      Редактировать
-                    </button>
-                    <button
-                      type="button"
-                      className="admin-btn admin-btn--danger"
-                      onClick={() => setDeleteItem(item)}
-                    >
-                      Удалить
-                    </button>
-                  </td>
-                </tr>
-              ))}
-              {!items.length && (
+        <div className="admin-form">
+          <div className="admin-form__row" style={{ alignItems: "center" }}>
+            <div className="admin-label" style={{ fontWeight: 700 }}>
+              Номенклатура
+            </div>
+            <button
+              type="button"
+              className="admin-btn admin-btn--secondary"
+              onClick={() => setShowItemsImport(true)}
+            >
+              Импорт из Excel
+            </button>
+          </div>
+
+          {itemError && (
+            <div className="admin-alert admin-alert--error">{itemError}</div>
+          )}
+
+          <form onSubmit={handleCreateItem} className="admin-form">
+            <div className="admin-form__row">
+              <div>
+                <label className="admin-label">Наименование</label>
+                <input
+                  className="admin-input"
+                  value={itemForm.name}
+                  onChange={(event) =>
+                    setItemForm((prev) => ({ ...prev, name: event.target.value }))
+                  }
+                  placeholder="Например: Стартер 24V"
+                />
+              </div>
+              <div>
+                <label className="admin-label">SKU</label>
+                <input
+                  className="admin-input"
+                  value={itemForm.sku}
+                  onChange={(event) =>
+                    setItemForm((prev) => ({ ...prev, sku: event.target.value }))
+                  }
+                  placeholder="ST-001"
+                />
+              </div>
+            </div>
+            <div className="admin-form__row">
+              <div>
+                <label className="admin-label">Штрихкод</label>
+                <input
+                  className="admin-input"
+                  value={itemForm.barcode}
+                  onChange={(event) =>
+                    setItemForm((prev) => ({
+                      ...prev,
+                      barcode: event.target.value,
+                    }))
+                  }
+                  placeholder="ST-001"
+                />
+              </div>
+              <div>
+                <label className="admin-label">Ед. изм.</label>
+                <input
+                  className="admin-input"
+                  value={itemForm.unit}
+                  onChange={(event) =>
+                    setItemForm((prev) => ({ ...prev, unit: event.target.value }))
+                  }
+                  placeholder="шт"
+                />
+              </div>
+            </div>
+            <div className="admin-form__row">
+              <div>
+                <label className="admin-label">Мин. остаток</label>
+                <input
+                  className="admin-input"
+                  type="number"
+                  value={itemForm.minStock}
+                  onChange={(event) =>
+                    setItemForm((prev) => ({
+                      ...prev,
+                      minStock: event.target.value,
+                    }))
+                  }
+                />
+              </div>
+              <div>
+                <label className="admin-label">Макс. остаток</label>
+                <input
+                  className="admin-input"
+                  type="number"
+                  value={itemForm.maxStock}
+                  onChange={(event) =>
+                    setItemForm((prev) => ({
+                      ...prev,
+                      maxStock: event.target.value,
+                    }))
+                  }
+                />
+              </div>
+              <div>
+                <label className="admin-label">Цена</label>
+                <input
+                  className="admin-input"
+                  type="number"
+                  value={itemForm.defaultPrice}
+                  onChange={(event) =>
+                    setItemForm((prev) => ({
+                      ...prev,
+                      defaultPrice: event.target.value,
+                    }))
+                  }
+                />
+              </div>
+            </div>
+            <div className="admin-form__actions">
+              <button type="submit" className="admin-btn admin-btn--primary">
+                Добавить товар
+              </button>
+            </div>
+          </form>
+
+          <div className="admin-table-wrapper" style={{ marginTop: 16 }}>
+            <table className="admin-table">
+              <thead>
                 <tr>
-                  <td colSpan="5" className="admin-muted">
-                    Нет товаров.
-                  </td>
+                  <th>Товар</th>
+                  <th>SKU</th>
+                  <th>Штрихкод</th>
+                  <th>Ед.</th>
+                  <th>Мин</th>
+                  <th>Макс</th>
+                  <th>Цена</th>
+                  <th></th>
                 </tr>
-              )}
-            </tbody>
-          </table>
+              </thead>
+              <tbody>
+                {items.map((item) => (
+                  <tr key={item.id}>
+                    <td data-label="Товар">
+                      <div className="admin-table__title">{item.name}</div>
+                      <div className="admin-table__meta">ID: {item.id}</div>
+                    </td>
+                    <td data-label="SKU">{item.sku || "-"}</td>
+                    <td data-label="Штрихкод">{item.barcode || "-"}</td>
+                    <td data-label="Ед.">{item.unit || "-"}</td>
+                    <td data-label="Мин">{item.minStock ?? "-"}</td>
+                    <td data-label="Макс">{item.maxStock ?? "-"}</td>
+                    <td data-label="Цена">{item.defaultPrice ?? "-"}</td>
+                    <td data-label="Действия" className="admin-table__actions">
+                      <button
+                        type="button"
+                        className="admin-btn admin-btn--secondary"
+                        onClick={() => setEditItem(item)}
+                      >
+                        Редактировать
+                      </button>
+                      <button
+                        type="button"
+                        className="admin-btn admin-btn--danger"
+                        onClick={() => setDeleteItem(item)}
+                      >
+                        Удалить
+                      </button>
+                    </td>
+                  </tr>
+                ))}
+                {!items.length && (
+                  <tr>
+                    <td colSpan="8" className="admin-muted">
+                      Нет товаров.
+                    </td>
+                  </tr>
+                )}
+              </tbody>
+            </table>
+          </div>
         </div>
       )}
 
@@ -1409,6 +1615,16 @@ export default function AdminWarehousePanel() {
         <ImportOrdersModal
           onClose={() => setShowOrdersImport(false)}
           onImportSuccess={() => setShowOrdersImport(false)}
+        />
+      )}
+
+      {showItemsImport && (
+        <ImportItemsModal
+          onClose={() => setShowItemsImport(false)}
+          onImportSuccess={() => {
+            setShowItemsImport(false);
+            loadAll();
+          }}
         />
       )}
     </div>
