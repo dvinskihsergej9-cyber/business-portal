@@ -2087,10 +2087,27 @@ export default function Warehouse({
 
 
 
-  const handleOpenPurchaseOrder = () => {
+  const handleOpenPurchaseOrder = async () => {
     setInventoryError("");
-    setOrderItemsForModal([]);
-    setShowOrderModal(true);
+    try {
+      let items = inventoryItems;
+      if (!items || items.length === 0) {
+        const res = await fetch(`${API}/inventory/items`, {
+          headers: { Authorization: authHeaders.Authorization },
+        });
+        const data = await res.json();
+        if (!res.ok) {
+          throw new Error(data.message || "Ошибка загрузки товаров");
+        }
+        items = Array.isArray(data) ? data : [];
+        setInventoryItems(items);
+      }
+      setOrderItemsForModal(items);
+      setShowOrderModal(true);
+    } catch (e) {
+      console.error(e);
+      setInventoryError(e.message || "Ошибка загрузки товаров");
+    }
   };
 
 
