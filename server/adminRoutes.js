@@ -169,6 +169,48 @@ export function adminRoutes({ prisma, auth, requireAdmin }) {
     }
   });
 
+  router.post("/warehouse/items/clear", async (req, res) => {
+    try {
+      const result = await prisma.$transaction(async (tx) => {
+        const salesOrderLines = await tx.salesOrderLine.updateMany({
+          where: { itemId: { not: null } },
+          data: { itemId: null },
+        });
+        const receivingDiscrepancies = await tx.receivingDiscrepancy.updateMany({
+          where: { itemId: { not: null } },
+          data: { itemId: null },
+        });
+        const stockRevisionItems = await tx.stockRevisionItem.deleteMany({});
+        const stockDiscrepancies = await tx.stockDiscrepancy.deleteMany({});
+        const warehousePlacements = await tx.warehousePlacement.deleteMany({});
+        const warehouseReceivingLines = await tx.warehouseReceivingLine.deleteMany({});
+        const stockMovements = await tx.stockMovement.deleteMany({});
+        const purchaseOrderItems = await tx.purchaseOrderItem.deleteMany({});
+        const items = await tx.item.deleteMany({});
+
+        return {
+          items: items.count,
+          purchaseOrderItems: purchaseOrderItems.count,
+          stockMovements: stockMovements.count,
+          warehouseReceivingLines: warehouseReceivingLines.count,
+          warehousePlacements: warehousePlacements.count,
+          stockDiscrepancies: stockDiscrepancies.count,
+          stockRevisionItems: stockRevisionItems.count,
+          receivingDiscrepancies: receivingDiscrepancies.count,
+          salesOrderLines: salesOrderLines.count,
+        };
+      });
+
+      return res.json({
+        message: "Все позиции удалены.",
+        result,
+      });
+    } catch (err) {
+      console.error("admin items clear error:", err);
+      return res.status(500).json({ message: "Ошибка очистки позиций" });
+    }
+  });
+
   router.get("/warehouse/locations", async (req, res) => {
     try {
       const locations = await prisma.warehouseLocation.findMany({
