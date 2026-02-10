@@ -16,7 +16,7 @@ if (typeof window !== "undefined" && !window.__fetchWrapped) {
           try {
             const data = await cloned.json();
             if (data && typeof data.message === "string") {
-              const normalized = normalizeErrorMessage(data.message, "РћС€РёР±РєР° Р·Р°РїСЂРѕСЃР°.");
+              const normalized = normalizeErrorMessage(data.message, "Ошибка запроса.");
               if (normalized !== data.message) {
                 const patched = { ...data, message: normalized };
                 const body = JSON.stringify(patched);
@@ -45,3 +45,4 @@ ReactDOM.createRoot(document.getElementById("root")).render(
     <App />
   </React.StrictMode>
 );
+

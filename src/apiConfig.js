@@ -76,6 +76,16 @@ export const normalizeErrorMessage = (err, fallback = "Ошибка запрос
   if (lower.includes("api unreachable")) {
     return "Не удалось подключиться к серверу.";
   }
+  if (message === "ITEM_NOT_FOUND") return "Товар не найден.";
+  if (message === "ITEM_DELETE_ERROR") return "Ошибка удаления товара.";
+  if (message === "ITEM_UPDATE_ERROR") return "Ошибка обновления товара.";
+  if (message === "ITEMS_LIST_ERROR") return "Ошибка загрузки товаров.";
+  if (message === "LOCATION_NOT_FOUND") return "Ячейка не найдена.";
+  if (message === "LOCATION_UPDATE_ERROR") return "Ошибка обновления ячейки.";
+  if (message === "LOCATIONS_LIST_ERROR") return "Ошибка загрузки ячеек.";
+  if (message === "REQUESTS_LIST_ERROR") return "Ошибка загрузки заявок.";
+  if (message === "REQUEST_UPDATE_ERROR") return "Ошибка обновления заявки.";
+  if (message === "INVALID_ITEM_ID") return "Некорректный идентификатор товара.";
   if (!hasCyrillic && isAsciiOnly) {
     return fallback;
   }

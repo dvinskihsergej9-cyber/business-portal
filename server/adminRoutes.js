@@ -153,15 +153,23 @@ export function adminRoutes({ prisma, auth, requireAdmin }) {
       if (!existing) {
         return res.status(404).json({ message: "ITEM_NOT_FOUND" });
       }
-      const [placements, movements, orderItems] = await Promise.all([
-        prisma.warehousePlacement.count({ where: { itemId: id } }),
-        prisma.stockMovement.count({ where: { itemId: id } }),
-        prisma.purchaseOrderItem.count({ where: { itemId: id } }),
-      ]);
-      if (placements || movements || orderItems) {
-        return res.status(400).json({ message: "ITEM_HAS_RELATIONS" });
-      }
-      await prisma.item.delete({ where: { id } });
+      await prisma.$transaction(async (tx) => {
+        await tx.salesOrderLine.updateMany({
+          where: { itemId: id },
+          data: { itemId: null },
+        });
+        await tx.receivingDiscrepancy.updateMany({
+          where: { itemId: id },
+          data: { itemId: null },
+        });
+        await tx.stockRevisionItem.deleteMany({ where: { itemId: id } });
+        await tx.stockDiscrepancy.deleteMany({ where: { itemId: id } });
+        await tx.warehousePlacement.deleteMany({ where: { itemId: id } });
+        await tx.warehouseReceivingLine.deleteMany({ where: { itemId: id } });
+        await tx.stockMovement.deleteMany({ where: { itemId: id } });
+        await tx.purchaseOrderItem.deleteMany({ where: { itemId: id } });
+        await tx.item.delete({ where: { id } });
+      });
       return res.json({ message: "ITEM_DELETED" });
     } catch (err) {
       console.error("admin item delete error:", err);
