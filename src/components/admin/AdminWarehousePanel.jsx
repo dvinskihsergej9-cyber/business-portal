@@ -38,6 +38,7 @@ export default function AdminWarehousePanel() {
   const [deleting, setDeleting] = useState(false);
   const [showOrdersImport, setShowOrdersImport] = useState(false);
   const [clearingItems, setClearingItems] = useState(false);
+  const [seedingDemo, setSeedingDemo] = useState(false);
 
   const [itemForm, setItemForm] = useState({
     name: "",
@@ -367,6 +368,40 @@ export default function AdminWarehousePanel() {
     }
   };
 
+  const handleSeedDemo = async () => {
+    if (seedingDemo) return;
+    const confirmText =
+      "Создать тестовый набор? Это очистит все текущие позиции и создаст тестовые товары, ячейки и заказы.";
+    if (typeof window !== "undefined" && !window.confirm(confirmText)) {
+      return;
+    }
+    try {
+      setSeedingDemo(true);
+      setError("");
+      const res = await fetch(`${API}/admin/warehouse/demo-seed`, {
+        method: "POST",
+        headers: authHeaders,
+        body: JSON.stringify({ clearExisting: true }),
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        throw new Error(
+          data.message || "Ошибка создания тестового набора"
+        );
+      }
+      if (typeof window !== "undefined") {
+        window.alert(
+          `Тестовый набор создан.\nЗаказ поставщику: ${data.purchaseOrder?.number}\nЗаказ клиента: ${data.salesOrder?.number}`
+        );
+      }
+      await loadAll();
+    } catch (err) {
+      setError(normalizeErrorMessage(err, "Ошибка создания тестового набора."));
+    } finally {
+      setSeedingDemo(false);
+    }
+  };
+
   return (
     <div className="admin-console__card">
       <div className="admin-console__card-title">Склад</div>
@@ -464,6 +499,15 @@ export default function AdminWarehousePanel() {
               disabled={clearingItems}
             >
               {clearingItems ? "Очистка..." : "Удалить все позиции"}
+            </button>
+            <button
+              type="button"
+              className="admin-btn admin-btn--secondary"
+              onClick={handleSeedDemo}
+              disabled={seedingDemo}
+              style={{ marginLeft: 8 }}
+            >
+              {seedingDemo ? "Создание..." : "Создать тестовый набор"}
             </button>
           </div>
           <table className="admin-table">

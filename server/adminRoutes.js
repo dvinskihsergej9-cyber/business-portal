@@ -211,6 +211,140 @@ export function adminRoutes({ prisma, auth, requireAdmin }) {
     }
   });
 
+  router.post("/warehouse/demo-seed", async (req, res) => {
+    try {
+      const clearExisting = Boolean(req.body?.clearExisting);
+      const result = await prisma.$transaction(async (tx) => {
+        let cleared = null;
+        if (clearExisting) {
+          const salesOrderLines = await tx.salesOrderLine.updateMany({
+            where: { itemId: { not: null } },
+            data: { itemId: null },
+          });
+          const receivingDiscrepancies = await tx.receivingDiscrepancy.updateMany({
+            where: { itemId: { not: null } },
+            data: { itemId: null },
+          });
+          const stockRevisionItems = await tx.stockRevisionItem.deleteMany({});
+          const stockDiscrepancies = await tx.stockDiscrepancy.deleteMany({});
+          const warehousePlacements = await tx.warehousePlacement.deleteMany({});
+          const warehouseReceivingLines = await tx.warehouseReceivingLine.deleteMany({});
+          const stockMovements = await tx.stockMovement.deleteMany({});
+          const purchaseOrderItems = await tx.purchaseOrderItem.deleteMany({});
+          const items = await tx.item.deleteMany({});
+          cleared = {
+            items: items.count,
+            purchaseOrderItems: purchaseOrderItems.count,
+            stockMovements: stockMovements.count,
+            warehouseReceivingLines: warehouseReceivingLines.count,
+            warehousePlacements: warehousePlacements.count,
+            stockDiscrepancies: stockDiscrepancies.count,
+            stockRevisionItems: stockRevisionItems.count,
+            receivingDiscrepancies: receivingDiscrepancies.count,
+            salesOrderLines: salesOrderLines.count,
+          };
+        }
+
+        const supplier = await tx.supplier.upsert({
+          where: { name: "Тестовый поставщик" },
+          update: {},
+          create: { name: "Тестовый поставщик" },
+        });
+
+        await tx.warehouseLocation.createMany({
+          data: [
+            { name: "Приемка", code: "RECEIVING" },
+            { name: "A-01-01", code: "A-01-01", zone: "A", aisle: "01", rack: "01", level: "01" },
+            { name: "A-01-02", code: "A-01-02", zone: "A", aisle: "01", rack: "02", level: "01" },
+            { name: "A-01-03", code: "A-01-03", zone: "A", aisle: "01", rack: "03", level: "01" },
+          ],
+          skipDuplicates: true,
+        });
+
+        const itemsSeed = [
+          { name: "Стартер 24V", sku: "ST-001", barcode: "ST-001", unit: "шт", price: 7500 },
+          { name: "Болт М10", sku: "BLT-005", barcode: "BLT-005", unit: "шт", price: 65 },
+          { name: "Ремень 20мм", sku: "BELT-20", barcode: "BELT-20", unit: "шт", price: 240 },
+        ];
+
+        const items = [];
+        for (const seed of itemsSeed) {
+          const item = await tx.item.upsert({
+            where: { sku: seed.sku },
+            update: {
+              name: seed.name,
+              barcode: seed.barcode,
+              unit: seed.unit,
+              defaultPrice: seed.price,
+            },
+            create: {
+              name: seed.name,
+              sku: seed.sku,
+              barcode: seed.barcode,
+              unit: seed.unit,
+              defaultPrice: seed.price,
+            },
+          });
+          items.push(item);
+        }
+
+        const stamp = new Date();
+        const y = stamp.getFullYear();
+        const m = String(stamp.getMonth() + 1).padStart(2, "0");
+        const d = String(stamp.getDate()).padStart(2, "0");
+        const rand = Math.floor(Math.random() * 900 + 100);
+        const poNumber = `PO-TEST-${y}${m}${d}-${rand}`;
+        const soNumber = `SO-TEST-${y}${m}${d}-${rand}`;
+
+        const po = await tx.purchaseOrder.create({
+          data: {
+            number: poNumber,
+            status: "SENT",
+            supplierId: supplier.id,
+            comment: "Тестовый заказ для приемки",
+            createdById: req.user.id,
+            items: {
+              create: [
+                { itemId: items[0].id, quantity: 3, price: itemsSeed[0].price },
+                { itemId: items[1].id, quantity: 10, price: itemsSeed[1].price },
+                { itemId: items[2].id, quantity: 4, price: itemsSeed[2].price },
+              ],
+            },
+          },
+        });
+
+        const so = await tx.salesOrder.create({
+          data: {
+            orderNumber: soNumber,
+            customerName: "Иванов И.И.",
+            customerPhone: "+7 900 000-00-01",
+            shippingAddress: "Омск, ул. Ленина, 10",
+            deliveryComment: "Оставить у ворот",
+            lines: {
+              create: [
+                { itemId: items[0].id, qty: 1 },
+                { itemId: items[1].id, qty: 4 },
+                { itemId: items[2].id, qty: 2 },
+              ],
+            },
+          },
+        });
+
+        return { cleared, po, so };
+      });
+
+      return res.json({
+        message: "Тестовый набор создан.",
+        cleared: result.cleared,
+        purchaseOrder: { id: result.po.id, number: result.po.number },
+        salesOrder: { id: result.so.id, number: result.so.orderNumber },
+      });
+    } catch (err) {
+      console.error("admin demo seed error:", err);
+      return res.status(500).json({ message: "Ошибка создания тестового набора" });
+    }
+  });
+
   router.get("/warehouse/locations", async (req, res) => {
     try {
       const locations = await prisma.warehouseLocation.findMany({
