@@ -37,7 +37,6 @@ export default function AdminWarehousePanel() {
   const [saving, setSaving] = useState(false);
   const [deleting, setDeleting] = useState(false);
   const [showOrdersImport, setShowOrdersImport] = useState(false);
-  const [clearingItems, setClearingItems] = useState(false);
 
   const [itemForm, setItemForm] = useState({
     name: "",
@@ -336,37 +335,6 @@ export default function AdminWarehousePanel() {
     }
   };
 
-  const handleClearItems = async () => {
-    if (clearingItems) return;
-    const confirmText =
-      "Удалить все позиции склада? Это также очистит движения и размещения.";
-    if (typeof window !== "undefined" && !window.confirm(confirmText)) {
-      return;
-    }
-    try {
-      setClearingItems(true);
-      setError("");
-      const res = await fetch(`${API}/admin/warehouse/items/clear`, {
-        method: "POST",
-        headers: authHeaders,
-      });
-      const data = await res.json();
-      if (!res.ok) {
-        throw new Error(
-          data.message || "Ошибка очистки позиций"
-        );
-      }
-      if (typeof window !== "undefined") {
-        window.alert("Все позиции удалены.");
-      }
-      await loadAll();
-    } catch (err) {
-      setError(normalizeErrorMessage(err, "Ошибка очистки позиций."));
-    } finally {
-      setClearingItems(false);
-    }
-  };
-
 
   return (
     <div className="admin-console__card">
@@ -457,16 +425,6 @@ export default function AdminWarehousePanel() {
 
       {!loading && activeTab === "items" && (
         <div className="admin-table-wrapper">
-          <div className="admin-table__actions" style={{ marginBottom: 12 }}>
-            <button
-              type="button"
-              className="admin-btn admin-btn--danger"
-              onClick={handleClearItems}
-              disabled={clearingItems}
-            >
-              {clearingItems ? "Очистка..." : "Удалить все позиции"}
-            </button>
-          </div>
           <table className="admin-table">
             <thead>
               <tr>
