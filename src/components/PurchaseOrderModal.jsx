@@ -234,25 +234,27 @@ export default function PurchaseOrderModal({
           excelRes,
           "Ошибка при формировании Excel-заказа поставщику"
         );
-        throw new Error(message);
+        if (typeof window !== "undefined") {
+          window.alert(`Заказ создан, но Excel не сформирован. ${message}`);
+        }
+      } else {
+        const blob = await excelRes.blob();
+        const url = window.URL.createObjectURL(blob);
+
+        const supplier = suppliers.find((s) => s.id === supplierId);
+        const safeName = (supplier?.name || "supplier")
+          .toString()
+          .replace(/[\\/:*?"<>|]/g, "_")
+          .slice(0, 40);
+
+        const link = document.createElement("a");
+        link.href = url;
+        link.download = `order_${safeName}.xlsx`;
+        document.body.appendChild(link);
+        link.click();
+        link.remove();
+        window.URL.revokeObjectURL(url);
       }
-
-      const blob = await excelRes.blob();
-      const url = window.URL.createObjectURL(blob);
-
-      const supplier = suppliers.find((s) => s.id === supplierId);
-      const safeName = (supplier?.name || "supplier")
-        .toString()
-        .replace(/[\\/:*?"<>|]/g, "_")
-        .slice(0, 40);
-
-      const link = document.createElement("a");
-      link.href = url;
-      link.download = `order_${safeName}.xlsx`;
-      document.body.appendChild(link);
-      link.click();
-      link.remove();
-      window.URL.revokeObjectURL(url);
 
       if (onSuccess) onSuccess(); // родитель перезагрузит список заказов
     } catch (e2) {
