@@ -7,6 +7,7 @@ import Scanner from "../components/tsd/Scanner";
 import ItemCard from "../components/tsd/ItemCard";
 import LocationCard from "../components/tsd/LocationCard";
 import OrderFulfillmentFlow from "../components/tsd/OrderFulfillmentFlow";
+import ReceivingByPo from "../components/tsd/ReceivingByPo";
 import StockDiscrepanciesTab from "../components/StockDiscrepanciesTab";
 import "../components/tsd/tsd.css";
 
@@ -2192,7 +2193,15 @@ export default function MobileTsd() {
       return <TsdHome modes={MODES} onSelect={setMode} />;
     }
     if (mode === "count") return renderCount();
-    if (mode === "receiving") return renderReceiving();
+    if (mode === "receiving") {
+      return (
+        <ReceivingByPo
+          authHeaders={authHeaders}
+          makeOpId={makeOpId}
+          onBack={() => setMode(null)}
+        />
+      );
+    }
     if (mode === "bin") return renderBin();
     if (mode === "move") return renderMove();
     if (mode === "putaway") return renderPutaway();

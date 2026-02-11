@@ -942,31 +942,22 @@ export default function Warehouse({
 
   useEffect(() => {
 
-    if (section !== "inventory") return;
-
-
+    const isInventoryScope =
+      section === "inventory" || section === "movement" || section === "suppliers";
+    if (!isInventoryScope) return;
 
     const loadData = async () => {
-
       try {
-
         await loadInventory();
-
-        await loadSuppliers();
-
-        await loadPurchaseOrders();
-
+        if (section === "inventory" || section === "suppliers") {
+          await loadSuppliers();
+          await loadPurchaseOrders();
+        }
       } catch (e) {
-
         console.error(e);
-
         setInventoryError(e.message);
-
       }
-
     };
-
-
 
     loadData();
 

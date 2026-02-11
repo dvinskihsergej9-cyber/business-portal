@@ -444,6 +444,10 @@ export default function SupplierTrucksQueueTab() {
 
       }
 
+      if (selectedSupplierId && !form.orderNumber.trim()) {
+        return setError("Выберите номер заказа из списка.");
+      }
+
 
 
       const body = {
@@ -788,61 +792,37 @@ export default function SupplierTrucksQueueTab() {
 
                 >
 
-                  <input
-
-                    className="form__input"
-
-                    list="purchase-orders-datalist"
-
+                  <select
+                    className="form__select"
                     value={form.orderNumber}
-
                     onChange={(e) =>
-
                       setForm((prev) => ({
-
                         ...prev,
-
                         orderNumber: e.target.value,
-
                       }))
-
                     }
-
-                    placeholder="Выберите из списка"
-
                     disabled={ordersLoading || !selectedSupplierId}
-
-                  />
-
-                  <datalist id="purchase-orders-datalist">
-
+                  >
+                    <option value="">
+                      {ordersLoading
+                        ? "Загрузка заказов..."
+                        : supplierOrders.length > 0
+                          ? "Выберите из списка"
+                          : "Нет доступных заказов"}
+                    </option>
                     {supplierOrders.map((po) => {
-
                       const dateStr = po.date
-
                         ? new Date(po.date).toLocaleDateString("ru-RU")
-
                         : "";
-
                       const statusLabel =
-
                         PO_STATUS_LABELS[po.status] || po.status;
-
                       return (
-
-                        <option
-
-                          key={po.id}
-
-                          value={po.number}
-
-                        >{`${po.number} от ${dateStr} — ${statusLabel}`}</option>
-
+                        <option key={po.id} value={po.number}>
+                          {`${po.number} от ${dateStr} — ${statusLabel}`}
+                        </option>
                       );
-
                     })}
-
-                  </datalist>
+                  </select>
 
                   <span
 

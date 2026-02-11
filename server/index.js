@@ -1069,7 +1069,24 @@ async function buildOrderPickPlan(orderId) {
     const remaining = Math.max(0, totalQty - pickedQty);
     if (remaining <= 0) continue;
 
-    if (!line.itemId) {
+    let resolvedItemId = line.itemId || null;
+    let resolvedItem = line.item || null;
+    if (!resolvedItemId) {
+      const linkedItem = await findStockItemForOrderLine(prisma, {
+        sku: line.requestedSku,
+        name: line.requestedName,
+      });
+      if (linkedItem) {
+        resolvedItemId = linkedItem.id;
+        resolvedItem = linkedItem;
+        await prisma.salesOrderLine.update({
+          where: { id: line.id },
+          data: { itemId: linkedItem.id },
+        });
+      }
+    }
+
+    if (!resolvedItemId) {
       plan.push({
         lineId: line.id,
         itemId: null,
@@ -1084,7 +1101,7 @@ async function buildOrderPickPlan(orderId) {
       continue;
     }
 
-    const balances = await getItemLocationBalances(line.itemId);
+    const balances = await getItemLocationBalances(resolvedItemId);
     let need = remaining;
     const steps = [];
 
@@ -1103,10 +1120,10 @@ async function buildOrderPickPlan(orderId) {
 
     plan.push({
       lineId: line.id,
-      itemId: line.itemId,
-      itemName: line.item?.name || line.requestedName || `????? #${line.itemId}`,
-      sku: line.item?.sku || line.requestedSku || null,
-      barcode: line.item?.barcode || null,
+      itemId: resolvedItemId,
+      itemName: resolvedItem?.name || line.requestedName || `????? #${resolvedItemId}`,
+      sku: resolvedItem?.sku || line.requestedSku || null,
+      barcode: resolvedItem?.barcode || null,
       totalQty,
       pickedQty,
       remainingQty: remaining,
@@ -9262,7 +9279,21 @@ app.post("/api/orders/:id/pick-confirm", auth, async (req, res) => {
         err.code = "LINE_NOT_FOUND";
         throw err;
       }
-      if (!orderLine.itemId) {
+      let actualItemId = orderLine.itemId;
+      if (!actualItemId) {
+        const linkedItem = await findStockItemForOrderLine(tx, {
+          sku: orderLine.requestedSku,
+          name: orderLine.requestedName,
+        });
+        if (linkedItem) {
+          actualItemId = linkedItem.id;
+          await tx.salesOrderLine.update({
+            where: { id: orderLine.id },
+            data: { itemId: linkedItem.id },
+          });
+        }
+      }
+      if (!actualItemId) {
         const err = new Error("LINE_ITEM_NOT_LINKED");
         err.code = "LINE_ITEM_NOT_LINKED";
         throw err;
@@ -9278,7 +9309,7 @@ app.post("/api/orders/:id/pick-confirm", auth, async (req, res) => {
       await stockService.createMovementInTx(tx, {
         opId: `ORDER:${orderId}:LINE:${line}:${Date.now()}`,
         type: "ISSUE",
-        itemId: orderLine.itemId,
+        itemId: actualItemId,
         qty: amount,
         locationId: location,
         fromLocationId: location,
