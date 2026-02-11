@@ -1,10 +1,15 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import { API_BASE } from "../../apiConfig";
+import { API_BASE, normalizeErrorMessage } from "../../apiConfig";
 import Scanner from "./Scanner";
 import Stepper from "./Stepper";
 import TsdHeader from "./TsdHeader";
 
 const STEPS = ["Заказ", "Товары", "Подтверждение"];
+const QUEUE_STATUS_LABELS = {
+  IN_QUEUE: "В очереди",
+  UNLOADING: "На разгрузке",
+  DONE: "Закрыта",
+};
 
 const emptyState = {
   step: 0,
@@ -20,6 +25,7 @@ export default function ReceivingByPo({ authHeaders, makeOpId, onBack }) {
   const [itemSearch, setItemSearch] = useState("");
   const [filterMode, setFilterMode] = useState("remaining");
   const [selectedPo, setSelectedPo] = useState(null);
+  const [takingPoId, setTakingPoId] = useState(null);
   const [localAccepted, setLocalAccepted] = useState({});
   const [highlightedItemId, setHighlightedItemId] = useState(null);
   const [toast, setToast] = useState(null);
@@ -184,7 +190,7 @@ export default function ReceivingByPo({ authHeaders, makeOpId, onBack }) {
       setState((prev) => ({
         ...prev,
         loading: false,
-        error: err.message,
+        error: toUiError(err, "Не удалось загрузить заказы для приёмки."),
       }));
     }
   };
@@ -280,8 +286,38 @@ export default function ReceivingByPo({ authHeaders, makeOpId, onBack }) {
     return data;
   };
 
-  const handleSelectPo = (po) => {
-    setSelectedPo(po);
+  const toUiError = (err, fallback) => normalizeErrorMessage(err, fallback);
+
+  const handleSelectPo = async (po) => {
+    try {
+      setTakingPoId(po.id);
+      setState((prev) => ({ ...prev, loading: true, error: "" }));
+      const res = await fetch(`${API_BASE}/warehouse/receiving/${po.id}/take`, {
+        method: "POST",
+        headers: authHeaders,
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        throw new Error(data?.message || "Не удалось взять заказ в приёмку.");
+      }
+      const nextPo = {
+        ...po,
+        queue: data?.queue || po.queue || null,
+      };
+      setPoList((prev) =>
+        prev.map((row) => (row.id === po.id ? nextPo : row))
+      );
+      setSelectedPo(nextPo);
+      setState((prev) => ({ ...prev, loading: false, error: "" }));
+    } catch (err) {
+      setState((prev) => ({
+        ...prev,
+        loading: false,
+        error: toUiError(err, "Не удалось взять заказ в приёмку."),
+      }));
+    } finally {
+      setTakingPoId(null);
+    }
   };
 
   const handleItemScan = async (code) => {
@@ -328,7 +364,11 @@ export default function ReceivingByPo({ authHeaders, makeOpId, onBack }) {
       }, 50);
       setState((prev) => ({ ...prev, loading: false }));
     } catch (err) {
-      setState((prev) => ({ ...prev, loading: false, error: err.message }));
+      setState((prev) => ({
+        ...prev,
+        loading: false,
+        error: toUiError(err, "Ошибка сканирования товара."),
+      }));
     }
   };
 
@@ -445,7 +485,10 @@ export default function ReceivingByPo({ authHeaders, makeOpId, onBack }) {
         } catch (printErr) {
           setState((prev) => ({
             ...prev,
-            error: printErr.message || "PRINT_ACT_ERROR",
+            error: toUiError(
+              printErr,
+              "Не удалось сформировать акт расхождений."
+            ),
           }));
         }
       }
@@ -458,7 +501,11 @@ export default function ReceivingByPo({ authHeaders, makeOpId, onBack }) {
       }));
 
     } catch (err) {
-      setState((prev) => ({ ...prev, loading: false, error: err.message }));
+      setState((prev) => ({
+        ...prev,
+        loading: false,
+        error: toUiError(err, "Не удалось подтвердить приёмку."),
+      }));
     }
   };
 
@@ -500,7 +547,7 @@ export default function ReceivingByPo({ authHeaders, makeOpId, onBack }) {
               <div className="tsd-card__body">
                 <div className="tsd-card__title">Открытые заказы</div>
                 <div className="tsd-card__meta">
-                  Выберите заказ поставщику для приемки.
+                  Выберите заказ и нажмите «Взять в приёмку».
                 </div>
               </div>
               <input
@@ -525,12 +572,7 @@ export default function ReceivingByPo({ authHeaders, makeOpId, onBack }) {
               {filteredPos.map((po) => {
                 const percent = Math.round((po.progress || 0) * 100);
                 return (
-                  <button
-                    key={po.id}
-                    type="button"
-                    className="tsd-card"
-                    onClick={() => handleSelectPo(po)}
-                  >
+                  <div key={po.id} className="tsd-card">
                     <div className="tsd-card__body">
                       <div className="tsd-card__title">Заказ №{po.number}</div>
                       <div className="tsd-card__meta">
@@ -539,8 +581,24 @@ export default function ReceivingByPo({ authHeaders, makeOpId, onBack }) {
                       <div className="tsd-card__meta">
                         {po.items?.length || 0} позиций ? {percent}% принято
                       </div>
+                      <div className="tsd-card__meta">
+                        Очередь:{" "}
+                        {QUEUE_STATUS_LABELS[po.queue?.status] ||
+                          po.queue?.status ||
+                          "не указана"}
+                      </div>
                     </div>
-                  </button>
+                    <div className="tsd-action-inline">
+                      <button
+                        type="button"
+                        className="tsd-btn tsd-btn--primary"
+                        onClick={() => handleSelectPo(po)}
+                        disabled={state.loading || takingPoId === po.id}
+                      >
+                        {takingPoId === po.id ? "Берём..." : "Взять в приёмку"}
+                      </button>
+                    </div>
+                  </div>
                 );
               })}
             </div>

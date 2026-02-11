@@ -19,6 +19,7 @@ import TmcTab from "../components/TmcTab";
 
 
 const API = API_BASE;
+const PURCHASE_ORDERS_CACHE_KEY = "warehouse_purchase_orders_cache_v1";
 
 const WAREHOUSE_EMOJI = {
   requests: "📦",
@@ -223,6 +224,8 @@ export default function Warehouse({
   const transactionsRef = useRef(null);
   const revisionRef = useRef(null);
   const tmcRef = useRef(null);
+  const purchaseOrdersLoadSeqRef = useRef(0);
+  const purchaseOrdersRef = useRef([]);
 
   const [requestsTab, setRequestsTab] = useState("new"); // 'new' | 'journal'
 
@@ -419,7 +422,15 @@ export default function Warehouse({
 
   // Заказы поставщику
 
-  const [purchaseOrders, setPurchaseOrders] = useState([]);
+  const [purchaseOrders, setPurchaseOrders] = useState(() => {
+    try {
+      const raw = localStorage.getItem(PURCHASE_ORDERS_CACHE_KEY);
+      const parsed = raw ? JSON.parse(raw) : [];
+      return Array.isArray(parsed) ? parsed : [];
+    } catch {
+      return [];
+    }
+  });
 
   const [purchaseOrdersLoading, setPurchaseOrdersLoading] = useState(false);
 
@@ -430,6 +441,16 @@ export default function Warehouse({
   const [orderItemsForModal, setOrderItemsForModal] = useState([]);
 
   const [showReceiveModal, setShowReceiveModal] = useState(false);
+
+  useEffect(() => {
+    const safeList = Array.isArray(purchaseOrders) ? purchaseOrders : [];
+    purchaseOrdersRef.current = safeList;
+    try {
+      localStorage.setItem(PURCHASE_ORDERS_CACHE_KEY, JSON.stringify(safeList));
+    } catch {
+      // ignore localStorage errors on private mode/quota
+    }
+  }, [purchaseOrders]);
 
 
 
@@ -453,6 +474,18 @@ export default function Warehouse({
 
   const resolveErrorMessage = (err, fallback) =>
     normalizeErrorMessage(err, fallback);
+
+  const isTransientPurchaseOrderError = (message) => {
+    const text = String(message || "").toLowerCase();
+    return (
+      text.includes("failed to fetch") ||
+      text.includes("networkerror") ||
+      text.includes("aborterror") ||
+      text.includes("timeout") ||
+      text.includes("подключ") ||
+      text.includes("время ожидания")
+    );
+  };
 
 
 
@@ -743,6 +776,25 @@ export default function Warehouse({
 
 
   const loadPurchaseOrders = async () => {
+    const requestSeq = purchaseOrdersLoadSeqRef.current + 1;
+    purchaseOrdersLoadSeqRef.current = requestSeq;
+    const loadOnce = async () => {
+      const res = await fetch(`${API}/purchase-orders`, {
+        headers: { Authorization: authHeaders.Authorization },
+      });
+      const data = await readResponsePayload(res);
+      if (!res.ok) {
+        const message =
+          data && typeof data.message === "string"
+            ? data.message
+            : "Ошибка загрузки заказов поставщику.";
+        throw new Error(message);
+      }
+      if (!Array.isArray(data)) {
+        throw new Error("Сервер вернул некорректный список заказов поставщику.");
+      }
+      return data;
+    };
 
     try {
 
@@ -752,45 +804,46 @@ export default function Warehouse({
 
 
 
-      const res = await fetch(`${API}/purchase-orders`, {
-
-        headers: { Authorization: authHeaders.Authorization },
-
-      });
-
-      const data = await readResponsePayload(res);
-
-
-
-      if (!res.ok) {
-
-        const message =
-          data && typeof data.message === "string"
-            ? data.message
-            : "Ошибка загрузки заказов поставщику.";
-        throw new Error(message);
-
+      let data;
+      try {
+        data = await loadOnce();
+      } catch (firstError) {
+        const firstMessage = resolveErrorMessage(
+          firstError,
+          "Ошибка загрузки заказов поставщику."
+        );
+        if (!isTransientPurchaseOrderError(firstMessage)) {
+          throw firstError;
+        }
+        await new Promise((resolve) => setTimeout(resolve, 350));
+        data = await loadOnce();
       }
 
-
-
-      if (!Array.isArray(data)) {
-        throw new Error("Сервер вернул некорректный список заказов поставщику.");
+      if (purchaseOrdersLoadSeqRef.current !== requestSeq) {
+        return;
       }
-
-
-
       setPurchaseOrders(data);
 
     } catch (e) {
+      if (purchaseOrdersLoadSeqRef.current !== requestSeq) {
+        return;
+      }
 
       console.error(e);
 
-      setPurchaseOrdersError(
-        resolveErrorMessage(e, "Ошибка загрузки заказов поставщику.")
+      const message = resolveErrorMessage(
+        e,
+        "Ошибка загрузки заказов поставщику."
       );
+      const hasVisibleOrders = (purchaseOrdersRef.current || []).length > 0;
+      if (!hasVisibleOrders || !isTransientPurchaseOrderError(message)) {
+        setPurchaseOrdersError(message);
+      }
 
     } finally {
+      if (purchaseOrdersLoadSeqRef.current !== requestSeq) {
+        return;
+      }
 
       setPurchaseOrdersLoading(false);
 

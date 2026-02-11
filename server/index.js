@@ -906,6 +906,88 @@ function isWarehouseManager(user) {
   return user?.role === "ADMIN" || user?.role === "ACCOUNTING";
 }
 
+function normalizeComparableText(value) {
+  return String(value || "")
+    .trim()
+    .toLowerCase()
+    .replace(/\s+/g, " ");
+}
+
+function normalizeOrderNumber(value) {
+  return String(value || "")
+    .toUpperCase()
+    .replace(/№/g, "")
+    .replace(/[\s\-_/\\.,]+/g, "");
+}
+
+function isSameOrderNumber(left, right) {
+  const a = normalizeOrderNumber(left);
+  const b = normalizeOrderNumber(right);
+  return Boolean(a) && Boolean(b) && a === b;
+}
+
+async function findActiveTruckForOrder(orderNumber, statuses = ["IN_QUEUE", "UNLOADING"]) {
+  if (!orderNumber) return null;
+  const trucks = await prisma.supplierTruck.findMany({
+    where: {
+      status: { in: statuses },
+      orderNumber: { not: null },
+    },
+    orderBy: [{ arrivalAt: "asc" }, { id: "asc" }],
+  });
+  const match = trucks.find((truck) => isSameOrderNumber(truck.orderNumber, orderNumber));
+  return match || null;
+}
+
+async function findStockItemForOrderLine(db, raw = {}) {
+  const itemId = raw.itemId ? Number(raw.itemId) : null;
+  if (itemId && !Number.isNaN(itemId)) {
+    const byId = await db.item.findUnique({ where: { id: itemId } });
+    if (byId?.category === "STOCK") return byId;
+  }
+
+  const sku = raw.sku ? String(raw.sku).trim() : "";
+  if (sku) {
+    const bySku = await db.item.findFirst({
+      where: { sku, category: "STOCK" },
+    });
+    if (bySku) return bySku;
+  }
+
+  const barcode = raw.barcode ? String(raw.barcode).trim() : "";
+  if (barcode) {
+    const byBarcode = await db.item.findFirst({
+      where: { barcode, category: "STOCK" },
+    });
+    if (byBarcode) return byBarcode;
+  }
+
+  const name = raw.name ? String(raw.name).trim() : "";
+  if (name) {
+    const byName = await db.item.findFirst({
+      where: { name, category: "STOCK" },
+    });
+    if (byName) return byName;
+
+    const normalizedName = normalizeComparableText(name);
+    if (normalizedName) {
+      const candidates = await db.item.findMany({
+        where: {
+          category: "STOCK",
+          name: { contains: name.slice(0, 16) },
+        },
+        take: 60,
+      });
+      const byNormalized = candidates.find(
+        (item) => normalizeComparableText(item.name) === normalizedName
+      );
+      if (byNormalized) return byNormalized;
+    }
+  }
+
+  return null;
+}
+
 async function getOrCreateReceivingLocation() {
   const code = "RECEIVING";
   let location = await prisma.warehouseLocation.findFirst({
@@ -7424,43 +7506,141 @@ app.get("/api/warehouse/receiving/open-pos", auth, async (req, res) => {
       },
     });
 
-    const list = orders.map((order) => {
-      const totals = order.items.reduce(
-        (acc, row) => {
-          acc.ordered += Number(row.quantity) || 0;
-          acc.received += Number(row.receivedQty) || 0;
-          return acc;
-        },
-        { ordered: 0, received: 0 }
-      );
-      const progress =
-        totals.ordered > 0 ? totals.received / totals.ordered : 0;
-      return {
-        id: order.id,
-        number: order.number,
-        date: order.date,
-        status: order.status,
-        supplier: order.supplier
-          ? { id: order.supplier.id, name: order.supplier.name }
-          : null,
-        progress,
-        items: order.items.map((row) => ({
-          id: row.id,
-          itemId: row.itemId,
-          sku: row.item?.sku,
-          barcode: row.item?.barcode,
-          name: row.item?.name,
-          unit: row.item?.unit,
-          orderedQty: row.quantity,
-          receivedQty: row.receivedQty,
-        })),
-      };
+    const activeTrucks = await prisma.supplierTruck.findMany({
+      where: {
+        status: { in: ["IN_QUEUE", "UNLOADING"] },
+        orderNumber: { not: null },
+      },
+      orderBy: [{ arrivalAt: "asc" }, { id: "asc" }],
     });
+    const trucksByNormalizedOrder = new Map();
+    activeTrucks.forEach((truck) => {
+      const key = normalizeOrderNumber(truck.orderNumber);
+      if (!key || trucksByNormalizedOrder.has(key)) return;
+      trucksByNormalizedOrder.set(key, truck);
+    });
+
+    const list = orders
+      .map((order) => {
+        const normalizedOrderNumber = normalizeOrderNumber(order.number);
+        const linkedTruck = normalizedOrderNumber
+          ? trucksByNormalizedOrder.get(normalizedOrderNumber)
+          : null;
+        if (!linkedTruck) return null;
+
+        const totals = order.items.reduce(
+          (acc, row) => {
+            acc.ordered += Number(row.quantity) || 0;
+            acc.received += Number(row.receivedQty) || 0;
+            return acc;
+          },
+          { ordered: 0, received: 0 }
+        );
+        const progress =
+          totals.ordered > 0 ? totals.received / totals.ordered : 0;
+        return {
+          id: order.id,
+          number: order.number,
+          date: order.date,
+          status: order.status,
+          supplier: order.supplier
+            ? { id: order.supplier.id, name: order.supplier.name }
+            : null,
+          progress,
+          queue: {
+            truckId: linkedTruck.id,
+            status: linkedTruck.status,
+            arrivalAt: linkedTruck.arrivalAt,
+            gate: linkedTruck.gate || null,
+            truckNumber: linkedTruck.truckNumber || null,
+            driverName: linkedTruck.driverName || null,
+          },
+          items: order.items.map((row) => ({
+            id: row.id,
+            itemId: row.itemId,
+            sku: row.item?.sku,
+            barcode: row.item?.barcode,
+            name: row.item?.name,
+            unit: row.item?.unit,
+            orderedQty: row.quantity,
+            receivedQty: row.receivedQty,
+          })),
+        };
+      })
+      .filter(Boolean);
 
     res.json(list);
   } catch (err) {
     console.error("open pos error:", err);
     res.status(500).json({ message: "OPEN_POS_ERROR" });
+  }
+});
+
+app.post("/api/warehouse/receiving/:poId/take", auth, async (req, res) => {
+  try {
+    if (!isWarehouseManager(req.user)) {
+      return res.status(403).json({ message: "NO_ACCESS" });
+    }
+
+    const poId = Number(req.params.poId);
+    if (!poId || Number.isNaN(poId)) {
+      return res.status(400).json({ message: "BAD_PO_ID" });
+    }
+
+    const order = await prisma.purchaseOrder.findUnique({
+      where: { id: poId },
+      include: { supplier: true },
+    });
+    if (!order) {
+      return res.status(404).json({ message: "PO_NOT_FOUND" });
+    }
+    if (order.status === "RECEIVED" || order.status === "CLOSED") {
+      return res.status(400).json({ message: "PO_ALREADY_RECEIVED" });
+    }
+
+    const linkedTruck = await findActiveTruckForOrder(order.number, [
+      "IN_QUEUE",
+      "UNLOADING",
+    ]);
+    if (!linkedTruck) {
+      return res.status(409).json({
+        message:
+          "Заказ не зарегистрирован в очереди поставщиков или уже закрыт в очереди.",
+      });
+    }
+
+    const now = new Date();
+    const updatedTruck =
+      linkedTruck.status === "IN_QUEUE"
+        ? await prisma.supplierTruck.update({
+            where: { id: linkedTruck.id },
+            data: {
+              status: "UNLOADING",
+              unloadStartAt: linkedTruck.unloadStartAt || now,
+            },
+          })
+        : linkedTruck;
+
+    res.json({
+      ok: true,
+      order: {
+        id: order.id,
+        number: order.number,
+        status: order.status,
+        supplier: order.supplier
+          ? { id: order.supplier.id, name: order.supplier.name }
+          : null,
+      },
+      queue: {
+        truckId: updatedTruck.id,
+        status: updatedTruck.status,
+        arrivalAt: updatedTruck.arrivalAt,
+        unloadStartAt: updatedTruck.unloadStartAt,
+      },
+    });
+  } catch (err) {
+    console.error("take receiving order error:", err);
+    res.status(500).json({ message: "TAKE_RECEIVING_ORDER_ERROR" });
   }
 });
 
@@ -8007,6 +8187,22 @@ app.post("/api/warehouse/receiving/:poId/confirm", auth, async (req, res) => {
       return res.status(400).json({ message: "PO_ALREADY_RECEIVED" });
     }
 
+    const linkedTruck = await findActiveTruckForOrder(order.number, [
+      "IN_QUEUE",
+      "UNLOADING",
+    ]);
+    if (!linkedTruck) {
+      return res.status(409).json({
+        message:
+          "Заказ не зарегистрирован в очереди поставщиков или уже закрыт в очереди.",
+      });
+    }
+    if (linkedTruck.status !== "UNLOADING") {
+      return res.status(409).json({
+        message: "Сначала возьмите заказ в работу на приёмку.",
+      });
+    }
+
     let location = null;
     if (locationId) {
       location = await prisma.warehouseLocation.findUnique({
@@ -8153,6 +8349,21 @@ app.post("/api/warehouse/receiving/:poId/confirm", auth, async (req, res) => {
         items: { include: { item: true } },
       },
     });
+
+    if (
+      updatedOrder &&
+      ["RECEIVED", "CLOSED"].includes(updatedOrder.status) &&
+      linkedTruck.status !== "DONE"
+    ) {
+      const now = new Date();
+      await prisma.supplierTruck.update({
+        where: { id: linkedTruck.id },
+        data: {
+          status: "DONE",
+          unloadEndAt: linkedTruck.unloadEndAt || now,
+        },
+      });
+    }
 
     res.json({
       ok: true,
@@ -8494,14 +8705,7 @@ app.post("/api/orders/inbound", auth, async (req, res) => {
     for (const raw of items) {
       const qty = Math.trunc(Number(raw.qty));
       if (!Number.isFinite(qty) || qty <= 0) continue;
-      const byId = raw.itemId ? await prisma.item.findUnique({ where: { id: Number(raw.itemId) } }) : null;
-      const bySku = !byId && raw.sku
-        ? await prisma.item.findFirst({ where: { sku: String(raw.sku) } })
-        : null;
-      const byBarcode = !byId && !bySku && raw.barcode
-        ? await prisma.item.findFirst({ where: { barcode: String(raw.barcode) } })
-        : null;
-      const item = byId || bySku || byBarcode || null;
+      const item = await findStockItemForOrderLine(prisma, raw);
       linesPayload.push({
         itemId: item?.id || null,
         requestedSku: raw.sku ? String(raw.sku) : item?.sku || null,
@@ -8624,14 +8828,7 @@ app.post("/api/integrations/orders/inbound", async (req, res) => {
     for (const raw of items) {
       const qty = Math.trunc(Number(raw.qty));
       if (!Number.isFinite(qty) || qty <= 0) continue;
-      const byId = raw.itemId ? await prisma.item.findUnique({ where: { id: Number(raw.itemId) } }) : null;
-      const bySku = !byId && raw.sku
-        ? await prisma.item.findFirst({ where: { sku: String(raw.sku) } })
-        : null;
-      const byBarcode = !byId && !bySku && raw.barcode
-        ? await prisma.item.findFirst({ where: { barcode: String(raw.barcode) } })
-        : null;
-      const item = byId || bySku || byBarcode || null;
+      const item = await findStockItemForOrderLine(prisma, raw);
       linesPayload.push({
         itemId: item?.id || null,
         requestedSku: raw.sku ? String(raw.sku) : item?.sku || null,
@@ -8754,14 +8951,7 @@ app.post("/api/orders/import-batch", auth, requireAdmin, async (req, res) => {
       for (const raw of items) {
         const qty = Math.trunc(Number(raw.qty));
         if (!Number.isFinite(qty) || qty <= 0) continue;
-        const byId = raw.itemId ? await prisma.item.findUnique({ where: { id: Number(raw.itemId) } }) : null;
-        const bySku = !byId && raw.sku
-          ? await prisma.item.findFirst({ where: { sku: String(raw.sku) } })
-          : null;
-        const byBarcode = !byId && !bySku && raw.barcode
-          ? await prisma.item.findFirst({ where: { barcode: String(raw.barcode) } })
-          : null;
-        const item = byId || bySku || byBarcode || null;
+        const item = await findStockItemForOrderLine(prisma, raw);
         linesPayload.push({
           itemId: item?.id || null,
           requestedSku: raw.sku ? String(raw.sku) : item?.sku || null,

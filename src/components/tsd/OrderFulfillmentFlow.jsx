@@ -85,6 +85,20 @@ export default function OrderFulfillmentFlow({ authHeaders, onBack }) {
     }
   };
 
+  const resolveScanEntity = async (code) => {
+    try {
+      const res = await fetch(
+        `${API_BASE}/warehouse/scan/resolve?code=${encodeURIComponent(code)}`,
+        { headers: authHeaders }
+      );
+      const data = await res.json().catch(() => null);
+      if (!res.ok) return null;
+      return data;
+    } catch {
+      return null;
+    }
+  };
+
   useEffect(() => {
     loadQueue();
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -136,27 +150,85 @@ export default function OrderFulfillmentFlow({ authHeaders, onBack }) {
     }
   };
 
-  const handleLocationScan = (value) => {
+  const handleLocationScan = async (value) => {
     if (!currentStep) return;
-    const scanned = normalizeScan(value);
+    const raw = String(value || "").trim();
+    const scanned = normalizeScan(raw);
     const code = normalizeScan(currentStep.locationCode);
     const name = normalizeScan(currentStep.locationName);
     const idValue = String(currentStep.locationId || "");
-    if (scanned === code || scanned === name || scanned === idValue) {
+    const locMatch = scanned.match(/^bp:(loc|location):(.*)$/i);
+    const locPayload = locMatch ? normalizeScan(locMatch[2]) : "";
+    const locPayloadId = locPayload && /^\d+$/.test(locPayload) ? locPayload : "";
+
+    if (
+      scanned === code ||
+      scanned === name ||
+      scanned === idValue ||
+      (locPayload && (locPayload === code || locPayload === name)) ||
+      (locPayloadId && locPayloadId === idValue)
+    ) {
       setLocationScanned(true);
       setError("");
       return;
     }
+
+    const resolved = await resolveScanEntity(raw);
+    const entity = resolved?.entity || {};
+    const resolvedId = String(entity.id || "");
+    const resolvedCode = normalizeScan(entity.code);
+    const resolvedName = normalizeScan(entity.name);
+    if (
+      resolved?.type === "location" &&
+      (resolvedId === idValue ||
+        (resolvedCode && resolvedCode === code) ||
+        (resolvedName && resolvedName === name))
+    ) {
+      setLocationScanned(true);
+      setError("");
+      return;
+    }
+
     setError("Скан не совпадает с ячейкой текущего шага.");
   };
 
   const handleItemScan = async (value) => {
     if (!currentStep) return;
-    const scanned = normalizeScan(value);
+    const raw = String(value || "").trim();
+    const scanned = normalizeScan(raw);
     const sku = normalizeScan(currentStep.sku);
     const barcode = normalizeScan(currentStep.barcode);
-    if (scanned !== sku && scanned !== barcode) {
-      setError("Скан не совпадает с товаром текущего шага.");
+    const itemIdValue = String(currentStep.itemId || "");
+    const itemMatch = scanned.match(/^bp:(item|product|sku):(.*)$/i);
+    const itemPayload = itemMatch ? normalizeScan(itemMatch[2]) : "";
+    const itemPayloadId = itemPayload && /^\d+$/.test(itemPayload) ? itemPayload : "";
+
+    const directMatch =
+      scanned === sku ||
+      scanned === barcode ||
+      scanned === itemIdValue ||
+      (itemPayload &&
+        (itemPayload === sku || itemPayload === barcode || itemPayload === itemIdValue));
+
+    if (!directMatch) {
+      const resolved = await resolveScanEntity(raw);
+      const entity = resolved?.entity || {};
+      const resolvedItemId = String(entity.id || "");
+      const resolvedSku = normalizeScan(entity.sku);
+      const resolvedBarcode = normalizeScan(entity.barcode);
+      const resolvedMatch =
+        resolved?.type === "item" &&
+        (resolvedItemId === itemIdValue ||
+          (resolvedSku && resolvedSku === sku) ||
+          (resolvedBarcode && resolvedBarcode === barcode));
+      if (!resolvedMatch) {
+        setError("Скан не совпадает с товаром текущего шага.");
+        return;
+      }
+    }
+
+    if (Number(currentStep.qty || 0) <= 0) {
+      setError("Для шага отбора не задано количество.");
       return;
     }
 
