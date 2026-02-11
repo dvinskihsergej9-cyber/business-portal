@@ -6,7 +6,7 @@ const prodFallbackBase = "https://business-portal-8nba.onrender.com";
 const prodFallbackOrigin = prodFallbackBase.replace(/\/+$/, "");
 export const FALLBACK_API_BASE = `${prodFallbackOrigin}/api`;
 
-const rawBase = import.meta.env.PROD ? prodFallbackBase : (envBase || devFallbackBase);
+const rawBase = import.meta.env.PROD ? (envBase || "/api") : (envBase || devFallbackBase);
 const cleanedBase = String(rawBase || "").trim().replace(/\s+/g, "");
 const rawLooksLikeEnv =
   cleanedBase &&
@@ -44,14 +44,14 @@ if (import.meta.env.DEV && normalizedBase.includes("/api/api")) {
 
 if (!envBase && import.meta.env.PROD) {
   console.warn(
-    "[apiConfig] VITE_API_BASE is not set. Falling back to production API:",
+    "[apiConfig] VITE_API_BASE is not set. Using /api (requires Vercel rewrite to backend):",
     normalizedBase
   );
 }
 
 if (normalizedBase === "/api" && !isLocalHost) {
   console.warn(
-    "[apiConfig] VITE_API_BASE is not set; API_BASE is '/api' which likely breaks on Vercel. Set VITE_API_BASE to https://business-portal-8nba.onrender.com"
+    "[apiConfig] API_BASE is '/api' for production; ensure Vercel rewrites to backend."
   );
 }
 
