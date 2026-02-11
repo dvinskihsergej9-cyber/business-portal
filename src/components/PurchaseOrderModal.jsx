@@ -103,6 +103,22 @@ export default function PurchaseOrderModal({
     }, 0);
   }, [rows]);
 
+  const readErrorMessage = async (res, fallback) => {
+    try {
+      const data = await res.clone().json();
+      if (data && typeof data.message === "string") return data.message;
+    } catch {
+      // ignore
+    }
+    try {
+      const text = await res.clone().text();
+      if (text) return text.slice(0, 300);
+    } catch {
+      // ignore
+    }
+    return fallback;
+  };
+
   // === СОЗДАНИЕ ЗАКАЗА + СКАЧИВАНИЕ EXCEL ===
   const handleSubmit = async (e) => {
     e.preventDefault();
@@ -114,6 +130,16 @@ export default function PurchaseOrderModal({
     }
 
     const supplierId = Number(form.supplierId);
+    const plannedDateRaw = String(form.plannedDate || "").trim();
+    let plannedDatePayload = null;
+    if (plannedDateRaw) {
+      const parsed = new Date(plannedDateRaw);
+      if (Number.isNaN(parsed.getTime())) {
+        setError("Некорректная дата приемки.");
+        return;
+      }
+      plannedDatePayload = parsed.toISOString();
+    }
 
     // 1) Позиции для БД (обязательно itemId, quantity, price)
     const dbItems = rows
@@ -177,17 +203,18 @@ export default function PurchaseOrderModal({
         headers: authHeaders,
         body: JSON.stringify({
           supplierId,
-          plannedDate: form.plannedDate || null,
+          plannedDate: plannedDatePayload,
           comment: form.comment?.trim() || null,
           items: dbItems,
         }),
       });
 
-      const createData = await createRes.json();
       if (!createRes.ok) {
-        throw new Error(
-          createData?.message || "Ошибка создания заказа поставщику"
+        const message = await readErrorMessage(
+          createRes,
+          `Ошибка создания заказа поставщику (HTTP ${createRes.status})`
         );
+        throw new Error(message);
       }
 
       // ---------- 2. ФОРМИРУЕМ EXCEL-ФАЙЛ (как раньше) ----------
@@ -196,20 +223,17 @@ export default function PurchaseOrderModal({
         headers: authHeaders,
         body: JSON.stringify({
           supplierId,
-          plannedDate: form.plannedDate || null,
+          plannedDate: plannedDatePayload,
           comment: form.comment?.trim() || null,
           items: excelItems,
         }),
       });
 
       if (!excelRes.ok) {
-        let message = "Ошибка при формировании Excel-заказа поставщику";
-        try {
-          const data = await excelRes.json();
-          if (data?.message) message = data.message;
-        } catch (_) {
-          // тело не JSON – оставляем дефолтное сообщение
-        }
+        const message = await readErrorMessage(
+          excelRes,
+          "Ошибка при формировании Excel-заказа поставщику"
+        );
         throw new Error(message);
       }
 
