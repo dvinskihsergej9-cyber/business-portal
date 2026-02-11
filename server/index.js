@@ -8244,7 +8244,8 @@ app.post("/api/warehouse/receiving/:poId/confirm", auth, async (req, res) => {
       for (const line of lines) {
         const itemId = Number(line.productId ?? line.itemId);
         const qty = Number(line.qty);
-        if (!itemId || !Number.isFinite(qty) || qty <= 0) continue;
+        const qtyInt = Math.trunc(qty);
+        if (!itemId || !Number.isFinite(qty) || qtyInt <= 0) continue;
 
         const lineOpId = opId ? `${opId}:${itemId}` : null;
         if (lineOpId) {
@@ -8263,7 +8264,7 @@ app.post("/api/warehouse/receiving/:poId/confirm", auth, async (req, res) => {
           opId: lineOpId,
           type: "INCOME",
           itemId,
-          qty: Math.trunc(qty),
+          qty: qtyInt,
           locationId: location.id,
           comment: `??????? ?? ?????? ${order.number} [PO#${order.id}]`,
           refType: "PO",
@@ -8273,20 +8274,40 @@ app.post("/api/warehouse/receiving/:poId/confirm", auth, async (req, res) => {
 
         movementIds.push(movement.id);
 
+        const now = new Date();
+        const manufacturedAtRaw = line?.manufacturedAt ? new Date(line.manufacturedAt) : now;
+        const manufacturedAt = Number.isNaN(manufacturedAtRaw.getTime()) ? now : manufacturedAtRaw;
+        const expiresAtRaw = line?.expiresAt ? new Date(line.expiresAt) : manufacturedAt;
+        const expiresAt = Number.isNaN(expiresAtRaw.getTime()) ? manufacturedAt : expiresAtRaw;
+
+        await tx.warehouseReceivingLine.create({
+          data: {
+            itemId,
+            qty: qtyInt,
+            remainingQty: qtyInt,
+            manufacturedAt,
+            expiresAt,
+            status: "PENDING",
+            sourceType: "RECEIVING",
+            locationId: location.id,
+            createdById: req.user?.id || null,
+          },
+        });
+
         const orderRow = orderItemsByItemId.get(itemId);
         if (orderRow) {
           const ordered = Number(orderRow.quantity) || 0;
           const prevReceived = Number(orderRow.receivedQty) || 0;
           const expectedRemaining = Math.max(0, ordered - prevReceived);
-          const nextReceived = prevReceived + qty;
+          const nextReceived = prevReceived + qtyInt;
 
           await tx.purchaseOrderItem.update({
             where: { id: orderRow.id },
             data: { receivedQty: nextReceived },
           });
 
-          if (qty !== expectedRemaining) {
-            const delta = Math.trunc(qty - expectedRemaining);
+          if (qtyInt !== expectedRemaining) {
+            const delta = Math.trunc(qtyInt - expectedRemaining);
             const movementOpId = lineOpId || `po:${poId}:${itemId}:${Date.now()}`;
             const existingDisc = await tx.receivingDiscrepancy.findFirst({
               where: { movementOpId },
@@ -8297,7 +8318,7 @@ app.post("/api/warehouse/receiving/:poId/confirm", auth, async (req, res) => {
                   purchaseOrderId: poId,
                   itemId,
                   expectedQty: Math.trunc(expectedRemaining),
-                  receivedQty: Math.trunc(qty),
+                  receivedQty: qtyInt,
                   delta: delta,
                   status: "OPEN",
                   movementOpId,
@@ -8317,8 +8338,8 @@ app.post("/api/warehouse/receiving/:poId/confirm", auth, async (req, res) => {
                 purchaseOrderId: poId,
                 itemId,
                 expectedQty: 0,
-                receivedQty: Math.trunc(qty),
-                delta: Math.trunc(qty),
+                receivedQty: qtyInt,
+                delta: qtyInt,
                 status: "OPEN",
                 movementOpId,
                 note: "UNPLANNED_ITEM",
