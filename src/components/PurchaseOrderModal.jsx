@@ -1,5 +1,5 @@
 import { useMemo, useState } from "react";
-import { API_BASE } from "../apiConfig";
+import { API_BASE, normalizeErrorMessage } from "../apiConfig";
 
 const API = API_BASE;
 
@@ -119,6 +119,21 @@ export default function PurchaseOrderModal({
     return fallback;
   };
 
+  const readJsonSafe = async (res) => {
+    try {
+      return await res.clone().json();
+    } catch {
+      return null;
+    }
+  };
+
+  const notifyExcelWarning = (message) => {
+    if (typeof window === "undefined") return;
+    window.alert(
+      `Заказ поставщику создан, но файл Excel не удалось получить. ${message}`
+    );
+  };
+
   // === СОЗДАНИЕ ЗАКАЗА + СКАЧИВАНИЕ EXCEL ===
   const handleSubmit = async (e) => {
     e.preventDefault();
@@ -197,7 +212,6 @@ export default function PurchaseOrderModal({
     try {
       setSaving(true);
 
-      // ---------- 1. СОЗДАЁМ ЗАКАЗ В БАЗЕ ----------
       const createRes = await fetch(`${API}/purchase-orders`, {
         method: "POST",
         headers: authHeaders,
@@ -212,54 +226,70 @@ export default function PurchaseOrderModal({
       if (!createRes.ok) {
         const message = await readErrorMessage(
           createRes,
-          `Ошибка создания заказа поставщику (HTTP ${createRes.status})`
+          `\u041e\u0448\u0438\u0431\u043a\u0430 \u0441\u043e\u0437\u0434\u0430\u043d\u0438\u044f \u0437\u0430\u043a\u0430\u0437\u0430 \u043f\u043e\u0441\u0442\u0430\u0432\u0449\u0438\u043a\u0443 (HTTP ${createRes.status})`
         );
         throw new Error(message);
       }
 
-      // ---------- 2. ФОРМИРУЕМ EXCEL-ФАЙЛ (как раньше) ----------
-      const excelRes = await fetch(`${API}/purchase-orders/excel-file`, {
-        method: "POST",
-        headers: authHeaders,
-        body: JSON.stringify({
-          supplierId,
-          plannedDate: plannedDatePayload,
-          comment: form.comment?.trim() || null,
-          items: excelItems,
-        }),
-      });
+      const createdOrder = await readJsonSafe(createRes);
 
-      if (!excelRes.ok) {
-        const message = await readErrorMessage(
-          excelRes,
-          "Ошибка при формировании Excel-заказа поставщику"
-        );
-        if (typeof window !== "undefined") {
-          window.alert(`Заказ создан, но Excel не сформирован. ${message}`);
+      try {
+        const excelRes = await fetch(`${API}/purchase-orders/excel-file`, {
+          method: "POST",
+          headers: authHeaders,
+          body: JSON.stringify({
+            supplierId,
+            plannedDate: plannedDatePayload,
+            comment: form.comment?.trim() || null,
+            items: excelItems,
+          }),
+        });
+
+        if (!excelRes.ok) {
+          const message = await readErrorMessage(
+            excelRes,
+            "\u041e\u0448\u0438\u0431\u043a\u0430 \u043f\u0440\u0438 \u0444\u043e\u0440\u043c\u0438\u0440\u043e\u0432\u0430\u043d\u0438\u0438 Excel-\u0437\u0430\u043a\u0430\u0437\u0430 \u043f\u043e\u0441\u0442\u0430\u0432\u0449\u0438\u043a\u0443."
+          );
+          notifyExcelWarning(
+            normalizeErrorMessage(message, "\u041e\u0448\u0438\u0431\u043a\u0430 \u0441\u0435\u0440\u0432\u0435\u0440\u0430.")
+          );
+        } else {
+          const blob = await excelRes.blob();
+          const url = window.URL.createObjectURL(blob);
+
+          const supplier = suppliers.find((s) => s.id === supplierId);
+          const safeName = (supplier?.name || "supplier")
+            .toString()
+            .replace(/[\\/:*?"<>|]/g, "_")
+            .slice(0, 40);
+
+          const link = document.createElement("a");
+          link.href = url;
+          link.download = `order_${safeName}.xlsx`;
+          document.body.appendChild(link);
+          link.click();
+          link.remove();
+          window.URL.revokeObjectURL(url);
         }
-      } else {
-        const blob = await excelRes.blob();
-        const url = window.URL.createObjectURL(blob);
-
-        const supplier = suppliers.find((s) => s.id === supplierId);
-        const safeName = (supplier?.name || "supplier")
-          .toString()
-          .replace(/[\\/:*?"<>|]/g, "_")
-          .slice(0, 40);
-
-        const link = document.createElement("a");
-        link.href = url;
-        link.download = `order_${safeName}.xlsx`;
-        document.body.appendChild(link);
-        link.click();
-        link.remove();
-        window.URL.revokeObjectURL(url);
+      } catch (excelErr) {
+        console.error("excel purchase order error:", excelErr);
+        notifyExcelWarning(
+          normalizeErrorMessage(
+            excelErr,
+            "\u041e\u0448\u0438\u0431\u043a\u0430 \u043f\u0440\u0438 \u0441\u043a\u0430\u0447\u0438\u0432\u0430\u043d\u0438\u0438 \u0444\u0430\u0439\u043b\u0430."
+          )
+        );
       }
 
-      if (onSuccess) onSuccess(); // родитель перезагрузит список заказов
+      if (onSuccess) onSuccess(createdOrder);
     } catch (e2) {
       console.error(e2);
-      setError(e2.message || "Ошибка при формировании заказа поставщику");
+      setError(
+        normalizeErrorMessage(
+          e2,
+          "\u041e\u0448\u0438\u0431\u043a\u0430 \u043f\u0440\u0438 \u0444\u043e\u0440\u043c\u0438\u0440\u043e\u0432\u0430\u043d\u0438\u0438 \u0437\u0430\u043a\u0430\u0437\u0430 \u043f\u043e\u0441\u0442\u0430\u0432\u0449\u0438\u043a\u0443."
+        )
+      );
     } finally {
       setSaving(false);
     }

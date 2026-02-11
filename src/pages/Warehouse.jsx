@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useRef, useState, Fragment } from "react";
 
-import { API_BASE } from "../apiConfig";
+import { API_BASE, normalizeErrorMessage } from "../apiConfig";
 import { useAuth } from "../context/AuthContext";
 
 import PurchaseOrderModal from "../components/PurchaseOrderModal";
@@ -443,6 +443,17 @@ export default function Warehouse({
 
   };
 
+  const readResponsePayload = async (res) => {
+    try {
+      return await res.json();
+    } catch {
+      return null;
+    }
+  };
+
+  const resolveErrorMessage = (err, fallback) =>
+    normalizeErrorMessage(err, fallback);
+
 
 
   // ===== API: ЗАЯВКИ =====
@@ -693,17 +704,25 @@ export default function Warehouse({
 
       });
 
-      const data = await res.json();
+      const data = await readResponsePayload(res);
 
 
 
       if (!res.ok) {
 
-        throw new Error(data.message || "Ошибка загрузки поставщиков");
+        const message =
+          data && typeof data.message === "string"
+            ? data.message
+            : "Ошибка загрузки поставщиков.";
+        throw new Error(message);
 
       }
 
 
+
+      if (!Array.isArray(data)) {
+        throw new Error("Сервер вернул некорректный список поставщиков.");
+      }
 
       setSuppliers(data);
 
@@ -711,7 +730,7 @@ export default function Warehouse({
 
       console.error(e);
 
-      setSuppliersError(e.message);
+      setSuppliersError(resolveErrorMessage(e, "Ошибка загрузки поставщиков."));
 
     } finally {
 
@@ -739,18 +758,24 @@ export default function Warehouse({
 
       });
 
-      const data = await res.json();
+      const data = await readResponsePayload(res);
 
 
 
       if (!res.ok) {
 
-        throw new Error(
+        const message =
+          data && typeof data.message === "string"
+            ? data.message
+            : "Ошибка загрузки заказов поставщику.";
+        throw new Error(message);
 
-          data.message || "Ошибка загрузки заказов поставщику"
+      }
 
-        );
 
+
+      if (!Array.isArray(data)) {
+        throw new Error("Сервер вернул некорректный список заказов поставщику.");
       }
 
 
@@ -761,7 +786,9 @@ export default function Warehouse({
 
       console.error(e);
 
-      setPurchaseOrdersError(e.message);
+      setPurchaseOrdersError(
+        resolveErrorMessage(e, "Ошибка загрузки заказов поставщику.")
+      );
 
     } finally {
 
@@ -4267,9 +4294,17 @@ export default function Warehouse({
 
           onClose={() => setShowOrderModal(false)}
 
-          onSuccess={() => {
+          onSuccess={(createdOrder) => {
 
             setShowOrderModal(false);
+
+            if (createdOrder && typeof createdOrder.id === "number") {
+              setPurchaseOrders((prev) => {
+                const withoutCreated = prev.filter((po) => po.id !== createdOrder.id);
+                return [createdOrder, ...withoutCreated];
+              });
+              setPurchaseOrdersError("");
+            }
 
             loadPurchaseOrders();
 

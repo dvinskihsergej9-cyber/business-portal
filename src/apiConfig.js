@@ -8,29 +8,24 @@ export const FALLBACK_API_BASE = `${prodFallbackOrigin}/api`;
 
 const rawBase = import.meta.env.PROD ? (envBase || "/api") : (envBase || devFallbackBase);
 const cleanedBase = String(rawBase || "").trim().replace(/\s+/g, "");
-const rawLooksLikeEnv =
-  cleanedBase &&
-  !cleanedBase.startsWith("http://") &&
-  !cleanedBase.startsWith("https://") &&
-  !cleanedBase.startsWith("/");
 const needsProtocol =
   cleanedBase &&
   !cleanedBase.startsWith("http://") &&
   !cleanedBase.startsWith("https://") &&
   !cleanedBase.startsWith("/");
 const normalizedRawBase = needsProtocol ? `https://${cleanedBase}` : cleanedBase;
-const trimmedBase = normalizedRawBase.replace(/\/+$/, "");
+const isRelativeBase = normalizedRawBase.startsWith("/");
+const trimmedBase = isRelativeBase
+  ? (normalizedRawBase.replace(/\/+$/, "") || "/")
+  : normalizedRawBase.replace(/\/+$/, "");
 let normalizedBase = trimmedBase.endsWith("/api") ? trimmedBase : `${trimmedBase}/api`;
-try {
-  new URL(normalizedBase);
-} catch {
-  const fallback = prodFallbackBase.replace(/\/+$/, "");
-  normalizedBase = fallback.endsWith("/api") ? fallback : `${fallback}/api`;
-}
 
-if (import.meta.env.PROD && rawLooksLikeEnv) {
-  const fallback = prodFallbackBase.replace(/\/+$/, "");
-  normalizedBase = fallback.endsWith("/api") ? fallback : `${fallback}/api`;
+if (!isRelativeBase) {
+  try {
+    new URL(normalizedBase);
+  } catch {
+    normalizedBase = FALLBACK_API_BASE;
+  }
 }
 
 const isLocalHost = ["localhost", "127.0.0.1"].includes(window.location.hostname);
