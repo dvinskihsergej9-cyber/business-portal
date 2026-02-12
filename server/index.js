@@ -2226,9 +2226,11 @@ app.post("/api/login", async (req, res) => {
       }
     }
     if (user && user.isActive === false) {
+      console.warn(`[LOGIN_FAIL] inactive user: ${normalizedEmail}`);
       return res.status(403).json({ message: "USER_INACTIVE" });
     }
     if (!user) {
+      console.warn(`[LOGIN_FAIL] user not found: ${normalizedEmail}`);
       return res
         .status(401)
         .json({ message: "Неверный email или пароль" });
@@ -2249,6 +2251,7 @@ app.post("/api/login", async (req, res) => {
       }
     }
     if (!ok) {
+      console.warn(`[LOGIN_FAIL] wrong password: ${normalizedEmail}`);
       return res
         .status(401)
         .json({ message: "Неверный email или пароль" });
@@ -3023,7 +3026,25 @@ app.post("/api/auth/forgot-password", async (req, res) => {
     resetEmailRate.set(normalized, now);
     resetGlobalRate.push(now);
 
-    const user = await prisma.user.findUnique({ where: { email: normalized } });
+    let user = await prisma.user.findUnique({ where: { email: normalized } });
+    if (!user) {
+      const legacyRows = await prisma.$queryRaw`
+        SELECT "id" FROM "User"
+        WHERE LOWER(TRIM("email")) = LOWER(${normalized})
+        LIMIT 1
+      `;
+      const legacyId = Number(legacyRows?.[0]?.id || 0);
+      if (legacyId) {
+        user = await prisma.user.findUnique({ where: { id: legacyId } });
+        if (user && user.email !== normalized) {
+          await prisma.user.update({
+            where: { id: user.id },
+            data: { email: normalized },
+          });
+          user.email = normalized;
+        }
+      }
+    }
     if (!user || user.isActive === false) {
       return res.json({ message: responseMessage });
     }
