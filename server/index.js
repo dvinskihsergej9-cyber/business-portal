@@ -16,8 +16,8 @@ import { createWarehouseStockService } from "./services/warehouseStockService.js
 // ================== ИНИЦИАЛИЗАЦИЯ ==================
 
 const app = express();
-const prisma = new PrismaClient();
-const stockService = createWarehouseStockService(prisma);
+const prismaBase = new PrismaClient();
+let prisma = prismaBase;
 const requestContext = new AsyncLocalStorage();
 
 // для загрузки файлов в память (будем читать Excel из буфера)
@@ -248,97 +248,112 @@ async function runWithoutTenantScope(fn) {
   }
 }
 
-prisma.$use(async (params, next) => {
-  const store = requestContext.getStore();
-  if (!store || store.skipTenantScope) return next(params);
-  if (!params.model || !TENANT_SCOPED_MODELS.has(params.model)) return next(params);
-  if (store.isSystemOwner || !store.orgId) return next(params);
+prisma = prismaBase.$extends({
+  query: {
+    $allModels: {
+      async $allOperations({ model, operation, args, query }) {
+        const store = requestContext.getStore();
+        if (!store || store.skipTenantScope) return query(args);
+        if (!model || !TENANT_SCOPED_MODELS.has(model)) return query(args);
+        if (store.isSystemOwner || !store.orgId) return query(args);
 
-  const orgId = store.orgId;
-  params.args = params.args || {};
+        const orgId = store.orgId;
+        const delegate = prismaBase[model[0].toLowerCase() + model.slice(1)];
+        const safeArgs = args || {};
 
-  if (params.action === "findMany" || params.action === "findFirst" || params.action === "count" || params.action === "aggregate" || params.action === "groupBy") {
-    params.args.where = withTenantWhere(params.args.where, orgId);
-    return next(params);
-  }
+        if (operation === "findMany" || operation === "findFirst" || operation === "count" || operation === "aggregate" || operation === "groupBy") {
+          safeArgs.where = withTenantWhere(safeArgs.where, orgId);
+          return query(safeArgs);
+        }
 
-  if (params.action === "findUnique") {
-    params.action = "findFirst";
-    params.args.where = withTenantWhere(params.args.where, orgId);
-    return next(params);
-  }
+        if (operation === "findUnique") {
+          return runWithoutTenantScope(() =>
+            delegate.findFirst({
+              ...safeArgs,
+              where: withTenantWhere(safeArgs.where, orgId),
+            })
+          );
+        }
 
-  if (params.action === "findUniqueOrThrow") {
-    params.action = "findFirstOrThrow";
-    params.args.where = withTenantWhere(params.args.where, orgId);
-    return next(params);
-  }
+        if (operation === "findUniqueOrThrow") {
+          return runWithoutTenantScope(() =>
+            delegate.findFirstOrThrow({
+              ...safeArgs,
+              where: withTenantWhere(safeArgs.where, orgId),
+            })
+          );
+        }
 
-  if (params.action === "create") {
-    params.args.data = { ...(params.args.data || {}), orgId };
-    return next(params);
-  }
+        if (operation === "create") {
+          safeArgs.data = { ...(safeArgs.data || {}), orgId };
+          return query(safeArgs);
+        }
 
-  if (params.action === "createMany") {
-    if (Array.isArray(params.args.data)) {
-      params.args.data = params.args.data.map((row) => ({ ...row, orgId }));
-    } else {
-      params.args.data = { ...(params.args.data || {}), orgId };
-    }
-    return next(params);
-  }
+        if (operation === "createMany") {
+          if (Array.isArray(safeArgs.data)) {
+            safeArgs.data = safeArgs.data.map((row) => ({ ...row, orgId }));
+          } else {
+            safeArgs.data = { ...(safeArgs.data || {}), orgId };
+          }
+          return query(safeArgs);
+        }
 
-  if (params.action === "updateMany" || params.action === "deleteMany") {
-    params.args.where = withTenantWhere(params.args.where, orgId);
-    return next(params);
-  }
+        if (operation === "updateMany" || operation === "deleteMany") {
+          safeArgs.where = withTenantWhere(safeArgs.where, orgId);
+          return query(safeArgs);
+        }
 
-  if (params.action === "update" || params.action === "delete") {
-    const found = await runWithoutTenantScope(() =>
-      prisma[params.model[0].toLowerCase() + params.model.slice(1)].findFirst({
-        where: withTenantWhere(params.args.where, orgId),
-        select: { id: true },
-      })
-    );
-    if (!found) {
-      const err = new Error("TENANT_NOT_FOUND");
-      err.code = "TENANT_NOT_FOUND";
-      throw err;
-    }
-    params.args.where = { id: found.id };
-    if (params.action === "update") {
-      params.args.data = { ...(params.args.data || {}), orgId };
-    }
-    return next(params);
-  }
+        if (operation === "update" || operation === "delete") {
+          const found = await runWithoutTenantScope(() =>
+            delegate.findFirst({
+              where: withTenantWhere(safeArgs.where, orgId),
+              select: { id: true },
+            })
+          );
+          if (!found) {
+            const err = new Error("TENANT_NOT_FOUND");
+            err.code = "TENANT_NOT_FOUND";
+            throw err;
+          }
+          safeArgs.where = { id: found.id };
+          if (operation === "update") {
+            safeArgs.data = { ...(safeArgs.data || {}), orgId };
+          }
+          return query(safeArgs);
+        }
 
-  if (params.action === "upsert") {
-    const existing = await runWithoutTenantScope(() =>
-      prisma[params.model[0].toLowerCase() + params.model.slice(1)].findFirst({
-        where: params.args.where,
-        select: { id: true, orgId: true },
-      })
-    );
-    if (existing && existing.orgId && existing.orgId !== orgId) {
-      const err = new Error("TENANT_CONFLICT");
-      err.code = "TENANT_CONFLICT";
-      throw err;
-    }
-    params.args.create = { ...(params.args.create || {}), orgId };
-    params.args.update = { ...(params.args.update || {}), orgId };
-    if (existing && !existing.orgId) {
-      await runWithoutTenantScope(() =>
-        prisma[params.model[0].toLowerCase() + params.model.slice(1)].update({
-          where: { id: existing.id },
-          data: { orgId },
-        })
-      );
-    }
-    return next(params);
-  }
+        if (operation === "upsert") {
+          const existing = await runWithoutTenantScope(() =>
+            delegate.findFirst({
+              where: safeArgs.where,
+              select: { id: true, orgId: true },
+            })
+          );
+          if (existing && existing.orgId && existing.orgId !== orgId) {
+            const err = new Error("TENANT_CONFLICT");
+            err.code = "TENANT_CONFLICT";
+            throw err;
+          }
+          safeArgs.create = { ...(safeArgs.create || {}), orgId };
+          safeArgs.update = { ...(safeArgs.update || {}), orgId };
+          if (existing && !existing.orgId) {
+            await runWithoutTenantScope(() =>
+              delegate.update({
+                where: { id: existing.id },
+                data: { orgId },
+              })
+            );
+          }
+          return query(safeArgs);
+        }
 
-  return next(params);
+        return query(safeArgs);
+      },
+    },
+  },
 });
+
+const stockService = createWarehouseStockService(prisma);
 
 let mailTransport = null;
 
