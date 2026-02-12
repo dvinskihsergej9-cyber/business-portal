@@ -10615,8 +10615,24 @@ const DEPLOY_REVISION_KEY =
 const RESET_INVENTORY_ON_DEPLOY =
   String(process.env.RESET_INVENTORY_ON_DEPLOY || "").toLowerCase() ===
   "true";
+const ALLOW_PRODUCTION_DEPLOY_RESET =
+  String(process.env.ALLOW_PRODUCTION_DEPLOY_RESET || "").toLowerCase() ===
+  "true";
+const IS_PRODUCTION_ENV =
+  String(process.env.NODE_ENV || "").toLowerCase() === "production";
 
 async function ensureWarehouseItemsResetForCurrentRevision() {
+  if (
+    IS_PRODUCTION_ENV &&
+    RESET_INVENTORY_ON_DEPLOY &&
+    !ALLOW_PRODUCTION_DEPLOY_RESET
+  ) {
+    console.warn(
+      "[WAREHOUSE_BOOTSTRAP] blocked in production (set ALLOW_PRODUCTION_DEPLOY_RESET=true only for one-time maintenance)"
+    );
+    return;
+  }
+
   if (!RESET_INVENTORY_ON_DEPLOY) {
     console.log(
       `[WAREHOUSE_BOOTSTRAP] skipped (set RESET_INVENTORY_ON_DEPLOY=true to enable reset on deploy)`

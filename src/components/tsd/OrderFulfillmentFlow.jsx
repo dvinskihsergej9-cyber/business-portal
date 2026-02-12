@@ -523,19 +523,6 @@ export default function OrderFulfillmentFlow({ authHeaders, onBack }) {
                   <div className="tsd-card__meta">К отбору: {currentStep.qty}</div>
                   <div className="tsd-card__meta">Сканировано: {scannedQty}</div>
                 </div>
-                <div className="tsd-inline">
-                  <button
-                    type="button"
-                    className="tsd-btn tsd-btn--ghost"
-                    onClick={() => {
-                      setLocationScanned(false);
-                      setScannedQty(0);
-                      setError("");
-                    }}
-                  >
-                    Сбросить скан
-                  </button>
-                </div>
               </div>
             )}
 
