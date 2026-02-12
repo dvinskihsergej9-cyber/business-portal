@@ -845,6 +845,12 @@ input[type="number"] {
 
 .po-table-wrapper {
   margin-top: 4px;
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+}
+
+.po-lines-table {
+  min-width: 860px;
 }
 
 /* Подвал формы (итого + кнопки) */
@@ -898,12 +904,139 @@ input[type="number"] {
 
 /* необязательно, но чтобы внутри было красиво */
 .modal__header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
   padding: 8px 12px;
   border-bottom: 1px solid #e5e7eb;
 }
 
+.modal__title {
+  margin: 0;
+  font-size: 24px;
+  line-height: 1.2;
+}
+
+.modal__close {
+  width: 40px;
+  height: 40px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border: 1px solid #d1d5db;
+  border-radius: 10px;
+  background: #ffffff;
+  color: #0f172a;
+  font-size: 22px;
+  line-height: 1;
+  padding: 0;
+  box-shadow: none;
+  cursor: pointer;
+}
+
+.portal-surface .modal__close {
+  width: 40px;
+  height: 40px;
+  padding: 0;
+  border-radius: 10px;
+  border: 1px solid #d1d5db;
+  background: #ffffff;
+  color: #0f172a;
+  box-shadow: none;
+}
+
+.portal-surface .modal__close:hover:not(:disabled) {
+  background: #f8fafc;
+}
+
+.modal__close:hover:not(:disabled) {
+  background: #f8fafc;
+}
+
 .modal__body {
   padding: 12px 12px 14px;
+}
+
+@media (max-width: 900px) {
+  .modal--wide {
+    width: min(100vw - 20px, 1100px);
+  }
+
+  .po-header-grid {
+    grid-template-columns: minmax(0, 1fr);
+    gap: 12px;
+  }
+
+  .po-header-grid__row {
+    flex-direction: column;
+    align-items: stretch;
+    gap: 6px;
+    margin-bottom: 10px;
+  }
+
+  .po-header-grid__label {
+    width: 100%;
+    font-size: 14px;
+    font-weight: 600;
+  }
+
+  .po-header-grid__field {
+    width: 100%;
+  }
+
+  .po-header-grid__field .form__input,
+  .po-header-grid__field .form__select {
+    width: 100%;
+  }
+
+  .po-header-meta {
+    width: 100%;
+  }
+}
+
+@media (max-width: 640px) {
+  .modal-backdrop {
+    align-items: stretch;
+    padding: 8px;
+  }
+
+  .modal {
+    width: 100%;
+    max-height: calc(100dvh - 16px);
+    border-radius: 14px;
+  }
+
+  .modal__header {
+    position: sticky;
+    top: 0;
+    z-index: 2;
+    background: #ffffff;
+    padding: 10px 12px;
+  }
+
+  .modal__title {
+    font-size: 18px;
+  }
+
+  .modal__body {
+    padding: 10px 10px 14px;
+  }
+
+  .po-footer {
+    flex-direction: column;
+    align-items: stretch;
+    gap: 8px;
+  }
+
+  .po-footer__total {
+    margin-left: 0;
+    justify-content: space-between;
+  }
+
+  .po-footer .btn {
+    width: 100%;
+  }
 }
 
 /* Блок "Были ли расхождения?" — строгий 1С-стиль */
