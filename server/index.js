@@ -913,6 +913,20 @@ function normalizeComparableText(value) {
     .replace(/\s+/g, " ");
 }
 
+function normalizeSkuToken(value) {
+  return String(value || "")
+    .trim()
+    .toUpperCase()
+    .replace(/[^A-Z0-9А-ЯЁ]/g, "");
+}
+
+function normalizeBarcodeToken(value) {
+  return String(value || "")
+    .trim()
+    .toUpperCase()
+    .replace(/[^A-Z0-9]/g, "");
+}
+
 function normalizeOrderNumber(value) {
   return String(value || "")
     .toUpperCase()
@@ -946,23 +960,56 @@ async function findStockItemForOrderLine(db, raw = {}) {
     if (byId?.category === "STOCK") return byId;
   }
 
-  const sku = raw.sku ? String(raw.sku).trim() : "";
+  const skuSource = raw.sku ?? raw.requestedSku ?? null;
+  const sku = skuSource ? String(skuSource).trim() : "";
   if (sku) {
     const bySku = await db.item.findFirst({
       where: { sku, category: "STOCK" },
     });
     if (bySku) return bySku;
+
+    const normalizedSku = normalizeSkuToken(sku);
+    if (normalizedSku) {
+      const skuCandidates = await db.item.findMany({
+        where: {
+          category: "STOCK",
+          sku: { not: null },
+        },
+        take: 500,
+      });
+      const byNormalizedSku = skuCandidates.find(
+        (item) => normalizeSkuToken(item.sku) === normalizedSku
+      );
+      if (byNormalizedSku) return byNormalizedSku;
+    }
   }
 
-  const barcode = raw.barcode ? String(raw.barcode).trim() : "";
+  const barcodeSource = raw.barcode ?? raw.requestedBarcode ?? null;
+  const barcode = barcodeSource ? String(barcodeSource).trim() : "";
   if (barcode) {
     const byBarcode = await db.item.findFirst({
       where: { barcode, category: "STOCK" },
     });
     if (byBarcode) return byBarcode;
+
+    const normalizedBarcode = normalizeBarcodeToken(barcode);
+    if (normalizedBarcode) {
+      const barcodeCandidates = await db.item.findMany({
+        where: {
+          category: "STOCK",
+          barcode: { not: null },
+        },
+        take: 500,
+      });
+      const byNormalizedBarcode = barcodeCandidates.find(
+        (item) => normalizeBarcodeToken(item.barcode) === normalizedBarcode
+      );
+      if (byNormalizedBarcode) return byNormalizedBarcode;
+    }
   }
 
-  const name = raw.name ? String(raw.name).trim() : "";
+  const nameSource = raw.name ?? raw.requestedName ?? null;
+  const name = nameSource ? String(nameSource).trim() : "";
   if (name) {
     const byName = await db.item.findFirst({
       where: { name, category: "STOCK" },
@@ -982,6 +1029,15 @@ async function findStockItemForOrderLine(db, raw = {}) {
         (item) => normalizeComparableText(item.name) === normalizedName
       );
       if (byNormalized) return byNormalized;
+
+      const broadCandidates = await db.item.findMany({
+        where: { category: "STOCK" },
+        take: 500,
+      });
+      const byBroadNormalized = broadCandidates.find(
+        (item) => normalizeComparableText(item.name) === normalizedName
+      );
+      if (byBroadNormalized) return byBroadNormalized;
     }
   }
 
@@ -1050,6 +1106,69 @@ async function getItemLocationBalances(itemId) {
     });
 }
 
+async function getReceivingLineLocationBalances(itemId) {
+  const lines = await prisma.warehouseReceivingLine.findMany({
+    where: {
+      itemId,
+      locationId: { not: null },
+      remainingQty: { gt: 0 },
+      status: { in: ["PLACED", "PENDING"] },
+    },
+    include: {
+      location: {
+        select: { id: true, name: true, code: true, zone: true, aisle: true, rack: true, level: true },
+      },
+    },
+    orderBy: [{ locationId: "asc" }, { createdAt: "asc" }],
+  });
+
+  const byLocation = new Map();
+  for (const line of lines) {
+    if (!line.locationId) continue;
+    const locationId = line.locationId;
+    const current = byLocation.get(locationId) || {
+      locationId,
+      location: line.location || null,
+      qty: 0,
+    };
+    current.qty += Number(line.remainingQty) || 0;
+    byLocation.set(locationId, current);
+  }
+
+  return Array.from(byLocation.values())
+    .filter((row) => row.qty > 0)
+    .sort((a, b) => {
+      const codeA = String(a.location?.code || a.location?.name || "");
+      const codeB = String(b.location?.code || b.location?.name || "");
+      return codeA.localeCompare(codeB, "ru");
+    });
+}
+
+function mergeLocationBalances(movementBalances = [], receivingBalances = []) {
+  const merged = new Map();
+
+  const apply = (row) => {
+    if (!row?.locationId) return;
+    const current = merged.get(row.locationId) || {
+      locationId: row.locationId,
+      location: row.location || null,
+      qty: 0,
+    };
+    current.location = current.location || row.location || null;
+    current.qty = Math.max(Number(current.qty) || 0, Number(row.qty) || 0);
+    merged.set(row.locationId, current);
+  };
+
+  movementBalances.forEach(apply);
+  receivingBalances.forEach(apply);
+
+  return Array.from(merged.values()).sort((a, b) => {
+    const codeA = String(a.location?.code || a.location?.name || "");
+    const codeB = String(b.location?.code || b.location?.name || "");
+    return codeA.localeCompare(codeB, "ru");
+  });
+}
+
 async function buildOrderPickPlan(orderId) {
   const order = await prisma.salesOrder.findUnique({
     where: { id: orderId },
@@ -1101,7 +1220,9 @@ async function buildOrderPickPlan(orderId) {
       continue;
     }
 
-    const balances = await getItemLocationBalances(resolvedItemId);
+    const movementBalances = await getItemLocationBalances(resolvedItemId);
+    const receivingBalances = await getReceivingLineLocationBalances(resolvedItemId);
+    const balances = mergeLocationBalances(movementBalances, receivingBalances);
     let need = remaining;
     const steps = [];
 
@@ -9325,6 +9446,37 @@ app.post("/api/orders/:id/pick-confirm", auth, async (req, res) => {
         const err = new Error("QTY_EXCEEDS_REMAINING");
         err.code = "QTY_EXCEEDS_REMAINING";
         throw err;
+      }
+
+      const currentLocationQty = await stockService.getItemLocationQty(
+        tx,
+        actualItemId,
+        location
+      );
+      if (currentLocationQty < amount) {
+        const lotsAgg = await tx.warehouseReceivingLine.aggregate({
+          where: {
+            itemId: actualItemId,
+            locationId: location,
+            remainingQty: { gt: 0 },
+            status: { in: ["PLACED", "PENDING"] },
+          },
+          _sum: { remainingQty: true },
+        });
+        const lotsQty = Number(lotsAgg?._sum?.remainingQty) || 0;
+        const syncDelta = Math.max(0, lotsQty - currentLocationQty);
+        if (syncDelta > 0) {
+          await stockService.createMovementInTx(tx, {
+            type: "ADJUSTMENT",
+            itemId: actualItemId,
+            qty: syncDelta,
+            locationId: location,
+            comment: `Синхронизация остатков перед отбором заказа ${order.orderNumber}`,
+            refType: "ORDER",
+            refId: String(orderId),
+            userId: req.user?.id || null,
+          });
+        }
       }
 
       await stockService.createMovementInTx(tx, {
