@@ -49,10 +49,11 @@ export function AuthProvider({ children }) {
 
   const login = async (email, password) => {
     try {
+      const normalizedEmail = String(email || "").trim().toLowerCase();
       const res = await apiFetch("/login", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ email, password }),
+        body: JSON.stringify({ email: normalizedEmail, password }),
       });
 
       const data = await res.json();
@@ -75,10 +76,11 @@ export function AuthProvider({ children }) {
   // РЕГИСТРАЦИЯ БЕЗ ROLE — роль ставит сервер
   const register = async (email, password, name) => {
     try {
+      const normalizedEmail = String(email || "").trim().toLowerCase();
       const res = await apiFetch("/register", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ email, password, name }),
+        body: JSON.stringify({ email: normalizedEmail, password, name }),
       });
 
       const data = await res.json();

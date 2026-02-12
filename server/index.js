@@ -2140,14 +2140,18 @@ app.post("/api/register", async (req, res) => {
 
   try {
     const { email, password, name } = req.body;
+    const normalizedEmail = String(email || "").trim().toLowerCase();
+    const normalizedName = String(name || "").trim();
 
-    if (!email || !password || !name) {
+    if (!normalizedEmail || !password || !normalizedName) {
       return res
         .status(400)
         .json({ message: "email, пароль и имя обязательны" });
     }
 
-    const existing = await prisma.user.findUnique({ where: { email } });
+    const existing = await prisma.user.findUnique({
+      where: { email: normalizedEmail },
+    });
     if (existing) {
       return res
         .status(400)
@@ -2158,10 +2162,10 @@ app.post("/api/register", async (req, res) => {
 
     const user = await prisma.user.create({
       data: {
-        email,
+        email: normalizedEmail,
         password: hash,
         passwordHash: hash,
-        name,
+        name: normalizedName,
         role: "EMPLOYEE",
       },
     });
@@ -2192,14 +2196,35 @@ app.post("/api/register", async (req, res) => {
 app.post("/api/login", async (req, res) => {
   try {
     const { email, password } = req.body;
+    const normalizedEmail = String(email || "").trim().toLowerCase();
 
-    if (!email || !password) {
+    if (!normalizedEmail || !password) {
       return res
         .status(400)
         .json({ message: "email и пароль обязательны" });
     }
 
-    const user = await prisma.user.findUnique({ where: { email } });
+    let user = await prisma.user.findUnique({
+      where: { email: normalizedEmail },
+    });
+    if (!user) {
+      const legacyRows = await prisma.$queryRaw`
+        SELECT "id" FROM "User"
+        WHERE LOWER("email") = LOWER(${normalizedEmail})
+        LIMIT 1
+      `;
+      const legacyId = Number(legacyRows?.[0]?.id || 0);
+      if (legacyId) {
+        user = await prisma.user.findUnique({ where: { id: legacyId } });
+        if (user && user.email !== normalizedEmail) {
+          await prisma.user.update({
+            where: { id: user.id },
+            data: { email: normalizedEmail },
+          });
+          user.email = normalizedEmail;
+        }
+      }
+    }
     if (user && user.isActive === false) {
       return res.status(403).json({ message: "USER_INACTIVE" });
     }
