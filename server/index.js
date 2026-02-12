@@ -2210,7 +2210,7 @@ app.post("/api/login", async (req, res) => {
     if (!user) {
       const legacyRows = await prisma.$queryRaw`
         SELECT "id" FROM "User"
-        WHERE LOWER("email") = LOWER(${normalizedEmail})
+        WHERE LOWER(TRIM("email")) = LOWER(${normalizedEmail})
         LIMIT 1
       `;
       const legacyId = Number(legacyRows?.[0]?.id || 0);
@@ -2234,8 +2234,20 @@ app.post("/api/login", async (req, res) => {
         .json({ message: "Неверный email или пароль" });
     }
 
-    const storedHash = user.passwordHash || user.password;
-    const ok = await bcrypt.compare(password, storedHash);
+    const storedHash = String(user.passwordHash || user.password || "");
+    let ok = false;
+    if (storedHash.startsWith("$2")) {
+      ok = await bcrypt.compare(password, storedHash);
+    } else if (storedHash) {
+      ok = password === storedHash;
+      if (ok) {
+        const nextHash = await bcrypt.hash(password, 10);
+        await prisma.user.update({
+          where: { id: user.id },
+          data: { password: nextHash, passwordHash: nextHash },
+        });
+      }
+    }
     if (!ok) {
       return res
         .status(401)
