@@ -1,5 +1,5 @@
 ﻿import { useEffect, useMemo, useState } from "react";
-import { API_BASE } from "../apiConfig";
+import { API_BASE, normalizeErrorMessage } from "../apiConfig";
 import TsdHome from "../components/tsd/TsdHome";
 import TsdHeader from "../components/tsd/TsdHeader";
 import Stepper from "../components/tsd/Stepper";
@@ -262,15 +262,29 @@ export default function MobileTsd() {
 
 
   const resolveScan = async (code) => {
-    const res = await fetch(
-      `${API_BASE}/warehouse/scan/resolve?code=${encodeURIComponent(code)}`,
-      { headers: authHeaders }
-    );
-    const data = await res.json();
-    if (!res.ok) {
-      throw new Error(data.message || "Код не найден");
+    try {
+      const res = await fetch(
+        `${API_BASE}/warehouse/scan/resolve?code=${encodeURIComponent(code)}`,
+        { headers: authHeaders }
+      );
+      const data = await res.json().catch(() => null);
+      if (!res.ok) {
+        const message = String(data?.message || "Код не найден");
+        if (message === "LOCATION_NOT_FOUND") {
+          throw new Error("Ячейка не найдена.");
+        }
+        if (message === "ITEM_NOT_FOUND") {
+          throw new Error("Товар не найден.");
+        }
+        if (message === "CODE_NOT_FOUND") {
+          throw new Error("Код не найден.");
+        }
+        throw new Error(message);
+      }
+      return data;
+    } catch (err) {
+      throw new Error(normalizeErrorMessage(err, "Ошибка запроса."));
     }
-    return data;
   };
 
   const handleCountLocation = async (code) => {
