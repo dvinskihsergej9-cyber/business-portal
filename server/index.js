@@ -9931,6 +9931,63 @@ async function getItemTotalQty(itemId) {
   return Math.round(qty);
 }
 
+const DEPLOY_REVISION_KEY =
+  process.env.RENDER_GIT_COMMIT ||
+  process.env.SOURCE_VERSION ||
+  process.env.VERCEL_GIT_COMMIT_SHA ||
+  process.env.GITHUB_SHA ||
+  "local-dev";
+
+async function ensureWarehouseItemsResetForCurrentRevision() {
+  const profile = await prisma.orgProfile.findUnique({
+    where: { id: 1 },
+    select: { warehouseBootstrapKey: true },
+  });
+
+  if (profile?.warehouseBootstrapKey === DEPLOY_REVISION_KEY) return;
+
+  const result = await prisma.$transaction(async (tx) => {
+    await tx.salesOrderLine.updateMany({
+      where: { itemId: { not: null } },
+      data: { itemId: null },
+    });
+
+    await tx.receivingDiscrepancy.updateMany({
+      where: { itemId: { not: null } },
+      data: { itemId: null },
+    });
+
+    await tx.stockRevisionItem.deleteMany({});
+    await tx.stockDiscrepancy.deleteMany({});
+    await tx.warehousePlacement.deleteMany({});
+    await tx.warehouseReceivingLine.deleteMany({});
+    await tx.stockMovement.deleteMany({});
+    await tx.purchaseOrderItem.deleteMany({});
+    const deletedItems = await tx.item.deleteMany({});
+
+    await tx.orgProfile.upsert({
+      where: { id: 1 },
+      update: { warehouseBootstrapKey: DEPLOY_REVISION_KEY },
+      create: {
+        id: 1,
+        orgName: "",
+        legalAddress: "",
+        actualAddress: "",
+        inn: "",
+        kpp: "",
+        phone: "",
+        warehouseBootstrapKey: DEPLOY_REVISION_KEY,
+      },
+    });
+
+    return { deletedItems: deletedItems.count };
+  });
+
+  console.log(
+    `[WAREHOUSE_BOOTSTRAP] inventory reset for revision "${DEPLOY_REVISION_KEY}", deleted items: ${result.deletedItems}`
+  );
+}
+
 async function checkAutoReorders() {
   try {
     const items = await prisma.item.findMany({
@@ -10127,11 +10184,23 @@ startTelegramPolling().catch((err) =>
 
 const PORT = process.env.PORT || 3001;
 
-app.listen(PORT, () => {
-  console.log(`🚀 API запущен: http://localhost:${PORT}`);
-});
+async function bootstrapServer() {
+  try {
+    await ensureWarehouseItemsResetForCurrentRevision();
+  } catch (err) {
+    console.error("[WAREHOUSE_BOOTSTRAP] reset error:", err);
+  }
 
-startBackgroundTasks().catch((err) =>
-  console.error("[DB ready check] ошибка запуска фоновых задач:", err)
+  app.listen(PORT, () => {
+    console.log(`🚀 API запущен: http://localhost:${PORT}`);
+  });
+
+  startBackgroundTasks().catch((err) =>
+    console.error("[DB ready check] ошибка запуска фоновых задач:", err)
+  );
+}
+
+bootstrapServer().catch((err) =>
+  console.error("Ошибка запуска bootstrapServer:", err)
 );
 

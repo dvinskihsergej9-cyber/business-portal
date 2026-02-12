@@ -517,6 +517,7 @@ model OrgProfile {
   apiKeyHash    String?
   apiKeyHint    String?
   apiKeyLastRotatedAt DateTime?
+  warehouseBootstrapKey String?
   updatedAt     DateTime @updatedAt
 }
 
