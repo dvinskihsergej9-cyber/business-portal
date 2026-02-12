@@ -10622,6 +10622,11 @@ const IS_PRODUCTION_ENV =
   String(process.env.NODE_ENV || "").toLowerCase() === "production";
 
 async function ensureWarehouseItemsResetForCurrentRevision() {
+  console.log(
+    "[WAREHOUSE_BOOTSTRAP] auto-reset on deploy is disabled in SaaS mode."
+  );
+  return;
+
   if (
     IS_PRODUCTION_ENV &&
     RESET_INVENTORY_ON_DEPLOY &&
