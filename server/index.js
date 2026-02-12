@@ -1079,11 +1079,6 @@ function escapeHtml(value) {
 async function getItemLocationBalances(itemId) {
   const movements = await prisma.stockMovement.findMany({
     where: { itemId },
-    include: {
-      location: {
-        select: { id: true, name: true, code: true, zone: true, aisle: true, rack: true, level: true },
-      },
-    },
     orderBy: { createdAt: "asc" },
   });
 
@@ -1102,6 +1097,21 @@ async function getItemLocationBalances(itemId) {
       current.qty -= Number(movement.quantity) || 0;
     }
     byLocation.set(locationId, current);
+  }
+
+  const locationIds = Array.from(byLocation.keys());
+  const locations = locationIds.length
+    ? await prisma.warehouseLocation.findMany({
+        where: { id: { in: locationIds } },
+        select: { id: true, name: true, code: true, zone: true, aisle: true, rack: true, level: true },
+      })
+    : [];
+  const locationById = new Map(locations.map((location) => [location.id, location]));
+
+  for (const row of byLocation.values()) {
+    if (!row.location) {
+      row.location = locationById.get(row.locationId) || null;
+    }
   }
 
   return Array.from(byLocation.values())
