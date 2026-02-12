@@ -120,3 +120,5 @@ E2E_EMPLOYEE_PASSWORD=Test12345! \
 npm run e2e
 ```
 
+
+RESET_INVENTORY_ON_DEPLOY: optional, default false. Set true to reset inventory once per deploy revision.

@@ -9937,8 +9937,18 @@ const DEPLOY_REVISION_KEY =
   process.env.VERCEL_GIT_COMMIT_SHA ||
   process.env.GITHUB_SHA ||
   "local-dev";
+const RESET_INVENTORY_ON_DEPLOY =
+  String(process.env.RESET_INVENTORY_ON_DEPLOY || "").toLowerCase() ===
+  "true";
 
 async function ensureWarehouseItemsResetForCurrentRevision() {
+  if (!RESET_INVENTORY_ON_DEPLOY) {
+    console.log(
+      `[WAREHOUSE_BOOTSTRAP] skipped (set RESET_INVENTORY_ON_DEPLOY=true to enable reset on deploy)`
+    );
+    return;
+  }
+
   const profile = await prisma.orgProfile.findUnique({
     where: { id: 1 },
     select: { warehouseBootstrapKey: true },
