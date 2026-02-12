@@ -104,6 +104,7 @@ model PasswordResetToken {
 // ============ HR ============
 model Employee {
   id                Int                  @id @default(autoincrement())
+  orgId             Int?
   fullName          String
   position          String
   department        String
@@ -122,6 +123,7 @@ model Employee {
 
 model HrLeaveApplication {
   id         Int      @id @default(autoincrement())
+  orgId      Int?
   employeeId Int
   type       String   // PAID / UNPAID / TERMINATION
   startDate  DateTime
@@ -137,6 +139,7 @@ model HrLeaveApplication {
 
 model SafetyInstruction {
   id          Int                 @id @default(autoincrement())
+  orgId       Int?
   title       String
   description String?
   role        String?
@@ -146,6 +149,7 @@ model SafetyInstruction {
 
 model SafetyAssignment {
   id             Int               @id @default(autoincrement())
+  orgId          Int?
   employeeId     Int
   instructionId  Int
   status         String            @default("PENDING") // PENDING / COMPLETED
@@ -161,6 +165,7 @@ model SafetyAssignment {
 // ============ LEAVE ============
 model LeaveRequest {
   id        Int      @id @default(autoincrement())
+  orgId     Int?
   user      User     @relation(fields: [userId], references: [id])
   userId    Int
   type      String
@@ -175,6 +180,7 @@ model LeaveRequest {
 // ============ PAYMENTS ============
 model PaymentRequest {
   id          Int       @id @default(autoincrement())
+  orgId       Int?
   user        User      @relation(fields: [userId], references: [id])
   userId      Int
   title       String
@@ -190,6 +196,7 @@ model PaymentRequest {
 
 model Payment {
   id                Int      @id @default(autoincrement())
+  orgId             Int?
   userId            Int
   provider          String
   providerPaymentId String
@@ -207,6 +214,7 @@ model Payment {
 // ============ WAREHOUSE REQUESTS ============
 model WarehouseRequest {
   id        Int      @id @default(autoincrement())
+  orgId     Int?
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
@@ -230,6 +238,7 @@ model WarehouseRequest {
 
 model WarehouseRequestItem {
   id        Int              @id @default(autoincrement())
+  orgId     Int?
   name      String
   quantity  Float
   unit      String?
@@ -239,6 +248,7 @@ model WarehouseRequestItem {
 
 model WarehouseTask {
   id           Int      @id @default(autoincrement())
+  orgId        Int?
   createdAt    DateTime @default(now())
   updatedAt    DateTime @updatedAt
   title        String
@@ -268,6 +278,7 @@ enum WarehouseRequestStatus {
 // ============ PURCHASE ORDERS ============
 model PurchaseOrder {
   id          Int                 @id @default(autoincrement())
+  orgId       Int?
   number      String?             @unique
   date        DateTime            @default(now())
   plannedDate DateTime?
@@ -290,6 +301,7 @@ model PurchaseOrder {
 
 model PurchaseOrderItem {
   id      Int           @id @default(autoincrement())
+  orgId   Int?
   orderId Int
   order   PurchaseOrder @relation(fields: [orderId], references: [id])
 
@@ -322,6 +334,7 @@ enum ReceivingLineSource {
 // ============ STOCK ITEMS ============
 model Item {
   id          Int      @id @default(autoincrement())
+  orgId       Int?
   name        String
   sku         String?  @unique
   barcode     String?  @unique
@@ -357,6 +370,7 @@ model Item {
 
 model WarehouseLocation {
   id        Int      @id @default(autoincrement())
+  orgId     Int?
   name      String
   zone      String?
   aisle     String?
@@ -376,6 +390,7 @@ model WarehouseLocation {
 
 model WarehouseReceivingLine {
   id            Int      @id @default(autoincrement())
+  orgId         Int?
   itemId        Int
   item          Item     @relation(fields: [itemId], references: [id])
   qty           Int
@@ -402,6 +417,7 @@ model WarehouseReceivingLine {
 
 model WarehousePlacement {
   id         Int      @id @default(autoincrement())
+  orgId      Int?
   itemId     Int
   locationId Int
   qty        Int
@@ -416,6 +432,7 @@ model WarehousePlacement {
 
 model StockMovement {
   id           Int               @id @default(autoincrement())
+  orgId        Int?
   opId         String?           @unique
   type         StockMovementType
   itemId       Int
@@ -435,6 +452,7 @@ model StockMovement {
 
 model BinAuditSession {
   id              Int                 @id @default(autoincrement())
+  orgId           Int?
   startedByUserId Int?
   startedBy       User?               @relation(fields: [startedByUserId], references: [id])
   startedAt       DateTime            @default(now())
@@ -446,6 +464,7 @@ model BinAuditSession {
 
 model BinAuditEvent {
   id         Int            @id @default(autoincrement())
+  orgId      Int?
   sessionId  Int
   session    BinAuditSession @relation(fields: [sessionId], references: [id])
   locationId Int
@@ -457,6 +476,7 @@ model BinAuditEvent {
 
 model StockDiscrepancy {
   id            Int                 @id @default(autoincrement())
+  orgId         Int?
   sessionId     Int?
   session       BinAuditSession?    @relation(fields: [sessionId], references: [id])
   locationId    Int
@@ -479,6 +499,7 @@ model StockDiscrepancy {
 
 model StockRevision {
   id             Int      @id @default(autoincrement())
+  orgId          Int?
   createdAt      DateTime @default(now())
   createdByUserId Int?
   createdBy      User?    @relation("RevisionCreatedBy", fields: [createdByUserId], references: [id])
@@ -487,6 +508,7 @@ model StockRevision {
 
 model StockRevisionItem {
   id                 Int      @id @default(autoincrement())
+  orgId              Int?
   revisionId         Int
   revision           StockRevision @relation(fields: [revisionId], references: [id])
   discrepancyId      Int?
@@ -508,6 +530,7 @@ model StockRevisionItem {
 
 model ReceivingDiscrepancy {
   id            Int      @id @default(autoincrement())
+  orgId         Int?
   purchaseOrderId Int
   purchaseOrder PurchaseOrder @relation(fields: [purchaseOrderId], references: [id])
   itemId        Int?
@@ -527,7 +550,8 @@ model ReceivingDiscrepancy {
 
 
 model OrgProfile {
-  id            Int      @id @default(1)
+  id            Int      @id @default(autoincrement())
+  orgId         Int?
   orgName       String
   legalAddress  String
   actualAddress String
@@ -539,6 +563,8 @@ model OrgProfile {
   apiKeyLastRotatedAt DateTime?
   warehouseBootstrapKey String?
   updatedAt     DateTime @updatedAt
+
+  @@unique([orgId])
 }
 
 enum StockMovementType {
@@ -578,6 +604,7 @@ enum LeaveRegionCategory {
 // ============ SUPPLIERS ============
 model Supplier {
   id        Int      @id @default(autoincrement())
+  orgId     Int?
   name      String
   inn       String?
   phone     String?
@@ -592,6 +619,7 @@ model Supplier {
 
 model SupplierTruck {
   id            Int                 @id @default(autoincrement())
+  orgId         Int?
   status        SupplierTruckStatus @default(IN_QUEUE)
 
   arrivalAt     DateTime            @default(now())
@@ -628,6 +656,7 @@ enum ItemCategory {
 
 model SalesOrder {
   id               Int              @id @default(autoincrement())
+  orgId            Int?
   externalOrderId  String?          @unique
   source           String           @default("MANUAL")
   status           SalesOrderStatus @default(NEW)
@@ -656,6 +685,7 @@ model SalesOrder {
 
 model SalesOrderLine {
   id            Int        @id @default(autoincrement())
+  orgId         Int?
   orderId       Int
   order         SalesOrder @relation(fields: [orderId], references: [id], onDelete: Cascade)
   itemId        Int?

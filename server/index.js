@@ -9,6 +9,7 @@ import crypto from "crypto";
 import nodemailer from "nodemailer";
 import QRCode from "qrcode";
 import bwipjs from "bwip-js";
+import { AsyncLocalStorage } from "node:async_hooks";
 import { adminRoutes } from "./adminRoutes.js";
 import { createWarehouseStockService } from "./services/warehouseStockService.js";
 
@@ -17,12 +18,19 @@ import { createWarehouseStockService } from "./services/warehouseStockService.js
 const app = express();
 const prisma = new PrismaClient();
 const stockService = createWarehouseStockService(prisma);
+const requestContext = new AsyncLocalStorage();
 
 // для загрузки файлов в память (будем читать Excel из буфера)
 const upload = multer({ storage: multer.memoryStorage() });
 
 app.use(cors());
 app.use(express.json());
+app.use((req, res, next) => {
+  requestContext.run(
+    { orgId: null, isSystemOwner: false, skipTenantScope: false },
+    () => next()
+  );
+});
 
 // ================== JWT / АВТОРИЗАЦИЯ ==================
 
@@ -76,6 +84,11 @@ async function auth(req, res, next) {
       orgId: user.orgId || null,
       isSystemOwner: String(user.email || "").trim().toLowerCase() === OWNER_PRIMARY_EMAIL,
     };
+    const store = requestContext.getStore();
+    if (store) {
+      store.orgId = req.user.orgId || null;
+      store.isSystemOwner = req.user.isSystemOwner === true;
+    }
     next();
   } catch (err) {
     console.error("auth error:", err);
@@ -184,6 +197,148 @@ async function ensureUserOrg(userId, fallbackName = "Организация") {
   });
   return org.id;
 }
+
+const TENANT_SCOPED_MODELS = new Set([
+  "User",
+  "InviteToken",
+  "Employee",
+  "HrLeaveApplication",
+  "SafetyInstruction",
+  "SafetyAssignment",
+  "LeaveRequest",
+  "PaymentRequest",
+  "Payment",
+  "WarehouseRequest",
+  "WarehouseRequestItem",
+  "WarehouseTask",
+  "PurchaseOrder",
+  "PurchaseOrderItem",
+  "Item",
+  "WarehouseLocation",
+  "WarehouseReceivingLine",
+  "WarehousePlacement",
+  "StockMovement",
+  "BinAuditSession",
+  "BinAuditEvent",
+  "StockDiscrepancy",
+  "StockRevision",
+  "StockRevisionItem",
+  "ReceivingDiscrepancy",
+  "OrgProfile",
+  "Supplier",
+  "SupplierTruck",
+  "SalesOrder",
+  "SalesOrderLine",
+]);
+
+function withTenantWhere(where, orgId) {
+  if (!where) return { orgId };
+  return { AND: [where, { orgId }] };
+}
+
+async function runWithoutTenantScope(fn) {
+  const store = requestContext.getStore();
+  if (!store) return fn();
+  const prev = store.skipTenantScope;
+  store.skipTenantScope = true;
+  try {
+    return await fn();
+  } finally {
+    store.skipTenantScope = prev;
+  }
+}
+
+prisma.$use(async (params, next) => {
+  const store = requestContext.getStore();
+  if (!store || store.skipTenantScope) return next(params);
+  if (!params.model || !TENANT_SCOPED_MODELS.has(params.model)) return next(params);
+  if (store.isSystemOwner || !store.orgId) return next(params);
+
+  const orgId = store.orgId;
+  params.args = params.args || {};
+
+  if (params.action === "findMany" || params.action === "findFirst" || params.action === "count" || params.action === "aggregate" || params.action === "groupBy") {
+    params.args.where = withTenantWhere(params.args.where, orgId);
+    return next(params);
+  }
+
+  if (params.action === "findUnique") {
+    params.action = "findFirst";
+    params.args.where = withTenantWhere(params.args.where, orgId);
+    return next(params);
+  }
+
+  if (params.action === "findUniqueOrThrow") {
+    params.action = "findFirstOrThrow";
+    params.args.where = withTenantWhere(params.args.where, orgId);
+    return next(params);
+  }
+
+  if (params.action === "create") {
+    params.args.data = { ...(params.args.data || {}), orgId };
+    return next(params);
+  }
+
+  if (params.action === "createMany") {
+    if (Array.isArray(params.args.data)) {
+      params.args.data = params.args.data.map((row) => ({ ...row, orgId }));
+    } else {
+      params.args.data = { ...(params.args.data || {}), orgId };
+    }
+    return next(params);
+  }
+
+  if (params.action === "updateMany" || params.action === "deleteMany") {
+    params.args.where = withTenantWhere(params.args.where, orgId);
+    return next(params);
+  }
+
+  if (params.action === "update" || params.action === "delete") {
+    const found = await runWithoutTenantScope(() =>
+      prisma[params.model[0].toLowerCase() + params.model.slice(1)].findFirst({
+        where: withTenantWhere(params.args.where, orgId),
+        select: { id: true },
+      })
+    );
+    if (!found) {
+      const err = new Error("TENANT_NOT_FOUND");
+      err.code = "TENANT_NOT_FOUND";
+      throw err;
+    }
+    params.args.where = { id: found.id };
+    if (params.action === "update") {
+      params.args.data = { ...(params.args.data || {}), orgId };
+    }
+    return next(params);
+  }
+
+  if (params.action === "upsert") {
+    const existing = await runWithoutTenantScope(() =>
+      prisma[params.model[0].toLowerCase() + params.model.slice(1)].findFirst({
+        where: params.args.where,
+        select: { id: true, orgId: true },
+      })
+    );
+    if (existing && existing.orgId && existing.orgId !== orgId) {
+      const err = new Error("TENANT_CONFLICT");
+      err.code = "TENANT_CONFLICT";
+      throw err;
+    }
+    params.args.create = { ...(params.args.create || {}), orgId };
+    params.args.update = { ...(params.args.update || {}), orgId };
+    if (existing && !existing.orgId) {
+      await runWithoutTenantScope(() =>
+        prisma[params.model[0].toLowerCase() + params.model.slice(1)].update({
+          where: { id: existing.id },
+          data: { orgId },
+        })
+      );
+    }
+    return next(params);
+  }
+
+  return next(params);
+});
 
 let mailTransport = null;
 
@@ -2248,7 +2403,7 @@ app.post("/api/register", async (req, res) => {
     const org = await prisma.organization.create({
       data: {
         name: normalizedName || normalizedEmail,
-        code: `tenant-${Date.now()}-${Math.floor(Math.random() * 10000)}`,
+        code: makeTenantCode(normalizedName || normalizedEmail),
         isActive: true,
       },
     });
@@ -2698,7 +2853,15 @@ app.get("/api/settings/org-profile", auth, async (req, res) => {
     if (req.user?.role != "ADMIN") {
       return res.status(403).json({ message: "NO_ACCESS" });
     }
-    const profile = await prisma.orgProfile.findUnique({ where: { id: 1 } });
+    const targetOrgId = req.user.isSystemOwner
+      ? Number(req.query.orgId || req.user.orgId || 0)
+      : req.user.orgId;
+    if (!targetOrgId || Number.isNaN(targetOrgId)) {
+      return res.status(400).json({ message: "ORG_REQUIRED" });
+    }
+    const profile = await prisma.orgProfile.findFirst({
+      where: { orgId: targetOrgId },
+    });
     res.json({ profile: profile || null });
   } catch (err) {
     console.error("org profile get error:", err);
@@ -2724,26 +2887,35 @@ app.put("/api/settings/org-profile", auth, async (req, res) => {
       return res.status(400).json({ message: "BAD_ORG_PROFILE" });
     }
 
-    const profile = await prisma.orgProfile.upsert({
-      where: { id: 1 },
-      update: {
-        orgName,
-        legalAddress,
-        actualAddress,
-        inn,
-        kpp,
-        phone: phone || "",
-      },
-      create: {
-        id: 1,
-        orgName,
-        legalAddress,
-        actualAddress,
-        inn,
-        kpp,
-        phone: phone || "",
-      },
+    const targetOrgId = req.user.isSystemOwner
+      ? Number(req.body?.orgId || req.user.orgId || 0)
+      : req.user.orgId;
+    if (!targetOrgId || Number.isNaN(targetOrgId)) {
+      return res.status(400).json({ message: "ORG_REQUIRED" });
+    }
+    const existing = await prisma.orgProfile.findFirst({
+      where: { orgId: targetOrgId },
+      select: { id: true },
     });
+
+    const payload = {
+      orgId: targetOrgId,
+      orgName,
+      legalAddress,
+      actualAddress,
+      inn,
+      kpp,
+      phone: phone || "",
+    };
+
+    const profile = existing
+      ? await prisma.orgProfile.update({
+          where: { id: existing.id },
+          data: payload,
+        })
+      : await prisma.orgProfile.create({
+          data: payload,
+        });
 
     res.json({ profile });
   } catch (err) {
@@ -3504,7 +3676,10 @@ app.post("/api/warehouse/requests", auth, async (req, res) => {
         targetEmployee: targetEmployee || null,
         createdById: req.user.id,
         items: {
-          create: preparedItems,
+          create: preparedItems.map((row) => ({
+            ...row,
+            orgId: req.user.orgId || null,
+          })),
         },
       },
       include: {
@@ -7963,6 +8138,7 @@ app.post("/api/purchase-orders", auth, async (req, res) => {
         createdById: req.user.id,
         items: {
           create: preparedItems.map((p) => ({
+            orgId: req.user.orgId || null,
             itemId: p.itemId,
             quantity: p.quantity,
             price: p.price,
@@ -8263,7 +8439,9 @@ app.get("/api/purchase-orders/:id/print-receive-act", auth, async (req, res) => 
       return res.status(204).end();
     }
 
-    const profile = await prisma.orgProfile.findUnique({ where: { id: 1 } });
+    const profile = await prisma.orgProfile.findFirst({
+      where: { orgId: req.user.orgId || null },
+    });
     if (!profile) {
       return res.status(409).json({ message: "ORG_PROFILE_REQUIRED" });
     }
@@ -9293,6 +9471,7 @@ app.post("/api/orders/inbound", auth, async (req, res) => {
           await tx.salesOrderLine.deleteMany({ where: { orderId: existing.id } });
           await tx.salesOrderLine.createMany({
             data: linesPayload.map((row) => ({
+              orgId: req.user.orgId || null,
               orderId: existing.id,
               itemId: row.itemId,
               requestedSku: row.requestedSku,
@@ -9329,7 +9508,10 @@ app.post("/api/orders/inbound", auth, async (req, res) => {
           shippingAddress: String(shippingAddress),
           deliveryComment: deliveryComment ? String(deliveryComment) : null,
           lines: {
-            create: linesPayload,
+            create: linesPayload.map((row) => ({
+              ...row,
+              orgId: req.user.orgId || null,
+            })),
           },
         },
         include: {
@@ -9356,13 +9538,23 @@ app.post("/api/integrations/orders/inbound", async (req, res) => {
     if (!apiKey) {
       return res.status(401).json({ message: "????????? ???? ??????????." });
     }
-    const profile = await prisma.orgProfile.findUnique({ where: { id: 1 } });
-    if (!profile?.apiKeyHash) {
+    const hash = hashApiKey(String(apiKey));
+    const profile = await prisma.orgProfile.findFirst({
+      where: {
+        apiKeyHash: hash,
+        orgId: { not: null },
+      },
+      select: {
+        orgId: true,
+      },
+    });
+    if (!profile?.orgId) {
       return res.status(401).json({ message: "???? ?????????? ?? ????????." });
     }
-    const hash = hashApiKey(String(apiKey));
-    if (hash !== profile.apiKeyHash) {
-      return res.status(401).json({ message: "???????????? ???? ??????????." });
+    const store = requestContext.getStore();
+    if (store) {
+      store.orgId = profile.orgId;
+      store.isSystemOwner = false;
     }
 
     const {
@@ -9416,6 +9608,7 @@ app.post("/api/integrations/orders/inbound", async (req, res) => {
           await tx.salesOrderLine.deleteMany({ where: { orderId: existing.id } });
           await tx.salesOrderLine.createMany({
             data: linesPayload.map((row) => ({
+              orgId: profile.orgId || null,
               orderId: existing.id,
               itemId: row.itemId,
               requestedSku: row.requestedSku,
@@ -9452,7 +9645,10 @@ app.post("/api/integrations/orders/inbound", async (req, res) => {
           shippingAddress: String(shippingAddress),
           deliveryComment: deliveryComment ? String(deliveryComment) : null,
           lines: {
-            create: linesPayload,
+            create: linesPayload.map((row) => ({
+              ...row,
+              orgId: profile.orgId || null,
+            })),
           },
         },
         include: {
@@ -9541,6 +9737,7 @@ app.post("/api/orders/import-batch", auth, requireAdmin, async (req, res) => {
               await tx.salesOrderLine.deleteMany({ where: { orderId: existing.id } });
               await tx.salesOrderLine.createMany({
                 data: linesPayload.map((line) => ({
+                  orgId: req.user.orgId || null,
                   orderId: existing.id,
                   itemId: line.itemId,
                   requestedSku: line.requestedSku,
@@ -9573,7 +9770,12 @@ app.post("/api/orders/import-batch", auth, requireAdmin, async (req, res) => {
               customerPhone: customerPhone ? String(customerPhone) : null,
               shippingAddress: String(shippingAddress),
               deliveryComment: deliveryComment ? String(deliveryComment) : null,
-              lines: { create: linesPayload },
+              lines: {
+                create: linesPayload.map((line) => ({
+                  ...line,
+                  orgId: req.user.orgId || null,
+                })),
+              },
             },
           });
           return { mode: "created", order: createdOrder };
@@ -9620,6 +9822,7 @@ app.post("/api/orders/test", auth, requireAdmin, async (req, res) => {
         deliveryComment: "???????? ?????",
         lines: {
           create: items.map((item) => ({
+            orgId: req.user.orgId || null,
             itemId: item.id,
             requestedSku: item.sku || null,
             requestedName: item.name || null,
@@ -9643,7 +9846,9 @@ app.post("/api/orders/test", auth, requireAdmin, async (req, res) => {
 // ===== INTEGRATION API KEY (ORG-LEVEL) =====
 app.get("/api/integrations/api-key", auth, requireAdmin, async (req, res) => {
   try {
-    const profile = await prisma.orgProfile.findUnique({ where: { id: 1 } });
+    const profile = await prisma.orgProfile.findFirst({
+      where: { orgId: req.user.orgId || null },
+    });
     res.json({
       hasKey: Boolean(profile?.apiKeyHash),
       hint: profile?.apiKeyHint || null,
@@ -9657,30 +9862,41 @@ app.get("/api/integrations/api-key", auth, requireAdmin, async (req, res) => {
 
 app.post("/api/integrations/api-key/rotate", auth, requireAdmin, async (req, res) => {
   try {
+    if (!req.user.orgId) {
+      return res.status(400).json({ message: "ORG_REQUIRED" });
+    }
     const rawKey = `bp_${crypto.randomBytes(24).toString("hex")}`;
     const hash = hashApiKey(rawKey);
     const hint = buildApiKeyHint(rawKey);
 
-    const updated = await prisma.orgProfile.upsert({
-      where: { id: 1 },
-      update: {
-        apiKeyHash: hash,
-        apiKeyHint: hint,
-        apiKeyLastRotatedAt: new Date(),
-      },
-      create: {
-        id: 1,
-        orgName: "",
-        legalAddress: "",
-        actualAddress: "",
-        inn: "",
-        kpp: "",
-        phone: "",
-        apiKeyHash: hash,
-        apiKeyHint: hint,
-        apiKeyLastRotatedAt: new Date(),
-      },
+    const existing = await prisma.orgProfile.findFirst({
+      where: { orgId: req.user.orgId },
+      select: { id: true },
     });
+
+    const updated = existing
+      ? await prisma.orgProfile.update({
+          where: { id: existing.id },
+          data: {
+            apiKeyHash: hash,
+            apiKeyHint: hint,
+            apiKeyLastRotatedAt: new Date(),
+          },
+        })
+      : await prisma.orgProfile.create({
+          data: {
+            orgId: req.user.orgId,
+            orgName: "",
+            legalAddress: "",
+            actualAddress: "",
+            inn: "",
+            kpp: "",
+            phone: "",
+            apiKeyHash: hash,
+            apiKeyHint: hint,
+            apiKeyLastRotatedAt: new Date(),
+          },
+        });
 
     res.json({
       apiKey: rawKey,
@@ -10298,6 +10514,83 @@ async function ensureOwnerAdminAccount() {
   console.warn(`[OWNER_RECOVERY] created owner account ${normalizedEmail}`);
 }
 
+async function ensureLegacyTenantBackfill() {
+  const legacyOrg = await getOrCreateOrganizationByCode(
+    "legacy-tenant",
+    "Основной клиент"
+  );
+
+  await prisma.user.updateMany({
+    where: {
+      orgId: null,
+      email: { not: OWNER_PRIMARY_EMAIL },
+    },
+    data: { orgId: legacyOrg.id },
+  });
+
+  const delegates = [
+    "inviteToken",
+    "employee",
+    "hrLeaveApplication",
+    "safetyInstruction",
+    "safetyAssignment",
+    "leaveRequest",
+    "paymentRequest",
+    "payment",
+    "warehouseRequest",
+    "warehouseRequestItem",
+    "warehouseTask",
+    "purchaseOrder",
+    "purchaseOrderItem",
+    "item",
+    "warehouseLocation",
+    "warehouseReceivingLine",
+    "warehousePlacement",
+    "stockMovement",
+    "binAuditSession",
+    "binAuditEvent",
+    "stockDiscrepancy",
+    "stockRevision",
+    "stockRevisionItem",
+    "receivingDiscrepancy",
+    "supplier",
+    "supplierTruck",
+    "salesOrder",
+    "salesOrderLine",
+  ];
+
+  for (const delegate of delegates) {
+    if (typeof prisma[delegate]?.updateMany === "function") {
+      await prisma[delegate].updateMany({
+        where: { orgId: null },
+        data: { orgId: legacyOrg.id },
+      });
+    }
+  }
+
+  const unboundProfiles = await prisma.orgProfile.findMany({
+    where: {
+      orgId: null,
+      warehouseBootstrapKey: null,
+    },
+    orderBy: { id: "asc" },
+    select: { id: true },
+  });
+  if (unboundProfiles.length > 0) {
+    await prisma.orgProfile.update({
+      where: { id: unboundProfiles[0].id },
+      data: { orgId: legacyOrg.id },
+    });
+    if (unboundProfiles.length > 1) {
+      await prisma.orgProfile.deleteMany({
+        where: {
+          id: { in: unboundProfiles.slice(1).map((row) => row.id) },
+        },
+      });
+    }
+  }
+}
+
 const DEPLOY_REVISION_KEY =
   process.env.RENDER_GIT_COMMIT ||
   process.env.SOURCE_VERSION ||
@@ -10316,9 +10609,9 @@ async function ensureWarehouseItemsResetForCurrentRevision() {
     return;
   }
 
-  const profile = await prisma.orgProfile.findUnique({
-    where: { id: 1 },
-    select: { warehouseBootstrapKey: true },
+  const profile = await prisma.orgProfile.findFirst({
+    where: { orgId: null },
+    select: { id: true, warehouseBootstrapKey: true },
   });
 
   if (profile?.warehouseBootstrapKey === DEPLOY_REVISION_KEY) return;
@@ -10342,20 +10635,25 @@ async function ensureWarehouseItemsResetForCurrentRevision() {
     await tx.purchaseOrderItem.deleteMany({});
     const deletedItems = await tx.item.deleteMany({});
 
-    await tx.orgProfile.upsert({
-      where: { id: 1 },
-      update: { warehouseBootstrapKey: DEPLOY_REVISION_KEY },
-      create: {
-        id: 1,
-        orgName: "",
-        legalAddress: "",
-        actualAddress: "",
-        inn: "",
-        kpp: "",
-        phone: "",
-        warehouseBootstrapKey: DEPLOY_REVISION_KEY,
-      },
-    });
+    if (profile?.id) {
+      await tx.orgProfile.update({
+        where: { id: profile.id },
+        data: { warehouseBootstrapKey: DEPLOY_REVISION_KEY },
+      });
+    } else {
+      await tx.orgProfile.create({
+        data: {
+          orgId: null,
+          orgName: "",
+          legalAddress: "",
+          actualAddress: "",
+          inn: "",
+          kpp: "",
+          phone: "",
+          warehouseBootstrapKey: DEPLOY_REVISION_KEY,
+        },
+      });
+    }
 
     return { deletedItems: deletedItems.count };
   });
@@ -10451,6 +10749,7 @@ async function checkAutoReorders() {
 
       const order = await prisma.purchaseOrder.create({
         data: {
+          orgId: item.orgId || null,
           number: nextNumber,
           date: new Date(),
           status: "DRAFT",
@@ -10460,6 +10759,7 @@ async function checkAutoReorders() {
           items: {
             create: [
               {
+                orgId: item.orgId || null,
                 itemId: item.id,
                 quantity: orderQty,
                 price: item.defaultPrice || 0,
@@ -10566,6 +10866,12 @@ async function bootstrapServer() {
     await ensureOwnerAdminAccount();
   } catch (err) {
     console.error("[OWNER_RECOVERY] error:", err);
+  }
+
+  try {
+    await ensureLegacyTenantBackfill();
+  } catch (err) {
+    console.error("[TENANT_BACKFILL] error:", err);
   }
 
   try {
