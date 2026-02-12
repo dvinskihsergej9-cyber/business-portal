@@ -83,6 +83,17 @@ export const normalizeErrorMessage = (err, fallback = "Ошибка запрос
   if (message === "REQUESTS_LIST_ERROR") return "Ошибка загрузки заявок.";
   if (message === "REQUEST_UPDATE_ERROR") return "Ошибка обновления заявки.";
   if (message === "INVALID_ITEM_ID") return "Некорректный идентификатор товара.";
+  if (message === "TENANTS_LIST_ERROR") return "Ошибка загрузки списка клиентов.";
+  if (message === "TENANT_CREATE_ERROR") return "Не удалось создать клиента.";
+  if (message === "BAD_TENANT_PAYLOAD") {
+    return "Заполните название компании, email владельца и пароль (не короче 8 символов).";
+  }
+  if (message === "OWNER_EMAIL_RESERVED") {
+    return "Этот email зарезервирован для владельца платформы.";
+  }
+  if (message === "EMAIL_ALREADY_EXISTS") {
+    return "Пользователь с таким email уже существует.";
+  }
   if (!hasCyrillic && isAsciiOnly) {
     return fallback;
   }

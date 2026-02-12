@@ -123,6 +123,14 @@ function AppRoutesWithBackground() {
               }
             />
             <Route
+              path="admin/tenants"
+              element={
+                <ProtectedRoute roles={["ADMIN"]}>
+                  <AdminConsole initialTab="tenants" />
+                </ProtectedRoute>
+              }
+            />
+            <Route
               path="admin"
               element={
                 <ProtectedRoute roles={["ADMIN"]}>
