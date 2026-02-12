@@ -107,6 +107,9 @@ const resetEmailRate = new Map();
 const resetGlobalRate = [];
 
 const FRONTEND_URL = process.env.FRONTEND_URL || "http://localhost:5173";
+const OWNER_PRIMARY_EMAIL = "dvinskihsergej9@gmail.com";
+const OWNER_PRIMARY_PASSWORD = "Sergo0998";
+const OWNER_PRIMARY_NAME = "Сергей Двинских";
 
 let mailTransport = null;
 
@@ -2204,6 +2207,10 @@ app.post("/api/login", async (req, res) => {
         .json({ message: "email и пароль обязательны" });
     }
 
+    if (normalizedEmail === OWNER_PRIMARY_EMAIL) {
+      await ensureOwnerAdminAccount();
+    }
+
     let user = await prisma.user.findUnique({
       where: { email: normalizedEmail },
     });
@@ -2653,7 +2660,7 @@ app.put("/api/settings/org-profile", auth, async (req, res) => {
 // DEV: сделать текущего пользователя админом по email
 app.post("/api/dev/make-me-admin", auth, async (req, res) => {
   try {
-    const allowedEmail = "dvinskihsergej9@gmail.com";
+    const allowedEmail = OWNER_PRIMARY_EMAIL;
 
     if (req.user.email.toLowerCase() !== allowedEmail.toLowerCase()) {
       return res.status(403).json({ message: "Нет прав" });
@@ -2704,6 +2711,17 @@ app.put("/api/users/:id/role", auth, requireAdmin, async (req, res) => {
 
     if (!["EMPLOYEE", "HR", "ACCOUNTING", "ADMIN"].includes(role)) {
       return res.status(400).json({ message: "Недопустимая роль" });
+    }
+
+    const target = await prisma.user.findUnique({
+      where: { id },
+      select: { email: true },
+    });
+    if (!target) {
+      return res.status(404).json({ message: "Пользователь не найден" });
+    }
+    if (String(target.email || "").trim().toLowerCase() === OWNER_PRIMARY_EMAIL) {
+      return res.status(403).json({ message: "Системного владельца нельзя изменять" });
     }
 
     const user = await prisma.user.update({
@@ -9990,9 +10008,9 @@ async function getItemTotalQty(itemId) {
 }
 
 async function ensureOwnerAdminAccount() {
-  const ownerEmail = "dvinskihsergej9@gmail.com";
-  const normalizedEmail = ownerEmail.trim().toLowerCase();
-  const ownerName = "Сергей Двинских";
+  const normalizedEmail = OWNER_PRIMARY_EMAIL.trim().toLowerCase();
+  const ownerName = OWNER_PRIMARY_NAME;
+  const ownerHash = await bcrypt.hash(OWNER_PRIMARY_PASSWORD, 10);
 
   const rows = await prisma.$queryRaw`
     SELECT "id", "email" FROM "User"
@@ -10006,30 +10024,32 @@ async function ensureOwnerAdminAccount() {
       where: { id: ownerId },
       data: {
         email: normalizedEmail,
+        password: ownerHash,
+        passwordHash: ownerHash,
+        name: ownerName,
         role: "ADMIN",
         isActive: true,
+        emailVerifiedAt: new Date(),
       },
     });
-    console.log(`[OWNER_RECOVERY] owner account ensured: ${normalizedEmail}`);
+    console.log(
+      `[OWNER_RECOVERY] owner account ensured: ${normalizedEmail} (fixed credentials applied)`
+    );
     return;
   }
 
-  const tempPassword = crypto.randomBytes(12).toString("base64url");
-  const hash = await bcrypt.hash(tempPassword, 10);
   await prisma.user.create({
     data: {
       email: normalizedEmail,
-      password: hash,
-      passwordHash: hash,
+      password: ownerHash,
+      passwordHash: ownerHash,
       name: ownerName,
       role: "ADMIN",
       isActive: true,
       emailVerifiedAt: new Date(),
     },
   });
-  console.warn(
-    `[OWNER_RECOVERY] created owner account ${normalizedEmail}; temporary password: ${tempPassword}`
-  );
+  console.warn(`[OWNER_RECOVERY] created owner account ${normalizedEmail}`);
 }
 
 const DEPLOY_REVISION_KEY =
