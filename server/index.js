@@ -9989,6 +9989,49 @@ async function getItemTotalQty(itemId) {
   return Math.round(qty);
 }
 
+async function ensureOwnerAdminAccount() {
+  const ownerEmail = "dvinskihsergej9@gmail.com";
+  const normalizedEmail = ownerEmail.trim().toLowerCase();
+  const ownerName = "Сергей Двинских";
+
+  const rows = await prisma.$queryRaw`
+    SELECT "id", "email" FROM "User"
+    WHERE LOWER(TRIM("email")) = LOWER(${normalizedEmail})
+    LIMIT 1
+  `;
+  const ownerId = Number(rows?.[0]?.id || 0);
+
+  if (ownerId) {
+    await prisma.user.update({
+      where: { id: ownerId },
+      data: {
+        email: normalizedEmail,
+        role: "ADMIN",
+        isActive: true,
+      },
+    });
+    console.log(`[OWNER_RECOVERY] owner account ensured: ${normalizedEmail}`);
+    return;
+  }
+
+  const tempPassword = crypto.randomBytes(12).toString("base64url");
+  const hash = await bcrypt.hash(tempPassword, 10);
+  await prisma.user.create({
+    data: {
+      email: normalizedEmail,
+      password: hash,
+      passwordHash: hash,
+      name: ownerName,
+      role: "ADMIN",
+      isActive: true,
+      emailVerifiedAt: new Date(),
+    },
+  });
+  console.warn(
+    `[OWNER_RECOVERY] created owner account ${normalizedEmail}; temporary password: ${tempPassword}`
+  );
+}
+
 const DEPLOY_REVISION_KEY =
   process.env.RENDER_GIT_COMMIT ||
   process.env.SOURCE_VERSION ||
@@ -10253,6 +10296,12 @@ startTelegramPolling().catch((err) =>
 const PORT = process.env.PORT || 3001;
 
 async function bootstrapServer() {
+  try {
+    await ensureOwnerAdminAccount();
+  } catch (err) {
+    console.error("[OWNER_RECOVERY] error:", err);
+  }
+
   try {
     await ensureWarehouseItemsResetForCurrentRevision();
   } catch (err) {
