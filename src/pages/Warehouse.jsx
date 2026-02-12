@@ -206,6 +206,7 @@ export default function Warehouse({
   const sectionSet = useMemo(() => new Set(sections), [sections]);
 
   const [section, setSection] = useState("");
+  const sectionChangedByUserRef = useRef(false);
 
   useEffect(() => {
     if (!sections || sections.length == 0) return;
@@ -354,7 +355,7 @@ export default function Warehouse({
       tmc: tmcRef,
     };
     const target = refMap[section];
-    if (target?.current) {
+    if (sectionChangedByUserRef.current && target?.current) {
       target.current.scrollIntoView({ behavior: "smooth", block: "start" });
     }
   }, [section]);
@@ -2302,7 +2303,10 @@ export default function Warehouse({
                   "warehouse-card" +
                   (section === card.key ? " warehouse-card--active" : "")
                 }
-                onClick={() => setSection(card.key)}
+                onClick={() => {
+                  sectionChangedByUserRef.current = true;
+                  setSection(card.key);
+                }}
               >
                 <div className="warehouse-card__icon">
                   <WarehouseTileIcon name={card.key} />

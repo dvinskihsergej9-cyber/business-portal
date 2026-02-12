@@ -3,6 +3,7 @@ import { API_BASE, normalizeErrorMessage } from "../../apiConfig";
 import Scanner from "./Scanner";
 import Stepper from "./Stepper";
 import TsdHeader from "./TsdHeader";
+import TsdErrorAlert from "./TsdErrorAlert";
 
 const STEPS = ["Заказ", "Товары", "Подтверждение"];
 const QUEUE_STATUS_LABELS = {
@@ -537,9 +538,7 @@ export default function ReceivingByPo({ authHeaders, makeOpId, onBack }) {
       <Stepper steps={STEPS} activeIndex={state.step} />
 
       <div className="tsd-section">
-        {state.error && (
-          <div className="tsd-alert tsd-alert--error">{state.error}</div>
-        )}
+        <TsdErrorAlert message={state.error} />
 
         {state.step === 0 && (
           <>
@@ -833,9 +832,7 @@ export default function ReceivingByPo({ authHeaders, makeOpId, onBack }) {
             <div className="tsd-modal__text">
               Заполните данные один раз — они будут подставляться в акт.
             </div>
-            {orgFormError && (
-              <div className="tsd-alert tsd-alert--error">{orgFormError}</div>
-            )}
+            <TsdErrorAlert message={orgFormError} />
             <div className="tsd-modal__grid">
               <div className="tsd-modal__row">
                 <span className="tsd-modal__label">Организация</span>

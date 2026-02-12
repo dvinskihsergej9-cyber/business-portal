@@ -8,6 +8,7 @@ import ItemCard from "../components/tsd/ItemCard";
 import LocationCard from "../components/tsd/LocationCard";
 import OrderFulfillmentFlow from "../components/tsd/OrderFulfillmentFlow";
 import ReceivingByPo from "../components/tsd/ReceivingByPo";
+import TsdErrorAlert from "../components/tsd/TsdErrorAlert";
 import StockDiscrepanciesTab from "../components/StockDiscrepanciesTab";
 import "../components/tsd/tsd.css";
 
@@ -1201,9 +1202,7 @@ export default function MobileTsd() {
       <Stepper steps={COUNT_STEPS} activeIndex={countState.step} />
 
       <div className="tsd-section">
-        {countState.error && (
-          <div className="tsd-alert tsd-alert--error">{countState.error}</div>
-        )}
+        <TsdErrorAlert message={countState.error} />
 
         {countState.step === 0 && (
           <>
@@ -1346,9 +1345,7 @@ export default function MobileTsd() {
               </div>
             )}
             {countState.placeError && (
-              <div className="tsd-alert tsd-alert--error">
-                {countState.placeError}
-              </div>
+              <TsdErrorAlert message={countState.placeError} />
             )}
             {countState.placeDone && (
               <div className="tsd-alert tsd-alert--success">
@@ -1461,9 +1458,7 @@ export default function MobileTsd() {
       <Stepper steps={RECEIVING_STEPS} activeIndex={receivingState.step} />
 
       <div className="tsd-section">
-        {receivingState.error && (
-          <div className="tsd-alert tsd-alert--error">{receivingState.error}</div>
-        )}
+        <TsdErrorAlert message={receivingState.error} />
 
         {receivingState.step === 0 && (
           <>
@@ -1682,9 +1677,7 @@ export default function MobileTsd() {
       <Stepper steps={BIN_STEPS} activeIndex={binState.step} />
 
       <div className="tsd-section">
-        {binState.error && (
-          <div className="tsd-alert tsd-alert--error">{binState.error}</div>
-        )}
+        <TsdErrorAlert message={binState.error} />
         {binState.sessionId && (
           <div className="tsd-info">
             <div className="tsd-info__title">Сессия #{binState.sessionId}</div>
@@ -1854,9 +1847,7 @@ export default function MobileTsd() {
       <Stepper steps={MOVE_STEPS} activeIndex={moveState.step} />
 
       <div className="tsd-section">
-        {moveState.error && (
-          <div className="tsd-alert tsd-alert--error">{moveState.error}</div>
-        )}
+        <TsdErrorAlert message={moveState.error} />
 
         {moveState.step === 0 && (
           <>
@@ -2049,9 +2040,7 @@ export default function MobileTsd() {
       <Stepper steps={PUTAWAY_STEPS} activeIndex={putawayState.step} />
 
       <div className="tsd-section">
-        {putawayState.error && (
-          <div className="tsd-alert tsd-alert--error">{putawayState.error}</div>
-        )}
+        <TsdErrorAlert message={putawayState.error} />
 
         {putawayState.step === 0 && (
           <>
@@ -2224,9 +2213,7 @@ export default function MobileTsd() {
       <Stepper steps={REPLENISH_STEPS} activeIndex={replenState.step} />
 
       <div className="tsd-section">
-        {replenState.error && (
-          <div className="tsd-alert tsd-alert--error">{replenState.error}</div>
-        )}
+        <TsdErrorAlert message={replenState.error} />
 
         {replenState.step === 0 && (
           <>

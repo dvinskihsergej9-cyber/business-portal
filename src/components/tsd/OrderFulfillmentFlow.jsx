@@ -5,6 +5,7 @@ import autoTable from "jspdf-autotable";
 import { ARIAL_TTF_BASE64 } from "../../utils/arialFontBase64";
 import TsdHeader from "./TsdHeader";
 import Scanner from "./Scanner";
+import TsdErrorAlert from "./TsdErrorAlert";
 
 const normalizeScan = (value) => String(value || "").trim().toLowerCase();
 const toNum = (value) => Number(value) || 0;
@@ -424,7 +425,7 @@ export default function OrderFulfillmentFlow({ authHeaders, onBack }) {
         onBack={onBack}
       />
       <div className="tsd-section">
-        {error && <div className="tsd-alert tsd-alert--error">{error}</div>}
+        <TsdErrorAlert message={error} />
         <div className="tsd-inline">
           <button
             type="button"

@@ -1,5 +1,6 @@
 import React, { useMemo, useRef, useState, useEffect, useCallback } from "react";
 import { Html5Qrcode as Html5QrcodeLib } from "html5-qrcode";
+import TsdErrorAlert from "./TsdErrorAlert";
 
 export default function Scanner({
   label,
@@ -186,7 +187,7 @@ export default function Scanner({
         )}
       </div>
 
-      {cameraError && <div className="tsd-alert tsd-alert--error">{cameraError}</div>}
+      <TsdErrorAlert message={cameraError} />
 
       <form className="tsd-manual" onSubmit={handleManualSubmit}>
         <input
