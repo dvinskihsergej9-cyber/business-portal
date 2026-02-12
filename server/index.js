@@ -35,6 +35,7 @@ function createToken(user) {
       id: user.id,
       email: user.email,
       role: user.role,
+      orgId: user.orgId || null,
       tokenVersion: user.tokenVersion || 0,
     },
     JWT_SECRET,
@@ -65,10 +66,15 @@ async function auth(req, res, next) {
     if ((payload.tokenVersion || 0) !== (user.tokenVersion || 0)) {
       return res.status(401).json({ message: "TOKEN_INVALID" });
     }
+    if (!user.orgId) {
+      user.orgId = await ensureUserOrg(user.id, user.name || user.email);
+    }
     req.user = {
       id: user.id,
       email: user.email,
       role: user.role,
+      orgId: user.orgId || null,
+      isSystemOwner: String(user.email || "").trim().toLowerCase() === OWNER_PRIMARY_EMAIL,
     };
     next();
   } catch (err) {
@@ -80,6 +86,15 @@ async function auth(req, res, next) {
 function requireAdmin(req, res, next) {
   if (req.user?.role !== "ADMIN") {
     return res.status(403).json({ message: "Нужны права администратора" });
+  }
+  next();
+}
+
+function requireSystemOwner(req, res, next) {
+  if (!req.user?.isSystemOwner) {
+    return res
+      .status(403)
+      .json({ message: "Доступно только владельцу приложения" });
   }
   next();
 }
@@ -110,6 +125,65 @@ const FRONTEND_URL = process.env.FRONTEND_URL || "http://localhost:5173";
 const OWNER_PRIMARY_EMAIL = "dvinskihsergej9@gmail.com";
 const OWNER_PRIMARY_PASSWORD = "Sergo0998";
 const OWNER_PRIMARY_NAME = "Сергей Двинских";
+
+function normalizeEmail(value) {
+  return String(value || "").trim().toLowerCase();
+}
+
+function isOwnerEmail(email) {
+  return normalizeEmail(email) === OWNER_PRIMARY_EMAIL;
+}
+
+function makeTenantCode(name) {
+  const base = String(name || "")
+    .trim()
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-+|-+$/g, "")
+    .slice(0, 24) || "tenant";
+  return `${base}-${Date.now().toString(36).slice(-6)}`;
+}
+
+async function getOrCreateOrganizationByCode(code, name) {
+  const normalizedCode = String(code || "").trim().toLowerCase();
+  const normalizedName = String(name || "").trim() || "Организация";
+  if (!normalizedCode) {
+    throw new Error("ORG_CODE_REQUIRED");
+  }
+
+  const existing = await prisma.organization.findUnique({
+    where: { code: normalizedCode },
+  });
+  if (existing) return existing;
+
+  return prisma.organization.create({
+    data: {
+      code: normalizedCode,
+      name: normalizedName,
+      isActive: true,
+    },
+  });
+}
+
+async function ensureUserOrg(userId, fallbackName = "Организация") {
+  const user = await prisma.user.findUnique({
+    where: { id: userId },
+    select: { id: true, orgId: true, email: true, name: true },
+  });
+  if (!user) return null;
+  if (user.orgId) return user.orgId;
+
+  const code = isOwnerEmail(user.email) ? "platform-owner" : "legacy-tenant";
+  const orgName = isOwnerEmail(user.email)
+    ? "Владелец платформы"
+    : String(fallbackName || "Организация по умолчанию").trim();
+  const org = await getOrCreateOrganizationByCode(code, orgName);
+  await prisma.user.update({
+    where: { id: user.id },
+    data: { orgId: org.id },
+  });
+  return org.id;
+}
 
 let mailTransport = null;
 
@@ -421,7 +495,15 @@ async function getUserPayload(userId) {
       email: true,
       name: true,
       role: true,
+      orgId: true,
       createdAt: true,
+      organization: {
+        select: {
+          id: true,
+          name: true,
+          code: true,
+        },
+      },
     },
   });
 
@@ -437,6 +519,7 @@ async function getUserPayload(userId) {
 
   return {
     ...user,
+    isSystemOwner: isOwnerEmail(user.email),
     roles: [user.role],
     subscription: subscription
       ? {
@@ -2143,7 +2226,7 @@ app.post("/api/register", async (req, res) => {
 
   try {
     const { email, password, name } = req.body;
-    const normalizedEmail = String(email || "").trim().toLowerCase();
+    const normalizedEmail = normalizeEmail(email);
     const normalizedName = String(name || "").trim();
 
     if (!normalizedEmail || !password || !normalizedName) {
@@ -2162,6 +2245,13 @@ app.post("/api/register", async (req, res) => {
     }
 
     const hash = await bcrypt.hash(password, 10);
+    const org = await prisma.organization.create({
+      data: {
+        name: normalizedName || normalizedEmail,
+        code: `tenant-${Date.now()}-${Math.floor(Math.random() * 10000)}`,
+        isActive: true,
+      },
+    });
 
     const user = await prisma.user.create({
       data: {
@@ -2170,6 +2260,7 @@ app.post("/api/register", async (req, res) => {
         passwordHash: hash,
         name: normalizedName,
         role: "EMPLOYEE",
+        orgId: org.id,
       },
     });
 
@@ -2199,7 +2290,7 @@ app.post("/api/register", async (req, res) => {
 app.post("/api/login", async (req, res) => {
   try {
     const { email, password } = req.body;
-    const normalizedEmail = String(email || "").trim().toLowerCase();
+    const normalizedEmail = normalizeEmail(email);
 
     if (!normalizedEmail || !password) {
       return res
@@ -2231,6 +2322,10 @@ app.post("/api/login", async (req, res) => {
           user.email = normalizedEmail;
         }
       }
+    }
+    if (!user?.orgId) {
+      const orgId = await ensureUserOrg(user.id, user.name || user.email);
+      user.orgId = orgId || null;
     }
     if (user && user.isActive === false) {
       console.warn(`[LOGIN_FAIL] inactive user: ${normalizedEmail}`);
@@ -2660,9 +2755,7 @@ app.put("/api/settings/org-profile", auth, async (req, res) => {
 // DEV: сделать текущего пользователя админом по email
 app.post("/api/dev/make-me-admin", auth, async (req, res) => {
   try {
-    const allowedEmail = OWNER_PRIMARY_EMAIL;
-
-    if (req.user.email.toLowerCase() !== allowedEmail.toLowerCase()) {
+    if (!isOwnerEmail(req.user.email)) {
       return res.status(403).json({ message: "Нет прав" });
     }
 
@@ -2685,13 +2778,28 @@ app.post("/api/dev/make-me-admin", auth, async (req, res) => {
 
 app.get("/api/users", auth, requireAdmin, async (req, res) => {
   try {
+    if (!req.user.isSystemOwner && !req.user.orgId) {
+      return res
+        .status(403)
+        .json({ message: "Организация пользователя не настроена" });
+    }
+
     const users = await prisma.user.findMany({
+      where: req.user.isSystemOwner ? {} : { orgId: req.user.orgId },
       orderBy: { id: "asc" },
       select: {
         id: true,
         email: true,
         name: true,
         role: true,
+        orgId: true,
+        organization: {
+          select: {
+            id: true,
+            name: true,
+            code: true,
+          },
+        },
         createdAt: true,
       },
     });
@@ -2715,13 +2823,16 @@ app.put("/api/users/:id/role", auth, requireAdmin, async (req, res) => {
 
     const target = await prisma.user.findUnique({
       where: { id },
-      select: { email: true },
+      select: { email: true, orgId: true },
     });
     if (!target) {
       return res.status(404).json({ message: "Пользователь не найден" });
     }
     if (String(target.email || "").trim().toLowerCase() === OWNER_PRIMARY_EMAIL) {
       return res.status(403).json({ message: "Системного владельца нельзя изменять" });
+    }
+    if (!req.user.isSystemOwner && target.orgId !== req.user.orgId) {
+      return res.status(403).json({ message: "Нельзя менять роль пользователя из другой организации" });
     }
 
     const user = await prisma.user.update({
@@ -2732,6 +2843,7 @@ app.put("/api/users/:id/role", auth, requireAdmin, async (req, res) => {
         email: true,
         name: true,
         role: true,
+        orgId: true,
       },
     });
 
@@ -2742,11 +2854,97 @@ app.put("/api/users/:id/role", auth, requireAdmin, async (req, res) => {
   }
 });
 
+app.get("/api/admin/tenants", auth, requireAdmin, requireSystemOwner, async (req, res) => {
+  try {
+    const tenants = await prisma.organization.findMany({
+      orderBy: { id: "asc" },
+      include: {
+        _count: {
+          select: { users: true, invites: true },
+        },
+      },
+    });
+    res.json({ items: tenants });
+  } catch (err) {
+    console.error("tenants list error:", err);
+    res.status(500).json({ message: "TENANTS_LIST_ERROR" });
+  }
+});
+
+app.post("/api/admin/tenants", auth, requireAdmin, requireSystemOwner, async (req, res) => {
+  try {
+    const { name, ownerEmail, ownerName, ownerPassword } = req.body || {};
+    const tenantName = String(name || "").trim();
+    const email = normalizeEmail(ownerEmail);
+    const adminName = String(ownerName || "").trim() || "Администратор";
+    const password = String(ownerPassword || "");
+
+    if (!tenantName || !email || !password || password.length < 8) {
+      return res.status(400).json({ message: "BAD_TENANT_PAYLOAD" });
+    }
+    if (isOwnerEmail(email)) {
+      return res.status(400).json({ message: "OWNER_EMAIL_RESERVED" });
+    }
+
+    const existingUser = await prisma.user.findUnique({ where: { email } });
+    if (existingUser) {
+      return res.status(400).json({ message: "EMAIL_ALREADY_EXISTS" });
+    }
+
+    const tenant = await prisma.organization.create({
+      data: {
+        name: tenantName,
+        code: makeTenantCode(tenantName),
+        isActive: true,
+      },
+    });
+
+    const hash = await bcrypt.hash(password, 10);
+    const adminUser = await prisma.user.create({
+      data: {
+        email,
+        password: hash,
+        passwordHash: hash,
+        name: adminName,
+        role: "ADMIN",
+        isActive: true,
+        emailVerifiedAt: new Date(),
+        orgId: tenant.id,
+      },
+      select: {
+        id: true,
+        email: true,
+        name: true,
+        role: true,
+        orgId: true,
+      },
+    });
+
+    res.json({ ok: true, tenant, user: adminUser });
+  } catch (err) {
+    console.error("tenant create error:", err);
+    res.status(500).json({ message: "TENANT_CREATE_ERROR" });
+  }
+});
+
 const INVITE_ROLES = ["EMPLOYEE", "HR", "ACCOUNTING", "WAREHOUSE", "ADMIN"];
 
 app.get("/api/admin/invites", auth, requireAdmin, async (req, res) => {
   try {
+    if (!req.user.isSystemOwner && !req.user.orgId) {
+      return res.status(403).json({ message: "Организация пользователя не настроена" });
+    }
+    const filterOrgId = req.user.isSystemOwner
+      ? (req.query.orgId ? Number(req.query.orgId) : null)
+      : req.user.orgId;
+
     const items = await prisma.inviteToken.findMany({
+      where:
+        filterOrgId && Number.isFinite(filterOrgId)
+          ? { orgId: filterOrgId }
+          : req.user.isSystemOwner
+            ? {}
+            : { orgId: req.user.orgId },
       orderBy: { createdAt: "desc" },
     });
 
@@ -2758,6 +2956,7 @@ app.get("/api/admin/invites", auth, requireAdmin, async (req, res) => {
       return {
         id: inv.id,
         email: inv.email,
+        orgId: inv.orgId,
         role: inv.role,
         expiresAt: inv.expiresAt,
         usedAt: inv.usedAt,
@@ -2776,12 +2975,26 @@ app.get("/api/admin/invites", auth, requireAdmin, async (req, res) => {
 
 app.post("/api/admin/invites", auth, requireAdmin, async (req, res) => {
   try {
-    const { email, role } = req.body || {};
-    if (!email || !role || !INVITE_ROLES.includes(role)) {
+    const { email, role, orgId } = req.body || {};
+    const normalizedEmail = normalizeEmail(email);
+    if (!normalizedEmail || !role || !INVITE_ROLES.includes(role)) {
       return res.status(400).json({ message: "BAD_INVITE" });
     }
+    const targetOrgId = req.user.isSystemOwner
+      ? Number(orgId || req.user.orgId || 0)
+      : req.user.orgId;
+    if (!targetOrgId || Number.isNaN(targetOrgId)) {
+      return res.status(400).json({ message: "ORG_REQUIRED" });
+    }
+    const targetOrg = await prisma.organization.findUnique({
+      where: { id: targetOrgId },
+      select: { id: true },
+    });
+    if (!targetOrg) {
+      return res.status(404).json({ message: "ORG_NOT_FOUND" });
+    }
 
-    const existingUser = await prisma.user.findUnique({ where: { email } });
+    const existingUser = await prisma.user.findUnique({ where: { email: normalizedEmail } });
     if (existingUser) {
       return res.status(400).json({ message: "EMAIL_ALREADY_EXISTS" });
     }
@@ -2791,7 +3004,8 @@ app.post("/api/admin/invites", auth, requireAdmin, async (req, res) => {
 
     const recentForEmail = await prisma.inviteToken.count({
       where: {
-        email,
+        email: normalizedEmail,
+        orgId: targetOrgId,
         createdAt: { gte: minuteAgo },
       },
     });
@@ -2812,7 +3026,8 @@ app.post("/api/admin/invites", auth, requireAdmin, async (req, res) => {
 
     const invite = await prisma.inviteToken.create({
       data: {
-        email,
+        email: normalizedEmail,
+        orgId: targetOrgId,
         tokenHash,
         role,
         expiresAt,
@@ -2820,13 +3035,14 @@ app.post("/api/admin/invites", auth, requireAdmin, async (req, res) => {
       },
     });
 
-    await sendInviteEmail(email, rawToken);
+    await sendInviteEmail(normalizedEmail, rawToken);
 
     res.json({
       ok: true,
       invite: {
         id: invite.id,
         email: invite.email,
+        orgId: invite.orgId,
         role: invite.role,
         expiresAt: invite.expiresAt,
         createdAt: invite.createdAt,
@@ -2850,6 +3066,9 @@ app.post("/api/admin/invites/:id/resend", auth, requireAdmin, async (req, res) =
     if (!invite) {
       return res.status(404).json({ message: "INVITE_NOT_FOUND" });
     }
+    if (!req.user.isSystemOwner && invite.orgId !== req.user.orgId) {
+      return res.status(403).json({ message: "Нет доступа к приглашению другой организации" });
+    }
 
     const now = new Date();
     const minuteAgo = new Date(now.getTime() - INVITE_EMAIL_COOLDOWN_MS);
@@ -2857,6 +3076,7 @@ app.post("/api/admin/invites/:id/resend", auth, requireAdmin, async (req, res) =
     const recentForEmail = await prisma.inviteToken.count({
       where: {
         email: invite.email,
+        orgId: invite.orgId,
         createdAt: { gte: minuteAgo },
       },
     });
@@ -2888,6 +3108,7 @@ app.post("/api/admin/invites/:id/resend", auth, requireAdmin, async (req, res) =
     const nextInvite = await prisma.inviteToken.create({
       data: {
         email: invite.email,
+        orgId: invite.orgId,
         tokenHash,
         role: invite.role,
         expiresAt,
@@ -2902,6 +3123,7 @@ app.post("/api/admin/invites/:id/resend", auth, requireAdmin, async (req, res) =
       invite: {
         id: nextInvite.id,
         email: nextInvite.email,
+        orgId: nextInvite.orgId,
         role: nextInvite.role,
         expiresAt: nextInvite.expiresAt,
         createdAt: nextInvite.createdAt,
@@ -2969,6 +3191,22 @@ app.post("/api/auth/accept-invite", async (req, res) => {
       return res.status(400).json({ message: "INVITE_EXPIRED" });
     }
 
+    let inviteOrgId = invite.orgId || null;
+    if (!inviteOrgId) {
+      const inviter = await prisma.user.findUnique({
+        where: { id: invite.createdByUserId },
+        select: { orgId: true, name: true },
+      });
+      inviteOrgId =
+        inviter?.orgId || (await ensureUserOrg(invite.createdByUserId, inviter?.name || "Клиент"));
+      if (inviteOrgId) {
+        await prisma.inviteToken.update({
+          where: { id: invite.id },
+          data: { orgId: inviteOrgId },
+        });
+      }
+    }
+
     const passwordHash = await bcrypt.hash(password, 10);
     const now = new Date();
 
@@ -2987,6 +3225,7 @@ app.post("/api/auth/accept-invite", async (req, res) => {
           role: invite.role,
           password: passwordHash,
           passwordHash,
+          orgId: inviteOrgId || existingUser.orgId || null,
           isActive: true,
           emailVerifiedAt: now,
         },
@@ -2999,6 +3238,7 @@ app.post("/api/auth/accept-invite", async (req, res) => {
           role: invite.role,
           password: passwordHash,
           passwordHash,
+          orgId: inviteOrgId || null,
           isActive: true,
           emailVerifiedAt: now,
         },
@@ -3021,7 +3261,7 @@ app.post("/api/auth/forgot-password", async (req, res) => {
   const responseMessage = "Если аккаунт существует — мы отправили письмо.";
   try {
     const { email } = req.body || {};
-    const normalized = String(email || "").trim().toLowerCase();
+    const normalized = normalizeEmail(email);
     const now = Date.now();
 
     if (!normalized) {
@@ -10011,6 +10251,10 @@ async function ensureOwnerAdminAccount() {
   const normalizedEmail = OWNER_PRIMARY_EMAIL.trim().toLowerCase();
   const ownerName = OWNER_PRIMARY_NAME;
   const ownerHash = await bcrypt.hash(OWNER_PRIMARY_PASSWORD, 10);
+  const ownerOrg = await getOrCreateOrganizationByCode(
+    "platform-owner",
+    "Владелец платформы"
+  );
 
   const rows = await prisma.$queryRaw`
     SELECT "id", "email" FROM "User"
@@ -10029,6 +10273,7 @@ async function ensureOwnerAdminAccount() {
         name: ownerName,
         role: "ADMIN",
         isActive: true,
+        orgId: ownerOrg.id,
         emailVerifiedAt: new Date(),
       },
     });
@@ -10046,6 +10291,7 @@ async function ensureOwnerAdminAccount() {
       name: ownerName,
       role: "ADMIN",
       isActive: true,
+      orgId: ownerOrg.id,
       emailVerifiedAt: new Date(),
     },
   });

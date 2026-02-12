@@ -7,6 +7,18 @@ datasource db {
   url      = env("DATABASE_URL")
 }
 
+model Organization {
+  id        Int      @id @default(autoincrement())
+  name      String
+  code      String?  @unique
+  isActive  Boolean  @default(true)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  users   User[]
+  invites InviteToken[]
+}
+
 // ============ USERS ============
 model User {
   id        Int      @id @default(autoincrement())
@@ -17,6 +29,8 @@ model User {
   role      String   @default("EMPLOYEE")
   tokenVersion Int @default(0)
   isActive  Boolean  @default(true)
+  orgId     Int?
+  organization Organization? @relation(fields: [orgId], references: [id])
   emailVerifiedAt DateTime?
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -39,6 +53,8 @@ model User {
   receivingLinesCreated WarehouseReceivingLine[] @relation("ReceivingLineCreatedBy")
   receivingLinesPlaced WarehouseReceivingLine[] @relation("ReceivingLinePlacedBy")
   assignedOrders SalesOrder[] @relation("OrderAssignedTo")
+
+  @@index([orgId])
 }
 
 // ============ SUBSCRIPTION ============
@@ -61,6 +77,8 @@ model Subscription {
 model InviteToken {
   id               Int      @id @default(autoincrement())
   email            String
+  orgId            Int?
+  organization     Organization? @relation(fields: [orgId], references: [id])
   tokenHash        String   @unique
   role             String
   expiresAt        DateTime
@@ -68,6 +86,8 @@ model InviteToken {
   createdByUserId  Int
   createdBy        User     @relation("InviteCreatedBy", fields: [createdByUserId], references: [id])
   createdAt        DateTime @default(now())
+
+  @@index([orgId])
 }
 
 
