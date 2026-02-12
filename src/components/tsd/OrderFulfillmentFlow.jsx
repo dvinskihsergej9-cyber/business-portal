@@ -4,12 +4,22 @@ import TsdHeader from "./TsdHeader";
 import Scanner from "./Scanner";
 
 const normalizeScan = (value) => String(value || "").trim().toLowerCase();
+const toNum = (value) => Number(value) || 0;
+
+const readJsonSafe = async (res) => {
+  try {
+    return await res.json();
+  } catch {
+    return null;
+  }
+};
 
 export default function OrderFulfillmentFlow({ authHeaders, onBack }) {
   const [mineOnly, setMineOnly] = useState(false);
   const [orders, setOrders] = useState([]);
   const [selectedOrder, setSelectedOrder] = useState(null);
   const [pickPlan, setPickPlan] = useState([]);
+  const [pickPlanRaw, setPickPlanRaw] = useState([]);
   const [currentIndex, setCurrentIndex] = useState(0);
   const [locationScanned, setLocationScanned] = useState(false);
   const [scannedQty, setScannedQty] = useState(0);
@@ -19,9 +29,36 @@ export default function OrderFulfillmentFlow({ authHeaders, onBack }) {
   const [boxType, setBoxType] = useState("");
 
   const currentStep = pickPlan[currentIndex] || null;
-  const canPack = useMemo(() => pickPlan.length === 0 && selectedOrder, [pickPlan.length, selectedOrder]);
+  const orderStatus = String(selectedOrder?.status || "");
+  const allLinesPicked = useMemo(
+    () =>
+      Boolean(selectedOrder?.lines?.length) &&
+      selectedOrder.lines.every((line) => toNum(line.pickedQty) >= toNum(line.qty)),
+    [selectedOrder]
+  );
+  const canPack = useMemo(
+    () =>
+      Boolean(selectedOrder) &&
+      (["PICKED", "PACKED", "READY_TO_SHIP"].includes(orderStatus) || allLinesPicked),
+    [allLinesPicked, orderStatus, selectedOrder]
+  );
+  const canPrintLabel = useMemo(
+    () => Boolean(selectedOrder) && ["PACKED", "READY_TO_SHIP"].includes(orderStatus),
+    [orderStatus, selectedOrder]
+  );
+  const canComplete = useMemo(
+    () => Boolean(selectedOrder) && ["PACKED", "READY_TO_SHIP"].includes(orderStatus),
+    [orderStatus, selectedOrder]
+  );
   const hasPlan = pickPlan.length > 0;
-  const showPlanMissing = selectedOrder && pickPlan.length === 0;
+  const unresolvedItems = useMemo(
+    () =>
+      (pickPlanRaw || []).filter(
+        (line) => toNum(line.remainingQty) > 0 && (!Array.isArray(line.steps) || line.steps.length === 0)
+      ),
+    [pickPlanRaw]
+  );
+  const showPlanMissing = selectedOrder && !canPack && pickPlan.length === 0;
 
   const loadQueue = async () => {
     setLoading(true);
@@ -31,8 +68,8 @@ export default function OrderFulfillmentFlow({ authHeaders, onBack }) {
         `${API_BASE}/orders/queue?mine=${mineOnly ? "1" : "0"}`,
         { headers: authHeaders }
       );
-      const data = await res.json();
-      if (!res.ok) throw new Error(data.message || "Не удалось загрузить заказы");
+      const data = await readJsonSafe(res);
+      if (!res.ok) throw new Error(data?.message || "Не удалось загрузить заказы");
       setOrders(data.items || []);
     } catch (err) {
       setError(normalizeErrorMessage(err, "Ошибка загрузки очереди заказов."));
@@ -44,12 +81,17 @@ export default function OrderFulfillmentFlow({ authHeaders, onBack }) {
   const loadPickPlan = async (orderId) => {
     setLoading(true);
     setError("");
+    setPickPlan([]);
+    setPickPlanRaw([]);
+    setCurrentIndex(0);
+    setLocationScanned(false);
+    setScannedQty(0);
     try {
       const res = await fetch(`${API_BASE}/orders/${orderId}/pick-plan`, {
         headers: authHeaders,
       });
-      const data = await res.json();
-      if (!res.ok) throw new Error(data.message || "Не удалось построить маршрут");
+      const data = await readJsonSafe(res);
+      if (!res.ok) throw new Error(data?.message || "Не удалось построить маршрут");
 
       const flat = [];
       for (const item of data.items || []) {
@@ -75,6 +117,7 @@ export default function OrderFulfillmentFlow({ authHeaders, onBack }) {
       });
 
       setPickPlan(flat);
+      setPickPlanRaw(data.items || []);
       setCurrentIndex(0);
       setLocationScanned(false);
       setScannedQty(0);
@@ -112,8 +155,8 @@ export default function OrderFulfillmentFlow({ authHeaders, onBack }) {
         method: "POST",
         headers: authHeaders,
       });
-      const data = await res.json();
-      if (!res.ok) throw new Error(data.message || "Не удалось взять заказ");
+      const data = await readJsonSafe(res);
+      if (!res.ok) throw new Error(data?.message || "Не удалось взять заказ");
       setSelectedOrder(data.order);
       await loadPickPlan(orderId);
       await loadQueue();
@@ -138,8 +181,8 @@ export default function OrderFulfillmentFlow({ authHeaders, onBack }) {
         headers: authHeaders,
         body: JSON.stringify({ lineId, locationId, qty }),
       });
-      const data = await res.json();
-      if (!res.ok) throw new Error(data.message || "Ошибка подтверждения отбора");
+      const data = await readJsonSafe(res);
+      if (!res.ok) throw new Error(data?.message || "Ошибка подтверждения отбора");
       setSelectedOrder(data.order);
       await loadPickPlan(selectedOrder.id);
       await loadQueue();
@@ -250,6 +293,14 @@ export default function OrderFulfillmentFlow({ authHeaders, onBack }) {
 
   const packOrder = async () => {
     if (!selectedOrder) return;
+    if (!canPack) {
+      setError("Сначала завершите отбор товара.");
+      return;
+    }
+    if (!String(boxCode || "").trim()) {
+      setError("Укажите номер коробки.");
+      return;
+    }
     setLoading(true);
     setError("");
     try {
@@ -261,8 +312,8 @@ export default function OrderFulfillmentFlow({ authHeaders, onBack }) {
           boxType,
         }),
       });
-      const data = await res.json();
-      if (!res.ok) throw new Error(data.message || "Ошибка упаковки");
+      const data = await readJsonSafe(res);
+      if (!res.ok) throw new Error(data?.message || "Ошибка упаковки");
       setSelectedOrder(data.order);
       await loadQueue();
     } catch (err) {
@@ -274,21 +325,31 @@ export default function OrderFulfillmentFlow({ authHeaders, onBack }) {
 
   const printLabel = async () => {
     if (!selectedOrder) return;
+    if (!canPrintLabel) {
+      setError("Сначала упакуйте заказ.");
+      return;
+    }
     try {
       const res = await fetch(`${API_BASE}/orders/${selectedOrder.id}/label`, {
         headers: authHeaders,
       });
       if (!res.ok) {
-        const data = await res.json();
-        setError(data.message || "Ошибка печати этикетки.");
+        const data = await readJsonSafe(res);
+        setError(data?.message || "Ошибка печати этикетки.");
         return;
       }
       const html = await res.text();
-      const win = window.open("", "_blank");
-      if (win) {
-        win.document.write(html);
-        win.document.close();
+      const blob = new Blob([html], { type: "text/html;charset=utf-8" });
+      const url = URL.createObjectURL(blob);
+      const win = window.open(url, "_blank", "noopener,noreferrer");
+      if (!win) {
+        const link = document.createElement("a");
+        link.href = url;
+        link.target = "_blank";
+        link.rel = "noopener noreferrer";
+        link.click();
       }
+      setTimeout(() => URL.revokeObjectURL(url), 60_000);
     } catch (err) {
       setError(normalizeErrorMessage(err, "Ошибка печати этикетки."));
     }
@@ -296,6 +357,10 @@ export default function OrderFulfillmentFlow({ authHeaders, onBack }) {
 
   const completeOrder = async () => {
     if (!selectedOrder) return;
+    if (!canComplete) {
+      setError("Сначала упакуйте заказ и распечатайте паспорт.");
+      return;
+    }
     setLoading(true);
     setError("");
     try {
@@ -303,8 +368,8 @@ export default function OrderFulfillmentFlow({ authHeaders, onBack }) {
         method: "POST",
         headers: authHeaders,
       });
-      const data = await res.json();
-      if (!res.ok) throw new Error(data.message || "Ошибка завершения заказа");
+      const data = await readJsonSafe(res);
+      if (!res.ok) throw new Error(data?.message || "Ошибка завершения заказа");
       setSelectedOrder(data.order);
       await loadQueue();
     } catch (err) {
@@ -402,6 +467,7 @@ export default function OrderFulfillmentFlow({ authHeaders, onBack }) {
                   onClick={() => {
                     setSelectedOrder(null);
                     setPickPlan([]);
+                    setPickPlanRaw([]);
                     setError("");
                   }}
                 >
@@ -441,6 +507,16 @@ export default function OrderFulfillmentFlow({ authHeaders, onBack }) {
             {showPlanMissing && (
               <div className="tsd-alert tsd-alert--warning">
                 Нет маршрута отбора. Проверьте, что у товаров есть ячейки и остатки.
+              </div>
+            )}
+            {showPlanMissing && unresolvedItems.length > 0 && (
+              <div className="tsd-alert tsd-alert--warning">
+                Не хватает остатков по позициям:{" "}
+                {unresolvedItems
+                  .slice(0, 3)
+                  .map((row) => row.itemName || row.sku || `Строка ${row.lineId}`)
+                  .join(", ")}
+                {unresolvedItems.length > 3 ? " и др." : ""}.
               </div>
             )}
 
@@ -483,7 +559,7 @@ export default function OrderFulfillmentFlow({ authHeaders, onBack }) {
                   <button
                     type="button"
                     className="tsd-btn tsd-btn--primary"
-                    disabled={loading}
+                    disabled={loading || !String(boxCode || "").trim()}
                     onClick={packOrder}
                   >
                     Упаковать
@@ -491,7 +567,7 @@ export default function OrderFulfillmentFlow({ authHeaders, onBack }) {
                   <button
                     type="button"
                     className="tsd-btn tsd-btn--secondary"
-                    disabled={loading}
+                    disabled={loading || !canPrintLabel}
                     onClick={printLabel}
                   >
                     Паспорт (PDF)
@@ -499,7 +575,7 @@ export default function OrderFulfillmentFlow({ authHeaders, onBack }) {
                   <button
                     type="button"
                     className="tsd-btn tsd-btn--primary"
-                    disabled={loading}
+                    disabled={loading || !canComplete}
                     onClick={completeOrder}
                   >
                     Завершить заказ
@@ -507,8 +583,14 @@ export default function OrderFulfillmentFlow({ authHeaders, onBack }) {
                 </div>
               </div>
             )}
+            {!canPack && selectedOrder && (
+              <div className="tsd-alert tsd-alert--info">
+                Сначала выполните отбор. Упаковка и завершение станут доступны после статуса
+                «Отобран».
+              </div>
+            )}
 
-            {!hasPlan && (
+            {!hasPlan && !canPack && (
               <div className="tsd-inline">
                 <button
                   type="button"

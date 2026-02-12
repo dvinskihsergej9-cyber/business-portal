@@ -190,7 +190,7 @@ export default function MobileTsd() {
   }, [mode]);
 
   useEffect(() => {
-    if (mode !== "count") return;
+    if (!["count", "move", "putaway", "replenish"].includes(mode || "")) return;
     const loadLocations = async () => {
       try {
         const res = await fetch(`${API_BASE}/warehouse/locations`, {
@@ -369,13 +369,10 @@ export default function MobileTsd() {
   const handleCountLocation = async (code) => {
     try {
       setCountState((prev) => ({ ...prev, loading: true, error: "" }));
-      const data = await resolveScan(code);
-      if (data.type !== "location") {
-        throw new Error("Это не ячейка.");
-      }
+      const location = await resolveLocationEntity(code);
       setCountState((prev) => ({
         ...prev,
-        location: data.entity,
+        location,
         step: 1,
         allowDifferentDate: false,
         loading: false,
@@ -677,13 +674,10 @@ export default function MobileTsd() {
   const handleMoveFrom = async (code) => {
     try {
       setMoveState((prev) => ({ ...prev, loading: true, error: "" }));
-      const data = await resolveScan(code);
-      if (data.type !== "location") {
-        throw new Error("Это не ячейка.");
-      }
+      const location = await resolveLocationEntity(code);
       setMoveState((prev) => ({
         ...prev,
-        from: data.entity,
+        from: location,
         step: 1,
         loading: false,
       }));
@@ -721,13 +715,10 @@ export default function MobileTsd() {
   const handleMoveTo = async (code) => {
     try {
       setMoveState((prev) => ({ ...prev, loading: true, error: "" }));
-      const data = await resolveScan(code);
-      if (data.type !== "location") {
-        throw new Error("Это не ячейка.");
-      }
+      const location = await resolveLocationEntity(code);
       setMoveState((prev) => ({
         ...prev,
-        to: data.entity,
+        to: location,
         step: 4,
         loading: false,
       }));
@@ -1006,13 +997,10 @@ export default function MobileTsd() {
   const handleReplenFrom = async (code) => {
     try {
       setReplenState((prev) => ({ ...prev, loading: true, error: "" }));
-      const data = await resolveScan(code);
-      if (data.type !== "location") {
-        throw new Error("Это не ячейка.");
-      }
+      const location = await resolveLocationEntity(code);
       setReplenState((prev) => ({
         ...prev,
-        from: data.entity,
+        from: location,
         step: 1,
         loading: false,
       }));
@@ -1050,13 +1038,10 @@ export default function MobileTsd() {
   const handleReplenTo = async (code) => {
     try {
       setReplenState((prev) => ({ ...prev, loading: true, error: "" }));
-      const data = await resolveScan(code);
-      if (data.type !== "location") {
-        throw new Error("Это не ячейка.");
-      }
+      const location = await resolveLocationEntity(code);
       setReplenState((prev) => ({
         ...prev,
-        to: data.entity,
+        to: location,
         step: 4,
         loading: false,
       }));
@@ -1111,13 +1096,10 @@ export default function MobileTsd() {
   const handlePickFrom = async (code) => {
     try {
       setPickState((prev) => ({ ...prev, loading: true, error: "" }));
-      const data = await resolveScan(code);
-      if (data.type !== "location") {
-        throw new Error("Это не ячейка.");
-      }
+      const location = await resolveLocationEntity(code);
       setPickState((prev) => ({
         ...prev,
-        from: data.entity,
+        from: location,
         step: 1,
         loading: false,
       }));
@@ -1254,7 +1236,7 @@ export default function MobileTsd() {
                   <option value="">Выберите ячейку</option>
                   {countLocations.map((loc) => (
                     <option key={loc.id} value={loc.id}>
-                      {loc.name || loc.code || `Ячейка ${loc.id}`}
+                      {locationOptionLabel(loc)}
                     </option>
                   ))}
                 </select>
@@ -1458,6 +1440,15 @@ export default function MobileTsd() {
     const date = new Date(value);
     if (Number.isNaN(date.getTime())) return value;
     return date.toLocaleDateString("ru-RU");
+  };
+
+  const locationOptionLabel = (loc) => {
+    const code = String(loc?.code || "").trim();
+    const name = String(loc?.name || "").trim();
+    if (code && name && code !== name) return `${code} — ${name}`;
+    if (code) return code;
+    if (name) return name;
+    return `Ячейка ${loc?.id}`;
   };
 
   const renderReceiving = () => (
@@ -1868,11 +1859,41 @@ export default function MobileTsd() {
         )}
 
         {moveState.step === 0 && (
-          <Scanner
-            label="Сканируй ячейку-источник"
-            onScan={handleMoveFrom}
-            disabled={moveState.loading}
-          />
+          <>
+            <Scanner
+              label="Сканируй ячейку-источник"
+              onScan={handleMoveFrom}
+              disabled={moveState.loading}
+            />
+            {countLocations.length > 0 && (
+              <div className="tsd-qty-input">
+                <label className="tsd-scanner__label">Или выбери ячейку</label>
+                <select
+                  className="tsd-input"
+                  value={moveState.from?.id || ""}
+                  onChange={(event) => {
+                    const selected = countLocations.find(
+                      (loc) => String(loc.id) === event.target.value
+                    );
+                    if (!selected) return;
+                    setMoveState((prev) => ({
+                      ...prev,
+                      from: selected,
+                      step: 1,
+                      error: "",
+                    }));
+                  }}
+                >
+                  <option value="">Выберите ячейку</option>
+                  {countLocations.map((loc) => (
+                    <option key={loc.id} value={loc.id}>
+                      {locationOptionLabel(loc)}
+                    </option>
+                  ))}
+                </select>
+              </div>
+            )}
+          </>
         )}
 
         {moveState.step === 1 && (
@@ -1916,6 +1937,34 @@ export default function MobileTsd() {
               onScan={handleMoveTo}
               disabled={moveState.loading}
             />
+            {countLocations.length > 0 && (
+              <div className="tsd-qty-input">
+                <label className="tsd-scanner__label">Или выбери ячейку</label>
+                <select
+                  className="tsd-input"
+                  value={moveState.to?.id || ""}
+                  onChange={(event) => {
+                    const selected = countLocations.find(
+                      (loc) => String(loc.id) === event.target.value
+                    );
+                    if (!selected) return;
+                    setMoveState((prev) => ({
+                      ...prev,
+                      to: selected,
+                      step: 4,
+                      error: "",
+                    }));
+                  }}
+                >
+                  <option value="">Выберите ячейку</option>
+                  {countLocations.map((loc) => (
+                    <option key={loc.id} value={loc.id}>
+                      {locationOptionLabel(loc)}
+                    </option>
+                  ))}
+                </select>
+              </div>
+            )}
           </>
         )}
 
@@ -2069,6 +2118,34 @@ export default function MobileTsd() {
               onScan={handlePutawayTo}
               disabled={putawayState.loading}
             />
+            {countLocations.length > 0 && (
+              <div className="tsd-qty-input">
+                <label className="tsd-scanner__label">Или выбери ячейку</label>
+                <select
+                  className="tsd-input"
+                  value={putawayState.to?.id || ""}
+                  onChange={(event) => {
+                    const selected = countLocations.find(
+                      (loc) => String(loc.id) === event.target.value
+                    );
+                    if (!selected) return;
+                    setPutawayState((prev) => ({
+                      ...prev,
+                      to: selected,
+                      step: 2,
+                      error: "",
+                    }));
+                  }}
+                >
+                  <option value="">Выберите ячейку</option>
+                  {countLocations.map((loc) => (
+                    <option key={loc.id} value={loc.id}>
+                      {locationOptionLabel(loc)}
+                    </option>
+                  ))}
+                </select>
+              </div>
+            )}
           </>
         )}
 
@@ -2152,11 +2229,41 @@ export default function MobileTsd() {
         )}
 
         {replenState.step === 0 && (
-          <Scanner
-            label="Сканируй ячейку-источник"
-            onScan={handleReplenFrom}
-            disabled={replenState.loading}
-          />
+          <>
+            <Scanner
+              label="Сканируй ячейку-источник"
+              onScan={handleReplenFrom}
+              disabled={replenState.loading}
+            />
+            {countLocations.length > 0 && (
+              <div className="tsd-qty-input">
+                <label className="tsd-scanner__label">Или выбери ячейку</label>
+                <select
+                  className="tsd-input"
+                  value={replenState.from?.id || ""}
+                  onChange={(event) => {
+                    const selected = countLocations.find(
+                      (loc) => String(loc.id) === event.target.value
+                    );
+                    if (!selected) return;
+                    setReplenState((prev) => ({
+                      ...prev,
+                      from: selected,
+                      step: 1,
+                      error: "",
+                    }));
+                  }}
+                >
+                  <option value="">Выберите ячейку</option>
+                  {countLocations.map((loc) => (
+                    <option key={loc.id} value={loc.id}>
+                      {locationOptionLabel(loc)}
+                    </option>
+                  ))}
+                </select>
+              </div>
+            )}
+          </>
         )}
 
         {replenState.step === 1 && (
@@ -2200,6 +2307,34 @@ export default function MobileTsd() {
               onScan={handleReplenTo}
               disabled={replenState.loading}
             />
+            {countLocations.length > 0 && (
+              <div className="tsd-qty-input">
+                <label className="tsd-scanner__label">Или выбери ячейку</label>
+                <select
+                  className="tsd-input"
+                  value={replenState.to?.id || ""}
+                  onChange={(event) => {
+                    const selected = countLocations.find(
+                      (loc) => String(loc.id) === event.target.value
+                    );
+                    if (!selected) return;
+                    setReplenState((prev) => ({
+                      ...prev,
+                      to: selected,
+                      step: 4,
+                      error: "",
+                    }));
+                  }}
+                >
+                  <option value="">Выберите ячейку</option>
+                  {countLocations.map((loc) => (
+                    <option key={loc.id} value={loc.id}>
+                      {locationOptionLabel(loc)}
+                    </option>
+                  ))}
+                </select>
+              </div>
+            )}
           </>
         )}
 
