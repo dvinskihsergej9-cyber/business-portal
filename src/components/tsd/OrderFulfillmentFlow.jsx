@@ -1,5 +1,8 @@
 ﻿import { useEffect, useMemo, useState } from "react";
 import { API_BASE, normalizeErrorMessage } from "../../apiConfig";
+import { jsPDF } from "jspdf";
+import autoTable from "jspdf-autotable";
+import { ARIAL_TTF_BASE64 } from "../../utils/arialFontBase64";
 import TsdHeader from "./TsdHeader";
 import Scanner from "./Scanner";
 
@@ -14,6 +17,19 @@ const readJsonSafe = async (res) => {
   }
 };
 
+const ensurePdfFont = async (pdf) => {
+  pdf.addFileToVFS("Arial.ttf", ARIAL_TTF_BASE64);
+  pdf.addFont("Arial.ttf", "Arial", "normal", "Identity-H");
+  pdf.setFont("Arial", "normal");
+};
+
+const formatDateTime = (value) => {
+  if (!value) return "-";
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return String(value);
+  return date.toLocaleString("ru-RU");
+};
+
 export default function OrderFulfillmentFlow({ authHeaders, onBack }) {
   const [mineOnly, setMineOnly] = useState(false);
   const [orders, setOrders] = useState([]);
@@ -25,8 +41,6 @@ export default function OrderFulfillmentFlow({ authHeaders, onBack }) {
   const [scannedQty, setScannedQty] = useState(0);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
-  const [boxCode, setBoxCode] = useState("");
-  const [boxType, setBoxType] = useState("");
 
   const currentStep = pickPlan[currentIndex] || null;
   const orderStatus = String(selectedOrder?.status || "");
@@ -36,19 +50,23 @@ export default function OrderFulfillmentFlow({ authHeaders, onBack }) {
       selectedOrder.lines.every((line) => toNum(line.pickedQty) >= toNum(line.qty)),
     [selectedOrder]
   );
-  const canPack = useMemo(
+  const canFinalize = useMemo(
     () =>
       Boolean(selectedOrder) &&
-      (["PICKED", "PACKED", "READY_TO_SHIP"].includes(orderStatus) || allLinesPicked),
+      (["PICKED", "PACKED"].includes(orderStatus) || allLinesPicked),
     [allLinesPicked, orderStatus, selectedOrder]
   );
-  const canPrintLabel = useMemo(
-    () => Boolean(selectedOrder) && ["PACKED", "READY_TO_SHIP"].includes(orderStatus),
-    [orderStatus, selectedOrder]
+  const isClosed = useMemo(
+    () => ["READY_TO_SHIP", "SHIPPED", "CANCELLED"].includes(orderStatus),
+    [orderStatus]
+  );
+  const canPrintPassport = useMemo(
+    () => Boolean(selectedOrder) && (canFinalize || isClosed),
+    [canFinalize, isClosed, selectedOrder]
   );
   const canComplete = useMemo(
-    () => Boolean(selectedOrder) && ["PACKED", "READY_TO_SHIP"].includes(orderStatus),
-    [orderStatus, selectedOrder]
+    () => Boolean(selectedOrder) && canFinalize,
+    [canFinalize, selectedOrder]
   );
   const hasPlan = pickPlan.length > 0;
   const unresolvedItems = useMemo(
@@ -58,7 +76,7 @@ export default function OrderFulfillmentFlow({ authHeaders, onBack }) {
       ),
     [pickPlanRaw]
   );
-  const showPlanMissing = selectedOrder && !canPack && pickPlan.length === 0;
+  const showPlanMissing = selectedOrder && !canFinalize && !isClosed && pickPlan.length === 0;
 
   const loadQueue = async () => {
     setLoading(true);
@@ -291,74 +309,86 @@ export default function OrderFulfillmentFlow({ authHeaders, onBack }) {
     }
   };
 
-  const packOrder = async () => {
+  const printPassport = async () => {
     if (!selectedOrder) return;
-    if (!canPack) {
+    if (!canPrintPassport) {
       setError("Сначала завершите отбор товара.");
       return;
     }
-    if (!String(boxCode || "").trim()) {
-      setError("Укажите номер коробки.");
-      return;
-    }
-    setLoading(true);
-    setError("");
     try {
-      const res = await fetch(`${API_BASE}/orders/${selectedOrder.id}/pack`, {
-        method: "POST",
-        headers: authHeaders,
-        body: JSON.stringify({
-          boxCode,
-          boxType,
-        }),
-      });
-      const data = await readJsonSafe(res);
-      if (!res.ok) throw new Error(data?.message || "Ошибка упаковки");
-      setSelectedOrder(data.order);
-      await loadQueue();
-    } catch (err) {
-      setError(normalizeErrorMessage(err, "Ошибка упаковки заказа."));
-    } finally {
-      setLoading(false);
-    }
-  };
+      const order = selectedOrder;
+      const pdf = new jsPDF("p", "pt", "a4");
+      await ensurePdfFont(pdf);
 
-  const printLabel = async () => {
-    if (!selectedOrder) return;
-    if (!canPrintLabel) {
-      setError("Сначала упакуйте заказ.");
-      return;
-    }
-    try {
-      const res = await fetch(`${API_BASE}/orders/${selectedOrder.id}/label`, {
-        headers: authHeaders,
+      pdf.setFontSize(16);
+      pdf.text(`Паспорт заказа ${order.orderNumber || "-"}`, 40, 36);
+      pdf.setFontSize(11);
+      pdf.text(`Дата: ${formatDateTime(order.createdAt)}`, 40, 56);
+      pdf.text(`Статус: ${order.status || "-"}`, 40, 72);
+      pdf.text(`Получатель: ${order.customerName || "-"}`, 40, 88);
+      pdf.text(`Телефон: ${order.customerPhone || "-"}`, 40, 104);
+      pdf.text(`Адрес: ${order.shippingAddress || "-"}`, 40, 120);
+      pdf.text(`Комментарий: ${order.deliveryComment || "-"}`, 40, 136);
+
+      const rows = (order.lines || []).map((line, index) => [
+        String(index + 1),
+        line.item?.sku || line.requestedSku || "-",
+        line.item?.name || line.requestedName || "-",
+        String(toNum(line.qty)),
+        String(toNum(line.pickedQty)),
+        line.item?.unit || "шт",
+      ]);
+
+      autoTable(pdf, {
+        startY: 152,
+        head: [["#", "SKU", "Товар", "Заказано", "Отобрано", "Ед."]],
+        body: rows.length ? rows : [["-", "-", "Нет позиций", "-", "-", "-"]],
+        theme: "grid",
+        styles: {
+          font: "Arial",
+          fontSize: 9,
+          cellPadding: 3,
+          overflow: "linebreak",
+          valign: "top",
+        },
+        headStyles: {
+          fillColor: [245, 246, 248],
+          textColor: [15, 23, 42],
+          fontStyle: "bold",
+          font: "Arial",
+        },
+        columnStyles: {
+          0: { cellWidth: 26 },
+          1: { cellWidth: 76 },
+          2: { cellWidth: 250 },
+          3: { cellWidth: 70 },
+          4: { cellWidth: 70 },
+          5: { cellWidth: 44 },
+        },
       });
-      if (!res.ok) {
-        const data = await readJsonSafe(res);
-        setError(data?.message || "Ошибка печати этикетки.");
-        return;
-      }
-      const html = await res.text();
-      const blob = new Blob([html], { type: "text/html;charset=utf-8" });
+
+      const fileName = `passport-${order.orderNumber || order.id}.pdf`;
+      const blob = pdf.output("blob");
       const url = URL.createObjectURL(blob);
       const win = window.open(url, "_blank", "noopener,noreferrer");
       if (!win) {
         const link = document.createElement("a");
         link.href = url;
+        link.download = fileName;
         link.target = "_blank";
         link.rel = "noopener noreferrer";
         link.click();
       }
       setTimeout(() => URL.revokeObjectURL(url), 60_000);
     } catch (err) {
-      setError(normalizeErrorMessage(err, "Ошибка печати этикетки."));
+      setError(normalizeErrorMessage(err, "Ошибка формирования паспорта."));
     }
   };
 
   const completeOrder = async () => {
     if (!selectedOrder) return;
     if (!canComplete) {
-      setError("Сначала упакуйте заказ и распечатайте паспорт.");
+      setError("Сначала завершите отбор товара.");
       return;
     }
     setLoading(true);
@@ -370,7 +400,12 @@ export default function OrderFulfillmentFlow({ authHeaders, onBack }) {
       });
       const data = await readJsonSafe(res);
       if (!res.ok) throw new Error(data?.message || "Ошибка завершения заказа");
-      setSelectedOrder(data.order);
+      setSelectedOrder(null);
+      setPickPlan([]);
+      setPickPlanRaw([]);
+      setCurrentIndex(0);
+      setLocationScanned(false);
+      setScannedQty(0);
       await loadQueue();
     } catch (err) {
       setError(normalizeErrorMessage(err, "Ошибка завершения заказа."));
@@ -383,7 +418,7 @@ export default function OrderFulfillmentFlow({ authHeaders, onBack }) {
     <>
       <TsdHeader
         title="Заказы"
-        subtitle="Сборка, упаковка, печать этикетки"
+        subtitle="Сборка, паспорт, завершение"
         contextLabel="Режим"
         contextValue={mineOnly ? "Мои" : "Общий"}
         onBack={onBack}
@@ -538,59 +573,46 @@ export default function OrderFulfillmentFlow({ authHeaders, onBack }) {
               />
             )}
 
-            {canPack && (
+            {canPrintPassport && (
               <div className="tsd-card">
                 <div className="tsd-card__body">
-                  <div className="tsd-card__title">Упаковка</div>
+                  <div className="tsd-card__title">Паспорт и завершение</div>
                 </div>
-                <input
-                  className="tsd-input"
-                  placeholder="Номер коробки"
-                  value={boxCode}
-                  onChange={(event) => setBoxCode(event.target.value)}
-                />
-                <input
-                  className="tsd-input"
-                  placeholder="Тип коробки"
-                  value={boxType}
-                  onChange={(event) => setBoxType(event.target.value)}
-                />
                 <div className="tsd-inline">
                   <button
                     type="button"
-                    className="tsd-btn tsd-btn--primary"
-                    disabled={loading || !String(boxCode || "").trim()}
-                    onClick={packOrder}
-                  >
-                    Упаковать
-                  </button>
-                  <button
-                    type="button"
                     className="tsd-btn tsd-btn--secondary"
-                    disabled={loading || !canPrintLabel}
-                    onClick={printLabel}
+                    disabled={loading || !canPrintPassport}
+                    onClick={printPassport}
                   >
                     Паспорт (PDF)
                   </button>
-                  <button
-                    type="button"
-                    className="tsd-btn tsd-btn--primary"
-                    disabled={loading || !canComplete}
-                    onClick={completeOrder}
-                  >
-                    Завершить заказ
-                  </button>
+                  {!isClosed && (
+                    <button
+                      type="button"
+                      className="tsd-btn tsd-btn--primary"
+                      disabled={loading || !canComplete}
+                      onClick={completeOrder}
+                    >
+                      Завершить заказ
+                    </button>
+                  )}
                 </div>
               </div>
             )}
-            {!canPack && selectedOrder && (
+            {!canFinalize && !isClosed && selectedOrder && (
               <div className="tsd-alert tsd-alert--info">
-                Сначала выполните отбор. Упаковка и завершение станут доступны после статуса
+                Сначала выполните отбор. Паспорт и завершение станут доступны после статуса
                 «Отобран».
               </div>
             )}
+            {isClosed && selectedOrder && (
+              <div className="tsd-alert tsd-alert--success">
+                Заказ уже завершен.
+              </div>
+            )}
 
-            {!hasPlan && !canPack && (
+            {!hasPlan && !canFinalize && !isClosed && (
               <div className="tsd-inline">
                 <button
                   type="button"

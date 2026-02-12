@@ -1,4 +1,4 @@
-﻿import React, { useRef, useState, useEffect, useCallback } from "react";
+﻿import React, { useMemo, useRef, useState, useEffect, useCallback } from "react";
 
 export default function Scanner({
   label,
@@ -8,19 +8,25 @@ export default function Scanner({
   disabled = false,
   onUserAction,
 }) {
+  const scannerId = useMemo(
+    () => `tsd-scan-${Math.random().toString(36).slice(2)}`,
+    []
+  );
   const scannerRef = useRef(null);
-  const videoRef = useRef(null);
-  const startingRef = useRef(false);
   const [manualValue, setManualValue] = useState("");
   const [cameraActive, setCameraActive] = useState(false);
   const [cameraError, setCameraError] = useState("");
 
-  const stopScanner = useCallback(() => {
-    startingRef.current = false;
+  const stopScanner = useCallback(async () => {
     const scanner = scannerRef.current;
     if (scanner) {
       try {
-        scanner.reset();
+        await scanner.stop();
+      } catch {
+        // ignore
+      }
+      try {
+        await scanner.clear();
       } catch {
         // ignore
       }
@@ -30,77 +36,53 @@ export default function Scanner({
   }, []);
 
   const startScanner = useCallback(async () => {
-    if (scannerRef.current || startingRef.current) return;
-    startingRef.current = true;
+    if (scannerRef.current) return;
     setCameraError("");
-
     try {
-      if (!window.isSecureContext) {
-        throw new Error("Камера работает только по HTTPS.");
-      }
-      if (!navigator?.mediaDevices?.getUserMedia) {
-        throw new Error("Браузер не поддерживает доступ к камере.");
-      }
-
       setCameraActive(true);
 
-      let attempts = 0;
-      while (!videoRef.current && attempts < 20) {
-        await new Promise((resolve) => requestAnimationFrame(resolve));
-        attempts += 1;
+      const waitForElement = async () => {
+        let tries = 0;
+        while (tries < 10) {
+          const el = document.getElementById(scannerId);
+          if (el) return;
+          await new Promise((resolve) => requestAnimationFrame(resolve));
+          tries += 1;
+        }
+      };
+
+      await waitForElement();
+      await new Promise((resolve) => setTimeout(resolve, 200));
+
+      let scanner = scannerRef.current;
+      if (!scanner) {
+        if (window?.Html5Qrcode) {
+          scanner = new window.Html5Qrcode(scannerId);
+        } else {
+          const module = await import("html5-qrcode");
+          const Html5Qrcode = module.Html5Qrcode || module.default?.Html5Qrcode || module.default;
+          if (!Html5Qrcode) throw new Error("Html5QrcodeUnavailable");
+          scanner = new Html5Qrcode(scannerId);
+        }
+        scannerRef.current = scanner;
       }
-      if (!videoRef.current) {
-        throw new Error("Не удалось подготовить область камеры.");
-      }
 
-      await new Promise((resolve) => setTimeout(resolve, 120));
-
-      const module = await import("@zxing/browser");
-      const ReaderClass =
-        module.BrowserMultiFormatReader ||
-        module.default?.BrowserMultiFormatReader ||
-        module.default;
-      if (!ReaderClass) {
-        throw new Error("Сканер недоступен в этом браузере.");
-      }
-
-      const scanner = new ReaderClass();
-      scannerRef.current = scanner;
-
-      scanner
-        .decodeFromVideoDevice(undefined, videoRef.current, (result) => {
-          if (!result) return;
-          const text =
-            typeof result.getText === "function"
-              ? result.getText()
-              : String(result || "");
-          if (!text.trim()) return;
-          onScan(text);
+      await scanner.start(
+        { facingMode: "environment" },
+        { fps: 10, qrbox: { width: 240, height: 240 } },
+        (decodedText) => {
+          onScan(decodedText);
           stopScanner();
-        })
-        .catch((err) => {
-          if (!scannerRef.current) return;
-          console.error(err);
-          const reason = err?.name ? ` (${err.name})` : "";
-          setCameraError(`Не удалось запустить камеру.${reason}`);
-          stopScanner();
-        })
-        .finally(() => {
-          startingRef.current = false;
-        });
+        },
+        () => {}
+      );
     } catch (err) {
       console.error(err);
-      startingRef.current = false;
-      const message = String(err?.message || "").trim();
-      if (message) {
-        setCameraError(message);
-      } else {
-        const reason = err?.name ? ` (${err.name})` : "";
-        setCameraError(`Не удалось запустить камеру.${reason}`);
-      }
-      stopScanner();
+      const reason = err?.name ? ` (${err.name})` : "";
+      setCameraError(`Не удалось запустить камеру.${reason}`);
+      await stopScanner();
     }
-  }, [onScan, stopScanner]);
+  }, [onScan, scannerId, stopScanner]);
 
   useEffect(() => {
     return () => {
@@ -143,15 +125,11 @@ export default function Scanner({
 
       <div className="tsd-scanner__viewport">
         {cameraActive ? (
-          <video
-            ref={videoRef}
-            className="tsd-scanner__camera"
-            autoPlay
-            muted
-            playsInline
-          />
+          <div id={scannerId} className="tsd-scanner__camera" />
         ) : (
-          <div className="tsd-scanner__placeholder">Камера выключена</div>
+          <div className="tsd-scanner__placeholder">
+            Камера выключена
+          </div>
         )}
       </div>
 
