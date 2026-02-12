@@ -39,9 +39,6 @@ export default function Scanner({
     if (scannerRef.current) return;
     setCameraError("");
     try {
-      if (!navigator?.mediaDevices?.getUserMedia) {
-        throw new Error("CAMERA_UNSUPPORTED");
-      }
       setCameraActive(true);
 
       const waitForElement = async () => {
@@ -58,76 +55,31 @@ export default function Scanner({
       await new Promise((resolve) => setTimeout(resolve, 200));
 
       let scanner = scannerRef.current;
-      let Html5QrcodeClass = null;
       if (!scanner) {
         if (window?.Html5Qrcode) {
-          Html5QrcodeClass = window.Html5Qrcode;
+          scanner = new window.Html5Qrcode(scannerId);
         } else {
           const module = await import("html5-qrcode");
-          Html5QrcodeClass =
-            module.Html5Qrcode || module.default?.Html5Qrcode || module.default;
+          const Html5Qrcode = module.Html5Qrcode || module.default?.Html5Qrcode || module.default;
+          if (!Html5Qrcode) throw new Error("Html5QrcodeUnavailable");
+          scanner = new Html5Qrcode(scannerId);
         }
-        if (!Html5QrcodeClass) throw new Error("Html5QrcodeUnavailable");
-        scanner = new Html5QrcodeClass(scannerId);
         scannerRef.current = scanner;
       }
 
-      const handleSuccess = (decodedText) => {
-        onScan(decodedText);
-        stopScanner();
-      };
-      const handleError = () => {};
-      const scanConfig = { fps: 10 };
-
-      const tryStart = async (cameraConfig) => {
-        await scanner.start(cameraConfig, scanConfig, handleSuccess, handleError);
-      };
-
-      let started = false;
-      let lastError = null;
-      const attempts = [
-        { facingMode: { exact: "environment" } },
+      await scanner.start(
         { facingMode: "environment" },
-        { facingMode: "user" },
-      ];
-
-      for (const attempt of attempts) {
-        try {
-          await tryStart(attempt);
-          started = true;
-          break;
-        } catch (err) {
-          lastError = err;
-        }
-      }
-
-      if (!started && Html5QrcodeClass?.getCameras) {
-        try {
-          const cameras = await Html5QrcodeClass.getCameras();
-          const primaryCameraId = cameras?.[0]?.id;
-          if (primaryCameraId) {
-            await tryStart(primaryCameraId);
-            started = true;
-          }
-        } catch (err) {
-          lastError = err;
-        }
-      }
-
-      if (!started) {
-        throw lastError || new Error("CAMERA_START_FAILED");
-      }
+        { fps: 10, qrbox: { width: 240, height: 240 } },
+        (decodedText) => {
+          onScan(decodedText);
+          stopScanner();
+        },
+        () => {}
+      );
     } catch (err) {
       console.error(err);
-      const errCode = err?.message || err?.name || "";
-      if (errCode === "CAMERA_UNSUPPORTED") {
-        setCameraError("Камера не поддерживается в этом браузере.");
-      } else if (String(errCode).toLowerCase().includes("notallowed")) {
-        setCameraError("Нет доступа к камере. Разрешите доступ в настройках Safari.");
-      } else {
-        const reason = err?.name ? ` (${err.name})` : "";
-        setCameraError(`Не удалось запустить камеру.${reason}`);
-      }
+      const reason = err?.name ? ` (${err.name})` : "";
+      setCameraError(`Не удалось запустить камеру.${reason}`);
       await stopScanner();
     }
   }, [onScan, scannerId, stopScanner]);

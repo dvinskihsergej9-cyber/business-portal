@@ -287,6 +287,85 @@ export default function MobileTsd() {
     }
   };
 
+  const normalizeLocationToken = (value) =>
+    String(value || "")
+      .trim()
+      .toUpperCase()
+      .replace(/[^A-Z0-9А-ЯЁ]/g, "");
+
+  const findLocationByManualCode = async (code) => {
+    const raw = String(code || "").trim();
+    if (!raw) return null;
+    const res = await fetch(`${API_BASE}/warehouse/locations`, {
+      headers: authHeaders,
+    });
+    const data = await res.json().catch(() => null);
+    if (!res.ok) {
+      throw new Error(
+        normalizeErrorMessage(
+          data?.message || "Не удалось загрузить список ячеек.",
+          "Не удалось загрузить список ячеек."
+        )
+      );
+    }
+    const list = Array.isArray(data) ? data : [];
+    const rawId = Number(raw);
+    const hasRawId = Number.isFinite(rawId) && rawId > 0;
+    const token = normalizeLocationToken(raw);
+
+    const direct = list.find((loc) => {
+      const locId = Number(loc?.id);
+      const codeVal = String(loc?.code || "").trim();
+      const nameVal = String(loc?.name || "").trim();
+      return (
+        (hasRawId && locId === rawId) ||
+        codeVal === raw ||
+        nameVal === raw
+      );
+    });
+    if (direct) return direct;
+
+    if (!token) return null;
+    return (
+      list.find((loc) => {
+        const codeToken = normalizeLocationToken(loc?.code);
+        const nameToken = normalizeLocationToken(loc?.name);
+        return (
+          (codeToken &&
+            (codeToken === token || codeToken.includes(token))) ||
+          (nameToken &&
+            (nameToken === token || nameToken.includes(token)))
+        );
+      }) || null
+    );
+  };
+
+  const resolveLocationEntity = async (code) => {
+    const raw = String(code || "").trim();
+    if (!raw) throw new Error("Введите код ячейки.");
+    let resolvedType = "";
+    let lastError = null;
+    try {
+      const data = await resolveScan(raw);
+      resolvedType = data?.type || "";
+      if (resolvedType === "location") {
+        return data.entity;
+      }
+    } catch (err) {
+      lastError = err;
+    }
+
+    const fallbackLocation = await findLocationByManualCode(raw);
+    if (fallbackLocation) {
+      return fallbackLocation;
+    }
+
+    if (resolvedType && resolvedType !== "location") {
+      throw new Error("Это не ячейка.");
+    }
+    throw lastError || new Error("Ячейка не найдена.");
+  };
+
   const handleCountLocation = async (code) => {
     try {
       setCountState((prev) => ({ ...prev, loading: true, error: "" }));
@@ -823,13 +902,10 @@ export default function MobileTsd() {
   const handlePutawayTo = async (code) => {
     try {
       setPutawayState((prev) => ({ ...prev, loading: true, error: "" }));
-      const data = await resolveScan(code);
-      if (data.type !== "location") {
-        throw new Error("Это не ячейка.");
-      }
+      const location = await resolveLocationEntity(code);
       setPutawayState((prev) => ({
         ...prev,
-        to: data.entity,
+        to: location,
         step: 2,
         loading: false,
       }));
