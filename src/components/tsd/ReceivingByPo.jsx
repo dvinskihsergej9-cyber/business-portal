@@ -5,7 +5,7 @@ import Stepper from "./Stepper";
 import TsdHeader from "./TsdHeader";
 import TsdErrorAlert from "./TsdErrorAlert";
 
-const STEPS = ["Заказ", "Товары", "Подтверждение"];
+const STEPS = ["Заказ", "Товары"];
 const QUEUE_STATUS_LABELS = {
   IN_QUEUE: "В очереди",
   UNLOADING: "На разгрузке",
@@ -23,8 +23,6 @@ export default function ReceivingByPo({ authHeaders, makeOpId, onBack }) {
   const [state, setState] = useState(emptyState);
   const [poList, setPoList] = useState([]);
   const [poSearch, setPoSearch] = useState("");
-  const [itemSearch, setItemSearch] = useState("");
-  const [filterMode, setFilterMode] = useState("remaining");
   const [selectedPo, setSelectedPo] = useState(null);
   const [takingPoId, setTakingPoId] = useState(null);
   const [localAccepted, setLocalAccepted] = useState({});
@@ -110,22 +108,17 @@ export default function ReceivingByPo({ authHeaders, makeOpId, onBack }) {
     });
   }, [selectedPo, localAccepted]);
 
-  const filteredRows = useMemo(() => {
-    const query = itemSearch.trim().toLowerCase();
-    return orderRows.filter((row) => {
-      if (filterMode === "remaining" && row.remaining <= 0) return false;
-      if (filterMode === "accepted" && row.acceptedTotal <= 0) return false;
-      if (!query) return true;
-      const name = String(row.item?.name || "").toLowerCase();
-      const sku = String(row.item?.sku || "").toLowerCase();
-      const barcode = String(row.item?.barcode || "").toLowerCase();
-      return (
-        name.includes(query) ||
-        sku.includes(query) ||
-        barcode.includes(query)
-      );
-    });
-  }, [orderRows, itemSearch, filterMode]);
+  const remainingRowsCount = useMemo(
+    () => orderRows.filter((row) => row.remaining > 0).length,
+    [orderRows]
+  );
+  const canFinishReceiving = useMemo(
+    () =>
+      Boolean(selectedPo) &&
+      orderRows.length > 0 &&
+      remainingRowsCount === 0,
+    [orderRows.length, remainingRowsCount, selectedPo]
+  );
 
   const progressSummary = useMemo(() => {
     const totalLines = orderRows.length;
@@ -141,19 +134,6 @@ export default function ReceivingByPo({ authHeaders, makeOpId, onBack }) {
       qtyAccepted,
       qtyOrdered,
     };
-  }, [orderRows]);
-
-  const hasAccepted = useMemo(
-    () => orderRows.some((row) => row.localAcceptedQty > 0),
-    [orderRows]
-  );
-
-  const discrepancies = useMemo(() => {
-    return orderRows.filter(
-      (row) =>
-        row.localAcceptedQty > 0 &&
-        row.localAcceptedQty !== row.expectedRemaining
-    );
   }, [orderRows]);
 
   useEffect(() => {
@@ -204,8 +184,6 @@ export default function ReceivingByPo({ authHeaders, makeOpId, onBack }) {
     if (!selectedPo) return;
     setState((prev) => ({ ...prev, step: 1, error: "", done: false }));
     setLocalAccepted({});
-    setItemSearch("");
-    setFilterMode("remaining");
     setHighlightedItemId(null);
     setToast(null);
   }, [selectedPo]);
@@ -472,34 +450,12 @@ export default function ReceivingByPo({ authHeaders, makeOpId, onBack }) {
       if (!res.ok) {
         throw new Error(data.message || "Не удалось подтвердить приемку");
       }
-      const updatedOrder = data.order || selectedPo;
-      setSelectedPo(updatedOrder);
-      setToast({ type: "success", message: "Приемка завершена." });
-
-      const shortageRows = (updatedOrder?.items || []).filter(
-        (row) => Number(row.quantity) > Number(row.receivedQty || 0)
-      );
-
-      if (shortageRows.length > 0) {
-        try {
-          await ensureOrgProfileAndPrint(updatedOrder.id);
-        } catch (printErr) {
-          setState((prev) => ({
-            ...prev,
-            error: toUiError(
-              printErr,
-              "Не удалось сформировать акт расхождений."
-            ),
-          }));
-        }
-      }
-
       setState((prev) => ({
         ...prev,
         loading: false,
         done: true,
-        step: 2,
       }));
+      onBack?.();
 
     } catch (err) {
       setState((prev) => ({
@@ -513,8 +469,6 @@ export default function ReceivingByPo({ authHeaders, makeOpId, onBack }) {
   const resetFlow = () => {
     setSelectedPo(null);
     setLocalAccepted({});
-    setItemSearch("");
-    setFilterMode("remaining");
     setHighlightedItemId(null);
     setToast(null);
     setState(emptyState);
@@ -646,26 +600,6 @@ export default function ReceivingByPo({ authHeaders, makeOpId, onBack }) {
                 disabled={state.loading}
                 onUserAction={unlockAudio}
               />
-
-              <div className="tsd-scan-actions">
-                <button
-                  type="button"
-                  className="tsd-btn tsd-btn--primary"
-                  onClick={() => {
-                    if (!hasAccepted) {
-                      setState((prev) => ({
-                        ...prev,
-                        error: "Добавь хотя бы одну позицию.",
-                      }));
-                      return;
-                    }
-                    setState((prev) => ({ ...prev, step: 2 }));
-                  }}
-                >
-                  Далее
-                </button>
-              </div>
-
             </div>
 
             <div className="tsd-card tsd-receiving-summary">
@@ -675,50 +609,10 @@ export default function ReceivingByPo({ authHeaders, makeOpId, onBack }) {
                   Принято {progressSummary.acceptedLines} / {progressSummary.totalLines} (позиций), количество: {progressSummary.qtyAccepted} / {progressSummary.qtyOrdered}
                 </div>
               </div>
-              <div className="tsd-receiving-controls">
-                <input
-                  className="tsd-input"
-                  placeholder="Поиск по названию, SKU или штрихкоду"
-                  value={itemSearch}
-                  onChange={(event) => setItemSearch(event.target.value)}
-                />
-                <div className="tsd-receiving-filters">
-                  <button
-                    type="button"
-                    className={
-                      "tsd-chip" +
-                      (filterMode === "all" ? " tsd-chip--active" : "")
-                    }
-                    onClick={() => setFilterMode("all")}
-                  >
-                    Все
-                  </button>
-                  <button
-                    type="button"
-                    className={
-                      "tsd-chip" +
-                      (filterMode === "remaining" ? " tsd-chip--active" : "")
-                    }
-                    onClick={() => setFilterMode("remaining")}
-                  >
-                    Осталось принять
-                  </button>
-                  <button
-                    type="button"
-                    className={
-                      "tsd-chip" +
-                      (filterMode === "accepted" ? " tsd-chip--active" : "")
-                    }
-                    onClick={() => setFilterMode("accepted")}
-                  >
-                    Уже принято
-                  </button>
-                </div>
-              </div>
             </div>
 
             <div className="tsd-list">
-              {filteredRows.map((row) => (
+              {orderRows.map((row) => (
                 <div
                   key={row.itemId}
                   className={
@@ -771,25 +665,7 @@ export default function ReceivingByPo({ authHeaders, makeOpId, onBack }) {
                 </div>
               ))}
             </div>
-          </>
-        )}
-
-        {state.step === 2 && (
-          <>
-            <div className="tsd-list">
-              {orderRows.map((row) => (
-                <div key={row.itemId} className="tsd-card">
-                  <div className="tsd-card__body">
-                    <div className="tsd-card__title">{row.item?.name || `Товар #${row.itemId}`}</div>
-                    <div className="tsd-card__meta">Заказано: {row.orderedQty} ? Принято: {row.acceptedTotal} ? Осталось: {row.remaining}</div>
-                  </div>
-                </div>
-              ))}
-            </div>
-            {discrepancies.length > 0 && (
-              <div className="tsd-alert tsd-alert--error">Расхождения: {discrepancies.length} позиций.</div>
-            )}
-            {!state.done && (
+            {canFinishReceiving ? (
               <div className="tsd-action-inline">
                 <button
                   type="button"
@@ -802,25 +678,14 @@ export default function ReceivingByPo({ authHeaders, makeOpId, onBack }) {
                     : "Завершить приемку"}
                 </button>
               </div>
-            )}
-            {state.done && (
-              <div className="tsd-alert tsd-alert--success">Приемка завершена.</div>
+            ) : (
+              <div className="tsd-alert tsd-alert--info">
+                Осталось позиций к приемке: {remainingRowsCount}
+              </div>
             )}
           </>
         )}
       </div>
-
-      {state.done && (
-        <div className="tsd-action-bar">
-          <button
-            type="button"
-            className="tsd-btn tsd-btn--primary"
-            onClick={resetFlow}
-          >
-            Следующий заказ
-          </button>
-        </div>
-      )}
 
 
       {orgModalOpen && (
