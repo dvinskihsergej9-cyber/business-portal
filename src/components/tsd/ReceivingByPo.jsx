@@ -47,6 +47,7 @@ export default function ReceivingByPo({ authHeaders, makeOpId, onBack }) {
 
   const audioCtxRef = useRef(null);
   const rowRefs = useRef({});
+  const qtyInputRefs = useRef({});
   const toastTimerRef = useRef(null);
   const highlightTimerRef = useRef(null);
   const userActivatedRef = useRef(false);
@@ -324,14 +325,10 @@ export default function ReceivingByPo({ authHeaders, makeOpId, onBack }) {
         setState((prev) => ({ ...prev, loading: false }));
         return;
       }
-      setLocalAccepted((prev) => ({
-        ...prev,
-        [item.id]: (Number(prev[item.id]) || 0) + 1,
-      }));
       pulseHighlight(item.id);
       setToast({
         type: "success",
-        message: `Принято: ${item.name} +1`,
+        message: `Товар найден: ${item.name}. Укажите количество.`,
       });
       playBeepSuccess();
       safeVibrate(40);
@@ -340,6 +337,11 @@ export default function ReceivingByPo({ authHeaders, makeOpId, onBack }) {
           behavior: "smooth",
           block: "center",
         });
+        const input = qtyInputRefs.current[item.id];
+        if (input) {
+          input.focus();
+          input.select();
+        }
       }, 50);
       setState((prev) => ({ ...prev, loading: false }));
     } catch (err) {
@@ -651,12 +653,15 @@ export default function ReceivingByPo({ authHeaders, makeOpId, onBack }) {
                     {row.status}
                   </div>
                   {highlightedItemId === row.itemId && (
-                    <div className="tsd-receiving-line__pulse">+1</div>
+                    <div className="tsd-receiving-line__pulse">Найдено</div>
                   )}
                   <input
                     className="tsd-input"
                     type="number"
                     min="0"
+                    ref={(node) => {
+                      if (node) qtyInputRefs.current[row.itemId] = node;
+                    }}
                     value={row.localAcceptedQty}
                     onChange={(event) =>
                       handleQtyChange(row.itemId, Number(event.target.value))
