@@ -67,7 +67,7 @@ const COUNT_STEPS = ["Ячейка", "Товар", "Количество", "По
 const RECEIVING_STEPS = ["Товар", "Даты", "Подтверждение"];
 const BIN_STEPS = ["Ячейка", "Остатки", "Расхождения"];
 const MOVE_STEPS = ["Откуда", "Товар", "Кол-во", "Куда", "Подтверждение"];
-const PUTAWAY_STEPS = ["Товар", "Ячейка", "Подтверждение"];
+const PUTAWAY_STEPS = ["Товар", "Проверка товара", "Ячейка", "Подтверждение"];
 const REPLENISH_STEPS = ["Откуда", "Товар", "Кол-во", "Куда", "Подтверждение"];
 const PICK_STEPS = ["Ячейка", "Товар", "Кол-во", "Подтверждение"];
 
@@ -126,6 +126,7 @@ const emptyPutawayState = {
   pending: [],
   selected: null,
   selectedQty: "",
+  itemVerified: false,
   to: null,
   loading: false,
   error: "",
@@ -891,6 +892,62 @@ export default function MobileTsd() {
     }
   };
 
+  const handlePutawayItemScan = async (code) => {
+    if (!putawayState.selected?.item) {
+      setPutawayState((prev) => ({
+        ...prev,
+        error: "Сначала выберите товар для размещения.",
+      }));
+      return;
+    }
+    try {
+      setPutawayState((prev) => ({ ...prev, loading: true, error: "" }));
+      const data = await resolveScan(code);
+      if (data.type !== "item") {
+        throw new Error("Это не товар.");
+      }
+      const selectedItem = putawayState.selected.item;
+      const scannedItem = data.entity || {};
+      const selectedId = Number(selectedItem.id);
+      const scannedId = Number(scannedItem.id);
+      const selectedSku = String(selectedItem.sku || "").trim().toLowerCase();
+      const scannedSku = String(scannedItem.sku || "").trim().toLowerCase();
+      const selectedBarcode = String(selectedItem.barcode || "")
+        .trim()
+        .toLowerCase();
+      const scannedBarcode = String(scannedItem.barcode || "")
+        .trim()
+        .toLowerCase();
+
+      const idMatch =
+        Number.isFinite(selectedId) &&
+        Number.isFinite(scannedId) &&
+        selectedId === scannedId;
+      const skuMatch = selectedSku && scannedSku && selectedSku === scannedSku;
+      const barcodeMatch =
+        selectedBarcode &&
+        scannedBarcode &&
+        selectedBarcode === scannedBarcode;
+
+      if (!idMatch && !skuMatch && !barcodeMatch) {
+        throw new Error("Отсканирован не тот товар для этой позиции.");
+      }
+
+      setPutawayState((prev) => ({
+        ...prev,
+        itemVerified: true,
+        step: 2,
+        loading: false,
+      }));
+    } catch (err) {
+      setPutawayState((prev) => ({
+        ...prev,
+        error: err.message,
+        loading: false,
+      }));
+    }
+  };
+
   const handlePutawayTo = async (code) => {
     try {
       setPutawayState((prev) => ({ ...prev, loading: true, error: "" }));
@@ -898,7 +955,7 @@ export default function MobileTsd() {
       setPutawayState((prev) => ({
         ...prev,
         to: location,
-        step: 2,
+        step: 3,
         loading: false,
       }));
     } catch (err) {
@@ -916,6 +973,7 @@ export default function MobileTsd() {
       selected: line,
       selectedQty:
         line.remainingQty?.toString?.() || line.qty?.toString?.() || "",
+      itemVerified: false,
       to: null,
       done: false,
       error: "",
@@ -928,6 +986,13 @@ export default function MobileTsd() {
     const qty = Number(putawayState.selectedQty);
     if (!putawayState.selected) {
       setPutawayState((prev) => ({ ...prev, error: "Выберите товар." }));
+      return;
+    }
+    if (!putawayState.itemVerified) {
+      setPutawayState((prev) => ({
+        ...prev,
+        error: "Сначала отсканируйте выбранный товар.",
+      }));
       return;
     }
     if (!putawayState.to) {
@@ -984,7 +1049,7 @@ export default function MobileTsd() {
         pending: refreshed.ok ? refreshedData.items || [] : prev.pending,
         loading: false,
         done: true,
-        step: 2,
+        step: 3,
       }));
     } catch (err) {
       setPutawayState((prev) => ({
@@ -2030,6 +2095,7 @@ export default function MobileTsd() {
             ...prev,
             selected: null,
             selectedQty: "",
+            itemVerified: false,
             to: null,
             step: 0,
             done: false,
@@ -2103,6 +2169,21 @@ export default function MobileTsd() {
               />
             </div>
             <Scanner
+              label="Сканируй выбранный товар"
+              hint="Подтвердите, что берете именно эту позицию"
+              onScan={handlePutawayItemScan}
+              disabled={putawayState.loading}
+            />
+          </>
+        )}
+
+        {putawayState.step === 2 && (
+          <>
+            <ItemCard
+              item={putawayState.selected?.item}
+              qty={Number(putawayState.selectedQty) || 0}
+            />
+            <Scanner
               label="Сканируй ячейку-получатель"
               onScan={handlePutawayTo}
               disabled={putawayState.loading}
@@ -2121,7 +2202,7 @@ export default function MobileTsd() {
                     setPutawayState((prev) => ({
                       ...prev,
                       to: selected,
-                      step: 2,
+                      step: 3,
                       error: "",
                     }));
                   }}
@@ -2138,7 +2219,7 @@ export default function MobileTsd() {
           </>
         )}
 
-        {putawayState.step === 2 && (
+        {putawayState.step === 3 && (
           <>
             <ItemCard
               item={putawayState.selected?.item}
@@ -2154,7 +2235,7 @@ export default function MobileTsd() {
         )}
       </div>
 
-      {putawayState.step === 2 && !putawayState.done && (
+      {putawayState.step === 3 && !putawayState.done && (
         <div className="tsd-action-bar">
           <button
             type="button"
@@ -2177,6 +2258,7 @@ export default function MobileTsd() {
                 ...prev,
                 selected: null,
                 selectedQty: "",
+                itemVerified: false,
                 to: null,
                 step: 0,
                 done: false,
