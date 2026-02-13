@@ -4,6 +4,11 @@ import { useEffect, useMemo, useRef, useState, Fragment } from "react";
 
 import { API_BASE, normalizeErrorMessage } from "../apiConfig";
 import { useAuth } from "../context/AuthContext";
+import {
+  hasPermission,
+  PERMISSION_KEYS,
+  WAREHOUSE_SECTION_PERMISSION_MAP,
+} from "../utils/permissions";
 
 import PurchaseOrderModal from "../components/PurchaseOrderModal";
 
@@ -178,8 +183,9 @@ export default function Warehouse({
   const { user } = useAuth();
 
   const isWarehouseManager =
-
-    user?.role === "ADMIN" || user?.role === "ACCOUNTING";
+    user?.role === "ADMIN" ||
+    user?.role === "ACCOUNTING" ||
+    hasPermission(user, PERMISSION_KEYS.WAREHOUSE_MANAGE);
 
 
 
@@ -196,14 +202,31 @@ export default function Warehouse({
     "tsd",
   ];
 
+  const permissionAllowedSections = useMemo(
+    () =>
+      defaultSections.filter((sectionKey) =>
+        hasPermission(user, WAREHOUSE_SECTION_PERMISSION_MAP[sectionKey])
+      ),
+    [user]
+  );
+
   const sections = useMemo(() => {
-    if (Array.isArray(allowedSections) && allowedSections.length > 0) {
-      return allowedSections;
-    }
-    return defaultSections;
-  }, [allowedSections]);
+    const baseSections =
+      Array.isArray(allowedSections) && allowedSections.length > 0
+        ? allowedSections
+        : defaultSections;
+    return Array.from(new Set(baseSections)).filter((sectionKey) =>
+      permissionAllowedSections.includes(sectionKey)
+    );
+  }, [allowedSections, permissionAllowedSections]);
 
   const sectionSet = useMemo(() => new Set(sections), [sections]);
+  const canRequests = sectionSet.has("requests");
+  const canTasks = sectionSet.has("tasks");
+  const canInventory = sectionSet.has("inventory");
+  const canMovement = sectionSet.has("movement");
+  const canSuppliers = sectionSet.has("suppliers");
+  const canTmc = sectionSet.has("tmc");
 
   const [section, setSection] = useState("");
   const sectionChangedByUserRef = useRef(false);
@@ -857,23 +880,30 @@ export default function Warehouse({
   // ===== useEffects =====
 
   useEffect(() => {
-
-    loadRequests();
-
-    loadTasks();
-
-    loadInventory();
-    loadTmcStock();
+    if (canRequests) {
+      loadRequests();
+    }
+    if (canTasks) {
+      loadTasks();
+    }
+    if (canInventory || canMovement || canSuppliers) {
+      loadInventory();
+    }
+    if (canTmc || canRequests) {
+      loadTmcStock();
+    }
 
     // eslint-disable-next-line react-hooks/exhaustive-deps
-
-  }, []);
+  }, [canRequests, canTasks, canInventory, canMovement, canSuppliers, canTmc]);
 
 
 
   useEffect(() => {
 
     const loadItemsForSuggestions = async () => {
+      if (!canInventory && !canMovement && !canSuppliers) {
+        return;
+      }
 
       try {
 
@@ -909,13 +939,14 @@ export default function Warehouse({
 
     // eslint-disable-next-line react-hooks/exhaustive-deps
 
-  }, []);
+  }, [canInventory, canMovement, canSuppliers]);
 
 
 
   useEffect(() => {
 
     if (section !== "tasks") return;
+    if (!canTasks) return;
 
     loadTasks();
 
@@ -929,15 +960,16 @@ export default function Warehouse({
 
     // eslint-disable-next-line react-hooks/exhaustive-deps
 
-  }, [section]);
+  }, [section, canTasks]);
 
 
 
   useEffect(() => {
     if (section !== "requests") return;
+    if (!canRequests) return;
     loadTmcStock();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [section]);
+  }, [section, canRequests]);
 
 
 
@@ -946,6 +978,13 @@ export default function Warehouse({
     const isInventoryScope =
       section === "inventory" || section === "movement" || section === "suppliers";
     if (!isInventoryScope) return;
+    if (
+      (section === "inventory" && !canInventory) ||
+      (section === "movement" && !canMovement) ||
+      (section === "suppliers" && !canSuppliers)
+    ) {
+      return;
+    }
 
     const loadData = async () => {
       try {
@@ -964,7 +1003,7 @@ export default function Warehouse({
 
     // eslint-disable-next-line react-hooks/exhaustive-deps
 
-  }, [section]);
+  }, [section, canInventory, canMovement, canSuppliers]);
 
 
 
@@ -2273,6 +2312,16 @@ export default function Warehouse({
         </p>
 
       </div>
+
+      {sections.length === 0 && (
+        <div className="card" style={{ marginBottom: 16 }}>
+          <div className="card1c__body">
+            <div className="alert alert--danger" style={{ margin: 0 }}>
+              Нет доступных разделов склада. Обратитесь к администратору.
+            </div>
+          </div>
+        </div>
+      )}
 
 
 

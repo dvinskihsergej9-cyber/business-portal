@@ -1,5 +1,6 @@
 ﻿import { useEffect, useMemo, useState } from "react";
 import { API_BASE, normalizeErrorMessage } from "../apiConfig";
+import { useAuth } from "../context/AuthContext";
 import TsdHome from "../components/tsd/TsdHome";
 import TsdHeader from "../components/tsd/TsdHeader";
 import Stepper from "../components/tsd/Stepper";
@@ -11,6 +12,11 @@ import ReceivingByPo from "../components/tsd/ReceivingByPo";
 import TsdErrorAlert from "../components/tsd/TsdErrorAlert";
 import StockDiscrepanciesTab from "../components/StockDiscrepanciesTab";
 import "../components/tsd/tsd.css";
+import {
+  hasPermission,
+  PERMISSION_KEYS,
+  TSD_MODE_PERMISSION_MAP,
+} from "../utils/permissions";
 
 const MODES = [
   {
@@ -155,6 +161,7 @@ const emptyPickState = {
 };
 
 export default function MobileTsd() {
+  const { user } = useAuth();
   const [mode, setMode] = useState(null);
   const [countState, setCountState] = useState(emptyCountState);
   const [countLocations, setCountLocations] = useState([]);
@@ -173,6 +180,23 @@ export default function MobileTsd() {
     };
   }, []);
 
+  const canUseMode = (modeId) => {
+    const modePermission = TSD_MODE_PERMISSION_MAP[modeId];
+    if (!modePermission) return false;
+    if (!hasPermission(user, PERMISSION_KEYS.WAREHOUSE_TSD)) return false;
+    if (!hasPermission(user, modePermission)) return false;
+    if (modeId === "pick" && !hasPermission(user, PERMISSION_KEYS.WAREHOUSE_ORDERS)) {
+      return false;
+    }
+    return true;
+  };
+
+  const availableModes = useMemo(
+    () => MODES.filter((item) => canUseMode(item.id)),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [user]
+  );
+
   const makeOpId = (prefix) => {
     if (globalThis.crypto?.randomUUID) {
       return `${prefix}-${globalThis.crypto.randomUUID()}`;
@@ -190,6 +214,13 @@ export default function MobileTsd() {
     setReplenState(emptyReplenState);
     setPickState(emptyPickState);
   }, [mode]);
+
+  useEffect(() => {
+    if (!mode) return;
+    if (canUseMode(mode)) return;
+    setMode(null);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [mode, user]);
 
   useEffect(() => {
     if (!["count", "move", "putaway", "replenish"].includes(mode || "")) return;
@@ -2484,7 +2515,27 @@ export default function MobileTsd() {
   );
   const content = () => {
     if (!mode) {
-      return <TsdHome modes={MODES} onSelect={setMode} />;
+      if (!availableModes.length) {
+        return (
+          <div className="tsd-home">
+            <div className="tsd-home__header">
+              <div className="tsd-home__title">Мобильный ТСД</div>
+              <div className="tsd-home__subtitle">
+                Нет доступных режимов. Обратитесь к администратору.
+              </div>
+            </div>
+          </div>
+        );
+      }
+      return (
+        <TsdHome
+          modes={availableModes}
+          onSelect={(nextMode) => {
+            if (!canUseMode(nextMode)) return;
+            setMode(nextMode);
+          }}
+        />
+      );
     }
     if (mode === "count") return renderCount();
     if (mode === "receiving") {
@@ -2511,4 +2562,6 @@ export default function MobileTsd() {
     </div>
   );
 }
+
+
 

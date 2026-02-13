@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { NavLink, Outlet, useLocation } from "react-router-dom";
 import { useAuth } from "./context/AuthContext";
+import { hasPermission, PERMISSION_KEYS } from "./utils/permissions";
 
 export default function Layout() {
   const { user, logout } = useAuth();
@@ -11,22 +12,22 @@ export default function Layout() {
     {
       label: "\u0421\u043a\u043b\u0430\u0434",
       to: "/warehouse",
-      roles: ["EMPLOYEE", "HR", "ACCOUNTING", "ADMIN"],
+      permission: PERMISSION_KEYS.APP_WAREHOUSE,
     },
     {
       label: "\u0422\u041c\u0426 \u0438 \u0420\u041c",
       to: "/tmc",
-      roles: ["EMPLOYEE", "HR", "ACCOUNTING", "ADMIN"],
+      permission: PERMISSION_KEYS.APP_TMC,
     },
     {
       label: "\u0410\u0434\u043c\u0438\u043d\u0438\u0441\u0442\u0440\u0438\u0440\u043e\u0432\u0430\u043d\u0438\u0435",
       to: "/admin",
-      roles: ["ADMIN"],
+      permission: PERMISSION_KEYS.APP_ADMIN,
     },
   ];
 
   const allowedMenu = user
-    ? menu.filter((item) => item.roles.includes(user.role))
+    ? menu.filter((item) => hasPermission(user, item.permission))
     : [];
 
   const pageTitle = useMemo(() => {

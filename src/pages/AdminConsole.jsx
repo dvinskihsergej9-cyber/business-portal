@@ -5,6 +5,7 @@ import TenantManagement from "./TenantManagement";
 import AdminWarehousePanel from "../components/admin/AdminWarehousePanel";
 import AdminSettingsPanel from "../components/admin/AdminSettingsPanel";
 import "../components/admin/admin.css";
+import { hasPermission, PERMISSION_KEYS } from "../utils/permissions";
 
 const BASE_TABS = [
   { id: "users", label: "Пользователи" },
@@ -18,10 +19,21 @@ export default function AdminConsole({ initialTab = "users" }) {
   const { user } = useAuth();
   const isAdmin = user?.role === "ADMIN";
   const isSystemOwner = user?.isSystemOwner === true;
+  const canUsers = hasPermission(user, PERMISSION_KEYS.ADMIN_USERS);
+  const canWarehouse = hasPermission(user, PERMISSION_KEYS.ADMIN_WAREHOUSE);
+  const canSettings = hasPermission(user, PERMISSION_KEYS.ADMIN_SETTINGS);
+  const canTenants =
+    isSystemOwner && hasPermission(user, PERMISSION_KEYS.ADMIN_TENANTS);
 
   const tabs = useMemo(
-    () => (isSystemOwner ? [OWNER_TAB, ...BASE_TABS] : BASE_TABS),
-    [isSystemOwner]
+    () =>
+      [
+        canTenants ? OWNER_TAB : null,
+        canUsers ? BASE_TABS.find((item) => item.id === "users") : null,
+        canWarehouse ? BASE_TABS.find((item) => item.id === "warehouse") : null,
+        canSettings ? BASE_TABS.find((item) => item.id === "settings") : null,
+      ].filter(Boolean),
+    [canUsers, canWarehouse, canSettings, canTenants]
   );
   const initialTabId = tabs.some((tab) => tab.id === initialTab)
     ? initialTab
@@ -48,6 +60,21 @@ export default function AdminConsole({ initialTab = "users" }) {
           <div className="admin-console__card-title">Нет доступа</div>
           <div className="admin-console__card-text">
             Обратитесь к администратору за правами доступа.
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  if (!tabs.length) {
+    return (
+      <div className="admin-console">
+        <div className="admin-console__header">
+          <div>
+            <div className="admin-console__title">Администрирование</div>
+            <div className="admin-console__subtitle">
+              Нет доступных разделов админки для этого пользователя.
+            </div>
           </div>
         </div>
       </div>

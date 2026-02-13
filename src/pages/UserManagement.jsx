@@ -1,10 +1,25 @@
-import { useEffect, useState } from "react";
+﻿import { Fragment, useEffect, useMemo, useState } from "react";
 import { API_BASE, normalizeErrorMessage } from "../apiConfig";
 import { useAuth } from "../context/AuthContext";
+import {
+  PERMISSION_GROUPS,
+  PERMISSION_LABELS,
+  PERMISSION_TEMPLATES,
+} from "../utils/permissions";
 
 const API = API_BASE;
 
 const ALL_ROLES = ["EMPLOYEE", "HR", "ACCOUNTING", "WAREHOUSE", "ADMIN"];
+
+const FALLBACK_PERMISSION_CATALOG = {
+  groups: PERMISSION_GROUPS,
+  templates: PERMISSION_TEMPLATES.map((tpl) => ({
+    id: tpl.id,
+    label: tpl.label,
+    permissions: [],
+  })),
+  roleDefaults: {},
+};
 
 const mapInviteError = (code) => {
   switch (code) {
@@ -39,6 +54,8 @@ const roleLabel = (role) => {
       return "HR";
     case "ACCOUNTING":
       return "Бухгалтерия";
+    case "WAREHOUSE":
+      return "Склад";
     case "ADMIN":
       return "Админ";
     default:
@@ -46,11 +63,18 @@ const roleLabel = (role) => {
   }
 };
 
+const buildPermissionDraft = (user) => ({
+  template: user?.permissionTemplate || "ROLE_DEFAULT",
+  permissions: Array.isArray(user?.permissions) ? [...new Set(user.permissions)] : [],
+});
+
 export default function UserManagement() {
   const { user } = useAuth();
   const [users, setUsers] = useState([]);
   const [loading, setLoading] = useState(true);
   const [savingId, setSavingId] = useState(null);
+  const [permissionSavingId, setPermissionSavingId] = useState(null);
+  const [expandedUserId, setExpandedUserId] = useState(null);
   const [error, setError] = useState("");
 
   const [inviteEmail, setInviteEmail] = useState("");
@@ -61,10 +85,80 @@ export default function UserManagement() {
   const [inviteSending, setInviteSending] = useState(false);
   const [inviteResendId, setInviteResendId] = useState(null);
 
+  const [permissionCatalog, setPermissionCatalog] = useState(
+    FALLBACK_PERMISSION_CATALOG
+  );
+  const [permissionDrafts, setPermissionDrafts] = useState({});
+
   const token = localStorage.getItem("token");
   const headers = {
     "Content-Type": "application/json",
     Authorization: `Bearer ${token}`,
+  };
+
+  const roleDefaults = useMemo(() => {
+    const source = permissionCatalog?.roleDefaults || {};
+    return source && typeof source === "object" ? source : {};
+  }, [permissionCatalog]);
+
+  const templatesMap = useMemo(() => {
+    const map = new Map();
+    const templates = Array.isArray(permissionCatalog?.templates)
+      ? permissionCatalog.templates
+      : [];
+    for (const tpl of templates) {
+      map.set(tpl.id, {
+        id: tpl.id,
+        label: tpl.label || tpl.id,
+        permissions: Array.isArray(tpl.permissions)
+          ? [...new Set(tpl.permissions)]
+          : [],
+      });
+    }
+    return map;
+  }, [permissionCatalog]);
+
+  const getTemplatePermissions = (templateId, role) => {
+    if (templateId === "ROLE_DEFAULT") {
+      return Array.isArray(roleDefaults?.[role])
+        ? [...new Set(roleDefaults[role])]
+        : [];
+    }
+    const tpl = templatesMap.get(templateId);
+    return tpl ? [...tpl.permissions] : [];
+  };
+
+  const syncPermissionDrafts = (list) => {
+    const next = {};
+    for (const row of list) {
+      next[row.id] = buildPermissionDraft(row);
+    }
+    setPermissionDrafts(next);
+  };
+
+  const loadPermissionsCatalog = async () => {
+    try {
+      const res = await fetch(`${API}/users/permissions/catalog`, { headers });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        throw new Error(data.message || "Ошибка загрузки прав доступа");
+      }
+      setPermissionCatalog({
+        groups: Array.isArray(data.groups)
+          ? data.groups
+          : FALLBACK_PERMISSION_CATALOG.groups,
+        templates: Array.isArray(data.templates)
+          ? data.templates
+          : FALLBACK_PERMISSION_CATALOG.templates,
+        roleDefaults:
+          data.roleDefaults && typeof data.roleDefaults === "object"
+            ? data.roleDefaults
+            : FALLBACK_PERMISSION_CATALOG.roleDefaults,
+      });
+    } catch (e) {
+      console.error(e);
+      setPermissionCatalog(FALLBACK_PERMISSION_CATALOG);
+    }
   };
 
   const loadUsers = async () => {
@@ -76,7 +170,9 @@ export default function UserManagement() {
       if (!res.ok) {
         throw new Error(data.message || "Ошибка загрузки пользователей");
       }
-      setUsers(data);
+      const list = Array.isArray(data) ? data : [];
+      setUsers(list);
+      syncPermissionDrafts(list);
     } catch (e) {
       console.error(e);
       setError(normalizeErrorMessage(e, "Ошибка загрузки пользователей."));
@@ -104,6 +200,7 @@ export default function UserManagement() {
   };
 
   useEffect(() => {
+    loadPermissionsCatalog();
     loadUsers();
     loadInvites();
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -113,6 +210,20 @@ export default function UserManagement() {
     setUsers((prev) =>
       prev.map((u) => (u.id === id ? { ...u, role: newRole } : u))
     );
+
+    setPermissionDrafts((prev) => {
+      const existing = prev[id] || { template: "ROLE_DEFAULT", permissions: [] };
+      if (existing.template !== "ROLE_DEFAULT") {
+        return prev;
+      }
+      return {
+        ...prev,
+        [id]: {
+          template: "ROLE_DEFAULT",
+          permissions: getTemplatePermissions("ROLE_DEFAULT", newRole),
+        },
+      };
+    });
   };
 
   const handleSaveRole = async (id) => {
@@ -133,9 +244,16 @@ export default function UserManagement() {
         throw new Error(data.message || "Ошибка изменения роли");
       }
 
-      setUsers((prev) =>
-        prev.map((u) => (u.id === id ? { ...u, ...data.user } : u))
-      );
+      const nextUser = data?.user;
+      if (!nextUser) {
+        throw new Error("Сервер вернул пустые данные пользователя");
+      }
+
+      setUsers((prev) => prev.map((u) => (u.id === id ? nextUser : u)));
+      setPermissionDrafts((prev) => ({
+        ...prev,
+        [id]: buildPermissionDraft(nextUser),
+      }));
     } catch (e) {
       console.error(e);
       setError(normalizeErrorMessage(e, "Ошибка изменения роли."));
@@ -193,6 +311,86 @@ export default function UserManagement() {
     }
   };
 
+  const handleTemplateChangeLocal = (userId, templateId) => {
+    const userRow = users.find((row) => row.id === userId);
+    if (!userRow) return;
+    const basePermissions = getTemplatePermissions(templateId, userRow.role);
+    setPermissionDrafts((prev) => ({
+      ...prev,
+      [userId]: {
+        template: templateId,
+        permissions: basePermissions,
+      },
+    }));
+  };
+
+  const handleTogglePermission = (userId, permissionKey) => {
+    setPermissionDrafts((prev) => {
+      const current = prev[userId] || {
+        template: "ROLE_DEFAULT",
+        permissions: [],
+      };
+      const selected = new Set(current.permissions || []);
+      if (selected.has(permissionKey)) {
+        selected.delete(permissionKey);
+      } else {
+        selected.add(permissionKey);
+      }
+      return {
+        ...prev,
+        [userId]: {
+          ...current,
+          permissions: Array.from(selected),
+        },
+      };
+    });
+  };
+
+  const handleSavePermissions = async (userId) => {
+    const userRow = users.find((row) => row.id === userId);
+    const draft = permissionDrafts[userId];
+    if (!userRow || !draft) return;
+
+    const selected = Array.from(new Set(draft.permissions || []));
+    const basePermissions = getTemplatePermissions(draft.template, userRow.role);
+    const grants = selected.filter((key) => !basePermissions.includes(key));
+    const revokes = basePermissions.filter((key) => !selected.includes(key));
+
+    setPermissionSavingId(userId);
+    setError("");
+
+    try {
+      const res = await fetch(`${API}/users/${userId}/permissions`, {
+        method: "PUT",
+        headers,
+        body: JSON.stringify({
+          template: draft.template,
+          grants,
+          revokes,
+        }),
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        throw new Error(data.message || "Ошибка изменения прав доступа");
+      }
+      const nextUser = data?.user;
+      if (!nextUser) {
+        throw new Error("Сервер вернул пустые данные пользователя");
+      }
+
+      setUsers((prev) => prev.map((row) => (row.id === userId ? nextUser : row)));
+      setPermissionDrafts((prev) => ({
+        ...prev,
+        [userId]: buildPermissionDraft(nextUser),
+      }));
+    } catch (e) {
+      console.error(e);
+      setError(normalizeErrorMessage(e, "Ошибка изменения прав доступа."));
+    } finally {
+      setPermissionSavingId(null);
+    }
+  };
+
   if (user?.role !== "ADMIN") {
     return (
       <div style={{ padding: 24 }}>
@@ -205,7 +403,8 @@ export default function UserManagement() {
     <div className="admin-page" style={{ padding: 24 }}>
       <h1>Управление пользователями</h1>
       <p>
-        Здесь администратор может просматривать пользователей и менять их роли.
+        Здесь администратор может просматривать пользователей, менять их роли и
+        настраивать индивидуальные права доступа.
       </p>
 
       <div
@@ -348,49 +547,144 @@ export default function UserManagement() {
               </tr>
             </thead>
             <tbody>
-              {users.map((u) => (
-                <tr key={u.id}>
-                  <td data-label="ID" style={tdStyle}>
-                    {u.id}
-                  </td>
-                  <td data-label="Имя" style={tdStyle}>
-                    {u.name}
-                  </td>
-                  <td data-label="Email" style={tdStyle}>
-                    {u.email}
-                  </td>
-                  <td data-label="Роль" style={tdStyle}>
-                    <select
-                      value={u.role}
-                      onChange={(e) => handleRoleChangeLocal(u.id, e.target.value)}
-                      className="admin-select"
-                      disabled={savingId === u.id}
-                    >
-                      {ALL_ROLES.map((r) => (
-                        <option key={r} value={r}>
-                          {roleLabel(r)} ({r})
-                        </option>
-                      ))}
-                    </select>
-                  </td>
-                  <td data-label="Создан" style={tdStyle}>
-                    {u.createdAt ? new Date(u.createdAt).toLocaleString() : "-"}
-                  </td>
-                  <td
-                    data-label="Действия"
-                    style={tdStyle}
-                    className="admin-table__actions"
-                  >
-                    <button
-                      onClick={() => handleSaveRole(u.id)}
-                      disabled={savingId === u.id}
-                      className="admin-btn admin-btn--primary"
-                    >
-                      {savingId === u.id ? "Сохранение..." : "Сохранить"}
-                    </button>
-                  </td>
-                </tr>
-              ))}
+              {users.map((u) => {
+                const draft = permissionDrafts[u.id] || buildPermissionDraft(u);
+                const isExpanded = expandedUserId === u.id;
+                const selectedPermissions = Array.isArray(draft.permissions)
+                  ? draft.permissions
+                  : [];
+
+                return (
+                  <Fragment key={u.id}>
+                    <tr>
+                      <td data-label="ID" style={tdStyle}>
+                        {u.id}
+                      </td>
+                      <td data-label="Имя" style={tdStyle}>
+                        {u.name}
+                      </td>
+                      <td data-label="Email" style={tdStyle}>
+                        {u.email}
+                      </td>
+                      <td data-label="Роль" style={tdStyle}>
+                        <select
+                          value={u.role}
+                          onChange={(e) => handleRoleChangeLocal(u.id, e.target.value)}
+                          className="admin-select"
+                          disabled={savingId === u.id || u.isSystemOwner}
+                        >
+                          {ALL_ROLES.map((r) => (
+                            <option key={r} value={r}>
+                              {roleLabel(r)} ({r})
+                            </option>
+                          ))}
+                        </select>
+                      </td>
+                      <td data-label="Создан" style={tdStyle}>
+                        {u.createdAt ? new Date(u.createdAt).toLocaleString() : "-"}
+                      </td>
+                      <td
+                        data-label="Действия"
+                        style={tdStyle}
+                        className="admin-table__actions"
+                      >
+                        <button
+                          onClick={() => handleSaveRole(u.id)}
+                          disabled={savingId === u.id || u.isSystemOwner}
+                          className="admin-btn admin-btn--primary"
+                        >
+                          {savingId === u.id ? "Сохранение..." : "Сохранить роль"}
+                        </button>
+                        <button
+                          type="button"
+                          className="admin-btn admin-btn--secondary"
+                          onClick={() =>
+                            setExpandedUserId((prev) => (prev === u.id ? null : u.id))
+                          }
+                          disabled={u.isSystemOwner}
+                        >
+                          {isExpanded ? "Скрыть права" : "Права"}
+                        </button>
+                      </td>
+                    </tr>
+                    {isExpanded && (
+                      <tr>
+                        <td style={{ ...tdStyle, background: "#fafcff" }} colSpan={6}>
+                          <div style={{ display: "grid", gap: 12 }}>
+                            <div style={{ display: "flex", flexWrap: "wrap", gap: 8, alignItems: "center" }}>
+                              <select
+                                className="admin-select"
+                                value={draft.template || "ROLE_DEFAULT"}
+                                onChange={(e) =>
+                                  handleTemplateChangeLocal(u.id, e.target.value)
+                                }
+                              >
+                                {(Array.isArray(permissionCatalog.templates)
+                                  ? permissionCatalog.templates
+                                  : FALLBACK_PERMISSION_CATALOG.templates
+                                ).map((tpl) => (
+                                  <option key={tpl.id} value={tpl.id}>
+                                    {tpl.label || tpl.id}
+                                  </option>
+                                ))}
+                              </select>
+                              <button
+                                type="button"
+                                className="admin-btn admin-btn--primary"
+                                onClick={() => handleSavePermissions(u.id)}
+                                disabled={permissionSavingId === u.id}
+                              >
+                                {permissionSavingId === u.id
+                                  ? "Сохранение..."
+                                  : "Сохранить права"}
+                              </button>
+                              <span style={{ color: "#64748b", fontSize: 12 }}>
+                                Активных прав: {selectedPermissions.length}
+                              </span>
+                            </div>
+
+                            {(Array.isArray(permissionCatalog.groups)
+                              ? permissionCatalog.groups
+                              : FALLBACK_PERMISSION_CATALOG.groups
+                            ).map((group) => (
+                              <div key={group.id} style={{ display: "grid", gap: 6 }}>
+                                <div style={{ fontWeight: 600 }}>{group.label}</div>
+                                <div
+                                  style={{
+                                    display: "grid",
+                                    gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))",
+                                    gap: 6,
+                                  }}
+                                >
+                                  {(Array.isArray(group.keys) ? group.keys : []).map((key) => (
+                                    <label
+                                      key={key}
+                                      style={{
+                                        display: "flex",
+                                        alignItems: "center",
+                                        gap: 8,
+                                        fontSize: 13,
+                                        color: "#334155",
+                                      }}
+                                    >
+                                      <input
+                                        type="checkbox"
+                                        checked={selectedPermissions.includes(key)}
+                                        onChange={() => handleTogglePermission(u.id, key)}
+                                      />
+                                      <span>{PERMISSION_LABELS[key] || key}</span>
+                                    </label>
+                                  ))}
+                                </div>
+                              </div>
+                            ))}
+                          </div>
+                        </td>
+                      </tr>
+                    )}
+                  </Fragment>
+                );
+              })}
             </tbody>
           </table>
         </div>
@@ -410,3 +704,4 @@ const tdStyle = {
   padding: 8,
   borderTop: "1px solid #e5e7eb",
 };
+

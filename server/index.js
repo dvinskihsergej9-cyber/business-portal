@@ -12,6 +12,15 @@ import bwipjs from "bwip-js";
 import { AsyncLocalStorage } from "node:async_hooks";
 import { adminRoutes } from "./adminRoutes.js";
 import { createWarehouseStockService } from "./services/warehouseStockService.js";
+import {
+  getPermissionCatalog,
+  hasAnyPermission,
+  hasPermission,
+  normalizePermissionConfig,
+  PERMISSION_KEYS,
+  resolveUserPermissions,
+  stringifyPermissionConfig,
+} from "./permissions.js";
 
 // ================== ИНИЦИАЛИЗАЦИЯ ==================
 
@@ -52,6 +61,9 @@ function createToken(user) {
 }
 
 async function auth(req, res, next) {
+  if (req.user?.id) {
+    return next();
+  }
   const header = req.headers["authorization"];
   if (!header) {
     return res.status(401).json({ message: "????????? ????? ???????????." });
@@ -83,6 +95,12 @@ async function auth(req, res, next) {
       role: user.role,
       orgId: user.orgId || null,
       isSystemOwner: String(user.email || "").trim().toLowerCase() === OWNER_PRIMARY_EMAIL,
+      permissions: resolveUserPermissions({
+        role: user.role,
+        permissionsJson: user.permissionsJson,
+        isSystemOwner:
+          String(user.email || "").trim().toLowerCase() === OWNER_PRIMARY_EMAIL,
+      }),
     };
     const store = requestContext.getStore();
     if (store) {
@@ -119,6 +137,24 @@ function requireHr(req, res, next) {
       .json({ message: "HR or admin role required" });
   }
   next();
+}
+
+function requirePermission(permissionKey) {
+  return (req, res, next) => {
+    if (hasPermission(req.user, permissionKey)) {
+      return next();
+    }
+    return res.status(403).json({ message: "Нет доступа к разделу." });
+  };
+}
+
+function requireAnyPermission(permissionKeys = []) {
+  return (req, res, next) => {
+    if (hasAnyPermission(req.user, permissionKeys)) {
+      return next();
+    }
+    return res.status(403).json({ message: "Нет доступа к разделу." });
+  };
 }
 
 
@@ -665,6 +701,7 @@ async function getUserPayload(userId) {
       email: true,
       name: true,
       role: true,
+      permissionsJson: true,
       orgId: true,
       createdAt: true,
       organization: {
@@ -678,6 +715,13 @@ async function getUserPayload(userId) {
   });
 
   if (!user) return null;
+  const isSystemOwner = isOwnerEmail(user.email);
+  const permissionConfig = normalizePermissionConfig(user.permissionsJson);
+  const permissions = resolveUserPermissions({
+    role: user.role,
+    permissionsJson: user.permissionsJson,
+    isSystemOwner,
+  });
 
   const subscription = await prisma.subscription.findFirst({ where: { userId } });
   const now = new Date();
@@ -687,9 +731,17 @@ async function getUserPayload(userId) {
     subscription.paidUntil &&
     new Date(subscription.paidUntil) > now;
 
+  const { permissionsJson: _permissionsJson, ...userSafe } = user;
+
   return {
-    ...user,
-    isSystemOwner: isOwnerEmail(user.email),
+    ...userSafe,
+    permissions,
+    permissionTemplate: permissionConfig.template,
+    permissionOverrides: {
+      grants: permissionConfig.grants,
+      revokes: permissionConfig.revokes,
+    },
+    isSystemOwner,
     roles: [user.role],
     subscription: subscription
       ? {
@@ -704,6 +756,69 @@ async function getUserPayload(userId) {
   };
 }
 
+const WAREHOUSE_TSD_ANY = [
+  PERMISSION_KEYS.TSD_RECEIVING,
+  PERMISSION_KEYS.TSD_PUTAWAY,
+  PERMISSION_KEYS.TSD_MOVE,
+  PERMISSION_KEYS.TSD_COUNT,
+  PERMISSION_KEYS.TSD_BIN,
+  PERMISSION_KEYS.TSD_REPLENISH,
+  PERMISSION_KEYS.TSD_PICK,
+  PERMISSION_KEYS.TSD_DISCREPANCIES,
+];
+
+const WAREHOUSE_ROUTE_RULES = [
+  { prefix: "/requests", key: PERMISSION_KEYS.WAREHOUSE_REQUESTS },
+  { prefix: "/tasks", key: PERMISSION_KEYS.WAREHOUSE_TASKS },
+  { prefix: "/locations", key: PERMISSION_KEYS.WAREHOUSE_LOCATIONS },
+  { prefix: "/transactions", key: PERMISSION_KEYS.WAREHOUSE_TRANSACTIONS },
+  { prefix: "/revisions", key: PERMISSION_KEYS.WAREHOUSE_REVISION },
+  { prefix: "/discrepancies", key: PERMISSION_KEYS.TSD_DISCREPANCIES },
+  { prefix: "/inventory/count", key: PERMISSION_KEYS.TSD_COUNT },
+  { prefix: "/bin-audit", key: PERMISSION_KEYS.TSD_BIN },
+  { prefix: "/receiving", key: PERMISSION_KEYS.TSD_RECEIVING },
+  { prefix: "/putaway", key: PERMISSION_KEYS.TSD_PUTAWAY },
+  { prefix: "/move", key: PERMISSION_KEYS.TSD_MOVE },
+  { prefix: "/replen", key: PERMISSION_KEYS.TSD_REPLENISH },
+  { prefix: "/pick", key: PERMISSION_KEYS.TSD_PICK },
+  { prefix: "/scan/resolve", any: WAREHOUSE_TSD_ANY },
+];
+
+const denySectionAccess = (res) =>
+  res.status(403).json({ message: "Нет доступа к разделу." });
+
+app.use("/api/admin", auth, requirePermission(PERMISSION_KEYS.APP_ADMIN));
+app.use("/api/users", auth, requirePermission(PERMISSION_KEYS.ADMIN_USERS));
+app.use("/api/inventory", auth, requirePermission(PERMISSION_KEYS.WAREHOUSE_INVENTORY));
+app.use("/api/suppliers", auth, requirePermission(PERMISSION_KEYS.WAREHOUSE_SUPPLIERS));
+app.use("/api/purchase-orders", auth, requirePermission(PERMISSION_KEYS.WAREHOUSE_SUPPLIERS));
+app.use("/api/supplier-trucks", auth, requirePermission(PERMISSION_KEYS.WAREHOUSE_QUEUE));
+app.use("/api/orders", auth, requirePermission(PERMISSION_KEYS.WAREHOUSE_ORDERS));
+app.use("/api/warehouse", (req, res, next) => {
+  if (req.path.startsWith("/qr/render")) {
+    return next();
+  }
+  return auth(req, res, () => {
+    if (!hasPermission(req.user, PERMISSION_KEYS.APP_WAREHOUSE)) {
+      return denySectionAccess(res);
+    }
+
+    const match = WAREHOUSE_ROUTE_RULES.find((rule) =>
+      req.path.startsWith(rule.prefix)
+    );
+    if (!match) {
+      return next();
+    }
+
+    if (match.key && !hasPermission(req.user, match.key)) {
+      return denySectionAccess(res);
+    }
+    if (match.any && !hasAnyPermission(req.user, match.any)) {
+      return denySectionAccess(res);
+    }
+    return next();
+  });
+});
 
 app.use("/api/admin", adminRoutes({ prisma, auth, requireAdmin }));
 
@@ -1159,7 +1274,11 @@ app.post("/api/safety/assignments/:id/remind", auth, requireHr, async (req, res)
 
 function isWarehouseManager(user) {
   // кто имеет права управлять складом / закупками
-  return user?.role === "ADMIN" || user?.role === "ACCOUNTING";
+  return (
+    user?.role === "ADMIN" ||
+    user?.role === "ACCOUNTING" ||
+    hasPermission(user, PERMISSION_KEYS.WAREHOUSE_MANAGE)
+  );
 }
 
 function normalizeComparableText(value) {
@@ -2446,6 +2565,9 @@ app.post("/api/register", async (req, res) => {
           email: user.email,
           name: user.name,
           role: user.role,
+          permissions: resolveUserPermissions({ role: user.role, permissionsJson: null }),
+          permissionTemplate: "ROLE_DEFAULT",
+          permissionOverrides: { grants: [], revokes: [] },
           roles: [user.role],
           subscription: { isActive: false },
         },
@@ -2541,6 +2663,9 @@ app.post("/api/login", async (req, res) => {
           email: user.email,
           name: user.name,
           role: user.role,
+          permissions: resolveUserPermissions({ role: user.role, permissionsJson: null }),
+          permissionTemplate: "ROLE_DEFAULT",
+          permissionOverrides: { grants: [], revokes: [] },
           roles: [user.role],
           subscription: { isActive: false },
         },
@@ -2868,6 +2993,9 @@ app.get("/api/settings/org-profile", auth, async (req, res) => {
     if (req.user?.role != "ADMIN") {
       return res.status(403).json({ message: "NO_ACCESS" });
     }
+    if (!hasPermission(req.user, PERMISSION_KEYS.ADMIN_SETTINGS)) {
+      return res.status(403).json({ message: "NO_ACCESS" });
+    }
     const targetOrgId = req.user.isSystemOwner
       ? Number(req.query.orgId || req.user.orgId || 0)
       : req.user.orgId;
@@ -2887,6 +3015,9 @@ app.get("/api/settings/org-profile", auth, async (req, res) => {
 app.put("/api/settings/org-profile", auth, async (req, res) => {
   try {
     if (req.user?.role != "ADMIN") {
+      return res.status(403).json({ message: "NO_ACCESS" });
+    }
+    if (!hasPermission(req.user, PERMISSION_KEYS.ADMIN_SETTINGS)) {
       return res.status(403).json({ message: "NO_ACCESS" });
     }
     const {
@@ -2963,6 +3094,32 @@ app.post("/api/dev/make-me-admin", auth, async (req, res) => {
 
 // ================== АДМИНКА ПОЛЬЗОВАТЕЛЕЙ ==================
 
+function toManagedUserPayload(user) {
+  const isSystemOwner = isOwnerEmail(user.email);
+  const config = normalizePermissionConfig(user.permissionsJson);
+  const permissions = resolveUserPermissions({
+    role: user.role,
+    permissionsJson: user.permissionsJson,
+    isSystemOwner,
+  });
+  return {
+    id: user.id,
+    email: user.email,
+    name: user.name,
+    role: user.role,
+    orgId: user.orgId ?? null,
+    organization: user.organization || null,
+    createdAt: user.createdAt || null,
+    isSystemOwner,
+    permissions,
+    permissionTemplate: config.template,
+    permissionOverrides: {
+      grants: config.grants,
+      revokes: config.revokes,
+    },
+  };
+}
+
 app.get("/api/users", auth, requireAdmin, async (req, res) => {
   try {
     if (!req.user.isSystemOwner && !req.user.orgId) {
@@ -2979,6 +3136,7 @@ app.get("/api/users", auth, requireAdmin, async (req, res) => {
         email: true,
         name: true,
         role: true,
+        permissionsJson: true,
         orgId: true,
         organization: {
           select: {
@@ -2990,7 +3148,8 @@ app.get("/api/users", auth, requireAdmin, async (req, res) => {
         createdAt: true,
       },
     });
-    res.json(users);
+
+    res.json(users.map((item) => toManagedUserPayload(item)));
   } catch (err) {
     console.error("users list error:", err);
     res
@@ -2999,12 +3158,21 @@ app.get("/api/users", auth, requireAdmin, async (req, res) => {
   }
 });
 
+app.get("/api/users/permissions/catalog", auth, requireAdmin, async (_req, res) => {
+  try {
+    res.json(getPermissionCatalog());
+  } catch (err) {
+    console.error("permissions catalog error:", err);
+    res.status(500).json({ message: "Ошибка загрузки каталога прав." });
+  }
+});
+
 app.put("/api/users/:id/role", auth, requireAdmin, async (req, res) => {
   try {
     const id = Number(req.params.id);
     const { role } = req.body;
 
-    if (!["EMPLOYEE", "HR", "ACCOUNTING", "ADMIN"].includes(role)) {
+    if (!["EMPLOYEE", "HR", "ACCOUNTING", "WAREHOUSE", "ADMIN"].includes(role)) {
       return res.status(400).json({ message: "Недопустимая роль" });
     }
 
@@ -3022,27 +3190,109 @@ app.put("/api/users/:id/role", auth, requireAdmin, async (req, res) => {
       return res.status(403).json({ message: "Нельзя менять роль пользователя из другой организации" });
     }
 
-    const user = await prisma.user.update({
+    await prisma.user.update({
       where: { id },
       data: { role },
+    });
+    const fresh = await prisma.user.findUnique({
+      where: { id },
       select: {
         id: true,
         email: true,
         name: true,
         role: true,
+        permissionsJson: true,
         orgId: true,
+        organization: {
+          select: {
+            id: true,
+            name: true,
+            code: true,
+          },
+        },
+        createdAt: true,
       },
     });
+    if (!fresh) {
+      return res.status(404).json({ message: "Пользователь не найден" });
+    }
 
-    res.json(user);
+    res.json({ user: toManagedUserPayload(fresh) });
   } catch (err) {
     console.error("change role error:", err);
     res.status(500).json({ message: "Ошибка сервера при смене роли" });
   }
 });
 
+app.put("/api/users/:id/permissions", auth, requireAdmin, async (req, res) => {
+  try {
+    const id = Number(req.params.id);
+    if (!id || Number.isNaN(id)) {
+      return res.status(400).json({ message: "Некорректный идентификатор пользователя" });
+    }
+
+    const target = await prisma.user.findUnique({
+      where: { id },
+      select: { email: true, orgId: true },
+    });
+    if (!target) {
+      return res.status(404).json({ message: "Пользователь не найден" });
+    }
+    if (String(target.email || "").trim().toLowerCase() === OWNER_PRIMARY_EMAIL) {
+      return res.status(403).json({ message: "Системного владельца нельзя изменять" });
+    }
+    if (!req.user.isSystemOwner && target.orgId !== req.user.orgId) {
+      return res.status(403).json({ message: "Нельзя менять права пользователя из другой организации" });
+    }
+
+    const normalizedConfig = normalizePermissionConfig({
+      template: req.body?.template,
+      grants: req.body?.grants,
+      revokes: req.body?.revokes,
+    });
+
+    await prisma.user.update({
+      where: { id },
+      data: {
+        permissionsJson: stringifyPermissionConfig(normalizedConfig),
+      },
+    });
+
+    const fresh = await prisma.user.findUnique({
+      where: { id },
+      select: {
+        id: true,
+        email: true,
+        name: true,
+        role: true,
+        permissionsJson: true,
+        orgId: true,
+        organization: {
+          select: {
+            id: true,
+            name: true,
+            code: true,
+          },
+        },
+        createdAt: true,
+      },
+    });
+    if (!fresh) {
+      return res.status(404).json({ message: "Пользователь не найден" });
+    }
+
+    res.json({ user: toManagedUserPayload(fresh) });
+  } catch (err) {
+    console.error("change permissions error:", err);
+    res.status(500).json({ message: "Ошибка сервера при смене прав доступа" });
+  }
+});
+
 app.get("/api/admin/tenants", auth, requireAdmin, requireSystemOwner, async (req, res) => {
   try {
+    if (!hasPermission(req.user, PERMISSION_KEYS.ADMIN_TENANTS)) {
+      return res.status(403).json({ message: "Нет доступа к разделу." });
+    }
     const tenants = await prisma.organization.findMany({
       orderBy: { id: "asc" },
       include: {
@@ -3060,6 +3310,9 @@ app.get("/api/admin/tenants", auth, requireAdmin, requireSystemOwner, async (req
 
 app.post("/api/admin/tenants", auth, requireAdmin, requireSystemOwner, async (req, res) => {
   try {
+    if (!hasPermission(req.user, PERMISSION_KEYS.ADMIN_TENANTS)) {
+      return res.status(403).json({ message: "Нет доступа к разделу." });
+    }
     const { name, ownerEmail, ownerName, ownerPassword } = req.body || {};
     const tenantName = String(name || "").trim();
     const email = normalizeEmail(ownerEmail);
@@ -3118,6 +3371,9 @@ const INVITE_ROLES = ["EMPLOYEE", "HR", "ACCOUNTING", "WAREHOUSE", "ADMIN"];
 
 app.get("/api/admin/invites", auth, requireAdmin, async (req, res) => {
   try {
+    if (!hasPermission(req.user, PERMISSION_KEYS.ADMIN_USERS)) {
+      return res.status(403).json({ message: "Нет доступа к разделу." });
+    }
     if (!req.user.isSystemOwner && !req.user.orgId) {
       return res.status(403).json({ message: "Организация пользователя не настроена" });
     }
@@ -3162,6 +3418,9 @@ app.get("/api/admin/invites", auth, requireAdmin, async (req, res) => {
 
 app.post("/api/admin/invites", auth, requireAdmin, async (req, res) => {
   try {
+    if (!hasPermission(req.user, PERMISSION_KEYS.ADMIN_USERS)) {
+      return res.status(403).json({ message: "Нет доступа к разделу." });
+    }
     const { email, role, orgId } = req.body || {};
     const normalizedEmail = normalizeEmail(email);
     if (!normalizedEmail || !role || !INVITE_ROLES.includes(role)) {
@@ -3244,6 +3503,9 @@ app.post("/api/admin/invites", auth, requireAdmin, async (req, res) => {
 
 app.post("/api/admin/invites/:id/resend", auth, requireAdmin, async (req, res) => {
   try {
+    if (!hasPermission(req.user, PERMISSION_KEYS.ADMIN_USERS)) {
+      return res.status(403).json({ message: "Нет доступа к разделу." });
+    }
     const id = Number(req.params.id);
     if (!id || Number.isNaN(id)) {
       return res.status(400).json({ message: "BAD_INVITE_ID" });

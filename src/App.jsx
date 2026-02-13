@@ -5,8 +5,9 @@ import {
   Navigate,
   useLocation,
 } from "react-router-dom";
+import { useMemo } from "react";
 
-import { AuthProvider } from "./context/AuthContext";
+import { AuthProvider, useAuth } from "./context/AuthContext";
 import ProtectedRoute from "./components/ProtectedRoute";
 import BackgroundNetwork from "./components/BackgroundNetwork";
 
@@ -30,8 +31,14 @@ import AdminConsole from "./pages/AdminConsole";
 import Warehouse from "./pages/Warehouse";
 import TmcRm from "./pages/TmcRm";
 import MobileTsd from "./pages/MobileTsd";
+import {
+  hasPermission,
+  PERMISSION_KEYS,
+  WAREHOUSE_SECTION_PERMISSION_MAP,
+} from "./utils/permissions";
 
 function AppRoutesWithBackground() {
+  const { user } = useAuth();
   const location = useLocation();
   const path = location.pathname || "/";
 
@@ -39,6 +46,21 @@ function AppRoutesWithBackground() {
     String(import.meta.env.VITE_DISABLE_PUBLIC_REGISTER || "true") === "true";
 
   const showBackground = path === "/login" || path === "/register" || path === "/invite" || path === "/forgot-password" || path === "/reset-password";
+
+  const allowedWarehouseSections = useMemo(() => {
+    const allSections = Object.keys(WAREHOUSE_SECTION_PERMISSION_MAP);
+    if (!user) return [];
+    return allSections.filter((section) =>
+      hasPermission(user, WAREHOUSE_SECTION_PERMISSION_MAP[section])
+    );
+  }, [user]);
+
+  const defaultPrivateRoute = useMemo(() => {
+    if (hasPermission(user, PERMISSION_KEYS.APP_WAREHOUSE)) return "/warehouse";
+    if (hasPermission(user, PERMISSION_KEYS.APP_TMC)) return "/tmc";
+    if (hasPermission(user, PERMISSION_KEYS.APP_ADMIN)) return "/admin";
+    return "/403";
+  }, [user]);
 
   return (
     <>
@@ -92,32 +114,38 @@ function AppRoutesWithBackground() {
               </ProtectedRoute>
             }
           >
-            <Route index element={<Navigate to="/warehouse" replace />} />
+            <Route index element={<Navigate to={defaultPrivateRoute} replace />} />
             <Route
               path="warehouse"
               element={
-                <Warehouse
-                  allowedSections={[
-                    "tasks",
-                    "inventory",
-                    "items",
-                    "movement",
-                    "transactions",
-                    "revision",
-                    "suppliers",
-                    "locations",
-                    "queue",
-                    "tsd",
-                  ]}
-                />
+                <ProtectedRoute permissionsAny={[PERMISSION_KEYS.APP_WAREHOUSE]}>
+                  <Warehouse allowedSections={allowedWarehouseSections} />
+                </ProtectedRoute>
               }
             />
-            <Route path="warehouse/tsd" element={<MobileTsd />} />
-            <Route path="tmc" element={<TmcRm />} />
+            <Route
+              path="warehouse/tsd"
+              element={
+                <ProtectedRoute permissionsAny={[PERMISSION_KEYS.WAREHOUSE_TSD]}>
+                  <MobileTsd />
+                </ProtectedRoute>
+              }
+            />
+            <Route
+              path="tmc"
+              element={
+                <ProtectedRoute permissionsAny={[PERMISSION_KEYS.APP_TMC]}>
+                  <TmcRm />
+                </ProtectedRoute>
+              }
+            />
             <Route
               path="admin/users"
               element={
-                <ProtectedRoute roles={["ADMIN"]}>
+                <ProtectedRoute
+                  roles={["ADMIN"]}
+                  permissionsAny={[PERMISSION_KEYS.ADMIN_USERS]}
+                >
                   <AdminConsole initialTab="users" />
                 </ProtectedRoute>
               }
@@ -125,7 +153,10 @@ function AppRoutesWithBackground() {
             <Route
               path="admin/tenants"
               element={
-                <ProtectedRoute roles={["ADMIN"]}>
+                <ProtectedRoute
+                  roles={["ADMIN"]}
+                  permissionsAny={[PERMISSION_KEYS.ADMIN_TENANTS]}
+                >
                   <AdminConsole initialTab="tenants" />
                 </ProtectedRoute>
               }
@@ -133,12 +164,15 @@ function AppRoutesWithBackground() {
             <Route
               path="admin"
               element={
-                <ProtectedRoute roles={["ADMIN"]}>
+                <ProtectedRoute
+                  roles={["ADMIN"]}
+                  permissionsAny={[PERMISSION_KEYS.APP_ADMIN]}
+                >
                   <AdminConsole />
                 </ProtectedRoute>
               }
             />
-            <Route path="*" element={<Navigate to="/warehouse" replace />} />
+            <Route path="*" element={<Navigate to={defaultPrivateRoute} replace />} />
           </Route>
 
           <Route path="/403" element={<Page403 />} />
