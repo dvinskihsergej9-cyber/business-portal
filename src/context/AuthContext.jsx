@@ -47,13 +47,13 @@ export function AuthProvider({ children }) {
     })();
   }, []);
 
-  const login = async (email, password) => {
+  const login = async (loginValue, password) => {
     try {
-      const normalizedEmail = String(email || "").trim().toLowerCase();
+      const normalizedLogin = String(loginValue || "").trim().toLowerCase();
       const res = await apiFetch("/login", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ email: normalizedEmail, password }),
+        body: JSON.stringify({ login: normalizedLogin, password }),
       });
 
       const data = await res.json();

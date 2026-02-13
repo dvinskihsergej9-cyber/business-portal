@@ -6,7 +6,7 @@ export default function Login() {
   const { login } = useAuth();
   const navigate = useNavigate();
 
-  const [email, setEmail] = useState("");
+  const [loginValue, setLoginValue] = useState("");
   const [password, setPassword] = useState("");
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
@@ -16,7 +16,7 @@ export default function Login() {
     setError("");
     setLoading(true);
 
-    const res = await login(email, password);
+    const res = await login(loginValue, password);
 
     setLoading(false);
 
@@ -48,11 +48,14 @@ export default function Login() {
 
       <form onSubmit={handleSubmit}>
         <div style={{ marginBottom: 8 }}>
+          <div style={{ marginBottom: 4, fontSize: 13, color: "#374151" }}>
+            {"\u041b\u043e\u0433\u0438\u043d"}
+          </div>
           <input
-            type="email"
-            placeholder="Email"
-            value={email}
-            onChange={(e) => setEmail(e.target.value)}
+            type="text"
+            placeholder={"\u041b\u043e\u0433\u0438\u043d"}
+            value={loginValue}
+            onChange={(e) => setLoginValue(e.target.value)}
             required
             style={{ width: "100%", padding: 6, boxSizing: "border-box" }}
           />

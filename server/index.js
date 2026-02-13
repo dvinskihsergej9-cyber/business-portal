@@ -2581,37 +2581,37 @@ app.post("/api/register", async (req, res) => {
 // логин
 app.post("/api/login", async (req, res) => {
   try {
-    const { email, password } = req.body;
-    const normalizedEmail = normalizeEmail(email);
+    const { login, email, password } = req.body || {};
+    const normalizedLogin = normalizeEmail(login || email);
 
-    if (!normalizedEmail || !password) {
+    if (!normalizedLogin || !password) {
       return res
         .status(400)
-        .json({ message: "email и пароль обязательны" });
+        .json({ message: "Логин и пароль обязательны" });
     }
 
-    if (normalizedEmail === OWNER_PRIMARY_EMAIL) {
+    if (normalizedLogin === OWNER_PRIMARY_EMAIL) {
       await ensureOwnerAdminAccount();
     }
 
     let user = await prisma.user.findUnique({
-      where: { email: normalizedEmail },
+      where: { email: normalizedLogin },
     });
     if (!user) {
       const legacyRows = await prisma.$queryRaw`
         SELECT "id" FROM "User"
-        WHERE LOWER(TRIM("email")) = LOWER(${normalizedEmail})
+        WHERE LOWER(TRIM("email")) = LOWER(${normalizedLogin})
         LIMIT 1
       `;
       const legacyId = Number(legacyRows?.[0]?.id || 0);
       if (legacyId) {
         user = await prisma.user.findUnique({ where: { id: legacyId } });
-        if (user && user.email !== normalizedEmail) {
+        if (user && user.email !== normalizedLogin) {
           await prisma.user.update({
             where: { id: user.id },
-            data: { email: normalizedEmail },
+            data: { email: normalizedLogin },
           });
-          user.email = normalizedEmail;
+          user.email = normalizedLogin;
         }
       }
     }
@@ -2620,14 +2620,14 @@ app.post("/api/login", async (req, res) => {
       user.orgId = orgId || null;
     }
     if (user && user.isActive === false) {
-      console.warn(`[LOGIN_FAIL] inactive user: ${normalizedEmail}`);
+      console.warn(`[LOGIN_FAIL] inactive user: ${normalizedLogin}`);
       return res.status(403).json({ message: "USER_INACTIVE" });
     }
     if (!user) {
-      console.warn(`[LOGIN_FAIL] user not found: ${normalizedEmail}`);
+      console.warn(`[LOGIN_FAIL] user not found: ${normalizedLogin}`);
       return res
         .status(401)
-        .json({ message: "Неверный email или пароль" });
+        .json({ message: "Неверный логин или пароль" });
     }
 
     const storedHash = String(user.passwordHash || user.password || "");
@@ -2645,10 +2645,10 @@ app.post("/api/login", async (req, res) => {
       }
     }
     if (!ok) {
-      console.warn(`[LOGIN_FAIL] wrong password: ${normalizedEmail}`);
+      console.warn(`[LOGIN_FAIL] wrong password: ${normalizedLogin}`);
       return res
         .status(401)
-        .json({ message: "Неверный email или пароль" });
+        .json({ message: "Неверный логин или пароль" });
     }
 
     const token = createToken(user);
