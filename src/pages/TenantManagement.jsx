@@ -2,7 +2,10 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { apiFetch, normalizeErrorMessage } from "../apiConfig";
 import { useAuth } from "../context/AuthContext";
 const TENANT_CREDENTIALS_KEY = "bp.createdTenantCredentials.v1";
-const normalizeLoginInput = (value) =>
+const sanitizeLoginInput = (value) =>
+  String(value || "").replace(/\s+/g, "_");
+
+const normalizeLoginForSubmit = (value) =>
   String(value || "")
     .trim()
     .replace(/\s+/g, "_")
@@ -126,7 +129,7 @@ export default function TenantManagement() {
       const payload = {
         name: String(form.name || "").trim(),
         ownerName: String(form.ownerName || "").trim(),
-        ownerLogin: normalizeLoginInput(form.ownerLogin),
+        ownerLogin: normalizeLoginForSubmit(form.ownerLogin),
         ownerPassword: String(form.ownerPassword || ""),
       };
 
@@ -222,7 +225,7 @@ export default function TenantManagement() {
                 onChange={(event) =>
                   setForm((prev) => ({
                     ...prev,
-                    ownerLogin: normalizeLoginInput(event.target.value),
+                    ownerLogin: sanitizeLoginInput(event.target.value),
                   }))
                 }
                 required
