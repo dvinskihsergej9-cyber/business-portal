@@ -70,6 +70,7 @@ export const ALL_PERMISSION_KEYS = Object.freeze([
 ]);
 
 const ALL_PERMISSION_SET = new Set(ALL_PERMISSION_KEYS);
+const OWNER_ONLY_PERMISSION_SET = new Set([PERMISSION_KEYS.ADMIN_TENANTS]);
 
 const EMPLOYEE_BASE = [
   PERMISSION_KEYS.APP_WAREHOUSE,
@@ -80,7 +81,9 @@ const EMPLOYEE_BASE = [
 
 const ACCOUNTING_BASE = [...EMPLOYEE_BASE, PERMISSION_KEYS.WAREHOUSE_MANAGE];
 
-const ADMIN_BASE = [...ALL_PERMISSION_KEYS];
+const ADMIN_BASE = ALL_PERMISSION_KEYS.filter(
+  (key) => !OWNER_ONLY_PERMISSION_SET.has(key)
+);
 
 const WAREHOUSE_BASE = [
   PERMISSION_KEYS.APP_WAREHOUSE,
@@ -282,6 +285,7 @@ export function resolveUserPermissions({ role, permissionsJson, isSystemOwner = 
   const result = new Set(base);
   for (const key of config.grants) result.add(key);
   for (const key of config.revokes) result.delete(key);
+  for (const key of OWNER_ONLY_PERMISSION_SET) result.delete(key);
 
   return Array.from(result);
 }
@@ -299,24 +303,29 @@ export function hasAnyPermission(user, permissionKeys = []) {
   return permissionKeys.some((key) => hasPermission(user, key));
 }
 
-export function getPermissionCatalog() {
+export function getPermissionCatalog({ isSystemOwner = false } = {}) {
+  const filterOwnerOnly = (keys) =>
+    (Array.isArray(keys) ? keys : []).filter(
+      (key) => isSystemOwner || !OWNER_ONLY_PERMISSION_SET.has(key)
+    );
+
   return {
-    permissions: [...ALL_PERMISSION_KEYS],
+    permissions: filterOwnerOnly(ALL_PERMISSION_KEYS),
     roleDefaults: Object.fromEntries(
       Object.entries(ROLE_DEFAULT_PERMISSIONS).map(([role, keys]) => [
         role,
-        [...keys],
+        filterOwnerOnly(keys),
       ])
     ),
     groups: PERMISSION_GROUPS.map((group) => ({
       id: group.id,
       label: group.label,
-      keys: [...group.keys],
+      keys: filterOwnerOnly(group.keys),
     })),
     templates: Object.values(PERMISSION_TEMPLATES).map((tpl) => ({
       id: tpl.id,
       label: tpl.label,
-      permissions: [...tpl.permissions],
+      permissions: filterOwnerOnly(tpl.permissions),
     })),
   };
 }

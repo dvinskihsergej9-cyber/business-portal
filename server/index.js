@@ -3403,9 +3403,9 @@ app.post("/api/users", auth, requireAdmin, async (req, res) => {
   }
 });
 
-app.get("/api/users/permissions/catalog", auth, requireAdmin, async (_req, res) => {
+app.get("/api/users/permissions/catalog", auth, requireAdmin, async (req, res) => {
   try {
-    res.json(getPermissionCatalog());
+    res.json(getPermissionCatalog({ isSystemOwner: req.user?.isSystemOwner === true }));
   } catch (err) {
     console.error("permissions catalog error:", err);
     res.status(500).json({ message: "Ошибка загрузки каталога прав." });
