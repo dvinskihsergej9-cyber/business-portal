@@ -10,12 +10,26 @@ const PLANS = [
     amount: 1990,
     currency: "RUB",
     period: "30 дней",
-    description: "Полный доступ к возможностям портала на 30 дней.",
+    description: "Полный доступ к складу, мобильному ТСД и ролям сотрудников.",
+    highlight: "Популярный",
+    features: [
+      "Все складские сценарии",
+      "Доступ для сотрудников",
+      "Поддержка мобильной работы",
+    ],
   },
 ];
 
 function formatPrice(amount, currency) {
-  return `${amount} ${currency}`;
+  try {
+    return new Intl.NumberFormat("ru-RU", {
+      style: "currency",
+      currency,
+      maximumFractionDigits: 0,
+    }).format(Number(amount || 0));
+  } catch {
+    return `${amount} ${currency}`;
+  }
 }
 
 export default function Pricing() {
@@ -54,7 +68,9 @@ export default function Pricing() {
 
       const data = await res.json();
       if (!res.ok) {
-        setError(normalizeErrorMessage(data?.message || "", "Не удалось инициировать оплату."));
+        setError(
+          normalizeErrorMessage(data?.message || "", "Не удалось инициировать оплату.")
+        );
         return;
       }
 
@@ -91,7 +107,12 @@ export default function Pricing() {
       });
       const data = await res.json();
       if (!res.ok) {
-        setError(normalizeErrorMessage(data?.message || "", "Не удалось активировать пробный период."));
+        setError(
+          normalizeErrorMessage(
+            data?.message || "",
+            "Не удалось активировать пробный период."
+          )
+        );
         return;
       }
       await refreshUser();
@@ -123,6 +144,10 @@ export default function Pricing() {
 
   const subscription = user?.subscription;
   const trialAvailable = !subscription?.isActive && !subscription?.trialUsed;
+  const showTrialCard = !subscription?.isActive;
+  const paidUntilDate = subscription?.paidUntil
+    ? new Date(subscription.paidUntil).toLocaleDateString("ru-RU")
+    : "—";
 
   const handleRefresh = async () => {
     await refreshUser();
@@ -130,94 +155,144 @@ export default function Pricing() {
   };
 
   return (
-    <div className="page">
-      <div className="page-header">
-        <h1 className="page-title">Тарифы</h1>
-        <p className="page-subtitle">
-          Оплата выполняется на уровне клиента и распространяется на всех сотрудников.
+    <div className="page pricing-modern">
+      <section className="pricing-modern__hero">
+        <span className="pricing-modern__pill">SaaS-подписка</span>
+        <h1 className="pricing-modern__title">Доступ к порталу для всей вашей команды</h1>
+        <p className="pricing-modern__subtitle">
+          Один платёж на организацию. Все сотрудники вашего бизнеса получают доступ по выданным правам.
         </p>
-      </div>
+        <div className="pricing-modern__stats">
+          <div className="pricing-modern__stat">
+            <div className="pricing-modern__stat-value">30 дней</div>
+            <div className="pricing-modern__stat-label">пробный период</div>
+          </div>
+          <div className="pricing-modern__stat">
+            <div className="pricing-modern__stat-value">1 тариф</div>
+            <div className="pricing-modern__stat-label">без скрытых опций</div>
+          </div>
+          <div className="pricing-modern__stat">
+            <div className="pricing-modern__stat-value">24/7</div>
+            <div className="pricing-modern__stat-label">доступ к данным</div>
+          </div>
+        </div>
+      </section>
 
       {!canManageBilling && (
-        <div className="card" style={{ marginBottom: 16 }}>
-          <strong>Доступом управляет администратор</strong>
-          <div style={{ marginTop: 6 }}>
-            Обратитесь к администратору вашей компании для продления доступа.
-          </div>
+        <div className="pricing-modern__notice">
+          Оплату и запуск пробного периода выполняет администратор вашей компании.
         </div>
       )}
 
       {subscription?.isActive && (
-        <div className="card" style={{ marginBottom: 16 }}>
-          <strong>Подписка активна</strong>
+        <section className="pricing-modern__active">
           <div>
-            Оплачено до: {subscription.paidUntil
-              ? new Date(subscription.paidUntil).toLocaleDateString("ru-RU")
-              : "—"}
+            <div className="pricing-modern__active-title">Подписка активна</div>
+            <div className="pricing-modern__active-subtitle">Оплачено до: {paidUntilDate}</div>
           </div>
-          <button className="btn" onClick={handleRefresh} style={{ marginTop: 8 }}>
+          <button className="btn" onClick={handleRefresh}>
             Обновить статус
           </button>
-        </div>
+        </section>
       )}
 
-      {error && (
-        <div className="card" style={{ borderColor: "#ef4444", color: "#b91c1c" }}>
-          {error}
-        </div>
-      )}
+      {error && <div className="alert alert--error pricing-modern__alert">{error}</div>}
 
-      {trialAvailable && (
-        <div className="card" style={{ marginBottom: 16 }}>
-          <strong>Бесплатный пробный период</strong>
-          <div style={{ marginTop: 6 }}>
-            Можно активировать один раз на 30 дней.
-          </div>
-          <button
-            className="btn primary"
-            onClick={handleStartTrial}
-            disabled={loading || !canManageBilling}
-            style={{ marginTop: 10 }}
-          >
-            {loading ? "Активируем..." : "Попробовать бесплатно 30 дней"}
-          </button>
-        </div>
-      )}
-
-      <div className="card" style={{ display: "grid", gap: 16 }}>
-        {PLANS.map((plan) => (
-          <div key={plan.id} style={{ display: "grid", gap: 8 }}>
-            <div style={{ fontSize: 18, fontWeight: 600 }}>{plan.title}</div>
-            <div style={{ fontSize: 14, color: "#6b7280" }}>{plan.description}</div>
-            <div style={{ fontSize: 20 }}>
-              {formatPrice(plan.amount, plan.currency)} / {plan.period}
+      <section className="pricing-modern__grid">
+        {showTrialCard && (
+          <article className="pricing-modern__card pricing-modern__card--trial">
+            <div className="pricing-modern__card-head">
+              <h2>Пробный период</h2>
+              <span className="pricing-modern__badge">Бесплатно</span>
             </div>
-            <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+            <p>Один раз на 30 дней. Полный функционал без ограничений.</p>
+            <ul className="pricing-modern__list">
+              <li>Склад и мобильный ТСД</li>
+              <li>Права сотрудников</li>
+              <li>Заказы, приёмка, отбор, размещение</li>
+            </ul>
+            <button
+              className="btn primary pricing-modern__cta"
+              onClick={handleStartTrial}
+              disabled={loading || !canManageBilling || !trialAvailable}
+            >
+              {loading ? "Активируем..." : "Начать 30 дней бесплатно"}
+            </button>
+            {!trialAvailable && (
+              <div className="pricing-modern__hint">
+                Пробный период уже использован. Выберите оплату тарифа ниже.
+              </div>
+            )}
+          </article>
+        )}
+
+        {PLANS.map((plan) => (
+          <article key={plan.id} className="pricing-modern__card pricing-modern__card--plan">
+            <div className="pricing-modern__card-head">
+              <h2>{plan.title}</h2>
+              <span className="pricing-modern__badge pricing-modern__badge--accent">
+                {plan.highlight}
+              </span>
+            </div>
+            <p>{plan.description}</p>
+            <div className="pricing-modern__price-row">
+              <span className="pricing-modern__price">{formatPrice(plan.amount, plan.currency)}</span>
+              <span className="pricing-modern__period">/ {plan.period}</span>
+            </div>
+            <ul className="pricing-modern__list">
+              {plan.features.map((feature) => (
+                <li key={feature}>{feature}</li>
+              ))}
+            </ul>
+            <div className="pricing-modern__actions">
               <button
-                className="btn primary"
+                className="btn primary pricing-modern__cta"
                 onClick={() => handlePay(plan.id, "sbp")}
                 disabled={loading || billingLoading || !billingReady || !canManageBilling}
               >
-                {loading && loadingMethod === "sbp"
-                  ? "Переходим к оплате..."
-                  : billingReady
-                    ? "Оплатить по СБП"
-                    : "Оплата будет доступна после настройки"}
+                {loading && loadingMethod === "sbp" ? "Переход к оплате..." : "Оплатить по СБП"}
               </button>
               <button
-                className="btn"
+                className="btn pricing-modern__cta pricing-modern__cta--ghost"
                 onClick={() => handlePay(plan.id, "default")}
                 disabled={loading || billingLoading || !billingReady || !canManageBilling}
               >
-                {loading && loadingMethod === "default"
-                  ? "Переходим к оплате..."
-                  : billingReady
-                    ? "Оплатить картой"
-                    : "Оплата будет доступна после настройки"}
+                {loading && loadingMethod === "default" ? "Переход к оплате..." : "Оплатить картой"}
               </button>
             </div>
-          </div>
+            {!billingReady && (
+              <div className="pricing-modern__hint">
+                Платежи будут доступны после подключения YooKassa.
+              </div>
+            )}
+          </article>
         ))}
+      </section>
+
+      <section className="pricing-modern__trust">
+        <div>Безопасная оплата через YooKassa</div>
+        <div>Доступ управляется на уровне компании</div>
+        <div>Отмена продления через администратора</div>
+      </section>
+
+      <section className="pricing-modern__faq">
+        <h3>Частые вопросы</h3>
+        <details>
+          <summary>Кто должен оплачивать доступ?</summary>
+          <p>Оплату выполняет администратор клиента. После оплаты доступ получают его сотрудники.</p>
+        </details>
+        <details>
+          <summary>Сотрудник может сам оплатить тариф?</summary>
+          <p>Нет, сотрудник видит страницу, но оплату и trial запускает только администратор компании.</p>
+        </details>
+        <details>
+          <summary>Что будет после окончания подписки?</summary>
+          <p>Доступ к рабочим разделам будет ограничен до продления подписки.</p>
+        </details>
+      </section>
+
+      <div className="pricing-modern__footnote">
+        Нажимая кнопку оплаты, вы подтверждаете согласие с условиями оферты и политики конфиденциальности.
       </div>
     </div>
   );
