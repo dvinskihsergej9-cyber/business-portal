@@ -1,4 +1,4 @@
-﻿import { Fragment, useEffect, useMemo, useState } from "react";
+﻿import { Fragment, useEffect, useMemo, useRef, useState } from "react";
 import { API_BASE, normalizeErrorMessage } from "../apiConfig";
 import { useAuth } from "../context/AuthContext";
 import {
@@ -61,12 +61,11 @@ function generatePassword(length = 12) {
   const lower = "abcdefghijkmnopqrstuvwxyz";
   const upper = "ABCDEFGHJKLMNPQRSTUVWXYZ";
   const digits = "23456789";
-  const symbols = "!@#$%";
-  const all = `${lower}${upper}${digits}${symbols}`;
+  const all = `${lower}${upper}${digits}`;
 
   const pick = (src) => src[Math.floor(Math.random() * src.length)];
 
-  const chars = [pick(lower), pick(upper), pick(digits), pick(symbols)];
+  const chars = [pick(lower), pick(upper), pick(digits)];
   while (chars.length < length) {
     chars.push(pick(all));
   }
@@ -96,6 +95,7 @@ export default function UserManagement() {
   const [createSaving, setCreateSaving] = useState(false);
   const [createError, setCreateError] = useState("");
   const [createSuccess, setCreateSuccess] = useState("");
+  const createErrorRef = useRef(null);
   const [newUser, setNewUser] = useState({
     name: "",
     login: "",
@@ -225,6 +225,13 @@ export default function UserManagement() {
     loadUsers();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+  useEffect(() => {
+    if (!createError) return;
+    const node = createErrorRef.current;
+    if (!node) return;
+    node.scrollIntoView({ behavior: "smooth", block: "center" });
+  }, [createError]);
 
   const handleCreateRoleChange = (nextRole) => {
     setNewUser((prev) => ({
@@ -482,7 +489,7 @@ export default function UserManagement() {
         <div className="admin-invite-grid">
           <input
             type="text"
-            placeholder="Имя"
+            placeholder="ФИО"
             value={newUser.name}
             onChange={(e) =>
               setNewUser((prev) => ({ ...prev, name: e.target.value }))
@@ -591,6 +598,7 @@ export default function UserManagement() {
 
         {createError && (
           <div
+            ref={createErrorRef}
             style={{
               marginTop: 10,
               padding: 8,
@@ -815,3 +823,4 @@ const tdStyle = {
   padding: 8,
   borderTop: "1px solid #e5e7eb",
 };
+
