@@ -86,7 +86,10 @@ export const normalizeErrorMessage = (err, fallback = "Ошибка запрос
   if (message === "TENANTS_LIST_ERROR") return "Ошибка загрузки списка клиентов.";
   if (message === "TENANT_CREATE_ERROR") return "Не удалось создать клиента.";
   if (message === "BAD_TENANT_PAYLOAD") {
-    return "Заполните название компании, email владельца и пароль (не короче 8 символов).";
+    return "Заполните название компании, логин владельца и пароль (не короче 8 символов).";
+  }
+  if (message === "USERNAME_ALREADY_EXISTS") {
+    return "Логин уже занят.";
   }
   if (message === "OWNER_EMAIL_RESERVED") {
     return "Этот email зарезервирован для владельца платформы.";

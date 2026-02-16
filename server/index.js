@@ -3384,7 +3384,13 @@ app.post("/api/users", auth, requireAdmin, async (req, res) => {
       },
     });
 
-    res.status(201).json({ ok: true, user: toManagedUserPayload(created) });
+    res.status(201).json({
+      ok: true,
+      user: {
+        ...toManagedUserPayload(created),
+        initialPassword: normalizedPassword,
+      },
+    });
   } catch (err) {
     if (String(err?.code || "") === "P2002") {
       return res.status(400).json({ message: "USERNAME_ALREADY_EXISTS" });
@@ -3537,9 +3543,29 @@ app.get("/api/admin/tenants", auth, requireAdmin, requireSystemOwner, async (req
         _count: {
           select: { users: true, invites: true },
         },
+        users: {
+          where: { role: "ADMIN" },
+          orderBy: { id: "asc" },
+          take: 1,
+          select: {
+            id: true,
+            name: true,
+            username: true,
+            email: true,
+          },
+        },
       },
     });
-    res.json({ items: tenants });
+    const items = tenants.map(({ users, ...tenant }) => {
+      const admin = Array.isArray(users) ? users[0] : null;
+      return {
+        ...tenant,
+        adminUserId: admin?.id || null,
+        adminName: admin?.name || null,
+        adminLogin: admin?.username || admin?.email || null,
+      };
+    });
+    res.json({ items });
   } catch (err) {
     console.error("tenants list error:", err);
     res.status(500).json({ message: "TENANTS_LIST_ERROR" });
@@ -3551,22 +3577,41 @@ app.post("/api/admin/tenants", auth, requireAdmin, requireSystemOwner, async (re
     if (!hasPermission(req.user, PERMISSION_KEYS.ADMIN_TENANTS)) {
       return res.status(403).json({ message: "Нет доступа к разделу." });
     }
-    const { name, ownerEmail, ownerName, ownerPassword } = req.body || {};
+    const { name, ownerLogin, ownerName, ownerPassword } = req.body || {};
     const tenantName = String(name || "").trim();
-    const email = normalizeEmail(ownerEmail);
+    const normalizedLogin = normalizeLogin(ownerLogin);
     const adminName = String(ownerName || "").trim() || "Администратор";
     const password = String(ownerPassword || "");
 
-    if (!tenantName || !email || !password || password.length < 8) {
+    if (!tenantName || !normalizedLogin || !password || password.length < 8) {
       return res.status(400).json({ message: "BAD_TENANT_PAYLOAD" });
     }
-    if (isOwnerEmail(email)) {
+    if (!isValidUsername(normalizedLogin)) {
+      return res.status(400).json({
+        message:
+          "Логин должен быть 3-32 символа: буквы, цифры, точка, дефис или подчёркивание.",
+      });
+    }
+
+    const existingByUsername = await prisma.user.findUnique({
+      where: { username: normalizedLogin },
+      select: { id: true },
+    });
+    if (existingByUsername) {
+      return res.status(400).json({ message: "USERNAME_ALREADY_EXISTS" });
+    }
+
+    const technicalEmail = buildTechnicalEmailByUsername(normalizedLogin);
+    if (isOwnerEmail(technicalEmail)) {
       return res.status(400).json({ message: "OWNER_EMAIL_RESERVED" });
     }
 
-    const existingUser = await prisma.user.findUnique({ where: { email } });
-    if (existingUser) {
-      return res.status(400).json({ message: "EMAIL_ALREADY_EXISTS" });
+    const existingByEmail = await prisma.user.findUnique({
+      where: { email: technicalEmail },
+      select: { id: true },
+    });
+    if (existingByEmail) {
+      return res.status(400).json({ message: "USERNAME_ALREADY_EXISTS" });
     }
 
     const tenant = await prisma.organization.create({
@@ -3580,7 +3625,8 @@ app.post("/api/admin/tenants", auth, requireAdmin, requireSystemOwner, async (re
     const hash = await bcrypt.hash(password, 10);
     const adminUser = await prisma.user.create({
       data: {
-        email,
+        email: technicalEmail,
+        username: normalizedLogin,
         password: hash,
         passwordHash: hash,
         name: adminName,
@@ -3592,14 +3638,26 @@ app.post("/api/admin/tenants", auth, requireAdmin, requireSystemOwner, async (re
       select: {
         id: true,
         email: true,
+        username: true,
         name: true,
         role: true,
         orgId: true,
       },
     });
 
-    res.json({ ok: true, tenant, user: adminUser });
+    res.json({
+      ok: true,
+      tenant,
+      user: {
+        ...adminUser,
+        login: adminUser.username || adminUser.email,
+        initialPassword: password,
+      },
+    });
   } catch (err) {
+    if (String(err?.code || "") === "P2002") {
+      return res.status(400).json({ message: "USERNAME_ALREADY_EXISTS" });
+    }
     console.error("tenant create error:", err);
     res.status(500).json({ message: "TENANT_CREATE_ERROR" });
   }

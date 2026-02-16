@@ -96,6 +96,9 @@ export default function UserManagement() {
   const [createError, setCreateError] = useState("");
   const [createSuccess, setCreateSuccess] = useState("");
   const createErrorRef = useRef(null);
+  const [createdPasswords, setCreatedPasswords] = useState({});
+  const [pendingScrollUserId, setPendingScrollUserId] = useState(null);
+  const userRowRefs = useRef({});
   const [newUser, setNewUser] = useState({
     name: "",
     login: "",
@@ -233,6 +236,14 @@ export default function UserManagement() {
     node.scrollIntoView({ behavior: "smooth", block: "center" });
   }, [createError]);
 
+  useEffect(() => {
+    if (!pendingScrollUserId) return;
+    const node = userRowRefs.current[pendingScrollUserId];
+    if (!node) return;
+    node.scrollIntoView({ behavior: "smooth", block: "center" });
+    setPendingScrollUserId(null);
+  }, [users, pendingScrollUserId]);
+
   const handleCreateRoleChange = (nextRole) => {
     setNewUser((prev) => ({
       ...prev,
@@ -322,9 +333,22 @@ export default function UserManagement() {
         throw new Error(data.message || "Ошибка создания сотрудника");
       }
 
-      setCreateSuccess(`Сотрудник с логином "${login}" создан.`);
+      const createdUserId = data?.user?.id || null;
+      const createdLogin = data?.user?.login || login;
+      const createdPassword = data?.user?.initialPassword || password;
+      if (createdUserId) {
+        setCreatedPasswords((prev) => ({
+          ...prev,
+          [createdUserId]: createdPassword,
+        }));
+      }
+
+      setCreateSuccess(
+        `Сотрудник "${createdLogin}" создан. Пароль: ${createdPassword}`
+      );
       resetCreateForm();
       await loadUsers();
+      if (createdUserId) setPendingScrollUserId(createdUserId);
     } catch (e) {
       console.error(e);
       const raw = normalizeErrorMessage(e, "Ошибка создания сотрудника.");
@@ -658,6 +682,7 @@ export default function UserManagement() {
                 <th style={thStyle}>ID</th>
                 <th style={thStyle}>Имя</th>
                 <th style={thStyle}>Логин</th>
+                <th style={thStyle}>Пароль</th>
                 <th style={thStyle}>Роль</th>
                 <th style={thStyle}>Создан</th>
                 <th style={thStyle}></th>
@@ -673,7 +698,11 @@ export default function UserManagement() {
 
                 return (
                   <Fragment key={u.id}>
-                    <tr>
+                    <tr
+                      ref={(node) => {
+                        if (node) userRowRefs.current[u.id] = node;
+                      }}
+                    >
                       <td data-label="ID" style={tdStyle}>
                         {u.id}
                       </td>
@@ -682,6 +711,9 @@ export default function UserManagement() {
                       </td>
                       <td data-label="Логин" style={tdStyle}>
                         {u.login || u.username || u.email}
+                      </td>
+                      <td data-label="Пароль" style={tdStyle}>
+                        {createdPasswords[u.id] || "-"}
                       </td>
                       <td data-label="Роль" style={tdStyle}>
                         <select
@@ -726,7 +758,7 @@ export default function UserManagement() {
                     </tr>
                     {isExpanded && (
                       <tr>
-                        <td style={{ ...tdStyle, background: "#fafcff" }} colSpan={6}>
+                        <td style={{ ...tdStyle, background: "#fafcff" }} colSpan={7}>
                           <div style={{ display: "grid", gap: 12 }}>
                             <div
                               style={{

@@ -1,11 +1,11 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { apiFetch, normalizeErrorMessage } from "../apiConfig";
 import { useAuth } from "../context/AuthContext";
 
 const EMPTY_FORM = {
   name: "",
   ownerName: "",
-  ownerEmail: "",
+  ownerLogin: "",
   ownerPassword: "",
 };
 
@@ -38,6 +38,9 @@ export default function TenantManagement() {
   const [error, setError] = useState("");
   const [success, setSuccess] = useState("");
   const [form, setForm] = useState(EMPTY_FORM);
+  const [tenantCredentials, setTenantCredentials] = useState({});
+  const [pendingScrollTenantId, setPendingScrollTenantId] = useState(null);
+  const tenantRowRefs = useRef({});
 
   const token = localStorage.getItem("token");
   const headers = useMemo(
@@ -71,6 +74,14 @@ export default function TenantManagement() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isSystemOwner]);
 
+  useEffect(() => {
+    if (!pendingScrollTenantId) return;
+    const node = tenantRowRefs.current[pendingScrollTenantId];
+    if (!node) return;
+    node.scrollIntoView({ behavior: "smooth", block: "center" });
+    setPendingScrollTenantId(null);
+  }, [items, pendingScrollTenantId]);
+
   const updateField = (field) => (event) => {
     setForm((prev) => ({ ...prev, [field]: event.target.value }));
   };
@@ -88,7 +99,7 @@ export default function TenantManagement() {
       const payload = {
         name: String(form.name || "").trim(),
         ownerName: String(form.ownerName || "").trim(),
-        ownerEmail: String(form.ownerEmail || "").trim().toLowerCase(),
+        ownerLogin: String(form.ownerLogin || "").trim(),
         ownerPassword: String(form.ownerPassword || ""),
       };
 
@@ -102,11 +113,25 @@ export default function TenantManagement() {
         throw new Error(data.message || "TENANT_CREATE_ERROR");
       }
 
+      const createdTenantId = data?.tenant?.id || null;
+      const createdLogin = data?.user?.login || payload.ownerLogin;
+      const createdPassword = data?.user?.initialPassword || payload.ownerPassword;
+      if (createdTenantId) {
+        setTenantCredentials((prev) => ({
+          ...prev,
+          [createdTenantId]: {
+            login: createdLogin,
+            password: createdPassword,
+          },
+        }));
+      }
+
       setForm(EMPTY_FORM);
       setSuccess(
-        `Клиент "${data?.tenant?.name || payload.name}" создан. Логин администратора: ${data?.user?.email || payload.ownerEmail}`
+        `Клиент "${data?.tenant?.name || payload.name}" создан. Логин: ${createdLogin}. Пароль: ${createdPassword}`
       );
       await loadTenants();
+      if (createdTenantId) setPendingScrollTenantId(createdTenantId);
     } catch (err) {
       setError(normalizeErrorMessage(err, "Не удалось создать клиента."));
     } finally {
@@ -161,13 +186,13 @@ export default function TenantManagement() {
           </div>
           <div className="admin-form__row">
             <div>
-              <label className="admin-label">Email администратора</label>
+              <label className="admin-label">Логин администратора</label>
               <input
                 className="admin-input"
-                type="email"
-                placeholder="admin@client.ru"
-                value={form.ownerEmail}
-                onChange={updateField("ownerEmail")}
+                type="text"
+                placeholder="Например: клиент_админ"
+                value={form.ownerLogin}
+                onChange={updateField("ownerLogin")}
                 required
               />
             </div>
@@ -232,6 +257,8 @@ export default function TenantManagement() {
                   <th>ID</th>
                   <th>Компания</th>
                   <th>Код клиента</th>
+                  <th>Логин администратора</th>
+                  <th>Пароль</th>
                   <th>Пользователей</th>
                   <th>Инвайтов</th>
                   <th>Создано</th>
@@ -239,10 +266,21 @@ export default function TenantManagement() {
               </thead>
               <tbody>
                 {items.map((item) => (
-                  <tr key={item.id}>
+                  <tr
+                    key={item.id}
+                    ref={(node) => {
+                      if (node) tenantRowRefs.current[item.id] = node;
+                    }}
+                  >
                     <td data-label="ID">{item.id}</td>
                     <td data-label="Компания">{item.name || "-"}</td>
                     <td data-label="Код клиента">{item.code || "-"}</td>
+                    <td data-label="Логин администратора">
+                      {tenantCredentials[item.id]?.login || item.adminLogin || "-"}
+                    </td>
+                    <td data-label="Пароль">
+                      {tenantCredentials[item.id]?.password || "-"}
+                    </td>
                     <td data-label="Пользователей">{item?._count?.users || 0}</td>
                     <td data-label="Инвайтов">{item?._count?.invites || 0}</td>
                     <td data-label="Создано">
