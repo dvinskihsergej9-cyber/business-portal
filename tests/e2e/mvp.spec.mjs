@@ -7,7 +7,7 @@ const EMPLOYEE_PASSWORD = process.env.E2E_EMPLOYEE_PASSWORD || "Test12345!";
 
 async function login(page, email, password) {
   await page.goto("/login");
-  await page.getByPlaceholder("Email").fill(email);
+  await page.getByPlaceholder("\u041b\u043e\u0433\u0438\u043d").fill(email);
   await page.getByPlaceholder("Пароль").fill(password);
   await page.getByRole("button", { name: "Войти" }).click();
   await expect(page).toHaveURL(/\/warehouse/);

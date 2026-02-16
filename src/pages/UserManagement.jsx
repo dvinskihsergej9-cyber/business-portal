@@ -8,7 +8,6 @@ import {
 } from "../utils/permissions";
 
 const API = API_BASE;
-
 const ALL_ROLES = ["EMPLOYEE", "HR", "ACCOUNTING", "WAREHOUSE", "ADMIN"];
 
 const FALLBACK_PERMISSION_CATALOG = {
@@ -21,30 +20,7 @@ const FALLBACK_PERMISSION_CATALOG = {
   roleDefaults: {},
 };
 
-const mapInviteError = (code) => {
-  switch (code) {
-    case "INVITE_EMAIL_REQUIRED":
-      return "Укажите почту";
-    case "BAD_INVITE":
-      return "Неверные данные";
-    case "EMAIL_ALREADY_EXISTS":
-      return "Почта уже занята";
-    case "INVITE_RATE_LIMIT":
-      return "Превышена частота отправки";
-    case "INVITE_GLOBAL_LIMIT":
-      return "Превышен общий лимит отправок";
-    case "INVITE_NOT_FOUND":
-      return "Приглашение не найдено";
-    case "INVITE_SEND_ERROR":
-      return "Не удалось отправить приглашение";
-    case "INVITE_RESEND_ERROR":
-      return "Не удалось переотправить приглашение";
-    case "INVITES_LOAD_ERROR":
-      return "Ошибка загрузки приглашений";
-    default:
-      return code;
-  }
-};
+const LOGIN_PATTERN = /^[a-z0-9._-]{3,32}$/;
 
 const roleLabel = (role) => {
   switch (role) {
@@ -63,10 +39,45 @@ const roleLabel = (role) => {
   }
 };
 
+const mapCreateUserError = (code) => {
+  switch (code) {
+    case "USERNAME_ALREADY_EXISTS":
+      return "Такой логин уже занят.";
+    case "ORG_REQUIRED":
+      return "Организация не настроена.";
+    case "ORG_NOT_FOUND":
+      return "Организация не найдена.";
+    default:
+      return code;
+  }
+};
+
 const buildPermissionDraft = (user) => ({
   template: user?.permissionTemplate || "ROLE_DEFAULT",
   permissions: Array.isArray(user?.permissions) ? [...new Set(user.permissions)] : [],
 });
+
+function generatePassword(length = 12) {
+  const lower = "abcdefghijkmnopqrstuvwxyz";
+  const upper = "ABCDEFGHJKLMNPQRSTUVWXYZ";
+  const digits = "23456789";
+  const symbols = "!@#$%";
+  const all = `${lower}${upper}${digits}${symbols}`;
+
+  const pick = (src) => src[Math.floor(Math.random() * src.length)];
+
+  const chars = [pick(lower), pick(upper), pick(digits), pick(symbols)];
+  while (chars.length < length) {
+    chars.push(pick(all));
+  }
+
+  for (let i = chars.length - 1; i > 0; i -= 1) {
+    const j = Math.floor(Math.random() * (i + 1));
+    [chars[i], chars[j]] = [chars[j], chars[i]];
+  }
+
+  return chars.join("");
+}
 
 export default function UserManagement() {
   const { user } = useAuth();
@@ -77,18 +88,22 @@ export default function UserManagement() {
   const [expandedUserId, setExpandedUserId] = useState(null);
   const [error, setError] = useState("");
 
-  const [inviteEmail, setInviteEmail] = useState("");
-  const [inviteRole, setInviteRole] = useState("EMPLOYEE");
-  const [invites, setInvites] = useState([]);
-  const [invitesLoading, setInvitesLoading] = useState(true);
-  const [invitesError, setInvitesError] = useState("");
-  const [inviteSending, setInviteSending] = useState(false);
-  const [inviteResendId, setInviteResendId] = useState(null);
-
   const [permissionCatalog, setPermissionCatalog] = useState(
     FALLBACK_PERMISSION_CATALOG
   );
   const [permissionDrafts, setPermissionDrafts] = useState({});
+
+  const [createSaving, setCreateSaving] = useState(false);
+  const [createError, setCreateError] = useState("");
+  const [createSuccess, setCreateSuccess] = useState("");
+  const [newUser, setNewUser] = useState({
+    name: "",
+    login: "",
+    password: "",
+    role: "EMPLOYEE",
+    template: "ROLE_DEFAULT",
+    permissions: [],
+  });
 
   const token = localStorage.getItem("token");
   const headers = {
@@ -136,6 +151,17 @@ export default function UserManagement() {
     setPermissionDrafts(next);
   };
 
+  const resetCreateForm = () => {
+    setNewUser({
+      name: "",
+      login: "",
+      password: "",
+      role: "EMPLOYEE",
+      template: "ROLE_DEFAULT",
+      permissions: getTemplatePermissions("ROLE_DEFAULT", "EMPLOYEE"),
+    });
+  };
+
   const loadPermissionsCatalog = async () => {
     try {
       const res = await fetch(`${API}/users/permissions/catalog`, { headers });
@@ -143,7 +169,7 @@ export default function UserManagement() {
       if (!res.ok) {
         throw new Error(data.message || "Ошибка загрузки прав доступа");
       }
-      setPermissionCatalog({
+      const nextCatalog = {
         groups: Array.isArray(data.groups)
           ? data.groups
           : FALLBACK_PERMISSION_CATALOG.groups,
@@ -154,6 +180,19 @@ export default function UserManagement() {
           data.roleDefaults && typeof data.roleDefaults === "object"
             ? data.roleDefaults
             : FALLBACK_PERMISSION_CATALOG.roleDefaults,
+      };
+      setPermissionCatalog(nextCatalog);
+
+      setNewUser((prev) => {
+        if (Array.isArray(prev.permissions) && prev.permissions.length > 0) {
+          return prev;
+        }
+        const defaults = prev.template === "ROLE_DEFAULT"
+          ? Array.isArray(nextCatalog.roleDefaults?.[prev.role])
+            ? [...new Set(nextCatalog.roleDefaults[prev.role])]
+            : []
+          : [];
+        return { ...prev, permissions: defaults };
       });
     } catch (e) {
       console.error(e);
@@ -181,30 +220,106 @@ export default function UserManagement() {
     }
   };
 
-  const loadInvites = async () => {
-    try {
-      setInvitesLoading(true);
-      setInvitesError("");
-      const res = await fetch(`${API}/admin/invites`, { headers });
-      const data = await res.json();
-      if (!res.ok) {
-        throw new Error(data.message || "INVITES_LOAD_ERROR");
-      }
-      setInvites(Array.isArray(data.items) ? data.items : []);
-    } catch (e) {
-      console.error(e);
-      setInvitesError(normalizeErrorMessage(e, "INVITES_LOAD_ERROR"));
-    } finally {
-      setInvitesLoading(false);
-    }
-  };
-
   useEffect(() => {
     loadPermissionsCatalog();
     loadUsers();
-    loadInvites();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+  const handleCreateRoleChange = (nextRole) => {
+    setNewUser((prev) => ({
+      ...prev,
+      role: nextRole,
+      permissions: getTemplatePermissions(prev.template, nextRole),
+    }));
+  };
+
+  const handleCreateTemplateChange = (nextTemplate) => {
+    setNewUser((prev) => ({
+      ...prev,
+      template: nextTemplate,
+      permissions: getTemplatePermissions(nextTemplate, prev.role),
+    }));
+  };
+
+  const handleCreateTogglePermission = (permissionKey) => {
+    setNewUser((prev) => {
+      const selected = new Set(prev.permissions || []);
+      if (selected.has(permissionKey)) {
+        selected.delete(permissionKey);
+      } else {
+        selected.add(permissionKey);
+      }
+      return {
+        ...prev,
+        permissions: Array.from(selected),
+      };
+    });
+  };
+
+  const handleGeneratePassword = () => {
+    setNewUser((prev) => ({
+      ...prev,
+      password: generatePassword(12),
+    }));
+  };
+
+  const handleCreateUser = async () => {
+    const login = String(newUser.login || "").trim().toLowerCase();
+    const name = String(newUser.name || "").trim();
+    const role = String(newUser.role || "EMPLOYEE");
+    const password = String(newUser.password || "");
+
+    if (!LOGIN_PATTERN.test(login)) {
+      setCreateError(
+        "Логин должен быть 3-32 символа: латиница, цифры, точка, дефис или подчёркивание."
+      );
+      return;
+    }
+    if (password.length < 8) {
+      setCreateError("Пароль должен быть не короче 8 символов.");
+      return;
+    }
+
+    const selected = Array.from(new Set(newUser.permissions || []));
+    const basePermissions = getTemplatePermissions(newUser.template, role);
+    const grants = selected.filter((key) => !basePermissions.includes(key));
+    const revokes = basePermissions.filter((key) => !selected.includes(key));
+
+    setCreateSaving(true);
+    setCreateError("");
+    setCreateSuccess("");
+
+    try {
+      const res = await fetch(`${API}/users`, {
+        method: "POST",
+        headers,
+        body: JSON.stringify({
+          name,
+          login,
+          password,
+          role,
+          template: newUser.template,
+          grants,
+          revokes,
+        }),
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        throw new Error(data.message || "Ошибка создания сотрудника");
+      }
+
+      setCreateSuccess(`Сотрудник с логином "${login}" создан.`);
+      resetCreateForm();
+      await loadUsers();
+    } catch (e) {
+      console.error(e);
+      const raw = normalizeErrorMessage(e, "Ошибка создания сотрудника.");
+      setCreateError(mapCreateUserError(raw));
+    } finally {
+      setCreateSaving(false);
+    }
+  };
 
   const handleRoleChangeLocal = (id, newRole) => {
     setUsers((prev) =>
@@ -259,55 +374,6 @@ export default function UserManagement() {
       setError(normalizeErrorMessage(e, "Ошибка изменения роли."));
     } finally {
       setSavingId(null);
-    }
-  };
-
-  const handleInviteSubmit = async () => {
-    if (!inviteEmail) {
-      setInvitesError("INVITE_EMAIL_REQUIRED");
-      return;
-    }
-    setInvitesError("");
-    setInviteSending(true);
-    try {
-      const res = await fetch(`${API}/admin/invites`, {
-        method: "POST",
-        headers,
-        body: JSON.stringify({ email: inviteEmail, role: inviteRole }),
-      });
-      const data = await res.json();
-      if (!res.ok) {
-        throw new Error(data.message || "INVITE_SEND_ERROR");
-      }
-      setInviteEmail("");
-      setInviteRole("EMPLOYEE");
-      await loadInvites();
-    } catch (e) {
-      console.error(e);
-      setInvitesError(normalizeErrorMessage(e, "INVITE_SEND_ERROR"));
-    } finally {
-      setInviteSending(false);
-    }
-  };
-
-  const handleInviteResend = async (id) => {
-    setInviteResendId(id);
-    setInvitesError("");
-    try {
-      const res = await fetch(`${API}/admin/invites/${id}/resend`, {
-        method: "POST",
-        headers,
-      });
-      const data = await res.json();
-      if (!res.ok) {
-        throw new Error(data.message || "INVITE_RESEND_ERROR");
-      }
-      await loadInvites();
-    } catch (e) {
-      console.error(e);
-      setInvitesError(normalizeErrorMessage(e, "INVITE_RESEND_ERROR"));
-    } finally {
-      setInviteResendId(null);
     }
   };
 
@@ -403,8 +469,7 @@ export default function UserManagement() {
     <div className="admin-page" style={{ padding: 24 }}>
       <h1>Управление пользователями</h1>
       <p>
-        Здесь администратор может просматривать пользователей, менять их роли и
-        настраивать индивидуальные права доступа.
+        Администратор создаёт сотрудников напрямую: задаёт логин, пароль, роль и права.
       </p>
 
       <div
@@ -412,19 +477,48 @@ export default function UserManagement() {
         style={{ marginTop: 16, marginBottom: 16 }}
       >
         <div style={{ fontWeight: 600, marginBottom: 8 }}>
-          Пригласить пользователя
+          Создать сотрудника
         </div>
         <div className="admin-invite-grid">
           <input
-            type="email"
-            placeholder="Почта"
-            value={inviteEmail}
-            onChange={(e) => setInviteEmail(e.target.value)}
+            type="text"
+            placeholder="Имя"
+            value={newUser.name}
+            onChange={(e) =>
+              setNewUser((prev) => ({ ...prev, name: e.target.value }))
+            }
             className="admin-input"
           />
+          <input
+            type="text"
+            placeholder="Логин (например, sklad_1)"
+            value={newUser.login}
+            onChange={(e) =>
+              setNewUser((prev) => ({ ...prev, login: e.target.value }))
+            }
+            className="admin-input"
+          />
+          <div style={{ display: "flex", gap: 8 }}>
+            <input
+              type="text"
+              placeholder="Пароль"
+              value={newUser.password}
+              onChange={(e) =>
+                setNewUser((prev) => ({ ...prev, password: e.target.value }))
+              }
+              className="admin-input"
+            />
+            <button
+              type="button"
+              onClick={handleGeneratePassword}
+              className="admin-btn admin-btn--secondary"
+            >
+              Сгенерировать
+            </button>
+          </div>
           <select
-            value={inviteRole}
-            onChange={(e) => setInviteRole(e.target.value)}
+            value={newUser.role}
+            onChange={(e) => handleCreateRoleChange(e.target.value)}
             className="admin-select"
           >
             {ALL_ROLES.map((r) => (
@@ -433,16 +527,69 @@ export default function UserManagement() {
               </option>
             ))}
           </select>
+          <select
+            className="admin-select"
+            value={newUser.template}
+            onChange={(e) => handleCreateTemplateChange(e.target.value)}
+          >
+            {(Array.isArray(permissionCatalog.templates)
+              ? permissionCatalog.templates
+              : FALLBACK_PERMISSION_CATALOG.templates
+            ).map((tpl) => (
+              <option key={tpl.id} value={tpl.id}>
+                {tpl.label || tpl.id}
+              </option>
+            ))}
+          </select>
           <button
             type="button"
-            onClick={handleInviteSubmit}
-            disabled={inviteSending}
+            onClick={handleCreateUser}
+            disabled={createSaving}
             className="admin-btn admin-btn--primary"
           >
-            {inviteSending ? "Отправка..." : "Пригласить"}
+            {createSaving ? "Создание..." : "Создать сотрудника"}
           </button>
         </div>
-        {invitesError && (
+
+        <div style={{ marginTop: 12, display: "grid", gap: 8 }}>
+          {(Array.isArray(permissionCatalog.groups)
+            ? permissionCatalog.groups
+            : FALLBACK_PERMISSION_CATALOG.groups
+          ).map((group) => (
+            <div key={group.id} style={{ display: "grid", gap: 6 }}>
+              <div style={{ fontWeight: 600 }}>{group.label}</div>
+              <div
+                style={{
+                  display: "grid",
+                  gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))",
+                  gap: 6,
+                }}
+              >
+                {(Array.isArray(group.keys) ? group.keys : []).map((key) => (
+                  <label
+                    key={key}
+                    style={{
+                      display: "flex",
+                      alignItems: "center",
+                      gap: 8,
+                      fontSize: 13,
+                      color: "#334155",
+                    }}
+                  >
+                    <input
+                      type="checkbox"
+                      checked={(newUser.permissions || []).includes(key)}
+                      onChange={() => handleCreateTogglePermission(key)}
+                    />
+                    <span>{PERMISSION_LABELS[key] || key}</span>
+                  </label>
+                ))}
+              </div>
+            </div>
+          ))}
+        </div>
+
+        {createError && (
           <div
             style={{
               marginTop: 10,
@@ -452,7 +599,20 @@ export default function UserManagement() {
               color: "#b00020",
             }}
           >
-            {mapInviteError(invitesError)}
+            {createError}
+          </div>
+        )}
+        {createSuccess && (
+          <div
+            style={{
+              marginTop: 10,
+              padding: 8,
+              borderRadius: 4,
+              background: "#e8f7e8",
+              color: "#1f7a1f",
+            }}
+          >
+            {createSuccess}
           </div>
         )}
       </div>
@@ -472,63 +632,6 @@ export default function UserManagement() {
         </div>
       )}
 
-      <div style={{ marginBottom: 16 }}>
-        <h3 style={{ marginBottom: 8 }}>Приглашения</h3>
-        {invitesLoading ? (
-          <p>Загрузка...</p>
-        ) : invites.length === 0 ? (
-          <p>Приглашений пока нет.</p>
-        ) : (
-          <div className="admin-table-wrapper">
-            <table className="admin-table admin-table--invites">
-              <thead>
-                <tr>
-                  <th style={thStyle}>Email</th>
-                  <th style={thStyle}>Роль</th>
-                  <th style={thStyle}>Статус</th>
-                  <th style={thStyle}>Создан</th>
-                  <th style={thStyle}></th>
-                </tr>
-              </thead>
-              <tbody>
-                {invites.map((inv) => (
-                  <tr key={inv.id}>
-                    <td data-label="Email" style={tdStyle}>
-                      {inv.email}
-                    </td>
-                    <td data-label="Роль" style={tdStyle}>
-                      {roleLabel(inv.role)} ({inv.role})
-                    </td>
-                    <td data-label="Статус" style={tdStyle}>
-                      {inv.status}
-                    </td>
-                    <td data-label="Создан" style={tdStyle}>
-                      {inv.createdAt ? new Date(inv.createdAt).toLocaleString() : "-"}
-                    </td>
-                    <td
-                      data-label="Действия"
-                      style={tdStyle}
-                      className="admin-table__actions"
-                    >
-                      <button
-                        type="button"
-                        onClick={() => handleInviteResend(inv.id)}
-                        disabled={inviteResendId === inv.id}
-                        className="admin-btn admin-btn--secondary"
-                      >
-                        {inviteResendId === inv.id
-                          ? "Отправка..."
-                          : "Переотправить"}
-                      </button>
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        )}
-      </div>
-
       {loading ? (
         <p>Загрузка пользователей...</p>
       ) : users.length === 0 ? (
@@ -540,7 +643,7 @@ export default function UserManagement() {
               <tr>
                 <th style={thStyle}>ID</th>
                 <th style={thStyle}>Имя</th>
-                <th style={thStyle}>Email</th>
+                <th style={thStyle}>Логин</th>
                 <th style={thStyle}>Роль</th>
                 <th style={thStyle}>Создан</th>
                 <th style={thStyle}></th>
@@ -563,8 +666,8 @@ export default function UserManagement() {
                       <td data-label="Имя" style={tdStyle}>
                         {u.name}
                       </td>
-                      <td data-label="Email" style={tdStyle}>
-                        {u.email}
+                      <td data-label="Логин" style={tdStyle}>
+                        {u.login || u.username || u.email}
                       </td>
                       <td data-label="Роль" style={tdStyle}>
                         <select
@@ -611,7 +714,14 @@ export default function UserManagement() {
                       <tr>
                         <td style={{ ...tdStyle, background: "#fafcff" }} colSpan={6}>
                           <div style={{ display: "grid", gap: 12 }}>
-                            <div style={{ display: "flex", flexWrap: "wrap", gap: 8, alignItems: "center" }}>
+                            <div
+                              style={{
+                                display: "flex",
+                                flexWrap: "wrap",
+                                gap: 8,
+                                alignItems: "center",
+                              }}
+                            >
                               <select
                                 className="admin-select"
                                 value={draft.template || "ROLE_DEFAULT"}
@@ -652,7 +762,8 @@ export default function UserManagement() {
                                 <div
                                   style={{
                                     display: "grid",
-                                    gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))",
+                                    gridTemplateColumns:
+                                      "repeat(auto-fit, minmax(220px, 1fr))",
                                     gap: 6,
                                   }}
                                 >
@@ -704,4 +815,3 @@ const tdStyle = {
   padding: 8,
   borderTop: "1px solid #e5e7eb",
 };
-

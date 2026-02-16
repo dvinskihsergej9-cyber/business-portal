@@ -179,6 +179,18 @@ function normalizeEmail(value) {
   return String(value || "").trim().toLowerCase();
 }
 
+function normalizeLogin(value) {
+  return String(value || "").trim().toLowerCase();
+}
+
+function isValidUsername(value) {
+  return /^[a-z0-9._-]{3,32}$/.test(String(value || ""));
+}
+
+function buildTechnicalEmailByUsername(username) {
+  return `${String(username || "").trim().toLowerCase()}@users.local`;
+}
+
 function isOwnerEmail(email) {
   return normalizeEmail(email) === OWNER_PRIMARY_EMAIL;
 }
@@ -699,6 +711,7 @@ async function getUserPayload(userId) {
     select: {
       id: true,
       email: true,
+      username: true,
       name: true,
       role: true,
       permissionsJson: true,
@@ -735,6 +748,7 @@ async function getUserPayload(userId) {
 
   return {
     ...userSafe,
+    login: user.username || user.email,
     permissions,
     permissionTemplate: permissionConfig.template,
     permissionOverrides: {
@@ -2563,6 +2577,8 @@ app.post("/api/register", async (req, res) => {
         user: userPayload || {
           id: user.id,
           email: user.email,
+          username: user.username || null,
+          login: user.username || user.email,
           name: user.name,
           role: user.role,
           permissions: resolveUserPermissions({ role: user.role, permissionsJson: null }),
@@ -2582,7 +2598,7 @@ app.post("/api/register", async (req, res) => {
 app.post("/api/login", async (req, res) => {
   try {
     const { login, email, password } = req.body || {};
-    const normalizedLogin = normalizeEmail(login || email);
+    const normalizedLogin = normalizeLogin(login || email);
 
     if (!normalizedLogin || !password) {
       return res
@@ -2594,40 +2610,53 @@ app.post("/api/login", async (req, res) => {
       await ensureOwnerAdminAccount();
     }
 
-    let user = await prisma.user.findUnique({
-      where: { email: normalizedLogin },
-    });
+    let user = null;
+
+    if (!normalizedLogin.includes("@")) {
+      user = await prisma.user.findUnique({
+        where: { username: normalizedLogin },
+      });
+    }
+
     if (!user) {
-      const legacyRows = await prisma.$queryRaw`
-        SELECT "id" FROM "User"
-        WHERE LOWER(TRIM("email")) = LOWER(${normalizedLogin})
-        LIMIT 1
-      `;
-      const legacyId = Number(legacyRows?.[0]?.id || 0);
-      if (legacyId) {
-        user = await prisma.user.findUnique({ where: { id: legacyId } });
-        if (user && user.email !== normalizedLogin) {
-          await prisma.user.update({
-            where: { id: user.id },
-            data: { email: normalizedLogin },
-          });
-          user.email = normalizedLogin;
+      const normalizedEmail = normalizeEmail(normalizedLogin);
+      user = await prisma.user.findUnique({
+        where: { email: normalizedEmail },
+      });
+      if (!user) {
+        const legacyRows = await prisma.$queryRaw`
+          SELECT "id" FROM "User"
+          WHERE LOWER(TRIM("email")) = LOWER(${normalizedEmail})
+          LIMIT 1
+        `;
+        const legacyId = Number(legacyRows?.[0]?.id || 0);
+        if (legacyId) {
+          user = await prisma.user.findUnique({ where: { id: legacyId } });
+          if (user && user.email !== normalizedEmail) {
+            await prisma.user.update({
+              where: { id: user.id },
+              data: { email: normalizedEmail },
+            });
+            user.email = normalizedEmail;
+          }
         }
       }
-    }
-    if (!user?.orgId) {
-      const orgId = await ensureUserOrg(user.id, user.name || user.email);
-      user.orgId = orgId || null;
-    }
-    if (user && user.isActive === false) {
-      console.warn(`[LOGIN_FAIL] inactive user: ${normalizedLogin}`);
-      return res.status(403).json({ message: "USER_INACTIVE" });
     }
     if (!user) {
       console.warn(`[LOGIN_FAIL] user not found: ${normalizedLogin}`);
       return res
         .status(401)
         .json({ message: "Неверный логин или пароль" });
+    }
+
+    if (!user.orgId) {
+      const orgId = await ensureUserOrg(user.id, user.name || user.email);
+      user.orgId = orgId || null;
+    }
+
+    if (user.isActive === false) {
+      console.warn(`[LOGIN_FAIL] inactive user: ${normalizedLogin}`);
+      return res.status(403).json({ message: "USER_INACTIVE" });
     }
 
     const storedHash = String(user.passwordHash || user.password || "");
@@ -2661,6 +2690,8 @@ app.post("/api/login", async (req, res) => {
         user: userPayload || {
           id: user.id,
           email: user.email,
+          username: user.username || null,
+          login: user.username || user.email,
           name: user.name,
           role: user.role,
           permissions: resolveUserPermissions({ role: user.role, permissionsJson: null }),
@@ -3105,6 +3136,8 @@ function toManagedUserPayload(user) {
   return {
     id: user.id,
     email: user.email,
+    username: user.username || null,
+    login: user.username || user.email,
     name: user.name,
     role: user.role,
     orgId: user.orgId ?? null,
@@ -3134,6 +3167,7 @@ app.get("/api/users", auth, requireAdmin, async (req, res) => {
       select: {
         id: true,
         email: true,
+        username: true,
         name: true,
         role: true,
         permissionsJson: true,
@@ -3155,6 +3189,126 @@ app.get("/api/users", auth, requireAdmin, async (req, res) => {
     res
       .status(500)
       .json({ message: "Ошибка сервера при загрузке пользователей" });
+  }
+});
+
+app.post("/api/users", auth, requireAdmin, async (req, res) => {
+  try {
+    if (!req.user.isSystemOwner && !req.user.orgId) {
+      return res
+        .status(403)
+        .json({ message: "Организация пользователя не настроена" });
+    }
+
+    const {
+      name,
+      login,
+      password,
+      role,
+      orgId,
+      template,
+      grants,
+      revokes,
+    } = req.body || {};
+
+    const normalizedName = String(name || "").trim();
+    const normalizedLogin = normalizeLogin(login);
+    const normalizedPassword = String(password || "");
+    const nextRole = String(role || "EMPLOYEE").trim().toUpperCase();
+
+    if (!isValidUsername(normalizedLogin)) {
+      return res.status(400).json({
+        message:
+          "Логин должен быть 3-32 символа: латиница, цифры, точка, дефис или подчёркивание.",
+      });
+    }
+    if (normalizedPassword.length < 8) {
+      return res
+        .status(400)
+        .json({ message: "Пароль должен быть не короче 8 символов." });
+    }
+    if (!["EMPLOYEE", "HR", "ACCOUNTING", "WAREHOUSE", "ADMIN"].includes(nextRole)) {
+      return res.status(400).json({ message: "Недопустимая роль" });
+    }
+
+    const targetOrgId = req.user.isSystemOwner
+      ? Number(orgId || req.user.orgId || 0)
+      : req.user.orgId;
+    if (!targetOrgId || Number.isNaN(targetOrgId)) {
+      return res.status(400).json({ message: "ORG_REQUIRED" });
+    }
+
+    const targetOrg = await prisma.organization.findUnique({
+      where: { id: targetOrgId },
+      select: { id: true },
+    });
+    if (!targetOrg) {
+      return res.status(404).json({ message: "ORG_NOT_FOUND" });
+    }
+
+    const existingByUsername = await prisma.user.findUnique({
+      where: { username: normalizedLogin },
+      select: { id: true },
+    });
+    if (existingByUsername) {
+      return res.status(400).json({ message: "USERNAME_ALREADY_EXISTS" });
+    }
+
+    const technicalEmail = buildTechnicalEmailByUsername(normalizedLogin);
+    const existingByEmail = await prisma.user.findUnique({
+      where: { email: technicalEmail },
+      select: { id: true },
+    });
+    if (existingByEmail) {
+      return res.status(400).json({ message: "USERNAME_ALREADY_EXISTS" });
+    }
+
+    const normalizedConfig = normalizePermissionConfig({
+      template,
+      grants,
+      revokes,
+    });
+
+    const hash = await bcrypt.hash(normalizedPassword, 10);
+    const created = await prisma.user.create({
+      data: {
+        email: technicalEmail,
+        username: normalizedLogin,
+        password: hash,
+        passwordHash: hash,
+        name: normalizedName || normalizedLogin,
+        role: nextRole,
+        isActive: true,
+        emailVerifiedAt: new Date(),
+        orgId: targetOrgId,
+        permissionsJson: stringifyPermissionConfig(normalizedConfig),
+      },
+      select: {
+        id: true,
+        email: true,
+        username: true,
+        name: true,
+        role: true,
+        permissionsJson: true,
+        orgId: true,
+        organization: {
+          select: {
+            id: true,
+            name: true,
+            code: true,
+          },
+        },
+        createdAt: true,
+      },
+    });
+
+    res.status(201).json({ ok: true, user: toManagedUserPayload(created) });
+  } catch (err) {
+    if (String(err?.code || "") === "P2002") {
+      return res.status(400).json({ message: "USERNAME_ALREADY_EXISTS" });
+    }
+    console.error("create user error:", err);
+    res.status(500).json({ message: "Ошибка сервера при создании пользователя" });
   }
 });
 
@@ -3199,6 +3353,7 @@ app.put("/api/users/:id/role", auth, requireAdmin, async (req, res) => {
       select: {
         id: true,
         email: true,
+        username: true,
         name: true,
         role: true,
         permissionsJson: true,
@@ -3263,6 +3418,7 @@ app.put("/api/users/:id/permissions", auth, requireAdmin, async (req, res) => {
       select: {
         id: true,
         email: true,
+        username: true,
         name: true,
         role: true,
         permissionsJson: true,

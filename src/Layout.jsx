@@ -90,7 +90,7 @@ export default function Layout() {
         {user && (
           <div style={styles.userCard}>
             <div style={styles.userName}>{user.name}</div>
-            <div style={styles.userEmail}>{user.email}</div>
+            <div style={styles.userEmail}>{user.login || user.username || user.email}</div>
             <div style={styles.userRole}>{user.role}</div>
           </div>
         )}
