@@ -78,6 +78,17 @@ function generatePassword(length = 12) {
   return chars.join("");
 }
 
+function generateLogin(seed = "") {
+  const cleaned = String(seed || "")
+    .trim()
+    .toLowerCase()
+    .replace(/[^a-z0-9._-]+/g, "")
+    .replace(/^[._-]+|[._-]+$/g, "");
+  const base = (cleaned.length >= 3 ? cleaned : "user").slice(0, 24);
+  const suffix = Math.floor(1000 + Math.random() * 9000);
+  return `${base}_${suffix}`.slice(0, 32);
+}
+
 export default function UserManagement() {
   const { user } = useAuth();
   const [users, setUsers] = useState([]);
@@ -265,17 +276,24 @@ export default function UserManagement() {
   };
 
   const handleGeneratePassword = () => {
+    const generatedPassword = generatePassword(12);
     setNewUser((prev) => ({
       ...prev,
-      password: generatePassword(12),
+      password: generatedPassword,
+      login: String(prev.login || "").trim() || generateLogin(prev.name),
     }));
   };
 
   const handleCreateUser = async () => {
-    const login = String(newUser.login || "").trim().toLowerCase();
+    let login = String(newUser.login || "").trim().toLowerCase();
     const name = String(newUser.name || "").trim();
     const role = String(newUser.role || "EMPLOYEE");
     const password = String(newUser.password || "");
+
+    if (!login) {
+      login = generateLogin(name);
+      setNewUser((prev) => ({ ...prev, login }));
+    }
 
     if (!LOGIN_PATTERN.test(login)) {
       setCreateError(
