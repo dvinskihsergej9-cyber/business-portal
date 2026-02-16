@@ -21,7 +21,7 @@ const FALLBACK_PERMISSION_CATALOG = {
   roleDefaults: {},
 };
 
-const LOGIN_PATTERN = /^[\p{L}\p{N}._-]{3,32}$/u;
+const LOGIN_PATTERN = /^[A-Za-zА-Яа-яЁё0-9._-]{3,32}$/;
 
 const roleLabel = (role) => {
   switch (role) {

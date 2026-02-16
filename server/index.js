@@ -184,7 +184,7 @@ function normalizeLogin(value) {
 }
 
 function isValidUsername(value) {
-  return /^[\p{L}\p{N}._-]{3,32}$/u.test(String(value || ""));
+  return /^[A-Za-zА-Яа-яЁё0-9._-]{3,32}$/.test(String(value || ""));
 }
 
 function buildTechnicalEmailByUsername(username) {
