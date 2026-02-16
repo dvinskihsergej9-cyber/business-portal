@@ -2,6 +2,11 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { apiFetch, normalizeErrorMessage } from "../apiConfig";
 import { useAuth } from "../context/AuthContext";
 const TENANT_CREDENTIALS_KEY = "bp.createdTenantCredentials.v1";
+const normalizeLoginInput = (value) =>
+  String(value || "")
+    .trim()
+    .replace(/\s+/g, "_")
+    .toLowerCase();
 
 const EMPTY_FORM = {
   name: "",
@@ -121,7 +126,7 @@ export default function TenantManagement() {
       const payload = {
         name: String(form.name || "").trim(),
         ownerName: String(form.ownerName || "").trim(),
-        ownerLogin: String(form.ownerLogin || "").trim(),
+        ownerLogin: normalizeLoginInput(form.ownerLogin),
         ownerPassword: String(form.ownerPassword || ""),
       };
 
@@ -214,7 +219,12 @@ export default function TenantManagement() {
                 type="text"
                 placeholder="Например: клиент_админ"
                 value={form.ownerLogin}
-                onChange={updateField("ownerLogin")}
+                onChange={(event) =>
+                  setForm((prev) => ({
+                    ...prev,
+                    ownerLogin: normalizeLoginInput(event.target.value),
+                  }))
+                }
                 required
               />
             </div>

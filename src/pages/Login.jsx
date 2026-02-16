@@ -2,6 +2,9 @@ import { useState } from "react";
 import { useNavigate, Link } from "react-router-dom";
 import { useAuth } from "../context/AuthContext";
 
+const normalizeLoginInput = (value) =>
+  String(value || "").replace(/\s+/g, "_");
+
 export default function Login() {
   const { login } = useAuth();
   const navigate = useNavigate();
@@ -52,7 +55,7 @@ export default function Login() {
             type="text"
             placeholder={"\u041b\u043e\u0433\u0438\u043d"}
             value={loginValue}
-            onChange={(e) => setLoginValue(e.target.value)}
+            onChange={(e) => setLoginValue(normalizeLoginInput(e.target.value))}
             required
             style={{ width: "100%", padding: 6, boxSizing: "border-box" }}
           />

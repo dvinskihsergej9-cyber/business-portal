@@ -22,6 +22,11 @@ const FALLBACK_PERMISSION_CATALOG = {
 };
 
 const LOGIN_PATTERN = /^[A-Za-zА-Яа-яЁё0-9._-]{3,32}$/;
+const normalizeLoginInput = (value) =>
+  String(value || "")
+    .trim()
+    .replace(/\s+/g, "_")
+    .toLowerCase();
 
 const roleLabel = (role) => {
   switch (role) {
@@ -304,7 +309,7 @@ export default function UserManagement() {
   };
 
   const handleCreateUser = async () => {
-    const login = String(newUser.login || "").trim().toLowerCase();
+    const login = normalizeLoginInput(newUser.login);
     const name = String(newUser.name || "").trim();
     const role = String(newUser.role || "EMPLOYEE");
     const password = String(newUser.password || "");
@@ -551,7 +556,10 @@ export default function UserManagement() {
             placeholder="Логин (например, склад_1)"
             value={newUser.login}
             onChange={(e) =>
-              setNewUser((prev) => ({ ...prev, login: e.target.value }))
+              setNewUser((prev) => ({
+                ...prev,
+                login: normalizeLoginInput(e.target.value),
+              }))
             }
             className="admin-input"
           />

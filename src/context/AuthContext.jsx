@@ -4,6 +4,12 @@ import { apiFetch } from "../apiConfig";
 export const AuthContext = createContext(null);
 export const useAuth = () => useContext(AuthContext);
 
+const normalizeLoginInput = (value) =>
+  String(value || "")
+    .trim()
+    .replace(/\s+/g, "_")
+    .toLowerCase();
+
 export function AuthProvider({ children }) {
   const [user, setUser] = useState(() => {
     const saved = localStorage.getItem("user");
@@ -49,7 +55,7 @@ export function AuthProvider({ children }) {
 
   const login = async (loginValue, password) => {
     try {
-      const normalizedLogin = String(loginValue || "").trim().toLowerCase();
+      const normalizedLogin = normalizeLoginInput(loginValue);
       const res = await apiFetch("/login", {
         method: "POST",
         headers: { "Content-Type": "application/json" },

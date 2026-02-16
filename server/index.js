@@ -180,7 +180,10 @@ function normalizeEmail(value) {
 }
 
 function normalizeLogin(value) {
-  return String(value || "").trim().toLowerCase();
+  return String(value || "")
+    .trim()
+    .replace(/\s+/g, "_")
+    .toLowerCase();
 }
 
 function isValidUsername(value) {
