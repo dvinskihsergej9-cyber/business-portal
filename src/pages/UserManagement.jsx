@@ -9,6 +9,7 @@ import {
 
 const API = API_BASE;
 const ALL_ROLES = ["EMPLOYEE", "HR", "ACCOUNTING", "WAREHOUSE", "ADMIN"];
+const CREATED_USER_PASSWORDS_KEY = "bp.createdUserPasswords.v1";
 
 const FALLBACK_PERMISSION_CATALOG = {
   groups: PERMISSION_GROUPS,
@@ -78,6 +79,17 @@ function generatePassword(length = 12) {
   return chars.join("");
 }
 
+function readCreatedPasswords() {
+  try {
+    const raw = localStorage.getItem(CREATED_USER_PASSWORDS_KEY);
+    if (!raw) return {};
+    const parsed = JSON.parse(raw);
+    return parsed && typeof parsed === "object" ? parsed : {};
+  } catch {
+    return {};
+  }
+}
+
 export default function UserManagement() {
   const { user } = useAuth();
   const [users, setUsers] = useState([]);
@@ -96,7 +108,7 @@ export default function UserManagement() {
   const [createError, setCreateError] = useState("");
   const [createSuccess, setCreateSuccess] = useState("");
   const createErrorRef = useRef(null);
-  const [createdPasswords, setCreatedPasswords] = useState({});
+  const [createdPasswords, setCreatedPasswords] = useState(() => readCreatedPasswords());
   const [pendingScrollUserId, setPendingScrollUserId] = useState(null);
   const userRowRefs = useRef({});
   const [newUser, setNewUser] = useState({
@@ -243,6 +255,14 @@ export default function UserManagement() {
     node.scrollIntoView({ behavior: "smooth", block: "center" });
     setPendingScrollUserId(null);
   }, [users, pendingScrollUserId]);
+
+  useEffect(() => {
+    try {
+      localStorage.setItem(CREATED_USER_PASSWORDS_KEY, JSON.stringify(createdPasswords));
+    } catch {
+      // ignore storage write errors
+    }
+  }, [createdPasswords]);
 
   const handleCreateRoleChange = (nextRole) => {
     setNewUser((prev) => ({

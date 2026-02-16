@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { apiFetch, normalizeErrorMessage } from "../apiConfig";
 import { useAuth } from "../context/AuthContext";
+const TENANT_CREDENTIALS_KEY = "bp.createdTenantCredentials.v1";
 
 const EMPTY_FORM = {
   name: "",
@@ -29,6 +30,17 @@ function generatePassword(length = 12) {
   return chars.join("");
 }
 
+function readTenantCredentials() {
+  try {
+    const raw = localStorage.getItem(TENANT_CREDENTIALS_KEY);
+    if (!raw) return {};
+    const parsed = JSON.parse(raw);
+    return parsed && typeof parsed === "object" ? parsed : {};
+  } catch {
+    return {};
+  }
+}
+
 export default function TenantManagement() {
   const { user } = useAuth();
   const isSystemOwner = user?.isSystemOwner === true;
@@ -38,7 +50,9 @@ export default function TenantManagement() {
   const [error, setError] = useState("");
   const [success, setSuccess] = useState("");
   const [form, setForm] = useState(EMPTY_FORM);
-  const [tenantCredentials, setTenantCredentials] = useState({});
+  const [tenantCredentials, setTenantCredentials] = useState(() =>
+    readTenantCredentials()
+  );
   const [pendingScrollTenantId, setPendingScrollTenantId] = useState(null);
   const tenantRowRefs = useRef({});
 
@@ -81,6 +95,14 @@ export default function TenantManagement() {
     node.scrollIntoView({ behavior: "smooth", block: "center" });
     setPendingScrollTenantId(null);
   }, [items, pendingScrollTenantId]);
+
+  useEffect(() => {
+    try {
+      localStorage.setItem(TENANT_CREDENTIALS_KEY, JSON.stringify(tenantCredentials));
+    } catch {
+      // ignore storage write errors
+    }
+  }, [tenantCredentials]);
 
   const updateField = (field) => (event) => {
     setForm((prev) => ({ ...prev, [field]: event.target.value }));
