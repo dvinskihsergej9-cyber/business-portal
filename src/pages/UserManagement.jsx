@@ -1,4 +1,4 @@
-﻿import { Fragment, useEffect, useMemo, useRef, useState } from "react";
+import { Fragment, useEffect, useMemo, useRef, useState } from "react";
 import { API_BASE, normalizeErrorMessage } from "../apiConfig";
 import { useAuth } from "../context/AuthContext";
 import {
@@ -20,7 +20,7 @@ const FALLBACK_PERMISSION_CATALOG = {
   roleDefaults: {},
 };
 
-const LOGIN_PATTERN = /^[a-z0-9._-]{3,32}$/;
+const LOGIN_PATTERN = /^[\p{L}\p{N}._-]{3,32}$/u;
 
 const roleLabel = (role) => {
   switch (role) {
@@ -285,7 +285,7 @@ export default function UserManagement() {
 
     if (!LOGIN_PATTERN.test(login)) {
       setCreateError(
-        "Логин должен быть 3-32 символа: латиница, цифры, точка, дефис или подчёркивание."
+        "Логин должен быть 3-32 символа: буквы, цифры, точка, дефис или подчёркивание."
       );
       return;
     }
@@ -504,7 +504,7 @@ export default function UserManagement() {
           />
           <input
             type="text"
-            placeholder="Логин (например, sklad_1)"
+            placeholder="Логин (например, склад_1)"
             value={newUser.login}
             onChange={(e) =>
               setNewUser((prev) => ({ ...prev, login: e.target.value }))

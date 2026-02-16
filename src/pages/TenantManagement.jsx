@@ -149,11 +149,11 @@ export default function TenantManagement() {
               />
             </div>
             <div>
-              <label className="admin-label">Имя администратора</label>
+              <label className="admin-label">ФИО администратора</label>
               <input
                 className="admin-input"
                 type="text"
-                placeholder="Иван Иванов"
+                placeholder="Иванов Иван Иванович"
                 value={form.ownerName}
                 onChange={updateField("ownerName")}
               />
@@ -231,7 +231,7 @@ export default function TenantManagement() {
                 <tr>
                   <th>ID</th>
                   <th>Компания</th>
-                  <th>Код</th>
+                  <th>Код клиента</th>
                   <th>Пользователей</th>
                   <th>Инвайтов</th>
                   <th>Создано</th>
@@ -242,7 +242,7 @@ export default function TenantManagement() {
                   <tr key={item.id}>
                     <td data-label="ID">{item.id}</td>
                     <td data-label="Компания">{item.name || "-"}</td>
-                    <td data-label="Код">{item.code || "-"}</td>
+                    <td data-label="Код клиента">{item.code || "-"}</td>
                     <td data-label="Пользователей">{item?._count?.users || 0}</td>
                     <td data-label="Инвайтов">{item?._count?.invites || 0}</td>
                     <td data-label="Создано">

@@ -1,4 +1,4 @@
-﻿import express from "express";
+import express from "express";
 import cors from "cors";
 import bcrypt from "bcryptjs";
 import jwt from "jsonwebtoken";
@@ -184,11 +184,13 @@ function normalizeLogin(value) {
 }
 
 function isValidUsername(value) {
-  return /^[a-z0-9._-]{3,32}$/.test(String(value || ""));
+  return /^[\p{L}\p{N}._-]{3,32}$/u.test(String(value || ""));
 }
 
 function buildTechnicalEmailByUsername(username) {
-  return `${String(username || "").trim().toLowerCase()}@users.local`;
+  const normalized = normalizeLogin(username);
+  const hex = Buffer.from(normalized, "utf8").toString("hex").slice(0, 40);
+  return `user-${hex || "unknown"}@users.local`;
 }
 
 function isOwnerEmail(email) {
@@ -196,13 +198,10 @@ function isOwnerEmail(email) {
 }
 
 function makeTenantCode(name) {
-  const base = String(name || "")
-    .trim()
-    .toLowerCase()
-    .replace(/[^a-z0-9]+/g, "-")
-    .replace(/^-+|-+$/g, "")
-    .slice(0, 24) || "tenant";
-  return `${base}-${Date.now().toString(36).slice(-6)}`;
+  const stamp = `${Date.now()}${Math.floor(Math.random() * 1000)
+    .toString()
+    .padStart(3, "0")}`.slice(-9);
+  return `КЛ-${stamp}`;
 }
 
 async function getOrCreateOrganizationByCode(code, name) {
@@ -656,6 +655,32 @@ function validatePlanMetadata(plan, metadata) {
   return plan.id === metadata.planId && Number(plan.days) === Number(metadata.days);
 }
 
+async function getBillingUserIdForOrg(orgId, fallbackUserId = null) {
+  if (!orgId) return fallbackUserId;
+  const admin = await prisma.user.findFirst({
+    where: {
+      orgId,
+      role: "ADMIN",
+      isActive: true,
+    },
+    orderBy: { id: "asc" },
+    select: { id: true },
+  });
+  return admin?.id || fallbackUserId;
+}
+
+async function getOrgSubscription(orgId, fallbackUserId = null) {
+  if (orgId) {
+    const byOrg = await prisma.subscription.findFirst({
+      where: { user: { orgId } },
+      orderBy: [{ paidUntil: "desc" }, { id: "desc" }],
+    });
+    if (byOrg) return byOrg;
+  }
+  if (!fallbackUserId) return null;
+  return prisma.subscription.findFirst({ where: { userId: fallbackUserId } });
+}
+
 async function applyPaymentSuccess({ paymentRecord, providerPayment, plan }) {
   const userId = paymentRecord.userId;
   const now = new Date();
@@ -736,13 +761,16 @@ async function getUserPayload(userId) {
     isSystemOwner,
   });
 
-  const subscription = await prisma.subscription.findFirst({ where: { userId } });
+  const subscription = isSystemOwner
+    ? null
+    : await getOrgSubscription(user.orgId || null, userId);
   const now = new Date();
   const isActive =
-    subscription &&
-    ["active", "trialing"].includes(subscription.status) &&
-    subscription.paidUntil &&
-    new Date(subscription.paidUntil) > now;
+    isSystemOwner ||
+    (subscription &&
+      ["active", "trialing"].includes(subscription.status) &&
+      subscription.paidUntil &&
+      new Date(subscription.paidUntil) > now);
 
   const { permissionsJson: _permissionsJson, ...userSafe } = user;
 
@@ -757,7 +785,16 @@ async function getUserPayload(userId) {
     },
     isSystemOwner,
     roles: [user.role],
-    subscription: subscription
+    subscription: isSystemOwner
+      ? {
+          plan: "platform-owner",
+          status: "active",
+          paidUntil: null,
+          trialStartedAt: null,
+          trialUsed: true,
+          isActive: true,
+        }
+      : subscription
       ? {
           plan: subscription.plan,
           status: subscription.status,
@@ -2743,8 +2780,10 @@ app.get("/api/profile", auth, async (req, res) => {
 
   app.post("/api/billing/start-trial", auth, async (req, res) => {
     try {
-      if (req.user?.role && req.user.role !== "EMPLOYEE") {
-        return res.status(403).json({ message: "TRIAL_B2C_ONLY" });
+      if (!req.user?.isSystemOwner && req.user?.role !== "ADMIN") {
+        return res.status(403).json({
+          message: "Оплату может запускать только администратор клиента.",
+        });
       }
 
       const TRIAL_DAYS = Number(process.env.TRIAL_DAYS || 30);
@@ -2752,9 +2791,26 @@ app.get("/api/profile", auth, async (req, res) => {
         return res.status(500).json({ message: "TRIAL_CONFIG_INVALID" });
       }
 
-      const existing = await prisma.subscription.findFirst({
-        where: { userId: req.user.id },
-      });
+      const targetOrgId = req.user.isSystemOwner ? null : req.user.orgId;
+      if (!req.user.isSystemOwner && !targetOrgId) {
+        return res.status(400).json({ message: "ORG_REQUIRED" });
+      }
+
+      const billingUserId = req.user.isSystemOwner
+        ? req.user.id
+        : await getBillingUserIdForOrg(targetOrgId, req.user.id);
+      if (!billingUserId) {
+        return res.status(400).json({ message: "BILLING_USER_REQUIRED" });
+      }
+
+      const existing = req.user.isSystemOwner
+        ? await prisma.subscription.findFirst({
+            where: { userId: billingUserId },
+          })
+        : await prisma.subscription.findFirst({
+            where: { user: { orgId: targetOrgId } },
+            orderBy: [{ paidUntil: "desc" }, { id: "desc" }],
+          });
       if (existing?.trialUsed || existing?.trialStartedAt) {
         return res.status(400).json({ message: "TRIAL_ALREADY_USED" });
       }
@@ -2763,7 +2819,7 @@ app.get("/api/profile", auth, async (req, res) => {
       const paidUntil = addDays(now, TRIAL_DAYS);
 
       await prisma.subscription.upsert({
-        where: { userId: req.user.id },
+        where: { userId: billingUserId },
         update: {
           plan: "trial-30",
           status: "trialing",
@@ -2772,7 +2828,7 @@ app.get("/api/profile", auth, async (req, res) => {
           trialUsed: true,
         },
         create: {
-          userId: req.user.id,
+          userId: billingUserId,
           plan: "trial-30",
           status: "trialing",
           paidUntil,
@@ -2790,6 +2846,22 @@ app.get("/api/profile", auth, async (req, res) => {
   });
   app.post("/api/billing/yookassa/create-payment", auth, async (req, res) => {
     try {
+      if (!req.user?.isSystemOwner && req.user?.role !== "ADMIN") {
+        return res.status(403).json({
+          message: "Оплату может запускать только администратор клиента.",
+        });
+      }
+      const targetOrgId = req.user.isSystemOwner ? null : req.user.orgId;
+      if (!req.user.isSystemOwner && !targetOrgId) {
+        return res.status(400).json({ message: "ORG_REQUIRED" });
+      }
+      const billingUserId = req.user.isSystemOwner
+        ? req.user.id
+        : await getBillingUserIdForOrg(targetOrgId, req.user.id);
+      if (!billingUserId) {
+        return res.status(400).json({ message: "BILLING_USER_REQUIRED" });
+      }
+
       const { planId, paymentMethod } = req.body || {};
       const plan = getPlan(planId);
       if (!plan) {
@@ -2803,7 +2875,7 @@ app.get("/api/profile", auth, async (req, res) => {
       const tempProviderId = `pending_${crypto.randomUUID()}`;
       const localPayment = await prisma.payment.create({
         data: {
-          userId: req.user.id,
+          userId: billingUserId,
           provider: "yookassa",
           providerPaymentId: tempProviderId,
           amount: plan.amount,
@@ -2829,7 +2901,7 @@ app.get("/api/profile", auth, async (req, res) => {
         },
         description: `Subscription ${plan.id}`,
         metadata: {
-          userId: String(req.user.id),
+          userId: String(billingUserId),
           planId: plan.id,
           days: String(plan.days),
           localPaymentId: String(localPayment.id),
@@ -2872,6 +2944,11 @@ app.get("/api/profile", auth, async (req, res) => {
 
   app.get("/api/billing/yookassa/payment-status", auth, async (req, res) => {
     try {
+      if (!req.user?.isSystemOwner && req.user?.role !== "ADMIN") {
+        return res.status(403).json({
+          message: "Оплату может проверять только администратор клиента.",
+        });
+      }
       const paymentId = String(req.query.paymentId || "").trim();
       if (!paymentId) {
         return res.status(400).json({ message: "PAYMENT_ID_REQUIRED" });
@@ -2881,17 +2958,22 @@ app.get("/api/profile", auth, async (req, res) => {
       if (/^\d+$/.test(paymentId)) {
         paymentRecord = await prisma.payment.findUnique({
           where: { id: Number(paymentId) },
+          include: { user: { select: { orgId: true } } },
         });
       }
       if (!paymentRecord) {
         paymentRecord = await prisma.payment.findFirst({
           where: { providerPaymentId: paymentId },
+          include: { user: { select: { orgId: true } } },
         });
       }
       if (!paymentRecord) {
         return res.status(404).json({ message: "PAYMENT_NOT_FOUND" });
       }
-      if (paymentRecord.userId !== req.user.id) {
+      if (
+        !req.user.isSystemOwner &&
+        (!req.user.orgId || paymentRecord.user?.orgId !== req.user.orgId)
+      ) {
         return res.status(403).json({ message: "PAYMENT_FORBIDDEN" });
       }
 
@@ -3219,7 +3301,7 @@ app.post("/api/users", auth, requireAdmin, async (req, res) => {
     if (!isValidUsername(normalizedLogin)) {
       return res.status(400).json({
         message:
-          "Логин должен быть 3-32 символа: латиница, цифры, точка, дефис или подчёркивание.",
+          "Логин должен быть 3-32 символа: буквы, цифры, точка, дефис или подчёркивание.",
       });
     }
     if (normalizedPassword.length < 8) {

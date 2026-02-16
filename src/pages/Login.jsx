@@ -48,9 +48,6 @@ export default function Login() {
 
       <form onSubmit={handleSubmit}>
         <div style={{ marginBottom: 8 }}>
-          <div style={{ marginBottom: 4, fontSize: 13, color: "#374151" }}>
-            {"\u041b\u043e\u0433\u0438\u043d"}
-          </div>
           <input
             type="text"
             placeholder={"\u041b\u043e\u0433\u0438\u043d"}

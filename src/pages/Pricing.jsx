@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { apiFetch } from "../apiConfig";
+import { apiFetch, normalizeErrorMessage } from "../apiConfig";
 import { useAuth } from "../context/AuthContext";
 
 const PLANS = [
@@ -27,7 +27,17 @@ export default function Pricing() {
   const [billingReady, setBillingReady] = useState(false);
   const [billingLoading, setBillingLoading] = useState(true);
 
+  const canManageBilling =
+    user?.isSystemOwner === true ||
+    (Array.isArray(user?.roles) && user.roles.includes("ADMIN")) ||
+    user?.role === "ADMIN";
+
   const handlePay = async (planId, paymentMethod = "sbp") => {
+    if (!canManageBilling) {
+      setError("Оплату выполняет администратор вашей компании.");
+      return;
+    }
+
     try {
       setLoading(true);
       setLoadingMethod(paymentMethod);
@@ -44,7 +54,7 @@ export default function Pricing() {
 
       const data = await res.json();
       if (!res.ok) {
-        setError(data.message || "Не удалось инициировать оплату");
+        setError(normalizeErrorMessage(data?.message || "", "Не удалось инициировать оплату."));
         return;
       }
 
@@ -53,10 +63,10 @@ export default function Pricing() {
         return;
       }
 
-      setError("Не удалось получить ссылку для оплаты");
+      setError("Не удалось получить ссылку для оплаты.");
     } catch (err) {
       console.error("create payment error:", err);
-      setError("Не удалось инициировать оплату");
+      setError("Не удалось инициировать оплату.");
     } finally {
       setLoading(false);
       setLoadingMethod("");
@@ -64,6 +74,11 @@ export default function Pricing() {
   };
 
   const handleStartTrial = async () => {
+    if (!canManageBilling) {
+      setError("Тестовый период активирует администратор вашей компании.");
+      return;
+    }
+
     try {
       setLoading(true);
       setError("");
@@ -76,14 +91,14 @@ export default function Pricing() {
       });
       const data = await res.json();
       if (!res.ok) {
-        setError(data.message || "Не удалось активировать trial");
+        setError(normalizeErrorMessage(data?.message || "", "Не удалось активировать пробный период."));
         return;
       }
       await refreshUser();
       navigate("/warehouse");
     } catch (err) {
       console.error("start trial error:", err);
-      setError("Не удалось активировать trial");
+      setError("Не удалось активировать пробный период.");
     } finally {
       setLoading(false);
     }
@@ -119,17 +134,25 @@ export default function Pricing() {
       <div className="page-header">
         <h1 className="page-title">Тарифы</h1>
         <p className="page-subtitle">
-          Выберите тариф и активируйте подписку.
+          Оплата выполняется на уровне клиента и распространяется на всех сотрудников.
         </p>
       </div>
 
-      {user?.subscription?.isActive && (
+      {!canManageBilling && (
+        <div className="card" style={{ marginBottom: 16 }}>
+          <strong>Доступом управляет администратор</strong>
+          <div style={{ marginTop: 6 }}>
+            Обратитесь к администратору вашей компании для продления доступа.
+          </div>
+        </div>
+      )}
+
+      {subscription?.isActive && (
         <div className="card" style={{ marginBottom: 16 }}>
           <strong>Подписка активна</strong>
           <div>
-            Оплачено до:{" "}
-            {user.subscription.paidUntil
-              ? new Date(user.subscription.paidUntil).toLocaleDateString()
+            Оплачено до: {subscription.paidUntil
+              ? new Date(subscription.paidUntil).toLocaleDateString("ru-RU")
               : "—"}
           </div>
           <button className="btn" onClick={handleRefresh} style={{ marginTop: 8 }}>
@@ -146,14 +169,14 @@ export default function Pricing() {
 
       {trialAvailable && (
         <div className="card" style={{ marginBottom: 16 }}>
-          <strong>Бесплатный trial</strong>
+          <strong>Бесплатный пробный период</strong>
           <div style={{ marginTop: 6 }}>
             Можно активировать один раз на 30 дней.
           </div>
           <button
             className="btn primary"
             onClick={handleStartTrial}
-            disabled={loading}
+            disabled={loading || !canManageBilling}
             style={{ marginTop: 10 }}
           >
             {loading ? "Активируем..." : "Попробовать бесплатно 30 дней"}
@@ -173,24 +196,24 @@ export default function Pricing() {
               <button
                 className="btn primary"
                 onClick={() => handlePay(plan.id, "sbp")}
-                disabled={loading || billingLoading || !billingReady}
+                disabled={loading || billingLoading || !billingReady || !canManageBilling}
               >
                 {loading && loadingMethod === "sbp"
                   ? "Переходим к оплате..."
                   : billingReady
                     ? "Оплатить по СБП"
-                    : "Оплата будет доступна после модерации"}
+                    : "Оплата будет доступна после настройки"}
               </button>
               <button
                 className="btn"
                 onClick={() => handlePay(plan.id, "default")}
-                disabled={loading || billingLoading || !billingReady}
+                disabled={loading || billingLoading || !billingReady || !canManageBilling}
               >
                 {loading && loadingMethod === "default"
                   ? "Переходим к оплате..."
                   : billingReady
                     ? "Оплатить картой"
-                    : "Оплата будет доступна после модерации"}
+                    : "Оплата будет доступна после настройки"}
               </button>
             </div>
           </div>
