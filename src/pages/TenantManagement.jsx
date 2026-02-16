@@ -9,6 +9,26 @@ const EMPTY_FORM = {
   ownerPassword: "",
 };
 
+function generatePassword(length = 12) {
+  const lower = "abcdefghijkmnopqrstuvwxyz";
+  const upper = "ABCDEFGHJKLMNPQRSTUVWXYZ";
+  const digits = "23456789";
+  const all = `${lower}${upper}${digits}`;
+  const pick = (src) => src[Math.floor(Math.random() * src.length)];
+
+  const chars = [pick(lower), pick(upper), pick(digits)];
+  while (chars.length < length) {
+    chars.push(pick(all));
+  }
+
+  for (let i = chars.length - 1; i > 0; i -= 1) {
+    const j = Math.floor(Math.random() * (i + 1));
+    [chars[i], chars[j]] = [chars[j], chars[i]];
+  }
+
+  return chars.join("");
+}
+
 export default function TenantManagement() {
   const { user } = useAuth();
   const isSystemOwner = user?.isSystemOwner === true;
@@ -39,9 +59,7 @@ export default function TenantManagement() {
       }
       setItems(Array.isArray(data.items) ? data.items : []);
     } catch (err) {
-      setError(
-        normalizeErrorMessage(err, "Не удалось загрузить список клиентов.")
-      );
+      setError(normalizeErrorMessage(err, "Не удалось загрузить список клиентов."));
     } finally {
       setLoading(false);
     }
@@ -55,6 +73,10 @@ export default function TenantManagement() {
 
   const updateField = (field) => (event) => {
     setForm((prev) => ({ ...prev, [field]: event.target.value }));
+  };
+
+  const handleGeneratePassword = () => {
+    setForm((prev) => ({ ...prev, ownerPassword: generatePassword(12) }));
   };
 
   const handleSubmit = async (event) => {
@@ -151,15 +173,25 @@ export default function TenantManagement() {
             </div>
             <div>
               <label className="admin-label">Пароль администратора</label>
-              <input
-                className="admin-input"
-                type="password"
-                placeholder="Минимум 8 символов"
-                value={form.ownerPassword}
-                onChange={updateField("ownerPassword")}
-                minLength={8}
-                required
-              />
+              <div style={{ display: "flex", gap: 8 }}>
+                <input
+                  className="admin-input"
+                  type="text"
+                  placeholder="Минимум 8 символов"
+                  value={form.ownerPassword}
+                  onChange={updateField("ownerPassword")}
+                  minLength={8}
+                  required
+                />
+                <button
+                  type="button"
+                  className="admin-btn admin-btn--secondary"
+                  onClick={handleGeneratePassword}
+                  disabled={submitting}
+                >
+                  Сгенерировать
+                </button>
+              </div>
             </div>
           </div>
 
