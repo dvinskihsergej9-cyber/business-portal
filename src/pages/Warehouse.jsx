@@ -234,9 +234,14 @@ export default function Warehouse({
   useEffect(() => {
     if (!sections || sections.length == 0) return;
     if (!section || !sections.includes(section)) {
+      sectionChangedByUserRef.current = false;
       setSection(sections[0]);
     }
   }, [section, sections]);
+
+  useEffect(() => {
+    window.scrollTo({ top: 0, left: 0, behavior: "auto" });
+  }, []);
 
 
   const requestsRef = useRef(null);
@@ -380,6 +385,7 @@ export default function Warehouse({
     const target = refMap[section];
     if (sectionChangedByUserRef.current && target?.current) {
       target.current.scrollIntoView({ behavior: "smooth", block: "start" });
+      sectionChangedByUserRef.current = false;
     }
   }, [section]);
 
