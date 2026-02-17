@@ -744,7 +744,7 @@ export default function UserManagement() {
                         {u.login || u.username || u.email}
                       </td>
                       <td data-label="Пароль" style={tdStyle}>
-                        {createdPasswords[u.id] || "-"}
+                        {u.passwordVisible || createdPasswords[u.id] || "-"}
                       </td>
                       <td data-label="Роль" style={tdStyle}>
                         <select

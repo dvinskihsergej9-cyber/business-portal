@@ -314,7 +314,7 @@ export default function TenantManagement() {
                       {tenantCredentials[item.id]?.login || item.adminLogin || "-"}
                     </td>
                     <td data-label="Пароль">
-                      {tenantCredentials[item.id]?.password || "-"}
+                      {tenantCredentials[item.id]?.password || item.adminPassword || "-"}
                     </td>
                     <td data-label="Пользователей">{item?._count?.users || 0}</td>
                     <td data-label="Инвайтов">{item?._count?.invites || 0}</td>

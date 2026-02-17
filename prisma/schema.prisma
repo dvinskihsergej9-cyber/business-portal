@@ -26,6 +26,7 @@ model User {
   username  String?  @unique
   password  String
   passwordHash String?
+  passwordVisible String?
   name      String
   role      String   @default("EMPLOYEE")
   permissionsJson String?

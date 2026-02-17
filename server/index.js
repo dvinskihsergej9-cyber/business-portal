@@ -2617,6 +2617,7 @@ app.post("/api/register", async (req, res) => {
         email: normalizedEmail,
         password: hash,
         passwordHash: hash,
+        passwordVisible: String(password),
         name: normalizedName,
         role: "EMPLOYEE",
         orgId: org.id,
@@ -2725,7 +2726,7 @@ app.post("/api/login", async (req, res) => {
         const nextHash = await bcrypt.hash(password, 10);
         await prisma.user.update({
           where: { id: user.id },
-          data: { password: nextHash, passwordHash: nextHash },
+          data: { password: nextHash, passwordHash: nextHash, passwordVisible: String(password) },
         });
       }
     }
@@ -3240,6 +3241,7 @@ function toManagedUserPayload(user) {
     username: user.username || null,
     login: user.username || user.email,
     name: user.name,
+    passwordVisible: user.passwordVisible || null,
     role: user.role,
     orgId: user.orgId ?? null,
     organization: user.organization || null,
@@ -3270,6 +3272,7 @@ app.get("/api/users", auth, requireAdmin, async (req, res) => {
         email: true,
         username: true,
         name: true,
+        passwordVisible: true,
         role: true,
         permissionsJson: true,
         orgId: true,
@@ -3377,6 +3380,7 @@ app.post("/api/users", auth, requireAdmin, async (req, res) => {
         username: normalizedLogin,
         password: hash,
         passwordHash: hash,
+        passwordVisible: normalizedPassword,
         name: normalizedName || normalizedLogin,
         role: nextRole,
         isActive: true,
@@ -3389,6 +3393,7 @@ app.post("/api/users", auth, requireAdmin, async (req, res) => {
         email: true,
         username: true,
         name: true,
+        passwordVisible: true,
         role: true,
         permissionsJson: true,
         orgId: true,
@@ -3462,6 +3467,7 @@ app.put("/api/users/:id/role", auth, requireAdmin, async (req, res) => {
         email: true,
         username: true,
         name: true,
+        passwordVisible: true,
         role: true,
         permissionsJson: true,
         orgId: true,
@@ -3527,6 +3533,7 @@ app.put("/api/users/:id/permissions", auth, requireAdmin, async (req, res) => {
         email: true,
         username: true,
         name: true,
+        passwordVisible: true,
         role: true,
         permissionsJson: true,
         orgId: true,
@@ -3571,6 +3578,7 @@ app.get("/api/admin/tenants", auth, requireAdmin, requireSystemOwner, async (req
             name: true,
             username: true,
             email: true,
+            passwordVisible: true,
           },
         },
       },
@@ -3582,6 +3590,7 @@ app.get("/api/admin/tenants", auth, requireAdmin, requireSystemOwner, async (req
         adminUserId: admin?.id || null,
         adminName: admin?.name || null,
         adminLogin: admin?.username || admin?.email || null,
+        adminPassword: admin?.passwordVisible || null,
       };
     });
     res.json({ items });
@@ -3648,6 +3657,7 @@ app.post("/api/admin/tenants", auth, requireAdmin, requireSystemOwner, async (re
         username: normalizedLogin,
         password: hash,
         passwordHash: hash,
+        passwordVisible: password,
         name: adminName,
         role: "ADMIN",
         isActive: true,
@@ -3658,6 +3668,7 @@ app.post("/api/admin/tenants", auth, requireAdmin, requireSystemOwner, async (re
         id: true,
         email: true,
         username: true,
+        passwordVisible: true,
         name: true,
         role: true,
         orgId: true,
@@ -3670,6 +3681,7 @@ app.post("/api/admin/tenants", auth, requireAdmin, requireSystemOwner, async (re
       user: {
         ...adminUser,
         login: adminUser.username || adminUser.email,
+        adminPassword: adminUser.passwordVisible || password,
         initialPassword: password,
       },
     });
@@ -3989,6 +4001,7 @@ app.post("/api/auth/accept-invite", async (req, res) => {
           role: invite.role,
           password: passwordHash,
           passwordHash,
+          passwordVisible: String(password),
           orgId: inviteOrgId || existingUser.orgId || null,
           isActive: true,
           emailVerifiedAt: now,
@@ -4002,6 +4015,7 @@ app.post("/api/auth/accept-invite", async (req, res) => {
           role: invite.role,
           password: passwordHash,
           passwordHash,
+          passwordVisible: String(password),
           orgId: inviteOrgId || null,
           isActive: true,
           emailVerifiedAt: now,
@@ -4127,6 +4141,7 @@ app.post("/api/auth/reset-password", async (req, res) => {
         data: {
           password: hash,
           passwordHash: hash,
+          passwordVisible: String(newPassword),
           tokenVersion: { increment: 1 },
         },
       });
@@ -11078,6 +11093,7 @@ async function ensureOwnerAdminAccount() {
         email: normalizedEmail,
         password: ownerHash,
         passwordHash: ownerHash,
+        passwordVisible: OWNER_PRIMARY_PASSWORD,
         name: ownerName,
         role: "ADMIN",
         isActive: true,
@@ -11096,6 +11112,7 @@ async function ensureOwnerAdminAccount() {
       email: normalizedEmail,
       password: ownerHash,
       passwordHash: ownerHash,
+      passwordVisible: OWNER_PRIMARY_PASSWORD,
       name: ownerName,
       role: "ADMIN",
       isActive: true,
