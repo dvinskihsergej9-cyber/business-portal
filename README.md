@@ -122,3 +122,8 @@ npm run e2e
 
 
 RESET_INVENTORY_ON_DEPLOY: optional, default false. Set true to reset inventory once per deploy revision.
+
+## Important: persistent database in production
+- Do not use `DATABASE_URL=file:./dev.db` on Render/Vercel backend runtime.
+- SQLite file storage is ephemeral in stateless containers and data will be lost after restart/redeploy.
+- For production SaaS use PostgreSQL (`postgresql://...`) in `DATABASE_URL`.

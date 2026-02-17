@@ -24,6 +24,22 @@ import {
 
 // ================== ИНИЦИАЛИЗАЦИЯ ==================
 
+const DATABASE_URL = String(process.env.DATABASE_URL || "").trim();
+const IS_PRODUCTION_RUNTIME =
+  String(process.env.NODE_ENV || "").toLowerCase() === "production";
+
+if (!DATABASE_URL) {
+  console.error("[DB_CONFIG] DATABASE_URL не задан. Сервер остановлен.");
+  process.exit(1);
+}
+
+if (IS_PRODUCTION_RUNTIME && DATABASE_URL.toLowerCase().startsWith("file:")) {
+  console.error(
+    "[DB_CONFIG] В production запрещена SQLite (file:). Подключите постоянную PostgreSQL базу."
+  );
+  process.exit(1);
+}
+
 const app = express();
 const prismaBase = new PrismaClient();
 let prisma = prismaBase;
