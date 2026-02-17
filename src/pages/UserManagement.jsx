@@ -103,6 +103,7 @@ export default function UserManagement() {
   const [users, setUsers] = useState([]);
   const [loading, setLoading] = useState(true);
   const [savingId, setSavingId] = useState(null);
+  const [passwordSavingId, setPasswordSavingId] = useState(null);
   const [permissionSavingId, setPermissionSavingId] = useState(null);
   const [expandedUserId, setExpandedUserId] = useState(null);
   const [error, setError] = useState("");
@@ -172,6 +173,20 @@ export default function UserManagement() {
       next[row.id] = buildPermissionDraft(row);
     }
     setPermissionDrafts(next);
+  };
+
+  const cachePasswordForUser = (account, rawPassword) => {
+    const value = String(rawPassword || "");
+    if (!value) return;
+    const keys = [account?.id, account?.login, account?.username, account?.email];
+    setCreatedPasswords((prev) => {
+      const next = { ...prev };
+      for (const key of keys) {
+        if (key === null || key === undefined || key === "") continue;
+        next[key] = value;
+      }
+      return next;
+    });
   };
 
   const resetCreateForm = () => {
@@ -364,12 +379,15 @@ export default function UserManagement() {
       const createdUserId = data?.user?.id || null;
       const createdLogin = data?.user?.login || login;
       const createdPassword = data?.user?.initialPassword || password;
-      if (createdUserId) {
-        setCreatedPasswords((prev) => ({
-          ...prev,
-          [createdUserId]: createdPassword,
-        }));
-      }
+      cachePasswordForUser(
+        {
+          id: createdUserId,
+          login: createdLogin,
+          username: data?.user?.username || null,
+          email: data?.user?.email || null,
+        },
+        createdPassword
+      );
 
       setCreateSuccess(
         `Сотрудник "${createdLogin}" создан. Пароль: ${createdPassword}`
@@ -383,6 +401,46 @@ export default function UserManagement() {
       setCreateError(mapCreateUserError(raw));
     } finally {
       setCreateSaving(false);
+    }
+  };
+
+  const handleRegeneratePassword = async (targetUser) => {
+    if (!targetUser?.id || targetUser?.isSystemOwner) return;
+
+    const generatedPassword = generatePassword(12);
+    setPasswordSavingId(targetUser.id);
+    setError("");
+    setCreateError("");
+    setCreateSuccess("");
+
+    try {
+      const res = await fetch(`${API}/users/${targetUser.id}/password`, {
+        method: "PUT",
+        headers,
+        body: JSON.stringify({ password: generatedPassword }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        throw new Error(data?.message || "РћС€РёР±РєР° СЃРјРµРЅС‹ РїР°СЂРѕР»СЏ.");
+      }
+      const nextUser = data?.user;
+      if (!nextUser) {
+        throw new Error("РЎРµСЂРІРµСЂ РЅРµ РІРµСЂРЅСѓР» РґР°РЅРЅС‹Рµ РїРѕР»СЊР·РѕРІР°С‚РµР»СЏ.");
+      }
+
+      setUsers((prev) => prev.map((u) => (u.id === targetUser.id ? nextUser : u)));
+      const finalPassword =
+        data?.initialPassword || nextUser?.passwordVisible || generatedPassword;
+      cachePasswordForUser(nextUser, finalPassword);
+      setCreateSuccess(
+        `РќРѕРІС‹Р№ РїР°СЂРѕР»СЊ РґР»СЏ "${nextUser.login || nextUser.username || nextUser.email}": ${finalPassword}`
+      );
+      setPendingScrollUserId(targetUser.id);
+    } catch (e) {
+      console.error(e);
+      setError(normalizeErrorMessage(e, "РћС€РёР±РєР° СЃРјРµРЅС‹ РїР°СЂРѕР»СЏ."));
+    } finally {
+      setPasswordSavingId(null);
     }
   };
 
@@ -744,7 +802,12 @@ export default function UserManagement() {
                         {u.login || u.username || u.email}
                       </td>
                       <td data-label="Пароль" style={tdStyle}>
-                        {u.passwordVisible || createdPasswords[u.id] || "-"}
+                        {u.passwordVisible ||
+                          createdPasswords[u.id] ||
+                          createdPasswords[u.login] ||
+                          createdPasswords[u.username] ||
+                          createdPasswords[u.email] ||
+                          "-"}
                       </td>
                       <td data-label="Роль" style={tdStyle}>
                         <select
@@ -774,6 +837,16 @@ export default function UserManagement() {
                           className="admin-btn admin-btn--primary"
                         >
                           {savingId === u.id ? "Сохранение..." : "Сохранить роль"}
+                        </button>
+                        <button
+                          type="button"
+                          className="admin-btn admin-btn--secondary"
+                          onClick={() => handleRegeneratePassword(u)}
+                          disabled={u.isSystemOwner || passwordSavingId === u.id}
+                        >
+                          {passwordSavingId === u.id
+                            ? "Смена пароля..."
+                            : "Новый пароль"}
                         </button>
                         <button
                           type="button"

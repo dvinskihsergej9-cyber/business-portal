@@ -3558,6 +3558,77 @@ app.put("/api/users/:id/permissions", auth, requireAdmin, async (req, res) => {
   }
 });
 
+app.put("/api/users/:id/password", auth, requireAdmin, async (req, res) => {
+  try {
+    const id = Number(req.params.id);
+    const nextPassword = String(req.body?.password || "");
+    if (!id || Number.isNaN(id)) {
+      return res.status(400).json({ message: "РќРµРєРѕСЂСЂРµРєС‚РЅС‹Р№ РёРґРµРЅС‚РёС„РёРєР°С‚РѕСЂ РїРѕР»СЊР·РѕРІР°С‚РµР»СЏ" });
+    }
+    if (nextPassword.length < 8) {
+      return res.status(400).json({ message: "РџР°СЂРѕР»СЊ РґРѕР»Р¶РµРЅ Р±С‹С‚СЊ РЅРµ РєРѕСЂРѕС‡Рµ 8 СЃРёРјРІРѕР»РѕРІ." });
+    }
+
+    const target = await prisma.user.findUnique({
+      where: { id },
+      select: { email: true, orgId: true },
+    });
+    if (!target) {
+      return res.status(404).json({ message: "РџРѕР»СЊР·РѕРІР°С‚РµР»СЊ РЅРµ РЅР°Р№РґРµРЅ" });
+    }
+    if (String(target.email || "").trim().toLowerCase() === OWNER_PRIMARY_EMAIL) {
+      return res.status(403).json({ message: "РЎРёСЃС‚РµРјРЅРѕРіРѕ РІР»Р°РґРµР»СЊС†Р° РЅРµР»СЊР·СЏ РёР·РјРµРЅСЏС‚СЊ" });
+    }
+    if (!req.user.isSystemOwner && target.orgId !== req.user.orgId) {
+      return res.status(403).json({ message: "РќРµР»СЊР·СЏ РјРµРЅСЏС‚СЊ РїР°СЂРѕР»СЊ РїРѕР»СЊР·РѕРІР°С‚РµР»СЏ РёР· РґСЂСѓРіРѕР№ РѕСЂРіР°РЅРёР·Р°С†РёРё" });
+    }
+
+    const hash = await bcrypt.hash(nextPassword, 10);
+    await prisma.user.update({
+      where: { id },
+      data: {
+        password: hash,
+        passwordHash: hash,
+        passwordVisible: nextPassword,
+        tokenVersion: { increment: 1 },
+      },
+    });
+
+    const fresh = await prisma.user.findUnique({
+      where: { id },
+      select: {
+        id: true,
+        email: true,
+        username: true,
+        name: true,
+        passwordVisible: true,
+        role: true,
+        permissionsJson: true,
+        orgId: true,
+        organization: {
+          select: {
+            id: true,
+            name: true,
+            code: true,
+          },
+        },
+        createdAt: true,
+      },
+    });
+    if (!fresh) {
+      return res.status(404).json({ message: "РџРѕР»СЊР·РѕРІР°С‚РµР»СЊ РЅРµ РЅР°Р№РґРµРЅ" });
+    }
+
+    res.json({
+      user: toManagedUserPayload(fresh),
+      initialPassword: nextPassword,
+    });
+  } catch (err) {
+    console.error("change user password error:", err);
+    res.status(500).json({ message: "РћС€РёР±РєР° СЃРµСЂРІРµСЂР° РїСЂРё СЃРјРµРЅРµ РїР°СЂРѕР»СЏ" });
+  }
+});
+
 app.get("/api/admin/tenants", auth, requireAdmin, requireSystemOwner, async (req, res) => {
   try {
     if (!hasPermission(req.user, PERMISSION_KEYS.ADMIN_TENANTS)) {
