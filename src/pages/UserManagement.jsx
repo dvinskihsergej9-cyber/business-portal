@@ -404,41 +404,63 @@ export default function UserManagement() {
     }
   };
 
-  const handleRegeneratePassword = async (targetUser) => {
+  const handleDeleteUser = async (targetUser) => {
     if (!targetUser?.id || targetUser?.isSystemOwner) return;
+    if (targetUser.id === user?.id) {
+      setError("\u041d\u0435\u043b\u044c\u0437\u044f \u0443\u0434\u0430\u043b\u0438\u0442\u044c \u0442\u0435\u043a\u0443\u0449\u0435\u0433\u043e \u043f\u043e\u043b\u044c\u0437\u043e\u0432\u0430\u0442\u0435\u043b\u044f.");
+      return;
+    }
 
-    const generatedPassword = generatePassword(12);
+    const loginLabel =
+      targetUser.login || targetUser.username || targetUser.email || ("ID " + targetUser.id);
+    const ok = window.confirm(
+      "\u0423\u0434\u0430\u043b\u0438\u0442\u044c \u0441\u043e\u0442\u0440\u0443\u0434\u043d\u0438\u043a\u0430 \"" + loginLabel + "\"?"
+    );
+    if (!ok) return;
+
     setPasswordSavingId(targetUser.id);
     setError("");
     setCreateError("");
     setCreateSuccess("");
 
     try {
-      const res = await fetch(`${API}/users/${targetUser.id}/password`, {
-        method: "PUT",
+      const res = await fetch(API + "/users/" + targetUser.id, {
+        method: "DELETE",
         headers,
-        body: JSON.stringify({ password: generatedPassword }),
       });
       const data = await res.json().catch(() => ({}));
       if (!res.ok) {
-        throw new Error(data?.message || "РћС€РёР±РєР° СЃРјРµРЅС‹ РїР°СЂРѕР»СЏ.");
-      }
-      const nextUser = data?.user;
-      if (!nextUser) {
-        throw new Error("РЎРµСЂРІРµСЂ РЅРµ РІРµСЂРЅСѓР» РґР°РЅРЅС‹Рµ РїРѕР»СЊР·РѕРІР°С‚РµР»СЏ.");
+        throw new Error(
+          data?.message ||
+            "\u041e\u0448\u0438\u0431\u043a\u0430 \u0443\u0434\u0430\u043b\u0435\u043d\u0438\u044f \u0441\u043e\u0442\u0440\u0443\u0434\u043d\u0438\u043a\u0430."
+        );
       }
 
-      setUsers((prev) => prev.map((u) => (u.id === targetUser.id ? nextUser : u)));
-      const finalPassword =
-        data?.initialPassword || nextUser?.passwordVisible || generatedPassword;
-      cachePasswordForUser(nextUser, finalPassword);
+      setUsers((prev) => prev.filter((u) => u.id !== targetUser.id));
+      setPermissionDrafts((prev) => {
+        const next = { ...prev };
+        delete next[targetUser.id];
+        return next;
+      });
+      setCreatedPasswords((prev) => {
+        const next = { ...prev };
+        delete next[targetUser.id];
+        if (targetUser.login) delete next[targetUser.login];
+        if (targetUser.username) delete next[targetUser.username];
+        if (targetUser.email) delete next[targetUser.email];
+        return next;
+      });
       setCreateSuccess(
-        `РќРѕРІС‹Р№ РїР°СЂРѕР»СЊ РґР»СЏ "${nextUser.login || nextUser.username || nextUser.email}": ${finalPassword}`
+        "\u0421\u043e\u0442\u0440\u0443\u0434\u043d\u0438\u043a \"" + loginLabel + "\" \u0443\u0434\u0430\u043b\u0451\u043d."
       );
-      setPendingScrollUserId(targetUser.id);
     } catch (e) {
       console.error(e);
-      setError(normalizeErrorMessage(e, "РћС€РёР±РєР° СЃРјРµРЅС‹ РїР°СЂРѕР»СЏ."));
+      setError(
+        normalizeErrorMessage(
+          e,
+          "\u041e\u0448\u0438\u0431\u043a\u0430 \u0443\u0434\u0430\u043b\u0435\u043d\u0438\u044f \u0441\u043e\u0442\u0440\u0443\u0434\u043d\u0438\u043a\u0430."
+        )
+      );
     } finally {
       setPasswordSavingId(null);
     }
@@ -841,12 +863,12 @@ export default function UserManagement() {
                         <button
                           type="button"
                           className="admin-btn admin-btn--secondary"
-                          onClick={() => handleRegeneratePassword(u)}
-                          disabled={u.isSystemOwner || passwordSavingId === u.id}
+                          onClick={() => handleDeleteUser(u)}
+                          disabled={u.isSystemOwner || u.id === user?.id || passwordSavingId === u.id}
                         >
                           {passwordSavingId === u.id
-                            ? "Смена пароля..."
-                            : "Новый пароль"}
+                            ? "Удаление..."
+                            : "Удалить"}
                         </button>
                         <button
                           type="button"
