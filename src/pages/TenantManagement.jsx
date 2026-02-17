@@ -55,6 +55,7 @@ export default function TenantManagement() {
   const [items, setItems] = useState([]);
   const [loading, setLoading] = useState(true);
   const [submitting, setSubmitting] = useState(false);
+  const [deletingTenantId, setDeletingTenantId] = useState(null);
   const [error, setError] = useState("");
   const [success, setSuccess] = useState("");
   const [form, setForm] = useState(EMPTY_FORM);
@@ -166,6 +167,40 @@ export default function TenantManagement() {
       setError(normalizeErrorMessage(err, "Не удалось создать клиента."));
     } finally {
       setSubmitting(false);
+    }
+  };
+
+  const handleDeleteTenant = async (tenant) => {
+    const tenantId = Number(tenant?.id || 0);
+    if (!tenantId) return;
+    const tenantName = String(tenant?.name || `ID ${tenantId}`);
+    const confirmed = window.confirm(`Удалить клиента "${tenantName}"?`);
+    if (!confirmed) return;
+
+    setDeletingTenantId(tenantId);
+    setError("");
+    setSuccess("");
+    try {
+      const res = await apiFetch(`/admin/tenants/${tenantId}`, {
+        method: "DELETE",
+        headers,
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        throw new Error(data.message || "TENANT_DELETE_ERROR");
+      }
+
+      setItems((prev) => prev.filter((row) => row.id !== tenantId));
+      setTenantCredentials((prev) => {
+        const next = { ...prev };
+        delete next[tenantId];
+        return next;
+      });
+      setSuccess(`Клиент "${tenantName}" удалён.`);
+    } catch (err) {
+      setError(normalizeErrorMessage(err, "Не удалось удалить клиента."));
+    } finally {
+      setDeletingTenantId(null);
     }
   };
 
@@ -297,6 +332,7 @@ export default function TenantManagement() {
                   <th>Пользователей</th>
                   <th>Инвайтов</th>
                   <th>Создано</th>
+                  <th>Действия</th>
                 </tr>
               </thead>
               <tbody>
@@ -322,6 +358,16 @@ export default function TenantManagement() {
                       {item.createdAt
                         ? new Date(item.createdAt).toLocaleString("ru-RU")
                         : "-"}
+                    </td>
+                    <td data-label="Действия">
+                      <button
+                        type="button"
+                        className="admin-btn admin-btn--secondary"
+                        onClick={() => handleDeleteTenant(item)}
+                        disabled={deletingTenantId === item.id}
+                      >
+                        {deletingTenantId === item.id ? "Удаление..." : "Удалить"}
+                      </button>
                     </td>
                   </tr>
                 ))}
