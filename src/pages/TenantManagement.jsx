@@ -49,6 +49,25 @@ function readTenantCredentials() {
   }
 }
 
+async function copyText(value) {
+  const text = String(value || "");
+  if (!text) return;
+  if (navigator?.clipboard?.writeText) {
+    await navigator.clipboard.writeText(text);
+    return;
+  }
+  const textarea = document.createElement("textarea");
+  textarea.value = text;
+  textarea.setAttribute("readonly", "readonly");
+  textarea.style.position = "fixed";
+  textarea.style.left = "-9999px";
+  document.body.appendChild(textarea);
+  textarea.focus();
+  textarea.select();
+  document.execCommand("copy");
+  document.body.removeChild(textarea);
+}
+
 export default function TenantManagement() {
   const { user } = useAuth();
   const isSystemOwner = user?.isSystemOwner === true;
@@ -202,6 +221,28 @@ export default function TenantManagement() {
       setError(normalizeErrorMessage(err, "Не удалось удалить клиента."));
     } finally {
       setDeletingTenantId(null);
+    }
+  };
+
+  const handleCopyTenantCredentials = async (tenant) => {
+    const login = String(
+      tenantCredentials[tenant.id]?.login || tenant.adminLogin || ""
+    ).trim();
+    const password = String(
+      tenantCredentials[tenant.id]?.password || tenant.adminPassword || ""
+    ).trim();
+
+    if (!login || !password || password === "-") {
+      setError("Не удалось скопировать: логин или пароль пустой.");
+      return;
+    }
+
+    try {
+      await copyText(`Логин: ${login}\nПароль: ${password}`);
+      setError("");
+      setSuccess(`Данные клиента \"${tenant.name || login}\" скопированы.`);
+    } catch {
+      setError("Не удалось скопировать логин и пароль.");
     }
   };
 
@@ -361,7 +402,12 @@ export default function TenantManagement() {
                 </tr>
               </thead>
               <tbody>
-                {filteredItems.map((item) => (
+                {filteredItems.map((item) => {
+                  const adminLogin =
+                    tenantCredentials[item.id]?.login || item.adminLogin || "-";
+                  const adminPassword =
+                    tenantCredentials[item.id]?.password || item.adminPassword || "-";
+                  return (
                   <tr
                     key={item.id}
                     ref={(node) => {
@@ -372,10 +418,10 @@ export default function TenantManagement() {
                     <td data-label="Компания">{item.name || "-"}</td>
                     <td data-label="Код клиента">{item.code || "-"}</td>
                     <td data-label="Логин администратора">
-                      {tenantCredentials[item.id]?.login || item.adminLogin || "-"}
+                      {adminLogin}
                     </td>
                     <td data-label="Пароль">
-                      {tenantCredentials[item.id]?.password || item.adminPassword || "-"}
+                      {adminPassword}
                     </td>
                     <td data-label="Пользователей">{item?._count?.users || 0}</td>
                     <td data-label="Инвайтов">{item?._count?.invites || 0}</td>
@@ -387,6 +433,42 @@ export default function TenantManagement() {
                     <td data-label="Действия">
                       <button
                         type="button"
+                        className="admin-btn admin-btn--ghost admin-icon-btn"
+                        title="Copy login and password"
+                        aria-label="Copy login and password"
+                        onClick={() => handleCopyTenantCredentials(item)}
+                        disabled={adminPassword === "-"}
+                      >
+                        <svg
+                          width="16"
+                          height="16"
+                          viewBox="0 0 24 24"
+                          fill="none"
+                          xmlns="http://www.w3.org/2000/svg"
+                          aria-hidden="true"
+                        >
+                          <rect
+                            x="9"
+                            y="9"
+                            width="11"
+                            height="11"
+                            rx="2"
+                            stroke="currentColor"
+                            strokeWidth="2"
+                          />
+                          <rect
+                            x="4"
+                            y="4"
+                            width="11"
+                            height="11"
+                            rx="2"
+                            stroke="currentColor"
+                            strokeWidth="2"
+                          />
+                        </svg>
+                      </button>
+                      <button
+                        type="button"
                         className="admin-btn admin-btn--secondary"
                         onClick={() => handleDeleteTenant(item)}
                         disabled={deletingTenantId === item.id}
@@ -395,7 +477,8 @@ export default function TenantManagement() {
                       </button>
                     </td>
                   </tr>
-                ))}
+                  );
+                })}
               </tbody>
             </table>
           </div>

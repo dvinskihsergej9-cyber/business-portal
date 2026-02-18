@@ -1406,6 +1406,18 @@ function isWarehouseManager(user) {
   );
 }
 
+function canUseReceivingByPo(user) {
+  return (
+    isWarehouseManager(user) ||
+    hasAnyPermission(user, [
+      PERMISSION_KEYS.TSD_RECEIVING,
+      PERMISSION_KEYS.WAREHOUSE_TSD,
+      PERMISSION_KEYS.WAREHOUSE_SUPPLIERS,
+      PERMISSION_KEYS.WAREHOUSE_QUEUE,
+    ])
+  );
+}
+
 function normalizeComparableText(value) {
   return String(value || "")
     .trim()
@@ -3487,6 +3499,185 @@ app.get("/api/users/permissions/catalog", auth, requireAdmin, async (req, res) =
   } catch (err) {
     console.error("permissions catalog error:", err);
     res.status(500).json({ message: "Ошибка загрузки каталога прав." });
+  }
+});
+
+function parseDateTimeQuery(value) {
+  if (value === undefined || value === null || value === "") return null;
+  const parsed = new Date(String(value));
+  if (Number.isNaN(parsed.getTime())) return null;
+  return parsed;
+}
+
+app.get("/api/admin/reports/picking", auth, requireAdmin, async (req, res) => {
+  try {
+    if (
+      !hasAnyPermission(req.user, [
+        PERMISSION_KEYS.ADMIN_WAREHOUSE,
+        PERMISSION_KEYS.ADMIN_USERS,
+      ])
+    ) {
+      return res.status(403).json({ message: "NO_ACCESS" });
+    }
+
+    const to = parseDateTimeQuery(req.query.to) || new Date();
+    const from =
+      parseDateTimeQuery(req.query.from) ||
+      new Date(to.getTime() - 7 * 24 * 60 * 60 * 1000);
+
+    if (from.getTime() > to.getTime()) {
+      return res.status(400).json({ message: "BAD_RANGE" });
+    }
+
+    const userIdRaw = req.query.userId;
+    let filterUserId = null;
+    if (userIdRaw !== undefined && userIdRaw !== null && userIdRaw !== "") {
+      const parsedUserId = Number(userIdRaw);
+      if (!parsedUserId || Number.isNaN(parsedUserId)) {
+        return res.status(400).json({ message: "BAD_USER_ID" });
+      }
+      filterUserId = parsedUserId;
+    }
+
+    const where = {
+      status: { in: ["PICKED", "PACKED", "READY_TO_SHIP", "SHIPPED"] },
+      assignedToUserId: filterUserId || { not: null },
+      OR: [
+        { pickedAt: { gte: from, lte: to } },
+        {
+          AND: [{ pickedAt: null }, { completedAt: { gte: from, lte: to } }],
+        },
+      ],
+    };
+
+    const orders = await prisma.salesOrder.findMany({
+      where,
+      include: {
+        assignedToUser: {
+          select: { id: true, name: true, username: true, email: true },
+        },
+        lines: {
+          select: { id: true, qty: true, pickedQty: true },
+          orderBy: { id: "asc" },
+        },
+      },
+      orderBy: [{ pickedAt: "desc" }, { completedAt: "desc" }, { id: "desc" }],
+      take: 5000,
+    });
+
+    const byUser = new Map();
+    for (const order of orders) {
+      if (!order.assignedToUserId) continue;
+
+      const userId = order.assignedToUserId;
+      const eventAt =
+        order.pickedAt || order.completedAt || order.updatedAt || order.createdAt;
+      const lines = Array.isArray(order.lines) ? order.lines : [];
+      const linesCount = lines.length;
+      const qtyOrdered = lines.reduce((sum, row) => sum + (Number(row.qty) || 0), 0);
+      const qtyPicked = lines.reduce(
+        (sum, row) => sum + Math.max(0, Number(row.pickedQty) || 0),
+        0
+      );
+
+      if (!byUser.has(userId)) {
+        byUser.set(userId, {
+          userId,
+          userName:
+            order.assignedToUser?.name ||
+            order.assignedToUser?.username ||
+            order.assignedToUser?.email ||
+            `user #${userId}`,
+          userLogin:
+            order.assignedToUser?.username || order.assignedToUser?.email || null,
+          ordersCount: 0,
+          linesCount: 0,
+          qtyOrdered: 0,
+          qtyPicked: 0,
+          firstEventAt: eventAt || null,
+          lastEventAt: eventAt || null,
+          orders: [],
+        });
+      }
+
+      const bucket = byUser.get(userId);
+      bucket.ordersCount += 1;
+      bucket.linesCount += linesCount;
+      bucket.qtyOrdered += qtyOrdered;
+      bucket.qtyPicked += qtyPicked;
+
+      if (eventAt) {
+        if (!bucket.firstEventAt || eventAt < bucket.firstEventAt) {
+          bucket.firstEventAt = eventAt;
+        }
+        if (!bucket.lastEventAt || eventAt > bucket.lastEventAt) {
+          bucket.lastEventAt = eventAt;
+        }
+      }
+
+      bucket.orders.push({
+        id: order.id,
+        orderNumber: order.orderNumber,
+        status: order.status,
+        customerName: order.customerName || "",
+        linesCount,
+        qtyOrdered,
+        qtyPicked,
+        pickedAt: order.pickedAt,
+        completedAt: order.completedAt,
+        eventAt,
+      });
+    }
+
+    const users = Array.from(byUser.values())
+      .map((row) => ({
+        ...row,
+        firstEventAt: row.firstEventAt ? row.firstEventAt.toISOString() : null,
+        lastEventAt: row.lastEventAt ? row.lastEventAt.toISOString() : null,
+        orders: row.orders
+          .sort((a, b) => {
+            const aTs = a.eventAt ? new Date(a.eventAt).getTime() : 0;
+            const bTs = b.eventAt ? new Date(b.eventAt).getTime() : 0;
+            return bTs - aTs;
+          })
+          .map((item) => ({
+            ...item,
+            pickedAt: item.pickedAt ? new Date(item.pickedAt).toISOString() : null,
+            completedAt: item.completedAt
+              ? new Date(item.completedAt).toISOString()
+              : null,
+            eventAt: item.eventAt ? new Date(item.eventAt).toISOString() : null,
+          })),
+      }))
+      .sort((a, b) => {
+        if (b.ordersCount !== a.ordersCount) return b.ordersCount - a.ordersCount;
+        if (b.qtyPicked !== a.qtyPicked) return b.qtyPicked - a.qtyPicked;
+        return a.userName.localeCompare(b.userName, "ru");
+      });
+
+    const totals = users.reduce(
+      (acc, row) => {
+        acc.workers += 1;
+        acc.orders += row.ordersCount;
+        acc.lines += row.linesCount;
+        acc.qtyOrdered += row.qtyOrdered;
+        acc.qtyPicked += row.qtyPicked;
+        return acc;
+      },
+      { workers: 0, orders: 0, lines: 0, qtyOrdered: 0, qtyPicked: 0 }
+    );
+
+    return res.json({
+      range: {
+        from: from.toISOString(),
+        to: to.toISOString(),
+      },
+      totals,
+      users,
+    });
+  } catch (err) {
+    console.error("admin picking report error:", err);
+    return res.status(500).json({ message: "PICKING_REPORT_ERROR" });
   }
 });
 
@@ -9022,7 +9213,7 @@ app.get("/api/purchase-orders", auth, async (req, res) => {
 // ===== WAREHOUSE RECEIVING: OPEN POs =====
 app.get("/api/warehouse/receiving/open-pos", auth, async (req, res) => {
   try {
-    if (!isWarehouseManager(req.user)) {
+    if (!canUseReceivingByPo(req.user)) {
       return res.status(403).json({ message: "NO_ACCESS" });
     }
 
@@ -9109,7 +9300,7 @@ app.get("/api/warehouse/receiving/open-pos", auth, async (req, res) => {
 
 app.post("/api/warehouse/receiving/:poId/take", auth, async (req, res) => {
   try {
-    if (!isWarehouseManager(req.user)) {
+    if (!canUseReceivingByPo(req.user)) {
       return res.status(403).json({ message: "NO_ACCESS" });
     }
 
@@ -9686,7 +9877,7 @@ app.post("/api/purchase-orders/:id/receive", auth, async (req, res) => {
 // ===== WAREHOUSE RECEIVING: CONFIRM PO =====
 app.post("/api/warehouse/receiving/:poId/confirm", auth, async (req, res) => {
   try {
-    if (!isWarehouseManager(req.user)) {
+    if (!canUseReceivingByPo(req.user)) {
       return res.status(403).json({ message: "NO_ACCESS" });
     }
 
@@ -9937,7 +10128,7 @@ app.post("/api/warehouse/receiving/:poId/confirm", auth, async (req, res) => {
 // ===== RECEIVING DISCREPANCIES =====
 app.get("/api/warehouse/receiving/:poId/discrepancies", auth, async (req, res) => {
   try {
-    if (!isWarehouseManager(req.user)) {
+    if (!canUseReceivingByPo(req.user)) {
       return res.status(403).json({ message: "NO_ACCESS" });
     }
     const poId = Number(req.params.poId);
@@ -9958,7 +10149,7 @@ app.get("/api/warehouse/receiving/:poId/discrepancies", auth, async (req, res) =
 
 app.post("/api/warehouse/receiving/:poId/discrepancies", auth, async (req, res) => {
   try {
-    if (!isWarehouseManager(req.user)) {
+    if (!canUseReceivingByPo(req.user)) {
       return res.status(403).json({ message: "NO_ACCESS" });
     }
     const poId = Number(req.params.poId);

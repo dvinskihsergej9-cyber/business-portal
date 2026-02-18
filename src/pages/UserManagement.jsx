@@ -98,6 +98,25 @@ function readCreatedPasswords() {
   }
 }
 
+async function copyText(value) {
+  const text = String(value || "");
+  if (!text) return;
+  if (navigator?.clipboard?.writeText) {
+    await navigator.clipboard.writeText(text);
+    return;
+  }
+  const textarea = document.createElement("textarea");
+  textarea.value = text;
+  textarea.setAttribute("readonly", "readonly");
+  textarea.style.position = "fixed";
+  textarea.style.left = "-9999px";
+  document.body.appendChild(textarea);
+  textarea.focus();
+  textarea.select();
+  document.execCommand("copy");
+  document.body.removeChild(textarea);
+}
+
 export default function UserManagement() {
   const { user } = useAuth();
   const [users, setUsers] = useState([]);
@@ -464,6 +483,26 @@ export default function UserManagement() {
       );
     } finally {
       setPasswordSavingId(null);
+    }
+  };
+
+  const handleCopyCredentials = async (targetUser) => {
+    const login = String(
+      targetUser?.login || targetUser?.username || targetUser?.email || ""
+    ).trim();
+    const password = String(targetUser?.passwordVisible || "").trim();
+
+    if (!login || !password || password === "-") {
+      setError("Не удалось скопировать: логин или пароль пустой.");
+      return;
+    }
+
+    try {
+      await copyText(`Логин: ${login}\nПароль: ${password}`);
+      setError("");
+      setCreateSuccess(`Данные сотрудника "${login}" скопированы.`);
+    } catch (err) {
+      setError("Не удалось скопировать логин и пароль.");
     }
   };
 
@@ -839,6 +878,14 @@ export default function UserManagement() {
                 const selectedPermissions = Array.isArray(draft.permissions)
                   ? draft.permissions
                   : [];
+                const userLogin = u.login || u.username || u.email || "-";
+                const userPassword =
+                  u.passwordVisible ||
+                  createdPasswords[u.id] ||
+                  createdPasswords[u.login] ||
+                  createdPasswords[u.username] ||
+                  createdPasswords[u.email] ||
+                  "-";
 
                 return (
                   <Fragment key={u.id}>
@@ -854,15 +901,10 @@ export default function UserManagement() {
                         {u.name}
                       </td>
                       <td data-label="Логин" style={tdStyle}>
-                        {u.login || u.username || u.email}
+                        {userLogin}
                       </td>
                       <td data-label="Пароль" style={tdStyle}>
-                        {u.passwordVisible ||
-                          createdPasswords[u.id] ||
-                          createdPasswords[u.login] ||
-                          createdPasswords[u.username] ||
-                          createdPasswords[u.email] ||
-                          "-"}
+                        {userPassword}
                       </td>
                       <td data-label="Роль" style={tdStyle}>
                         <select
@@ -886,6 +928,50 @@ export default function UserManagement() {
                         style={tdStyle}
                         className="admin-table__actions"
                       >
+                        <button
+                          type="button"
+                          className="admin-btn admin-btn--ghost admin-icon-btn"
+                          title="Copy login and password"
+                          aria-label="Copy login and password"
+                          onClick={() =>
+                            handleCopyCredentials({
+                              login: userLogin === "-" ? "" : userLogin,
+                              username: u.username,
+                              email: u.email,
+                              passwordVisible:
+                                userPassword === "-" ? "" : userPassword,
+                            })
+                          }
+                          disabled={userPassword === "-"}
+                        >
+                          <svg
+                            width="16"
+                            height="16"
+                            viewBox="0 0 24 24"
+                            fill="none"
+                            xmlns="http://www.w3.org/2000/svg"
+                            aria-hidden="true"
+                          >
+                            <rect
+                              x="9"
+                              y="9"
+                              width="11"
+                              height="11"
+                              rx="2"
+                              stroke="currentColor"
+                              strokeWidth="2"
+                            />
+                            <rect
+                              x="4"
+                              y="4"
+                              width="11"
+                              height="11"
+                              rx="2"
+                              stroke="currentColor"
+                              strokeWidth="2"
+                            />
+                          </svg>
+                        </button>
                         <button
                           onClick={() => handleSaveRole(u.id)}
                           disabled={savingId === u.id || u.isSystemOwner}
