@@ -857,11 +857,59 @@ const WAREHOUSE_ROUTE_RULES = [
 const denySectionAccess = (res) =>
   res.status(403).json({ message: "Нет доступа к разделу." });
 
+const isReadRequest = (req) =>
+  req.method === "GET" || req.method === "HEAD" || req.method === "OPTIONS";
+
 app.use("/api/admin", auth, requirePermission(PERMISSION_KEYS.APP_ADMIN));
 app.use("/api/users", auth, requirePermission(PERMISSION_KEYS.ADMIN_USERS));
-app.use("/api/inventory", auth, requirePermission(PERMISSION_KEYS.WAREHOUSE_INVENTORY));
-app.use("/api/suppliers", auth, requirePermission(PERMISSION_KEYS.WAREHOUSE_SUPPLIERS));
-app.use("/api/purchase-orders", auth, requirePermission(PERMISSION_KEYS.WAREHOUSE_SUPPLIERS));
+app.use("/api/inventory", auth, (req, res, next) => {
+  if (hasPermission(req.user, PERMISSION_KEYS.WAREHOUSE_INVENTORY)) {
+    return next();
+  }
+
+  // "Справочник ячеек" использует справочник товаров для привязки/печати QR.
+  if (
+    hasPermission(req.user, PERMISSION_KEYS.WAREHOUSE_LOCATIONS) &&
+    isReadRequest(req) &&
+    req.path.startsWith("/items")
+  ) {
+    return next();
+  }
+
+  return denySectionAccess(res);
+});
+app.use("/api/suppliers", auth, (req, res, next) => {
+  if (hasPermission(req.user, PERMISSION_KEYS.WAREHOUSE_SUPPLIERS)) {
+    return next();
+  }
+
+  // "Очередь поставщиков" читает список поставщиков в регистрации авто.
+  if (
+    hasPermission(req.user, PERMISSION_KEYS.WAREHOUSE_QUEUE) &&
+    isReadRequest(req) &&
+    (req.path === "/" || req.path === "")
+  ) {
+    return next();
+  }
+
+  return denySectionAccess(res);
+});
+app.use("/api/purchase-orders", auth, (req, res, next) => {
+  if (hasPermission(req.user, PERMISSION_KEYS.WAREHOUSE_SUPPLIERS)) {
+    return next();
+  }
+
+  // "Очередь поставщиков" читает номера заказов выбранного поставщика.
+  if (
+    hasPermission(req.user, PERMISSION_KEYS.WAREHOUSE_QUEUE) &&
+    isReadRequest(req) &&
+    (req.path === "/" || req.path === "")
+  ) {
+    return next();
+  }
+
+  return denySectionAccess(res);
+});
 app.use("/api/supplier-trucks", auth, requirePermission(PERMISSION_KEYS.WAREHOUSE_QUEUE));
 app.use("/api/orders", auth, requirePermission(PERMISSION_KEYS.WAREHOUSE_ORDERS));
 app.use("/api/warehouse", (req, res, next) => {
@@ -881,6 +929,13 @@ app.use("/api/warehouse", (req, res, next) => {
     }
 
     if (match.key && !hasPermission(req.user, match.key)) {
+      if (
+        match.key === PERMISSION_KEYS.WAREHOUSE_LOCATIONS &&
+        isReadRequest(req) &&
+        hasAnyPermission(req.user, WAREHOUSE_TSD_ANY)
+      ) {
+        return next();
+      }
       return denySectionAccess(res);
     }
     if (match.any && !hasAnyPermission(req.user, match.any)) {

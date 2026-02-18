@@ -995,7 +995,7 @@ export default function Warehouse({
     const loadData = async () => {
       try {
         await loadInventory();
-        if (section === "inventory" || section === "suppliers") {
+        if (section === "suppliers") {
           await loadSuppliers();
           await loadPurchaseOrders();
         }
