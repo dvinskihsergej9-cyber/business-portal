@@ -21,7 +21,7 @@ const FALLBACK_PERMISSION_CATALOG = {
   roleDefaults: {},
 };
 
-const LOGIN_PATTERN = /^[A-Za-zА-Яа-яЁё0-9._-]{3,32}$/;
+const LOGIN_PATTERN = /^[\p{L}\p{N}._-]{3,32}$/u;
 const sanitizeLoginInput = (value) =>
   String(value || "").replace(/\s+/g, "_");
 
@@ -107,6 +107,7 @@ export default function UserManagement() {
   const [permissionSavingId, setPermissionSavingId] = useState(null);
   const [expandedUserId, setExpandedUserId] = useState(null);
   const [error, setError] = useState("");
+  const [userSearch, setUserSearch] = useState("");
 
   const [permissionCatalog, setPermissionCatalog] = useState(
     FALLBACK_PERMISSION_CATALOG
@@ -602,6 +603,26 @@ export default function UserManagement() {
     }
   };
 
+  const filteredUsers = useMemo(() => {
+    const query = String(userSearch || "").trim().toLowerCase();
+    if (!query) return users;
+    return users.filter((u) => {
+      const haystack = [
+        u.id,
+        u.name,
+        u.login,
+        u.username,
+        u.email,
+        u.role,
+        roleLabel(u.role),
+      ]
+        .filter(Boolean)
+        .join(" ")
+        .toLowerCase();
+      return haystack.includes(query);
+    });
+  }, [users, userSearch]);
+
   if (user?.role !== "ADMIN") {
     return (
       <div style={{ padding: 24 }}>
@@ -781,10 +802,22 @@ export default function UserManagement() {
         </div>
       )}
 
+      <div style={{ marginBottom: 12 }}>
+        <input
+          className="admin-input"
+          type="text"
+          placeholder="Поиск сотрудника: ФИО, логин, роль, ID"
+          value={userSearch}
+          onChange={(event) => setUserSearch(event.target.value)}
+        />
+      </div>
+
       {loading ? (
         <p>Загрузка пользователей...</p>
       ) : users.length === 0 ? (
         <p>Пользователей пока нет.</p>
+      ) : filteredUsers.length === 0 ? (
+        <p>Ничего не найдено по фильтру.</p>
       ) : (
         <div className="admin-table-wrapper">
           <table className="admin-table admin-table--users">
@@ -800,7 +833,7 @@ export default function UserManagement() {
               </tr>
             </thead>
             <tbody>
-              {users.map((u) => {
+              {filteredUsers.map((u) => {
                 const draft = permissionDrafts[u.id] || buildPermissionDraft(u);
                 const isExpanded = expandedUserId === u.id;
                 const selectedPermissions = Array.isArray(draft.permissions)

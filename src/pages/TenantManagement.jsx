@@ -58,6 +58,7 @@ export default function TenantManagement() {
   const [deletingTenantId, setDeletingTenantId] = useState(null);
   const [error, setError] = useState("");
   const [success, setSuccess] = useState("");
+  const [tenantSearch, setTenantSearch] = useState("");
   const [form, setForm] = useState(EMPTY_FORM);
   const [tenantCredentials, setTenantCredentials] = useState(() =>
     readTenantCredentials()
@@ -204,6 +205,19 @@ export default function TenantManagement() {
     }
   };
 
+  const filteredItems = useMemo(() => {
+    const query = String(tenantSearch || "").trim().toLowerCase();
+    if (!query) return items;
+    return items.filter((item) => {
+      const login = tenantCredentials[item.id]?.login || item.adminLogin || "";
+      const haystack = [item.id, item.name, item.code, item.adminName, login]
+        .filter(Boolean)
+        .join(" ")
+        .toLowerCase();
+      return haystack.includes(query);
+    });
+  }, [items, tenantCredentials, tenantSearch]);
+
   if (!isSystemOwner) {
     return (
       <div className="admin-console__card admin-console__card--warn">
@@ -315,10 +329,21 @@ export default function TenantManagement() {
 
       <div className="admin-console__card" style={{ marginTop: 16 }}>
         <div className="admin-console__card-title">Список клиентов</div>
+        <div style={{ marginTop: 10, marginBottom: 10 }}>
+          <input
+            className="admin-input"
+            type="text"
+            placeholder="Поиск клиента: компания, код, логин, ID"
+            value={tenantSearch}
+            onChange={(event) => setTenantSearch(event.target.value)}
+          />
+        </div>
         {loading ? (
           <div className="admin-muted">Загрузка...</div>
         ) : items.length === 0 ? (
           <div className="admin-muted">Клиентов пока нет.</div>
+        ) : filteredItems.length === 0 ? (
+          <div className="admin-muted">Ничего не найдено по фильтру.</div>
         ) : (
           <div className="admin-table-wrapper">
             <table className="admin-table">
@@ -336,7 +361,7 @@ export default function TenantManagement() {
                 </tr>
               </thead>
               <tbody>
-                {items.map((item) => (
+                {filteredItems.map((item) => (
                   <tr
                     key={item.id}
                     ref={(node) => {

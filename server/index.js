@@ -203,7 +203,7 @@ function normalizeLogin(value) {
 }
 
 function isValidUsername(value) {
-  return /^[A-Za-zА-Яа-яЁё0-9._-]{3,32}$/.test(String(value || ""));
+  return /^[\p{L}\p{N}._-]{3,32}$/u.test(String(value || ""));
 }
 
 function buildTechnicalEmailByUsername(username) {
@@ -3181,7 +3181,7 @@ app.get("/api/settings/org-profile", auth, async (req, res) => {
     if (req.user?.role != "ADMIN") {
       return res.status(403).json({ message: "NO_ACCESS" });
     }
-    if (!hasPermission(req.user, PERMISSION_KEYS.ADMIN_SETTINGS)) {
+    if (!hasPermission(req.user, PERMISSION_KEYS.APP_WAREHOUSE)) {
       return res.status(403).json({ message: "NO_ACCESS" });
     }
     const targetOrgId = req.user.isSystemOwner
@@ -3205,7 +3205,7 @@ app.put("/api/settings/org-profile", auth, async (req, res) => {
     if (req.user?.role != "ADMIN") {
       return res.status(403).json({ message: "NO_ACCESS" });
     }
-    if (!hasPermission(req.user, PERMISSION_KEYS.ADMIN_SETTINGS)) {
+    if (!hasPermission(req.user, PERMISSION_KEYS.APP_WAREHOUSE)) {
       return res.status(403).json({ message: "NO_ACCESS" });
     }
     const {

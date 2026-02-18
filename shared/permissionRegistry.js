@@ -177,12 +177,6 @@ const ENTRY_DEFINITIONS = Object.freeze([
     groupId: "admin",
   },
   {
-    id: "ADMIN_SETTINGS",
-    key: "admin.settings",
-    label: "Админ: Настройки",
-    groupId: "admin",
-  },
-  {
     id: "ADMIN_TENANTS",
     key: "admin.tenants",
     label: "Админ: Клиенты SaaS",

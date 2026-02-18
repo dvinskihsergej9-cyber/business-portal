@@ -3,14 +3,12 @@ import { useAuth } from "../context/AuthContext";
 import UserManagement from "./UserManagement";
 import TenantManagement from "./TenantManagement";
 import AdminWarehousePanel from "../components/admin/AdminWarehousePanel";
-import AdminSettingsPanel from "../components/admin/AdminSettingsPanel";
 import "../components/admin/admin.css";
 import { hasPermission, PERMISSION_KEYS } from "../utils/permissions";
 
 const BASE_TABS = [
   { id: "users", label: "Пользователи" },
   { id: "warehouse", label: "Склад" },
-  { id: "settings", label: "Настройки" },
 ];
 
 const OWNER_TAB = { id: "tenants", label: "Клиенты" };
@@ -21,7 +19,6 @@ export default function AdminConsole({ initialTab = "users" }) {
   const isSystemOwner = user?.isSystemOwner === true;
   const canUsers = hasPermission(user, PERMISSION_KEYS.ADMIN_USERS);
   const canWarehouse = hasPermission(user, PERMISSION_KEYS.ADMIN_WAREHOUSE);
-  const canSettings = hasPermission(user, PERMISSION_KEYS.ADMIN_SETTINGS);
   const canTenants =
     isSystemOwner && hasPermission(user, PERMISSION_KEYS.ADMIN_TENANTS);
 
@@ -31,9 +28,8 @@ export default function AdminConsole({ initialTab = "users" }) {
         canTenants ? OWNER_TAB : null,
         canUsers ? BASE_TABS.find((item) => item.id === "users") : null,
         canWarehouse ? BASE_TABS.find((item) => item.id === "warehouse") : null,
-        canSettings ? BASE_TABS.find((item) => item.id === "settings") : null,
       ].filter(Boolean),
-    [canUsers, canWarehouse, canSettings, canTenants]
+    [canUsers, canWarehouse, canTenants]
   );
   const initialTabId = tabs.some((tab) => tab.id === initialTab)
     ? initialTab
@@ -112,7 +108,6 @@ export default function AdminConsole({ initialTab = "users" }) {
         {activeTab === "tenants" && <TenantManagement />}
         {activeTab === "users" && <UserManagement />}
         {activeTab === "warehouse" && <AdminWarehousePanel />}
-        {activeTab === "settings" && <AdminSettingsPanel />}
       </div>
     </div>
   );
