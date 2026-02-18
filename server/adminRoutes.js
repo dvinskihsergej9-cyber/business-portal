@@ -1,13 +1,22 @@
 import express from "express";
 import bcrypt from "bcryptjs";
+import { hasPermission, PERMISSION_KEYS } from "./permissions.js";
 
 export function adminRoutes({ prisma, auth, requireAdmin }) {
   const router = express.Router();
 
   router.use(auth, requireAdmin);
+
+  const requirePermission = (permissionKey) => (req, res, next) => {
+    if (hasPermission(req.user, permissionKey)) return next();
+    return res.status(403).json({ message: "Нет доступа к разделу." });
+  };
+
+  const requireUsersAdmin = requirePermission(PERMISSION_KEYS.ADMIN_USERS);
+  const requireWarehouseAdmin = requirePermission(PERMISSION_KEYS.ADMIN_WAREHOUSE);
   const REQUEST_STATUSES = ["NEW", "IN_PROGRESS", "DONE", "REJECTED"];
 
-  router.post("/create-employee", async (req, res) => {
+  router.post("/create-employee", requireUsersAdmin, async (req, res) => {
     try {
       const email = String(req.body?.email || "employee@test.local").trim();
       const password = String(req.body?.password || "Test12345!").trim();
@@ -52,7 +61,7 @@ export function adminRoutes({ prisma, auth, requireAdmin }) {
     }
   });
 
-  router.get("/warehouse/items", async (req, res) => {
+  router.get("/warehouse/items", requireWarehouseAdmin, async (req, res) => {
     try {
       const items = await prisma.item.findMany({
         orderBy: { id: "asc" },
@@ -64,7 +73,7 @@ export function adminRoutes({ prisma, auth, requireAdmin }) {
     }
   });
 
-  router.put("/warehouse/items/:id", async (req, res) => {
+  router.put("/warehouse/items/:id", requireWarehouseAdmin, async (req, res) => {
     try {
       const id = Number(req.params.id);
       if (!id || Number.isNaN(id)) {
@@ -143,7 +152,7 @@ export function adminRoutes({ prisma, auth, requireAdmin }) {
     }
   });
 
-  router.delete("/warehouse/items/:id", async (req, res) => {
+  router.delete("/warehouse/items/:id", requireWarehouseAdmin, async (req, res) => {
     try {
       const id = Number(req.params.id);
       if (!id || Number.isNaN(id)) {
@@ -177,7 +186,7 @@ export function adminRoutes({ prisma, auth, requireAdmin }) {
     }
   });
 
-  router.get("/warehouse/locations", async (req, res) => {
+  router.get("/warehouse/locations", requireWarehouseAdmin, async (req, res) => {
     try {
       const locations = await prisma.warehouseLocation.findMany({
         orderBy: { id: "asc" },
@@ -189,7 +198,7 @@ export function adminRoutes({ prisma, auth, requireAdmin }) {
     }
   });
 
-  router.put("/warehouse/locations/:id", async (req, res) => {
+  router.put("/warehouse/locations/:id", requireWarehouseAdmin, async (req, res) => {
     try {
       const id = Number(req.params.id);
       if (!id || Number.isNaN(id)) {
@@ -226,7 +235,7 @@ export function adminRoutes({ prisma, auth, requireAdmin }) {
     }
   });
 
-  router.delete("/warehouse/locations/:id", async (req, res) => {
+  router.delete("/warehouse/locations/:id", requireWarehouseAdmin, async (req, res) => {
     try {
       const id = Number(req.params.id);
       if (!id || Number.isNaN(id)) {
@@ -252,7 +261,7 @@ export function adminRoutes({ prisma, auth, requireAdmin }) {
     }
   });
 
-  router.get("/warehouse/requests", async (req, res) => {
+  router.get("/warehouse/requests", requireWarehouseAdmin, async (req, res) => {
     try {
       const requests = await prisma.warehouseRequest.findMany({
         orderBy: { id: "desc" },
@@ -268,7 +277,7 @@ export function adminRoutes({ prisma, auth, requireAdmin }) {
     }
   });
 
-  router.put("/warehouse/requests/:id", async (req, res) => {
+  router.put("/warehouse/requests/:id", requireWarehouseAdmin, async (req, res) => {
     try {
       const id = Number(req.params.id);
       if (!id || Number.isNaN(id)) {
