@@ -516,7 +516,9 @@ export default function UserManagement() {
         if (copiedUserTimerRef.current) clearTimeout(copiedUserTimerRef.current);
         copiedUserTimerRef.current = setTimeout(() => setCopiedUserId(null), 1800);
       }
-      setCreateSuccess(`Данные сотрудника "${login}" скопированы.`);
+      if (document.activeElement instanceof HTMLElement) {
+        document.activeElement.blur();
+      }
     } catch (err) {
       setError("Не удалось скопировать логин и пароль.");
     }
@@ -944,27 +946,35 @@ export default function UserManagement() {
                         style={tdStyle}
                         className="admin-table__actions"
                       >
-                        <button
-                          type="button"
-                          className={
-                            "admin-btn admin-btn--ghost admin-copy-btn" +
-                            (copiedUserId === u.id ? " admin-copy-btn--copied" : "")
-                          }
-                          title="Скопировать логин и пароль"
-                          aria-label="Скопировать логин и пароль"
-                          onClick={() =>
-                            handleCopyCredentials({
-                              login: userLogin === "-" ? "" : userLogin,
-                              username: u.username,
-                              email: u.email,
-                              passwordVisible:
-                                userPassword === "-" ? "" : userPassword,
-                            }, u.id)
-                          }
-                          disabled={userPassword === "-"}
-                        >
-                          {copiedUserId === u.id ? "Скопировано" : "Скопировать"}
-                        </button>
+                        <div className="admin-copy-wrap">
+                          <button
+                            type="button"
+                            className={
+                              "admin-btn admin-btn--ghost admin-copy-btn" +
+                              (copiedUserId === u.id ? " admin-copy-btn--copied" : "")
+                            }
+                            title="Скопировать логин и пароль"
+                            aria-label="Скопировать логин и пароль"
+                            onClick={() =>
+                              handleCopyCredentials(
+                                {
+                                  login: userLogin === "-" ? "" : userLogin,
+                                  username: u.username,
+                                  email: u.email,
+                                  passwordVisible:
+                                    userPassword === "-" ? "" : userPassword,
+                                },
+                                u.id
+                              )
+                            }
+                            disabled={userPassword === "-"}
+                          >
+                            Скопировать
+                          </button>
+                          {copiedUserId === u.id ? (
+                            <span className="admin-copy-toast">Скопировано</span>
+                          ) : null}
+                        </div>
                         <button
                           onClick={() => handleSaveRole(u.id)}
                           disabled={savingId === u.id || u.isSystemOwner}
