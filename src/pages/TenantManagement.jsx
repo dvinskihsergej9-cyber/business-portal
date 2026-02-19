@@ -433,9 +433,9 @@ export default function TenantManagement() {
                     <td data-label="Действия">
                       <button
                         type="button"
-                        className="admin-btn admin-btn--ghost admin-icon-btn"
-                        title="Copy login and password"
-                        aria-label="Copy login and password"
+                        className="admin-btn admin-btn--ghost admin-icon-btn admin-copy-btn"
+                        title="Скопировать логин и пароль"
+                        aria-label="Скопировать логин и пароль"
                         onClick={() => handleCopyTenantCredentials(item)}
                         disabled={adminPassword === "-"}
                       >

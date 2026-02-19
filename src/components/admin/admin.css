@@ -150,20 +150,36 @@
   line-height: 1;
   border-color: transparent;
   background: transparent;
-  color: #94a3b8;
-  opacity: 0.48;
-  transition: opacity 0.16s ease, color 0.16s ease, background-color 0.16s ease;
+  color: #64748b;
+  opacity: 1;
+  transition: color 0.16s ease, background-color 0.16s ease, border-color 0.16s ease;
 }
 
 .admin-icon-btn:hover,
 .admin-icon-btn:focus-visible {
-  opacity: 0.85;
-  color: #64748b;
+  color: #334155;
   background: rgba(148, 163, 184, 0.12);
 }
 
 .admin-icon-btn:disabled {
-  opacity: 0.22;
+  opacity: 0.45;
+}
+
+.admin-table__actions .admin-copy-btn {
+  width: 30px;
+  height: 30px;
+  min-width: 30px;
+  border: 1px solid #d1d5db;
+  border-radius: 8px;
+  background: #f8fafc;
+  color: #475569;
+}
+
+.admin-table__actions .admin-copy-btn:hover,
+.admin-table__actions .admin-copy-btn:focus-visible {
+  border-color: #94a3b8;
+  background: #f1f5f9;
+  color: #1f2937;
 }
 
 .admin-table-wrapper {
@@ -424,8 +440,8 @@
   }
 
   .admin-table__actions .admin-icon-btn {
-    width: 28px;
-    height: 28px;
+    width: 30px;
+    height: 30px;
     align-self: flex-start;
   }
 
