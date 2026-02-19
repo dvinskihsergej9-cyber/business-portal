@@ -189,6 +189,28 @@
   opacity: 0.55;
 }
 
+.admin-table__actions .admin-copy-btn.admin-copy-btn--copied {
+  border-color: #22c55e;
+  background: #dcfce7;
+  color: #166534;
+  animation: adminCopyFlash 0.28s ease-in-out 2;
+}
+
+@keyframes adminCopyFlash {
+  0% {
+    filter: brightness(1);
+    transform: scale(1);
+  }
+  50% {
+    filter: brightness(1.08);
+    transform: scale(1.015);
+  }
+  100% {
+    filter: brightness(1);
+    transform: scale(1);
+  }
+}
+
 .admin-table-wrapper {
   margin-top: 12px;
   overflow: auto;
@@ -435,6 +457,11 @@
     letter-spacing: 0.04em;
     color: #64748b;
     font-weight: 700;
+  }
+
+  .admin-table td.admin-table__actions::before {
+    content: "";
+    display: none;
   }
 
   .admin-table__actions {

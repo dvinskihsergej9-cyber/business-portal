@@ -940,13 +940,16 @@ export default function UserManagement() {
                         {u.createdAt ? new Date(u.createdAt).toLocaleString() : "-"}
                       </td>
                       <td
-                        data-label="Действия"
+                        data-label=""
                         style={tdStyle}
                         className="admin-table__actions"
                       >
                         <button
                           type="button"
-                          className="admin-btn admin-btn--ghost admin-copy-btn"
+                          className={
+                            "admin-btn admin-btn--ghost admin-copy-btn" +
+                            (copiedUserId === u.id ? " admin-copy-btn--copied" : "")
+                          }
                           title="Скопировать логин и пароль"
                           aria-label="Скопировать логин и пароль"
                           onClick={() =>

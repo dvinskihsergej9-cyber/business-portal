@@ -444,10 +444,13 @@ export default function TenantManagement() {
                         ? new Date(item.createdAt).toLocaleString("ru-RU")
                         : "-"}
                     </td>
-                    <td data-label="Действия">
+                    <td data-label="" className="admin-table__actions">
                       <button
                         type="button"
-                        className="admin-btn admin-btn--ghost admin-copy-btn"
+                        className={
+                          "admin-btn admin-btn--ghost admin-copy-btn" +
+                          (copiedTenantId === item.id ? " admin-copy-btn--copied" : "")
+                        }
                         title="Скопировать логин и пароль"
                         aria-label="Скопировать логин и пароль"
                         onClick={() => handleCopyTenantCredentials(item)}
