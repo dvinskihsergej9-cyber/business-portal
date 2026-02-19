@@ -139,7 +139,9 @@ export default function UserManagement() {
   const createErrorRef = useRef(null);
   const [createdPasswords, setCreatedPasswords] = useState(() => readCreatedPasswords());
   const [pendingScrollUserId, setPendingScrollUserId] = useState(null);
+  const [copiedUserId, setCopiedUserId] = useState(null);
   const userRowRefs = useRef({});
+  const copiedUserTimerRef = useRef(null);
   const [newUser, setNewUser] = useState({
     name: "",
     login: "",
@@ -306,6 +308,15 @@ export default function UserManagement() {
       // ignore storage write errors
     }
   }, [createdPasswords]);
+
+  useEffect(
+    () => () => {
+      if (copiedUserTimerRef.current) {
+        clearTimeout(copiedUserTimerRef.current);
+      }
+    },
+    []
+  );
 
   const handleCreateRoleChange = (nextRole) => {
     setNewUser((prev) => ({
@@ -486,7 +497,7 @@ export default function UserManagement() {
     }
   };
 
-  const handleCopyCredentials = async (targetUser) => {
+  const handleCopyCredentials = async (targetUser, userId = null) => {
     const login = String(
       targetUser?.login || targetUser?.username || targetUser?.email || ""
     ).trim();
@@ -500,6 +511,11 @@ export default function UserManagement() {
     try {
       await copyText(`Логин: ${login}\nПароль: ${password}`);
       setError("");
+      if (userId) {
+        setCopiedUserId(userId);
+        if (copiedUserTimerRef.current) clearTimeout(copiedUserTimerRef.current);
+        copiedUserTimerRef.current = setTimeout(() => setCopiedUserId(null), 1800);
+      }
       setCreateSuccess(`Данные сотрудника "${login}" скопированы.`);
     } catch (err) {
       setError("Не удалось скопировать логин и пароль.");
@@ -930,7 +946,7 @@ export default function UserManagement() {
                       >
                         <button
                           type="button"
-                          className="admin-btn admin-btn--ghost admin-icon-btn admin-copy-btn"
+                          className="admin-btn admin-btn--ghost admin-copy-btn"
                           title="Скопировать логин и пароль"
                           aria-label="Скопировать логин и пароль"
                           onClick={() =>
@@ -940,35 +956,11 @@ export default function UserManagement() {
                               email: u.email,
                               passwordVisible:
                                 userPassword === "-" ? "" : userPassword,
-                            })
+                            }, u.id)
                           }
                           disabled={userPassword === "-"}
                         >
-                          <svg
-                            width="16"
-                            height="16"
-                            viewBox="0 0 24 24"
-                            fill="none"
-                            xmlns="http://www.w3.org/2000/svg"
-                            aria-hidden="true"
-                          >
-                            <path
-                              d="M8.5 6.5H6.5C5.4 6.5 4.5 7.4 4.5 8.5V17.5C4.5 18.6 5.4 19.5 6.5 19.5H15.5C16.6 19.5 17.5 18.6 17.5 17.5V15.5"
-                              stroke="currentColor"
-                              strokeWidth="2.4"
-                              strokeLinecap="round"
-                              strokeLinejoin="round"
-                            />
-                            <rect
-                              x="8.5"
-                              y="4.5"
-                              width="11"
-                              height="11"
-                              rx="2.5"
-                              stroke="currentColor"
-                              strokeWidth="2.4"
-                            />
-                          </svg>
+                          {copiedUserId === u.id ? "Скопировано" : "Скопировать"}
                         </button>
                         <button
                           onClick={() => handleSaveRole(u.id)}
