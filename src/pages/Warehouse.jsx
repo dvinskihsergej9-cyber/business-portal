@@ -2309,16 +2309,6 @@ export default function Warehouse({
 
     <div className="page">
 
-      <div className="page-header">
-
-        <h1 className="page-title">{pageTitle}</h1>
-
-        <p className="page-subtitle">
-          {pageSubtitle}
-        </p>
-
-      </div>
-
       {sections.length === 0 && (
         <div className="card" style={{ marginBottom: 16 }}>
           <div className="card1c__body">
