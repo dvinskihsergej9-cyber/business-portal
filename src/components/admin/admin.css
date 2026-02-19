@@ -176,10 +176,12 @@
   color: #475569;
   font-size: 12px;
   font-weight: 600;
+  -webkit-tap-highlight-color: transparent;
 }
 
 .admin-table__actions .admin-copy-btn:hover,
-.admin-table__actions .admin-copy-btn:focus-visible {
+.admin-table__actions .admin-copy-btn:focus-visible,
+.admin-table__actions .admin-copy-btn:active {
   border-color: #94a3b8;
   background: #f1f5f9;
   color: #1f2937;
@@ -194,6 +196,14 @@
   background: #dcfce7;
   color: #166534;
   animation: adminCopyFlash 0.28s ease-in-out 2;
+}
+
+.admin-table__actions .admin-copy-btn.admin-copy-btn--copied:hover,
+.admin-table__actions .admin-copy-btn.admin-copy-btn--copied:focus-visible,
+.admin-table__actions .admin-copy-btn.admin-copy-btn--copied:active {
+  border-color: #22c55e;
+  background: #dcfce7;
+  color: #166534;
 }
 
 @keyframes adminCopyFlash {
