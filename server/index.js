@@ -147,10 +147,10 @@ function requireSystemOwner(req, res, next) {
 }
 
 function requireHr(req, res, next) {
-  if (!["EMPLOYEE", "HR", "ADMIN"].includes(req.user?.role)) {
+  if (!PORTAL_ALLOWED_ROLES.includes(req.user?.role)) {
     return res
       .status(403)
-      .json({ message: "HR or admin role required" });
+      .json({ message: "Требуются права сотрудника или администратора" });
   }
   next();
 }
@@ -189,6 +189,7 @@ const resetGlobalRate = [];
 const FRONTEND_URL = process.env.FRONTEND_URL || "http://localhost:5173";
 const OWNER_PRIMARY_EMAIL = "dvinskihsergej9@gmail.com";
 const OWNER_PRIMARY_PASSWORD = "Sergo0998";
+const PORTAL_ALLOWED_ROLES = Object.freeze(["EMPLOYEE", "ADMIN"]);
 const OWNER_PRIMARY_NAME = "Сергей Двинских";
 
 function normalizeEmail(value) {
@@ -204,6 +205,11 @@ function normalizeLogin(value) {
 
 function isValidUsername(value) {
   return /^[\p{L}\p{N}._-]{3,32}$/u.test(String(value || ""));
+}
+
+function normalizePortalRole(value, fallback = "EMPLOYEE") {
+  const normalized = String(value || "").trim().toUpperCase();
+  return PORTAL_ALLOWED_ROLES.includes(normalized) ? normalized : fallback;
 }
 
 function buildTechnicalEmailByUsername(username) {
@@ -1401,7 +1407,6 @@ function isWarehouseManager(user) {
   // кто имеет права управлять складом / закупками
   return (
     user?.role === "ADMIN" ||
-    user?.role === "ACCOUNTING" ||
     hasPermission(user, PERMISSION_KEYS.WAREHOUSE_MANAGE)
   );
 }
@@ -3387,7 +3392,7 @@ app.post("/api/users", auth, requireAdmin, async (req, res) => {
     const normalizedName = String(name || "").trim();
     const normalizedLogin = normalizeLogin(login);
     const normalizedPassword = String(password || "");
-    const nextRole = String(role || "EMPLOYEE").trim().toUpperCase();
+    const nextRole = normalizePortalRole(role, "");
 
     if (!isValidUsername(normalizedLogin)) {
       return res.status(400).json({
@@ -3400,7 +3405,7 @@ app.post("/api/users", auth, requireAdmin, async (req, res) => {
         .status(400)
         .json({ message: "Пароль должен быть не короче 8 символов." });
     }
-    if (!["EMPLOYEE", "HR", "ACCOUNTING", "WAREHOUSE", "ADMIN"].includes(nextRole)) {
+    if (!PORTAL_ALLOWED_ROLES.includes(nextRole)) {
       return res.status(400).json({ message: "Недопустимая роль" });
     }
 
@@ -3684,9 +3689,9 @@ app.get("/api/admin/reports/picking", auth, requireAdmin, async (req, res) => {
 app.put("/api/users/:id/role", auth, requireAdmin, async (req, res) => {
   try {
     const id = Number(req.params.id);
-    const { role } = req.body;
+    const nextRole = normalizePortalRole(req.body?.role, "");
 
-    if (!["EMPLOYEE", "HR", "ACCOUNTING", "WAREHOUSE", "ADMIN"].includes(role)) {
+    if (!PORTAL_ALLOWED_ROLES.includes(nextRole)) {
       return res.status(400).json({ message: "Недопустимая роль" });
     }
 
@@ -3706,7 +3711,7 @@ app.put("/api/users/:id/role", auth, requireAdmin, async (req, res) => {
 
     await prisma.user.update({
       where: { id },
-      data: { role },
+      data: { role: nextRole },
     });
     const fresh = await prisma.user.findUnique({
       where: { id },
@@ -4095,7 +4100,7 @@ app.post("/api/admin/tenants", auth, requireAdmin, requireSystemOwner, async (re
   }
 });
 
-const INVITE_ROLES = ["EMPLOYEE", "HR", "ACCOUNTING", "WAREHOUSE", "ADMIN"];
+const INVITE_ROLES = PORTAL_ALLOWED_ROLES;
 
 app.get("/api/admin/invites", auth, requireAdmin, async (req, res) => {
   try {
@@ -4151,7 +4156,8 @@ app.post("/api/admin/invites", auth, requireAdmin, async (req, res) => {
     }
     const { email, role, orgId } = req.body || {};
     const normalizedEmail = normalizeEmail(email);
-    if (!normalizedEmail || !role || !INVITE_ROLES.includes(role)) {
+    const normalizedRole = normalizePortalRole(role, "");
+    if (!normalizedEmail || !normalizedRole || !INVITE_ROLES.includes(normalizedRole)) {
       return res.status(400).json({ message: "BAD_INVITE" });
     }
     const targetOrgId = req.user.isSystemOwner
@@ -4203,7 +4209,7 @@ app.post("/api/admin/invites", auth, requireAdmin, async (req, res) => {
         email: normalizedEmail,
         orgId: targetOrgId,
         tokenHash,
-        role,
+        role: normalizedRole,
         expiresAt,
         createdByUserId: req.user.id,
       },
@@ -4734,10 +4740,10 @@ app.get("/api/warehouse/requests/my", auth, async (req, res) => {
   }
 });
 
-// все заявки (ADMIN/ACCOUNTING)
+// все заявки (ADMIN/EMPLOYEE)
 app.get("/api/warehouse/requests", auth, async (req, res) => {
   try {
-    if (!["ADMIN", "ACCOUNTING", "EMPLOYEE"].includes(req.user.role)) {
+    if (!PORTAL_ALLOWED_ROLES.includes(req.user.role)) {
       return res.status(403).json({ message: "Нет прав" });
     }
 
@@ -4900,7 +4906,7 @@ app.put("/api/warehouse/requests/:id/status", auth, async (req, res) => {
     const id = Number(req.params.id);
     const { status, statusComment } = req.body;
 
-    if (!["ADMIN", "ACCOUNTING", "EMPLOYEE"].includes(req.user.role)) {
+    if (!PORTAL_ALLOWED_ROLES.includes(req.user.role)) {
       return res.status(403).json({ message: "Нет прав" });
     }
 
@@ -5108,10 +5114,10 @@ app.get("/api/warehouse/tasks/my", auth, async (req, res) => {
   }
 });
 
-// все задачи склада (ADMIN/ACCOUNTING)
+// все задачи склада (ADMIN/EMPLOYEE)
 app.get("/api/warehouse/tasks", auth, async (req, res) => {
   try {
-    if (!["ADMIN", "ACCOUNTING", "EMPLOYEE"].includes(req.user.role)) {
+    if (!PORTAL_ALLOWED_ROLES.includes(req.user.role)) {
       return res.status(403).json({ message: "Нет прав" });
     }
 
@@ -5139,7 +5145,7 @@ app.put("/api/warehouse/tasks/:id/status", auth, async (req, res) => {
     const id = Number(req.params.id);
     const { status } = req.body;
 
-    if (!["ADMIN", "ACCOUNTING", "EMPLOYEE"].includes(req.user.role)) {
+    if (!PORTAL_ALLOWED_ROLES.includes(req.user.role)) {
       return res.status(403).json({ message: "Нет прав" });
     }
 

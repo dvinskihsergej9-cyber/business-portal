@@ -8,7 +8,7 @@ import {
 } from "../utils/permissions";
 
 const API = API_BASE;
-const ALL_ROLES = ["EMPLOYEE", "HR", "ACCOUNTING", "WAREHOUSE", "ADMIN"];
+const ALL_ROLES = ["EMPLOYEE", "ADMIN"];
 const CREATED_USER_PASSWORDS_KEY = "bp.createdUserPasswords.v1";
 
 const FALLBACK_PERMISSION_CATALOG = {
@@ -35,17 +35,16 @@ const roleLabel = (role) => {
   switch (role) {
     case "EMPLOYEE":
       return "Сотрудник";
-    case "HR":
-      return "HR";
-    case "ACCOUNTING":
-      return "Бухгалтерия";
-    case "WAREHOUSE":
-      return "Склад";
     case "ADMIN":
       return "Админ";
     default:
-      return role;
+      return "Сотрудник";
   }
+};
+
+const normalizeManagedRole = (role) => {
+  const nextRole = String(role || "").trim().toUpperCase();
+  return ALL_ROLES.includes(nextRole) ? nextRole : "EMPLOYEE";
 };
 
 const mapCreateUserError = (code) => {
@@ -269,7 +268,10 @@ export default function UserManagement() {
       if (!res.ok) {
         throw new Error(data.message || "Ошибка загрузки пользователей");
       }
-      const list = Array.isArray(data) ? data : [];
+      const list = (Array.isArray(data) ? data : []).map((row) => ({
+        ...row,
+        role: normalizeManagedRole(row?.role),
+      }));
       setUsers(list);
       syncPermissionDrafts(list);
     } catch (e) {
@@ -319,10 +321,11 @@ export default function UserManagement() {
   );
 
   const handleCreateRoleChange = (nextRole) => {
+    const safeRole = normalizeManagedRole(nextRole);
     setNewUser((prev) => ({
       ...prev,
-      role: nextRole,
-      permissions: getTemplatePermissions(prev.template, nextRole),
+      role: safeRole,
+      permissions: getTemplatePermissions(prev.template, safeRole),
     }));
   };
 
@@ -360,7 +363,7 @@ export default function UserManagement() {
   const handleCreateUser = async () => {
     const login = normalizeLoginForSubmit(newUser.login);
     const name = String(newUser.name || "").trim();
-    const role = String(newUser.role || "EMPLOYEE");
+    const role = normalizeManagedRole(newUser.role);
     const password = String(newUser.password || "");
 
     if (!login) {
@@ -525,8 +528,9 @@ export default function UserManagement() {
   };
 
   const handleRoleChangeLocal = (id, newRole) => {
+    const safeRole = normalizeManagedRole(newRole);
     setUsers((prev) =>
-      prev.map((u) => (u.id === id ? { ...u, role: newRole } : u))
+      prev.map((u) => (u.id === id ? { ...u, role: safeRole } : u))
     );
 
     setPermissionDrafts((prev) => {
@@ -538,7 +542,7 @@ export default function UserManagement() {
         ...prev,
         [id]: {
           template: "ROLE_DEFAULT",
-          permissions: getTemplatePermissions("ROLE_DEFAULT", newRole),
+          permissions: getTemplatePermissions("ROLE_DEFAULT", safeRole),
         },
       };
     });
@@ -567,10 +571,11 @@ export default function UserManagement() {
         throw new Error("Сервер вернул пустые данные пользователя");
       }
 
-      setUsers((prev) => prev.map((u) => (u.id === id ? nextUser : u)));
+      const safeUser = { ...nextUser, role: normalizeManagedRole(nextUser.role) };
+      setUsers((prev) => prev.map((u) => (u.id === id ? safeUser : u)));
       setPermissionDrafts((prev) => ({
         ...prev,
-        [id]: buildPermissionDraft(nextUser),
+        [id]: buildPermissionDraft(safeUser),
       }));
     } catch (e) {
       console.error(e);
@@ -647,10 +652,11 @@ export default function UserManagement() {
         throw new Error("Сервер вернул пустые данные пользователя");
       }
 
-      setUsers((prev) => prev.map((row) => (row.id === userId ? nextUser : row)));
+      const safeUser = { ...nextUser, role: normalizeManagedRole(nextUser.role) };
+      setUsers((prev) => prev.map((row) => (row.id === userId ? safeUser : row)));
       setPermissionDrafts((prev) => ({
         ...prev,
-        [userId]: buildPermissionDraft(nextUser),
+        [userId]: buildPermissionDraft(safeUser),
       }));
     } catch (e) {
       console.error(e);

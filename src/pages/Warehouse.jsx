@@ -184,7 +184,6 @@ export default function Warehouse({
 
   const isWarehouseManager =
     user?.role === "ADMIN" ||
-    user?.role === "ACCOUNTING" ||
     hasPermission(user, PERMISSION_KEYS.WAREHOUSE_MANAGE);
 
 
