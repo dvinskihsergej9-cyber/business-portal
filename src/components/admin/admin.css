@@ -141,13 +141,29 @@
 }
 
 .admin-icon-btn {
-  width: 30px;
-  height: 30px;
+  width: 28px;
+  height: 28px;
   padding: 0;
   display: inline-flex;
   align-items: center;
   justify-content: center;
   line-height: 1;
+  border-color: transparent;
+  background: transparent;
+  color: #94a3b8;
+  opacity: 0.48;
+  transition: opacity 0.16s ease, color 0.16s ease, background-color 0.16s ease;
+}
+
+.admin-icon-btn:hover,
+.admin-icon-btn:focus-visible {
+  opacity: 0.85;
+  color: #64748b;
+  background: rgba(148, 163, 184, 0.12);
+}
+
+.admin-icon-btn:disabled {
+  opacity: 0.22;
 }
 
 .admin-table-wrapper {
@@ -408,8 +424,9 @@
   }
 
   .admin-table__actions .admin-icon-btn {
-    width: 100%;
-    height: 36px;
+    width: 28px;
+    height: 28px;
+    align-self: flex-start;
   }
 
   .admin-modal__panel {
