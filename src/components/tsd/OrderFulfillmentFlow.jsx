@@ -31,6 +31,19 @@ const formatDateTime = (value) => {
   return date.toLocaleString("ru-RU");
 };
 
+const ORDER_STATUS_LABELS = {
+  NEW: "Новый",
+  IN_PICKING: "В отборе",
+  PICKED: "Отобран",
+  PACKED: "Упакован",
+  READY_TO_SHIP: "Готов к отгрузке",
+  SHIPPED: "Отгружен",
+  CANCELLED: "Отменен",
+};
+
+const getOrderStatusLabel = (status) =>
+  ORDER_STATUS_LABELS[String(status || "").trim()] || String(status || "-");
+
 export default function OrderFulfillmentFlow({ authHeaders, onBack }) {
   const [mineOnly, setMineOnly] = useState(false);
   const [orders, setOrders] = useState([]);
@@ -372,7 +385,7 @@ export default function OrderFulfillmentFlow({ authHeaders, onBack }) {
       pdf.text(`Паспорт заказа ${order.orderNumber || "-"}`, 40, 36);
       pdf.setFontSize(11);
       pdf.text(`Дата: ${formatDateTime(order.createdAt)}`, 40, 56);
-      pdf.text(`Статус: ${order.status || "-"}`, 40, 72);
+      pdf.text(`Статус: ${getOrderStatusLabel(order.status)}`, 40, 72);
       pdf.text(`Получатель: ${order.customerName || "-"}`, 40, 88);
       pdf.text(`Телефон: ${order.customerPhone || "-"}`, 40, 104);
       pdf.text(`Адрес: ${order.shippingAddress || "-"}`, 40, 120);
@@ -506,7 +519,7 @@ export default function OrderFulfillmentFlow({ authHeaders, onBack }) {
               <div className="tsd-card" key={order.id}>
                 <div className="tsd-card__body">
                   <div className="tsd-card__title">
-                    {order.orderNumber} ({order.status})
+                    {order.orderNumber} ({getOrderStatusLabel(order.status)})
                   </div>
                   <div className="tsd-card__meta">{order.customerName}</div>
                   <div className="tsd-card__meta">{order.shippingAddress}</div>
@@ -538,7 +551,7 @@ export default function OrderFulfillmentFlow({ authHeaders, onBack }) {
             <div className="tsd-card">
               <div className="tsd-card__body">
                 <div className="tsd-card__title">
-                  {selectedOrder.orderNumber} ({selectedOrder.status})
+                  {selectedOrder.orderNumber} ({getOrderStatusLabel(selectedOrder.status)})
                 </div>
                 <div className="tsd-card__meta">
                   Получатель: {selectedOrder.customerName}
