@@ -952,23 +952,21 @@ export default function UserManagement() {
                             xmlns="http://www.w3.org/2000/svg"
                             aria-hidden="true"
                           >
-                            <rect
-                              x="9"
-                              y="9"
-                              width="11"
-                              height="11"
-                              rx="2"
+                            <path
+                              d="M8.5 6.5H6.5C5.4 6.5 4.5 7.4 4.5 8.5V17.5C4.5 18.6 5.4 19.5 6.5 19.5H15.5C16.6 19.5 17.5 18.6 17.5 17.5V15.5"
                               stroke="currentColor"
-                              strokeWidth="2"
+                              strokeWidth="2.4"
+                              strokeLinecap="round"
+                              strokeLinejoin="round"
                             />
                             <rect
-                              x="4"
-                              y="4"
+                              x="8.5"
+                              y="4.5"
                               width="11"
                               height="11"
-                              rx="2"
+                              rx="2.5"
                               stroke="currentColor"
-                              strokeWidth="2"
+                              strokeWidth="2.4"
                             />
                           </svg>
                         </button>
