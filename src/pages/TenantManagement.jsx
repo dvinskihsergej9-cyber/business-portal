@@ -462,7 +462,9 @@ export default function TenantManagement() {
                           Скопировать
                         </button>
                         {copiedTenantId === item.id ? (
-                          <span className="admin-copy-toast">Скопировано</span>
+                          <span className="admin-copy-toast">
+                            Скопировано логин и пароль
+                          </span>
                         ) : null}
                       </div>
                       <button
