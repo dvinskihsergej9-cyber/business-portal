@@ -167,14 +167,14 @@
 
 .admin-table__actions .admin-copy-btn {
   width: auto;
-  min-width: 120px;
-  height: 32px;
-  padding: 6px 10px;
+  min-width: 0;
+  height: auto;
+  padding: 8px 14px;
   border: 1px solid #cbd5e1;
   border-radius: 8px;
   background: #f8fafc;
   color: #475569;
-  font-size: 12px;
+  font-size: 13px;
   font-weight: 600;
   -webkit-tap-highlight-color: transparent;
 }
@@ -262,6 +262,13 @@
 .admin-table__actions {
   display: flex;
   gap: 8px;
+}
+
+.admin-table__actions .admin-btn {
+  min-height: 38px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
 }
 
 .admin-alert {
