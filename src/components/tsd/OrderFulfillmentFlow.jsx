@@ -192,6 +192,47 @@ export default function OrderFulfillmentFlow({ authHeaders, onBack }) {
     }
   };
 
+  const releaseOrder = async (orderId) => {
+    const res = await fetch(`${API_BASE}/orders/${orderId}/release`, {
+      method: "POST",
+      headers: authHeaders,
+    });
+    const data = await readJsonSafe(res);
+    if (!res.ok) {
+      throw new Error(data?.message || "Не удалось вернуть заказ в очередь");
+    }
+    return data?.order || null;
+  };
+
+  const resetSelection = () => {
+    setSelectedOrder(null);
+    setPickPlan([]);
+    setPickPlanRaw([]);
+    setCurrentIndex(0);
+    setLocationScanned(false);
+    setScannedQty(0);
+  };
+
+  const leaveSelectedOrder = async (navigateBack = false) => {
+    if (!selectedOrder) {
+      if (navigateBack) onBack?.();
+      return;
+    }
+
+    setLoading(true);
+    setError("");
+    try {
+      await releaseOrder(selectedOrder.id);
+      resetSelection();
+      await loadQueue();
+      if (navigateBack) onBack?.();
+    } catch (err) {
+      setError(normalizeErrorMessage(err, "Ошибка при возврате заказа в очередь."));
+    } finally {
+      setLoading(false);
+    }
+  };
+
   const confirmPick = async ({ lineId, locationId, qty }) => {
     if (!selectedOrder) return;
     if (!qty || qty <= 0) {
@@ -428,7 +469,7 @@ export default function OrderFulfillmentFlow({ authHeaders, onBack }) {
         subtitle="Сборка, паспорт, завершение"
         contextLabel="Режим"
         contextValue={mineOnly ? "Мои" : "Общий"}
-        onBack={onBack}
+        onBack={() => leaveSelectedOrder(true)}
       />
       <div className="tsd-section">
         <TsdErrorAlert message={error} />
@@ -507,20 +548,16 @@ export default function OrderFulfillmentFlow({ authHeaders, onBack }) {
                   Телефон: {selectedOrder.customerPhone || "-"}
                 </div>
               </div>
-              <div className="tsd-action-inline">
-                <button
-                  type="button"
-                  className="tsd-btn tsd-btn--secondary"
-                  onClick={() => {
-                    setSelectedOrder(null);
-                    setPickPlan([]);
-                    setPickPlanRaw([]);
-                    setError("");
-                  }}
-                >
-                  К списку
-                </button>
-              </div>
+                <div className="tsd-action-inline">
+                  <button
+                    type="button"
+                    className="tsd-btn tsd-btn--secondary"
+                    onClick={() => leaveSelectedOrder(false)}
+                    disabled={loading}
+                  >
+                    К списку
+                  </button>
+                </div>
             </div>
 
             {currentStep && (

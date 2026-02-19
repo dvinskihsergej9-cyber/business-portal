@@ -863,12 +863,25 @@ const WAREHOUSE_ROUTE_RULES = [
 const denySectionAccess = (res) =>
   res.status(403).json({ message: "Нет доступа к разделу." });
 
+function enforceOperationalTenantScope(req, res, next) {
+  const store = requestContext.getStore();
+  if (store && req.user?.isSystemOwner) {
+    store.isSystemOwner = false;
+  }
+  if (!req.user?.orgId) {
+    return res
+      .status(403)
+      .json({ message: "\u041e\u0440\u0433\u0430\u043d\u0438\u0437\u0430\u0446\u0438\u044f \u043f\u043e\u043b\u044c\u0437\u043e\u0432\u0430\u0442\u0435\u043b\u044f \u043d\u0435 \u043d\u0430\u0441\u0442\u0440\u043e\u0435\u043d\u0430." });
+  }
+  return next();
+}
+
 const isReadRequest = (req) =>
   req.method === "GET" || req.method === "HEAD" || req.method === "OPTIONS";
 
 app.use("/api/admin", auth, requirePermission(PERMISSION_KEYS.APP_ADMIN));
 app.use("/api/users", auth, requirePermission(PERMISSION_KEYS.ADMIN_USERS));
-app.use("/api/inventory", auth, (req, res, next) => {
+app.use("/api/inventory", auth, enforceOperationalTenantScope, (req, res, next) => {
   if (hasPermission(req.user, PERMISSION_KEYS.WAREHOUSE_INVENTORY)) {
     return next();
   }
@@ -884,7 +897,7 @@ app.use("/api/inventory", auth, (req, res, next) => {
 
   return denySectionAccess(res);
 });
-app.use("/api/suppliers", auth, (req, res, next) => {
+app.use("/api/suppliers", auth, enforceOperationalTenantScope, (req, res, next) => {
   if (hasPermission(req.user, PERMISSION_KEYS.WAREHOUSE_SUPPLIERS)) {
     return next();
   }
@@ -900,7 +913,7 @@ app.use("/api/suppliers", auth, (req, res, next) => {
 
   return denySectionAccess(res);
 });
-app.use("/api/purchase-orders", auth, (req, res, next) => {
+app.use("/api/purchase-orders", auth, enforceOperationalTenantScope, (req, res, next) => {
   if (hasPermission(req.user, PERMISSION_KEYS.WAREHOUSE_SUPPLIERS)) {
     return next();
   }
@@ -916,38 +929,40 @@ app.use("/api/purchase-orders", auth, (req, res, next) => {
 
   return denySectionAccess(res);
 });
-app.use("/api/supplier-trucks", auth, requirePermission(PERMISSION_KEYS.WAREHOUSE_QUEUE));
-app.use("/api/orders", auth, requirePermission(PERMISSION_KEYS.WAREHOUSE_ORDERS));
+app.use("/api/supplier-trucks", auth, enforceOperationalTenantScope, requirePermission(PERMISSION_KEYS.WAREHOUSE_QUEUE));
+app.use("/api/orders", auth, enforceOperationalTenantScope, requirePermission(PERMISSION_KEYS.WAREHOUSE_ORDERS));
 app.use("/api/warehouse", (req, res, next) => {
   if (req.path.startsWith("/qr/render")) {
     return next();
   }
   return auth(req, res, () => {
-    if (!hasPermission(req.user, PERMISSION_KEYS.APP_WAREHOUSE)) {
-      return denySectionAccess(res);
-    }
+    return enforceOperationalTenantScope(req, res, () => {
+      if (!hasPermission(req.user, PERMISSION_KEYS.APP_WAREHOUSE)) {
+        return denySectionAccess(res);
+      }
 
-    const match = WAREHOUSE_ROUTE_RULES.find((rule) =>
-      req.path.startsWith(rule.prefix)
-    );
-    if (!match) {
-      return next();
-    }
-
-    if (match.key && !hasPermission(req.user, match.key)) {
-      if (
-        match.key === PERMISSION_KEYS.WAREHOUSE_LOCATIONS &&
-        isReadRequest(req) &&
-        hasAnyPermission(req.user, WAREHOUSE_TSD_ANY)
-      ) {
+      const match = WAREHOUSE_ROUTE_RULES.find((rule) =>
+        req.path.startsWith(rule.prefix)
+      );
+      if (!match) {
         return next();
       }
-      return denySectionAccess(res);
-    }
-    if (match.any && !hasAnyPermission(req.user, match.any)) {
-      return denySectionAccess(res);
-    }
-    return next();
+
+      if (match.key && !hasPermission(req.user, match.key)) {
+        if (
+          match.key === PERMISSION_KEYS.WAREHOUSE_LOCATIONS &&
+          isReadRequest(req) &&
+          hasAnyPermission(req.user, WAREHOUSE_TSD_ANY)
+        ) {
+          return next();
+        }
+        return denySectionAccess(res);
+      }
+      if (match.any && !hasAnyPermission(req.user, match.any)) {
+        return denySectionAccess(res);
+      }
+      return next();
+    });
   });
 });
 
@@ -1678,6 +1693,34 @@ async function getReceivingLineLocationBalances(itemId) {
     });
 }
 
+async function getPlacementLocationBalances(itemId) {
+  const rows = await prisma.warehousePlacement.findMany({
+    where: {
+      itemId,
+      qty: { gt: 0 },
+    },
+    include: {
+      location: {
+        select: { id: true, name: true, code: true, zone: true, aisle: true, rack: true, level: true },
+      },
+    },
+    orderBy: [{ locationId: "asc" }, { id: "asc" }],
+  });
+
+  return rows
+    .map((row) => ({
+      locationId: row.locationId,
+      location: row.location || null,
+      qty: Number(row.qty) || 0,
+    }))
+    .filter((row) => row.locationId && row.qty > 0)
+    .sort((a, b) => {
+      const codeA = String(a.location?.code || a.location?.name || "");
+      const codeB = String(b.location?.code || b.location?.name || "");
+      return codeA.localeCompare(codeB, "ru");
+    });
+}
+
 function mergeLocationBalances(movementBalances = [], receivingBalances = []) {
   const merged = new Map();
 
@@ -1756,7 +1799,11 @@ async function buildOrderPickPlan(orderId) {
 
     const movementBalances = await getItemLocationBalances(resolvedItemId);
     const receivingBalances = await getReceivingLineLocationBalances(resolvedItemId);
-    const balances = mergeLocationBalances(movementBalances, receivingBalances);
+    const placementBalances = await getPlacementLocationBalances(resolvedItemId);
+    const balances = mergeLocationBalances(
+      mergeLocationBalances(movementBalances, receivingBalances),
+      placementBalances
+    );
     let need = remaining;
     const steps = [];
 
@@ -11024,6 +11071,82 @@ app.post("/api/orders/:id/take", auth, async (req, res) => {
   }
 });
 
+app.post("/api/orders/:id/release", auth, async (req, res) => {
+  try {
+    const id = Number(req.params.id);
+    if (!id || Number.isNaN(id)) {
+      return res.status(400).json({ message: "\u041d\u0435\u043a\u043e\u0440\u0440\u0435\u043a\u0442\u043d\u044b\u0439 ID \u0437\u0430\u043a\u0430\u0437\u0430." });
+    }
+
+    const updated = await prisma.$transaction(async (tx) => {
+      const order = await tx.salesOrder.findUnique({
+        where: { id },
+        include: {
+          lines: { select: { pickedQty: true } },
+        },
+      });
+      if (!order) {
+        const err = new Error("ORDER_NOT_FOUND");
+        err.code = "ORDER_NOT_FOUND";
+        throw err;
+      }
+      if (!["NEW", "IN_PICKING", "PICKED"].includes(order.status)) {
+        const err = new Error("ORDER_BAD_STATUS");
+        err.code = "ORDER_BAD_STATUS";
+        throw err;
+      }
+
+      if (!order.assignedToUserId) {
+        return tx.salesOrder.findUnique({
+          where: { id },
+          include: {
+            assignedToUser: { select: { id: true, name: true, email: true } },
+            lines: { include: { item: true }, orderBy: { id: "asc" } },
+          },
+        });
+      }
+
+      const canManage =
+        order.assignedToUserId === req.user.id || isWarehouseManager(req.user);
+      if (!canManage) {
+        const err = new Error("NOT_ALLOWED");
+        err.code = "NOT_ALLOWED";
+        throw err;
+      }
+
+      const pickedStarted = (order.lines || []).some((line) => Number(line.pickedQty) > 0);
+      const nextStatus =
+        order.status === "IN_PICKING" && !pickedStarted ? "NEW" : order.status;
+
+      return tx.salesOrder.update({
+        where: { id },
+        data: {
+          assignedToUserId: null,
+          status: nextStatus,
+        },
+        include: {
+          assignedToUser: { select: { id: true, name: true, email: true } },
+          lines: { include: { item: true }, orderBy: { id: "asc" } },
+        },
+      });
+    });
+
+    res.json({ ok: true, order: updated });
+  } catch (err) {
+    if (err.code === "ORDER_NOT_FOUND") {
+      return res.status(404).json({ message: "\u0417\u0430\u043a\u0430\u0437 \u043d\u0435 \u043d\u0430\u0439\u0434\u0435\u043d." });
+    }
+    if (err.code === "ORDER_BAD_STATUS") {
+      return res.status(400).json({ message: "\u0417\u0430\u043a\u0430\u0437 \u043d\u0435\u043b\u044c\u0437\u044f \u0432\u0435\u0440\u043d\u0443\u0442\u044c \u0432 \u043e\u0447\u0435\u0440\u0435\u0434\u044c \u0432 \u0442\u0435\u043a\u0443\u0449\u0435\u043c \u0441\u0442\u0430\u0442\u0443\u0441\u0435." });
+    }
+    if (err.code === "NOT_ALLOWED") {
+      return res.status(403).json({ message: "\u042d\u0442\u043e\u0442 \u0437\u0430\u043a\u0430\u0437 \u0437\u0430\u043a\u0440\u0435\u043f\u043b\u0435\u043d \u0437\u0430 \u0434\u0440\u0443\u0433\u0438\u043c \u0441\u043e\u0442\u0440\u0443\u0434\u043d\u0438\u043a\u043e\u043c." });
+    }
+    console.error("orders release error:", err);
+    res.status(500).json({ message: "\u041e\u0448\u0438\u0431\u043a\u0430 \u043f\u0440\u0438 \u0432\u043e\u0437\u0432\u0440\u0430\u0442\u0435 \u0437\u0430\u043a\u0430\u0437\u0430 \u0432 \u043e\u0447\u0435\u0440\u0435\u0434\u044c." });
+  }
+});
+
 app.get("/api/orders/:id/pick-plan", auth, async (req, res) => {
   try {
     const id = Number(req.params.id);
@@ -11129,7 +11252,13 @@ app.post("/api/orders/:id/pick-confirm", auth, async (req, res) => {
           _sum: { remainingQty: true },
         });
         const lotsQty = Number(lotsAgg?._sum?.remainingQty) || 0;
-        const syncDelta = Math.max(0, lotsQty - currentLocationQty);
+        const placement = await tx.warehousePlacement.findUnique({
+          where: { itemId_locationId: { itemId: actualItemId, locationId: location } },
+          select: { qty: true },
+        });
+        const placementQty = Number(placement?.qty) || 0;
+        const expectedQty = Math.max(lotsQty, placementQty);
+        const syncDelta = Math.max(0, expectedQty - currentLocationQty);
         if (syncDelta > 0) {
           await stockService.createMovementInTx(tx, {
             type: "ADJUSTMENT",
