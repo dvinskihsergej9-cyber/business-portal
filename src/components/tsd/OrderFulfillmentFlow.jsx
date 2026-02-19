@@ -175,7 +175,12 @@ export default function OrderFulfillmentFlow({ authHeaders, onBack }) {
         headers: authHeaders,
       });
       const data = await readJsonSafe(res);
-      if (!res.ok) throw new Error(data?.message || "Не удалось взять заказ");
+      if (!res.ok) {
+        if (res.status === 409) {
+          await loadQueue();
+        }
+        throw new Error(data?.message || "Не удалось взять заказ");
+      }
       setSelectedOrder(data.order);
       await loadPickPlan(orderId);
       await loadQueue();

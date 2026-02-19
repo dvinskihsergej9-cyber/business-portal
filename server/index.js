@@ -10931,10 +10931,15 @@ app.get("/api/orders/queue", auth, async (req, res) => {
       .map((s) => s.trim())
       .filter(Boolean);
 
-    const where = {
-      status: { in: statusList },
-      ...(mineOnly ? { assignedToUserId: req.user.id } : {}),
-    };
+    const where = mineOnly
+      ? {
+          status: { in: statusList },
+          assignedToUserId: req.user.id,
+        }
+      : {
+          status: { in: statusList },
+          OR: [{ assignedToUserId: null }, { assignedToUserId: req.user.id }],
+        };
 
     const orders = await prisma.salesOrder.findMany({
       where,
@@ -10957,16 +10962,16 @@ app.post("/api/orders/:id/take", auth, async (req, res) => {
   try {
     const id = Number(req.params.id);
     if (!id || Number.isNaN(id)) {
-      return res.status(400).json({ message: "???????????? ID ??????." });
+      return res.status(400).json({ message: "Некорректный ID заказа." });
     }
 
     const order = await prisma.salesOrder.findUnique({ where: { id } });
-    if (!order) return res.status(404).json({ message: "????? ?? ??????." });
+    if (!order) return res.status(404).json({ message: "Заказ не найден." });
     if (!["NEW", "IN_PICKING"].includes(order.status)) {
-      return res.status(400).json({ message: "????? ?????????? ??? ??????." });
+      return res.status(400).json({ message: "Заказ недоступен для отбора." });
     }
     if (order.assignedToUserId && order.assignedToUserId !== req.user.id) {
-      return res.status(409).json({ message: "????? ??? ???? ?????? ???????????." });
+      return res.status(409).json({ message: "Заказ уже взят другим сотрудником." });
     }
 
     const updated = await prisma.salesOrder.update({
@@ -10985,7 +10990,7 @@ app.post("/api/orders/:id/take", auth, async (req, res) => {
     res.json({ ok: true, order: updated });
   } catch (err) {
     console.error("orders take error:", err);
-    res.status(500).json({ message: "?????? ??? ?????? ??????." });
+    res.status(500).json({ message: "Ошибка при взятии заказа." });
   }
 });
 
