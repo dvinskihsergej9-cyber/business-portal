@@ -10938,7 +10938,6 @@ app.get("/api/orders/queue", auth, async (req, res) => {
         }
       : {
           status: { in: statusList },
-          OR: [{ assignedToUserId: null }, { assignedToUserId: req.user.id }],
         };
 
     const orders = await prisma.salesOrder.findMany({
@@ -10962,35 +10961,66 @@ app.post("/api/orders/:id/take", auth, async (req, res) => {
   try {
     const id = Number(req.params.id);
     if (!id || Number.isNaN(id)) {
-      return res.status(400).json({ message: "Некорректный ID заказа." });
+      return res.status(400).json({ message: "\u041d\u0435\u043a\u043e\u0440\u0440\u0435\u043a\u0442\u043d\u044b\u0439 ID \u0437\u0430\u043a\u0430\u0437\u0430." });
     }
 
-    const order = await prisma.salesOrder.findUnique({ where: { id } });
-    if (!order) return res.status(404).json({ message: "Заказ не найден." });
-    if (!["NEW", "IN_PICKING"].includes(order.status)) {
-      return res.status(400).json({ message: "Заказ недоступен для отбора." });
-    }
-    if (order.assignedToUserId && order.assignedToUserId !== req.user.id) {
-      return res.status(409).json({ message: "Заказ уже взят другим сотрудником." });
-    }
+    const updated = await prisma.$transaction(async (tx) => {
+      const order = await tx.salesOrder.findUnique({
+        where: { id },
+        include: {
+          assignedToUser: { select: { id: true, name: true, email: true } },
+          lines: { select: { pickedQty: true } },
+        },
+      });
+      if (!order) {
+        const err = new Error("ORDER_NOT_FOUND");
+        err.code = "ORDER_NOT_FOUND";
+        throw err;
+      }
+      if (!["NEW", "IN_PICKING"].includes(order.status)) {
+        const err = new Error("ORDER_BAD_STATUS");
+        err.code = "ORDER_BAD_STATUS";
+        throw err;
+      }
 
-    const updated = await prisma.salesOrder.update({
-      where: { id },
-      data: {
-        assignedToUserId: req.user.id,
-        status: "IN_PICKING",
-        takenAt: order.takenAt || new Date(),
-      },
-      include: {
-        assignedToUser: { select: { id: true, name: true, email: true } },
-        lines: { include: { item: true }, orderBy: { id: "asc" } },
-      },
+      const pickedStarted = (order.lines || []).some((line) => Number(line.pickedQty) > 0);
+      if (order.assignedToUserId && order.assignedToUserId !== req.user.id && pickedStarted) {
+        const err = new Error("ORDER_ALREADY_TAKEN");
+        err.code = "ORDER_ALREADY_TAKEN";
+        err.assigneeName =
+          order.assignedToUser?.name || order.assignedToUser?.email || "\u0434\u0440\u0443\u0433\u0438\u043c \u0441\u043e\u0442\u0440\u0443\u0434\u043d\u0438\u043a\u043e\u043c";
+        throw err;
+      }
+
+      return tx.salesOrder.update({
+        where: { id },
+        data: {
+          assignedToUserId: req.user.id,
+          status: "IN_PICKING",
+          takenAt: order.takenAt || new Date(),
+        },
+        include: {
+          assignedToUser: { select: { id: true, name: true, email: true } },
+          lines: { include: { item: true }, orderBy: { id: "asc" } },
+        },
+      });
     });
 
     res.json({ ok: true, order: updated });
   } catch (err) {
+    if (err.code === "ORDER_NOT_FOUND") {
+      return res.status(404).json({ message: "\u0417\u0430\u043a\u0430\u0437 \u043d\u0435 \u043d\u0430\u0439\u0434\u0435\u043d." });
+    }
+    if (err.code === "ORDER_BAD_STATUS") {
+      return res.status(400).json({ message: "\u0417\u0430\u043a\u0430\u0437 \u043d\u0435\u0434\u043e\u0441\u0442\u0443\u043f\u0435\u043d \u0434\u043b\u044f \u043e\u0442\u0431\u043e\u0440\u0430." });
+    }
+    if (err.code === "ORDER_ALREADY_TAKEN") {
+      return res.status(409).json({
+        message: `\u0417\u0430\u043a\u0430\u0437 \u0443\u0436\u0435 \u0432 \u0440\u0430\u0431\u043e\u0442\u0435 \u0443 \u0441\u043e\u0442\u0440\u0443\u0434\u043d\u0438\u043a\u0430: ${err.assigneeName}.`,
+      });
+    }
     console.error("orders take error:", err);
-    res.status(500).json({ message: "Ошибка при взятии заказа." });
+    res.status(500).json({ message: "\u041e\u0448\u0438\u0431\u043a\u0430 \u043f\u0440\u0438 \u0432\u0437\u044f\u0442\u0438\u0438 \u0437\u0430\u043a\u0430\u0437\u0430." });
   }
 });
 

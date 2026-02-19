@@ -178,6 +178,7 @@ export default function OrderFulfillmentFlow({ authHeaders, onBack }) {
       if (!res.ok) {
         if (res.status === 409) {
           await loadQueue();
+          throw new Error(data?.message || "Заказ уже взят другим сотрудником.");
         }
         throw new Error(data?.message || "Не удалось взять заказ");
       }
@@ -468,6 +469,11 @@ export default function OrderFulfillmentFlow({ authHeaders, onBack }) {
                   </div>
                   <div className="tsd-card__meta">{order.customerName}</div>
                   <div className="tsd-card__meta">{order.shippingAddress}</div>
+                  <div className="tsd-card__meta">
+                    {order.assignedToUser
+                      ? `Исполнитель: ${order.assignedToUser.name || order.assignedToUser.email || "назначен"}`
+                      : "Исполнитель: не назначен"}
+                  </div>
                 </div>
                 <div className="tsd-action-inline">
                   <button
