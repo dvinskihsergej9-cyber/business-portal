@@ -523,7 +523,9 @@ export default function OrderFulfillmentFlow({ authHeaders, onBack }) {
                     disabled={loading}
                     onClick={() => takeOrder(order.id)}
                   >
-                    Взять задание
+                    {["PICKED", "PACKED"].includes(String(order.status || ""))
+                      ? "Открыть задание"
+                      : "Взять задание"}
                   </button>
                 </div>
               </div>

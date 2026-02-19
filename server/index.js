@@ -11024,7 +11024,7 @@ app.post("/api/orders/:id/take", auth, async (req, res) => {
         err.code = "ORDER_NOT_FOUND";
         throw err;
       }
-      if (!["NEW", "IN_PICKING"].includes(order.status)) {
+      if (!["NEW", "IN_PICKING", "PICKED", "PACKED"].includes(order.status)) {
         const err = new Error("ORDER_BAD_STATUS");
         err.code = "ORDER_BAD_STATUS";
         throw err;
@@ -11043,7 +11043,10 @@ app.post("/api/orders/:id/take", auth, async (req, res) => {
         where: { id },
         data: {
           assignedToUserId: req.user.id,
-          status: "IN_PICKING",
+          status:
+            order.status === "NEW" || order.status === "IN_PICKING"
+              ? "IN_PICKING"
+              : order.status,
           takenAt: order.takenAt || new Date(),
         },
         include: {
@@ -11059,7 +11062,7 @@ app.post("/api/orders/:id/take", auth, async (req, res) => {
       return res.status(404).json({ message: "\u0417\u0430\u043a\u0430\u0437 \u043d\u0435 \u043d\u0430\u0439\u0434\u0435\u043d." });
     }
     if (err.code === "ORDER_BAD_STATUS") {
-      return res.status(400).json({ message: "\u0417\u0430\u043a\u0430\u0437 \u043d\u0435\u0434\u043e\u0441\u0442\u0443\u043f\u0435\u043d \u0434\u043b\u044f \u043e\u0442\u0431\u043e\u0440\u0430." });
+      return res.status(400).json({ message: "\u0417\u0430\u043a\u0430\u0437 \u043d\u0435\u0434\u043e\u0441\u0442\u0443\u043f\u0435\u043d \u0434\u043b\u044f \u043e\u0431\u0440\u0430\u0431\u043e\u0442\u043a\u0438." });
     }
     if (err.code === "ORDER_ALREADY_TAKEN") {
       return res.status(409).json({
@@ -11090,7 +11093,7 @@ app.post("/api/orders/:id/release", auth, async (req, res) => {
         err.code = "ORDER_NOT_FOUND";
         throw err;
       }
-      if (!["NEW", "IN_PICKING", "PICKED"].includes(order.status)) {
+      if (!["NEW", "IN_PICKING", "PICKED", "PACKED"].includes(order.status)) {
         const err = new Error("ORDER_BAD_STATUS");
         err.code = "ORDER_BAD_STATUS";
         throw err;
