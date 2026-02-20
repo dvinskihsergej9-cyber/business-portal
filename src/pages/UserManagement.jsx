@@ -670,6 +670,8 @@ export default function UserManagement() {
     const query = String(userSearch || "").trim().toLowerCase();
     if (!query) return users;
     return users.filter((u) => {
+      const organizationName = String(u?.organization?.name || "").trim();
+      const organizationCode = String(u?.organization?.code || "").trim();
       const haystack = [
         u.id,
         u.name,
@@ -678,6 +680,8 @@ export default function UserManagement() {
         u.email,
         u.role,
         roleLabel(u.role),
+        organizationName,
+        organizationCode,
       ]
         .filter(Boolean)
         .join(" ")
@@ -890,6 +894,7 @@ export default function UserManagement() {
                 <th style={thStyle}>Имя</th>
                 <th style={thStyle}>Логин</th>
                 <th style={thStyle}>Пароль</th>
+                <th style={thStyle}>Компания</th>
                 <th style={thStyle}>Роль</th>
                 <th style={thStyle}>Создан</th>
                 <th style={thStyle}></th>
@@ -910,6 +915,8 @@ export default function UserManagement() {
                   createdPasswords[u.username] ||
                   createdPasswords[u.email] ||
                   "-";
+                const organizationName =
+                  String(u?.organization?.name || "").trim() || "-";
 
                 return (
                   <Fragment key={u.id}>
@@ -929,6 +936,9 @@ export default function UserManagement() {
                       </td>
                       <td data-label="Пароль" style={tdStyle}>
                         {userPassword}
+                      </td>
+                      <td data-label="Компания" style={tdStyle}>
+                        {organizationName}
                       </td>
                       <td data-label="Роль" style={tdStyle}>
                         <select
@@ -1014,7 +1024,7 @@ export default function UserManagement() {
                     </tr>
                     {isExpanded && (
                       <tr>
-                        <td style={{ ...tdStyle, background: "#fafcff" }} colSpan={7}>
+                        <td style={{ ...tdStyle, background: "#fafcff" }} colSpan={8}>
                           <div style={{ display: "grid", gap: 12 }}>
                             <div
                               style={{
