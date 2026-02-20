@@ -474,6 +474,22 @@ export default function OrderFulfillmentFlow({ authHeaders, onBack }) {
 
     const orderNumberText = `№ ${order.orderNumber || "-"}`;
     const maxNumberWidth = contentWidth - 40;
+    const centerMaxNumberWidth = contentWidth - 60;
+
+    let centerOrderNumberFontSize = 110;
+    pdf.setFontSize(centerOrderNumberFontSize);
+    while (
+      centerOrderNumberFontSize > 34 &&
+      pdf.getTextWidth(orderNumberText) > centerMaxNumberWidth
+    ) {
+      centerOrderNumberFontSize -= 2;
+      pdf.setFontSize(centerOrderNumberFontSize);
+    }
+    pdf.setTextColor(214, 222, 236);
+    pdf.text(orderNumberText, margin + contentWidth / 2, pageHeight / 2 + 16, {
+      align: "center",
+    });
+
     let orderNumberFontSize = 90;
     pdf.setFontSize(orderNumberFontSize);
     while (
@@ -484,6 +500,7 @@ export default function OrderFulfillmentFlow({ authHeaders, onBack }) {
       pdf.setFontSize(orderNumberFontSize);
     }
     const numberY = footerTop + footerHeight - 24;
+    pdf.setTextColor(28, 35, 64);
     pdf.text(orderNumberText, margin + contentWidth / 2, numberY, {
       align: "center",
     });
