@@ -12096,6 +12096,153 @@ async function startBackgroundTasks() {
   }, 60 * 1000);
 }
 
+app.post("/api/warehouse/stock/adjustment", requireAdmin, async (req, res) => {
+  try {
+    const itemId = Number(req.body?.itemId);
+    const delta = Math.trunc(Number(req.body?.delta));
+    const reason = String(req.body?.reason || "").trim();
+
+    if (!itemId || Number.isNaN(itemId)) {
+      return res.status(400).json({ message: "Укажите товар для корректировки." });
+    }
+    if (!Number.isFinite(delta) || delta === 0) {
+      return res.status(400).json({
+        message: "Количество корректировки должно быть ненулевым целым числом.",
+      });
+    }
+    if (!reason) {
+      return res.status(400).json({ message: "Укажите причину корректировки." });
+    }
+
+    const result = await prisma.$transaction(async (tx) => {
+      const item = await tx.item.findUnique({
+        where: { id: itemId },
+        select: { id: true, name: true, sku: true, unit: true, category: true },
+      });
+
+      if (!item || item.category !== "STOCK") {
+        const err = new Error("ITEM_NOT_FOUND");
+        err.code = "ITEM_NOT_FOUND";
+        throw err;
+      }
+
+      const rows = await tx.stockMovement.findMany({
+        where: { itemId, locationId: { not: null } },
+        select: { locationId: true, type: true, quantity: true },
+        orderBy: [{ locationId: "asc" }, { createdAt: "asc" }],
+      });
+
+      const byLocation = new Map();
+      for (const row of rows) {
+        const locationId = Number(row.locationId);
+        if (!locationId) continue;
+        const qty = Number(row.quantity) || 0;
+        const prev = byLocation.get(locationId) || 0;
+        if (row.type === "INCOME" || row.type === "ADJUSTMENT") {
+          byLocation.set(locationId, prev + qty);
+        } else if (row.type === "ISSUE") {
+          byLocation.set(locationId, prev - qty);
+        }
+      }
+
+      const balances = Array.from(byLocation.entries()).map(([locationId, qty]) => ({
+        locationId: Number(locationId),
+        qty: Number(qty) || 0,
+      }));
+      const totalBefore = balances.reduce((sum, row) => sum + row.qty, 0);
+      const positiveBalances = balances
+        .filter((row) => row.qty > 0)
+        .sort((a, b) => b.qty - a.qty);
+
+      if (delta < 0 && Math.abs(delta) > totalBefore) {
+        const err = new Error("INSUFFICIENT_STOCK");
+        err.code = "INSUFFICIENT_STOCK";
+        err.current = Math.max(0, Math.round(totalBefore));
+        throw err;
+      }
+
+      let affectedLocations = 0;
+
+      if (delta > 0) {
+        const receivingLocationId = await getReceivingLocationId(tx);
+        await stockService.createMovementInTx(tx, {
+          opId: `ADMIN_ADJ:${itemId}:${Date.now()}:PLUS`,
+          type: "ADJUSTMENT",
+          itemId,
+          qty: delta,
+          locationId: receivingLocationId,
+          comment: `Служебная корректировка (+): ${reason}`,
+          refType: "ADMIN_ADJUSTMENT",
+          refId: String(itemId),
+          userId: req.user?.id || null,
+        });
+        affectedLocations = 1;
+      } else {
+        let remaining = Math.abs(delta);
+        for (const row of positiveBalances) {
+          if (remaining <= 0) break;
+          const take = Math.min(remaining, Math.trunc(row.qty));
+          if (take <= 0) continue;
+          await stockService.createMovementInTx(tx, {
+            opId: `ADMIN_ADJ:${itemId}:${row.locationId}:${Date.now()}:${remaining}`,
+            type: "ADJUSTMENT",
+            itemId,
+            qty: -take,
+            locationId: row.locationId,
+            comment: `Служебная корректировка (-): ${reason}`,
+            refType: "ADMIN_ADJUSTMENT",
+            refId: String(itemId),
+            userId: req.user?.id || null,
+          });
+          remaining -= take;
+          affectedLocations += 1;
+        }
+
+        if (remaining > 0) {
+          const err = new Error("INSUFFICIENT_STOCK");
+          err.code = "INSUFFICIENT_STOCK";
+          err.current = Math.max(
+            0,
+            Math.round(totalBefore - Math.abs(delta) + remaining)
+          );
+          throw err;
+        }
+      }
+
+      return {
+        item,
+        totalBefore: Math.round(totalBefore),
+        totalAfter: Math.round(totalBefore + delta),
+        delta,
+        affectedLocations,
+      };
+    });
+
+    return res.json({
+      ok: true,
+      message: "Корректировка проведена.",
+      item: result.item,
+      delta: result.delta,
+      stockBefore: result.totalBefore,
+      stockAfter: result.totalAfter,
+      affectedLocations: result.affectedLocations,
+    });
+  } catch (err) {
+    if (err.code === "ITEM_NOT_FOUND") {
+      return res.status(404).json({ message: "Товар не найден." });
+    }
+    if (err.code === "INSUFFICIENT_STOCK") {
+      return res.status(400).json({
+        message: `Недостаточно остатка для списания. Доступно: ${Number(err.current) || 0}.`,
+      });
+    }
+    console.error("warehouse stock adjustment error:", err);
+    return res
+      .status(500)
+      .json({ message: "Ошибка сервера при корректировке остатков." });
+  }
+});
+
 // запуск long polling Telegram (один экземпляр)
 startTelegramPolling().catch((err) =>
   console.error("Ошибка при запуске startTelegramPolling:", err)
@@ -12136,4 +12283,3 @@ async function bootstrapServer() {
 bootstrapServer().catch((err) =>
   console.error("Ошибка запуска bootstrapServer:", err)
 );
-

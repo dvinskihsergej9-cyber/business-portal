@@ -1,5 +1,6 @@
 ﻿import { useEffect, useMemo, useState } from "react";
 import { API_BASE } from "../apiConfig";
+import { useAuth } from "../context/AuthContext";
 import { jsPDF } from "jspdf";
 import autoTable from "jspdf-autotable";
 import { ARIAL_TTF_BASE64 } from "../utils/arialFontBase64";
@@ -47,11 +48,26 @@ const ensurePdfFont = async (pdf) => {
 };
 
 export default function StockTransactionsTab() {
+  const { user } = useAuth();
+  const canAdjust = user?.role === "ADMIN";
+
   const [query, setQuery] = useState("");
   const [loading, setLoading] = useState(true);
   const [items, setItems] = useState([]);
   const [error, setError] = useState("");
   const [printing, setPrinting] = useState(false);
+
+  const [stockItems, setStockItems] = useState([]);
+  const [stockLoading, setStockLoading] = useState(false);
+  const [adjustLoading, setAdjustLoading] = useState(false);
+  const [adjustError, setAdjustError] = useState("");
+  const [adjustSuccess, setAdjustSuccess] = useState("");
+  const [adjustForm, setAdjustForm] = useState({
+    itemId: "",
+    mode: "PLUS",
+    quantity: "",
+    reason: "",
+  });
 
   const authHeaders = useMemo(() => {
     const token = localStorage.getItem("token");
@@ -82,6 +98,79 @@ export default function StockTransactionsTab() {
       setError(err.message || "Ошибка загрузки");
     } finally {
       setLoading(false);
+    }
+  };
+
+  const loadStockItems = async () => {
+    if (!canAdjust) return;
+    try {
+      setStockLoading(true);
+      const res = await fetch(`${API_BASE}/warehouse/stock/summary`, {
+        headers: authHeaders,
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        throw new Error(data?.message || "Не удалось загрузить список товаров");
+      }
+      setStockItems(Array.isArray(data) ? data : []);
+    } catch (err) {
+      setAdjustError(err.message || "Ошибка загрузки списка товаров");
+    } finally {
+      setStockLoading(false);
+    }
+  };
+
+  const handleAdjustStock = async (event) => {
+    event.preventDefault();
+    try {
+      setAdjustError("");
+      setAdjustSuccess("");
+
+      const itemId = Number(adjustForm.itemId);
+      const quantity = Math.trunc(Number(adjustForm.quantity));
+      const reason = String(adjustForm.reason || "").trim();
+
+      if (!itemId || Number.isNaN(itemId)) {
+        throw new Error("Выберите товар.");
+      }
+      if (!Number.isFinite(quantity) || quantity <= 0) {
+        throw new Error("Количество должно быть положительным целым числом.");
+      }
+      if (!reason) {
+        throw new Error("Укажите причину корректировки.");
+      }
+
+      const delta = adjustForm.mode === "PLUS" ? quantity : -quantity;
+
+      setAdjustLoading(true);
+      const res = await fetch(`${API_BASE}/warehouse/stock/adjustment`, {
+        method: "POST",
+        headers: authHeaders,
+        body: JSON.stringify({
+          itemId,
+          delta,
+          reason,
+        }),
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        throw new Error(data?.message || "Не удалось выполнить корректировку.");
+      }
+
+      setAdjustSuccess(
+        `Проведено: ${delta > 0 ? "+" : ""}${delta}. Текущий остаток: ${data.stockAfter}.`
+      );
+      setAdjustForm((prev) => ({
+        ...prev,
+        quantity: "",
+        reason: "",
+      }));
+
+      await Promise.all([load(query.trim()), loadStockItems()]);
+    } catch (err) {
+      setAdjustError(err.message || "Ошибка корректировки.");
+    } finally {
+      setAdjustLoading(false);
     }
   };
 
@@ -149,8 +238,11 @@ export default function StockTransactionsTab() {
 
   useEffect(() => {
     load("");
+    if (canAdjust) {
+      loadStockItems();
+    }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  }, [canAdjust]);
 
   return (
     <div className="card" style={{ padding: 16 }}>
@@ -184,6 +276,86 @@ export default function StockTransactionsTab() {
           </button>
         </div>
       </div>
+
+      {canAdjust && (
+        <div
+          style={{
+            border: "1px solid #e2e8f0",
+            borderRadius: 14,
+            padding: 12,
+            marginBottom: 14,
+            background: "#f8fbff",
+          }}
+        >
+          <div style={{ fontWeight: 700, marginBottom: 6 }}>Служебная корректировка остатков</div>
+          <div style={{ fontSize: 13, color: "#64748b", marginBottom: 10 }}>
+            Корректировка выполняется администратором без выбора ячейки.
+          </div>
+
+          <form
+            onSubmit={handleAdjustStock}
+            style={{ display: "grid", gap: 8, gridTemplateColumns: "repeat(auto-fit, minmax(160px, 1fr))" }}
+          >
+            <select
+              className="form__select"
+              value={adjustForm.itemId}
+              onChange={(event) =>
+                setAdjustForm((prev) => ({ ...prev, itemId: event.target.value }))
+              }
+              disabled={stockLoading || adjustLoading}
+            >
+              <option value="">{stockLoading ? "Загрузка..." : "Выберите товар"}</option>
+              {stockItems.map((item) => (
+                <option key={item.id} value={item.id}>
+                  {item.name} ({item.sku || "без SKU"}) — {item.currentStock} {item.unit || "шт"}
+                </option>
+              ))}
+            </select>
+
+            <select
+              className="form__select"
+              value={adjustForm.mode}
+              onChange={(event) =>
+                setAdjustForm((prev) => ({ ...prev, mode: event.target.value }))
+              }
+              disabled={adjustLoading}
+            >
+              <option value="PLUS">Плюс</option>
+              <option value="MINUS">Минус</option>
+            </select>
+
+            <input
+              className="form__input"
+              type="number"
+              min="1"
+              step="1"
+              placeholder="Кол-во"
+              value={adjustForm.quantity}
+              onChange={(event) =>
+                setAdjustForm((prev) => ({ ...prev, quantity: event.target.value }))
+              }
+              disabled={adjustLoading}
+            />
+
+            <input
+              className="form__input"
+              placeholder="Причина (обязательно)"
+              value={adjustForm.reason}
+              onChange={(event) =>
+                setAdjustForm((prev) => ({ ...prev, reason: event.target.value }))
+              }
+              disabled={adjustLoading}
+            />
+
+            <button type="submit" className="btn btn--primary" disabled={adjustLoading || stockLoading}>
+              {adjustLoading ? "Проводим..." : "Провести"}
+            </button>
+          </form>
+
+          {adjustError && <div className="alert alert--danger" style={{ marginTop: 8 }}>{adjustError}</div>}
+          {adjustSuccess && <div className="alert alert--success" style={{ marginTop: 8 }}>{adjustSuccess}</div>}
+        </div>
+      )}
 
       {error && <div className="alert alert--danger">{error}</div>}
 
@@ -256,3 +428,4 @@ const tdStyle = {
   borderBottom: "1px solid #f1f5f9",
   fontSize: 13,
 };
+
