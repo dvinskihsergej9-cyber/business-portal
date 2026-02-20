@@ -56,6 +56,7 @@ model User {
   receivingLinesCreated WarehouseReceivingLine[] @relation("ReceivingLineCreatedBy")
   receivingLinesPlaced WarehouseReceivingLine[] @relation("ReceivingLinePlacedBy")
   assignedOrders SalesOrder[] @relation("OrderAssignedTo")
+  passportPrintedOrders SalesOrder[] @relation("OrderPassportPrintedBy")
 
   @@index([orgId])
 }
@@ -677,12 +678,17 @@ model SalesOrder {
   boxCode          String?
   boxType          String?
   labelPrintedAt   DateTime?
+  passportPrintedAt DateTime?
+  passportPrintCount Int @default(0)
+  passportPrintedById Int?
+  passportPrintedBy User? @relation("OrderPassportPrintedBy", fields: [passportPrintedById], references: [id])
   createdAt        DateTime         @default(now())
   updatedAt        DateTime         @updatedAt
   lines            SalesOrderLine[]
 
   @@index([status])
   @@index([assignedToUserId])
+  @@index([passportPrintedById])
   @@index([createdAt])
 }
 

@@ -11447,6 +11447,46 @@ app.post("/api/orders/:id/complete", auth, async (req, res) => {
 // ================== ОЧЕРЕДЬ МАШИН ПОСТАВЩИКОВ ==================
 
 // список машин в очереди (с фильтрами)
+app.post("/api/orders/:id/passport-printed", auth, async (req, res) => {
+  try {
+    const id = Number(req.params.id);
+    if (!id || Number.isNaN(id)) {
+      return res.status(400).json({ message: "\u041d\u0435\u043a\u043e\u0440\u0440\u0435\u043a\u0442\u043d\u044b\u0439 ID \u0437\u0430\u043a\u0430\u0437\u0430." });
+    }
+
+    const order = await prisma.salesOrder.findUnique({
+      where: { id },
+    });
+    if (!order) return res.status(404).json({ message: "\u0417\u0430\u043a\u0430\u0437 \u043d\u0435 \u043d\u0430\u0439\u0434\u0435\u043d." });
+    if (order.assignedToUserId && order.assignedToUserId !== req.user.id && !isWarehouseManager(req.user)) {
+      return res.status(403).json({ message: "\u0417\u0430\u043a\u0430\u0437 \u0437\u0430\u043a\u0440\u0435\u043f\u043b\u0435\u043d \u0437\u0430 \u0434\u0440\u0443\u0433\u0438\u043c \u0441\u043e\u0442\u0440\u0443\u0434\u043d\u0438\u043a\u043e\u043c." });
+    }
+    if (!["PICKED", "PACKED", "READY_TO_SHIP", "SHIPPED"].includes(order.status)) {
+      return res.status(400).json({ message: "\u041f\u0435\u0447\u0430\u0442\u044c \u043f\u0430\u0441\u043f\u043e\u0440\u0442\u0430 \u0434\u043e\u0441\u0442\u0443\u043f\u043d\u0430 \u043f\u043e\u0441\u043b\u0435 \u043e\u0442\u0431\u043e\u0440\u0430." });
+    }
+
+    const now = new Date();
+    const updated = await prisma.salesOrder.update({
+      where: { id },
+      data: {
+        labelPrintedAt: now,
+        passportPrintedAt: now,
+        passportPrintedById: req.user?.id || null,
+        passportPrintCount: { increment: 1 },
+      },
+      include: {
+        assignedToUser: { select: { id: true, name: true, email: true } },
+        lines: { include: { item: true }, orderBy: { id: "asc" } },
+      },
+    });
+
+    res.json({ ok: true, order: updated });
+  } catch (err) {
+    console.error("orders passport printed error:", err);
+    res.status(500).json({ message: "\u041e\u0448\u0438\u0431\u043a\u0430 \u0444\u0438\u043a\u0441\u0430\u0446\u0438\u0438 \u043f\u0435\u0447\u0430\u0442\u0438 \u043f\u0430\u0441\u043f\u043e\u0440\u0442\u0430." });
+  }
+});
+
 app.get("/api/supplier-trucks", auth, async (req, res) => {
   try {
     const onlyActive = req.query.onlyActive === "1";

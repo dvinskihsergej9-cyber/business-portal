@@ -370,6 +370,129 @@ export default function OrderFulfillmentFlow({ authHeaders, onBack }) {
     }
   };
 
+  const buildPassportPdf = async (order) => {
+    const pdf = new jsPDF("p", "pt", "a4");
+    await ensurePdfFont(pdf);
+    const pageWidth = pdf.internal.pageSize.getWidth();
+    const pageHeight = pdf.internal.pageSize.getHeight();
+    const margin = 28;
+    const contentWidth = pageWidth - margin * 2;
+
+    pdf.setDrawColor(28, 35, 64);
+    pdf.setLineWidth(1.3);
+    pdf.rect(margin, margin, contentWidth, pageHeight - margin * 2);
+
+    pdf.setFillColor(241, 246, 255);
+    pdf.rect(margin + 10, margin + 10, contentWidth - 20, 96, "F");
+
+    pdf.setTextColor(11, 18, 42);
+    pdf.setFontSize(25);
+    pdf.text(`Паспорт заказа ${order.orderNumber || "-"}`, margin + 20, margin + 44);
+    pdf.setFontSize(13);
+    pdf.text(`Дата: ${formatDateTime(order.createdAt)}`, margin + 20, margin + 68);
+    pdf.text(`Статус: ${getOrderStatusLabel(order.status)}`, margin + 20, margin + 88);
+
+    let y = margin + 132;
+    pdf.setFontSize(15);
+    pdf.text(`Получатель: ${order.customerName || "-"}`, margin + 20, y);
+    y += 22;
+    pdf.text(`Телефон: ${order.customerPhone || "-"}`, margin + 20, y);
+    y += 22;
+
+    const addressLines = pdf.splitTextToSize(
+      `Адрес: ${order.shippingAddress || "-"}`,
+      contentWidth - 40
+    );
+    pdf.text(addressLines, margin + 20, y);
+    y += addressLines.length * 17 + 4;
+
+    const commentLines = pdf.splitTextToSize(
+      `Комментарий: ${order.deliveryComment || "-"}`,
+      contentWidth - 40
+    );
+    pdf.text(commentLines, margin + 20, y);
+    y += commentLines.length * 17 + 14;
+
+    const rows = (order.lines || []).map((line, index) => [
+      String(index + 1),
+      line.item?.sku || line.requestedSku || "-",
+      line.item?.name || line.requestedName || "-",
+      String(toNum(line.qty)),
+      String(toNum(line.pickedQty)),
+      line.item?.unit || "шт",
+    ]);
+
+    autoTable(pdf, {
+      startY: y,
+      margin: { left: margin + 10, right: margin + 10 },
+      head: [["#", "SKU", "Товар", "Заказано", "Отобрано", "Ед."]],
+      body: rows.length ? rows : [["-", "-", "Нет позиций", "-", "-", "-"]],
+      theme: "grid",
+      styles: {
+        font: "Arial",
+        fontSize: 12,
+        cellPadding: 6,
+        minCellHeight: 24,
+        overflow: "linebreak",
+        valign: "top",
+      },
+      headStyles: {
+        fillColor: [225, 234, 248],
+        textColor: [15, 23, 42],
+        fontStyle: "bold",
+        font: "Arial",
+        fontSize: 12,
+      },
+      columnStyles: {
+        0: { cellWidth: 34 },
+        1: { cellWidth: 88 },
+        2: { cellWidth: 206 },
+        3: { cellWidth: 72, halign: "center" },
+        4: { cellWidth: 72, halign: "center" },
+        5: { cellWidth: 44, halign: "center" },
+      },
+    });
+
+    const finalY = pdf.lastAutoTable?.finalY || y;
+    const footerTop = Math.min(finalY + 16, pageHeight - 140);
+    const footerHeight = pageHeight - margin - footerTop - 10;
+
+    pdf.setFillColor(248, 250, 255);
+    pdf.rect(margin + 10, footerTop, contentWidth - 20, footerHeight, "F");
+    pdf.setDrawColor(188, 201, 224);
+    pdf.rect(margin + 10, footerTop, contentWidth - 20, footerHeight);
+    pdf.setTextColor(28, 35, 64);
+    pdf.setFontSize(16);
+    pdf.text("Наклейте этот паспорт на коробку заказа", margin + 20, footerTop + 30);
+    pdf.setFontSize(18);
+    pdf.text(`№ ${order.orderNumber || "-"}`, margin + 20, footerTop + 58);
+
+    return pdf;
+  };
+
+  const markPassportPrinted = async (orderId) => {
+    try {
+      const printedRes = await fetch(`${API_BASE}/orders/${orderId}/passport-printed`, {
+        method: "POST",
+        headers: authHeaders,
+      });
+      const printedData = await readJsonSafe(printedRes);
+      if (printedRes.ok && printedData?.order) {
+        setSelectedOrder(printedData.order);
+      }
+    } catch {
+      // Не блокируем выдачу/печать PDF при ошибке фиксации.
+    }
+  };
+
+  const openPdfInCurrentTab = (url) => {
+    const link = document.createElement("a");
+    link.href = url;
+    link.target = "_self";
+    link.rel = "noopener noreferrer";
+    link.click();
+  };
+
   const printPassport = async () => {
     if (!selectedOrder) return;
     if (!canPrintPassport) {
@@ -377,113 +500,59 @@ export default function OrderFulfillmentFlow({ authHeaders, onBack }) {
       return;
     }
     try {
-      const order = selectedOrder;
-      const pdf = new jsPDF("p", "pt", "a4");
-      await ensurePdfFont(pdf);
-      const pageWidth = pdf.internal.pageSize.getWidth();
-      const pageHeight = pdf.internal.pageSize.getHeight();
-      const margin = 28;
-      const contentWidth = pageWidth - margin * 2;
-
-      pdf.setDrawColor(28, 35, 64);
-      pdf.setLineWidth(1.3);
-      pdf.rect(margin, margin, contentWidth, pageHeight - margin * 2);
-
-      pdf.setFillColor(241, 246, 255);
-      pdf.rect(margin + 10, margin + 10, contentWidth - 20, 96, "F");
-
-      pdf.setTextColor(11, 18, 42);
-      pdf.setFontSize(25);
-      pdf.text(`Паспорт заказа ${order.orderNumber || "-"}`, margin + 20, margin + 44);
-      pdf.setFontSize(13);
-      pdf.text(`Дата: ${formatDateTime(order.createdAt)}`, margin + 20, margin + 68);
-      pdf.text(`Статус: ${getOrderStatusLabel(order.status)}`, margin + 20, margin + 88);
-
-      let y = margin + 132;
-      pdf.setFontSize(15);
-      pdf.text(`Получатель: ${order.customerName || "-"}`, margin + 20, y);
-      y += 22;
-      pdf.text(`Телефон: ${order.customerPhone || "-"}`, margin + 20, y);
-      y += 22;
-
-      const addressLines = pdf.splitTextToSize(
-        `Адрес: ${order.shippingAddress || "-"}`,
-        contentWidth - 40
-      );
-      pdf.text(addressLines, margin + 20, y);
-      y += addressLines.length * 17 + 4;
-
-      const commentLines = pdf.splitTextToSize(
-        `Комментарий: ${order.deliveryComment || "-"}`,
-        contentWidth - 40
-      );
-      pdf.text(commentLines, margin + 20, y);
-      y += commentLines.length * 17 + 14;
-
-      const rows = (order.lines || []).map((line, index) => [
-        String(index + 1),
-        line.item?.sku || line.requestedSku || "-",
-        line.item?.name || line.requestedName || "-",
-        String(toNum(line.qty)),
-        String(toNum(line.pickedQty)),
-        line.item?.unit || "шт",
-      ]);
-
-      autoTable(pdf, {
-        startY: y,
-        margin: { left: margin + 10, right: margin + 10 },
-        head: [["#", "SKU", "Товар", "Заказано", "Отобрано", "Ед."]],
-        body: rows.length ? rows : [["-", "-", "Нет позиций", "-", "-", "-"]],
-        theme: "grid",
-        styles: {
-          font: "Arial",
-          fontSize: 12,
-          cellPadding: 6,
-          minCellHeight: 24,
-          overflow: "linebreak",
-          valign: "top",
-        },
-        headStyles: {
-          fillColor: [225, 234, 248],
-          textColor: [15, 23, 42],
-          fontStyle: "bold",
-          font: "Arial",
-          fontSize: 12,
-        },
-        columnStyles: {
-          0: { cellWidth: 34 },
-          1: { cellWidth: 88 },
-          2: { cellWidth: 206 },
-          3: { cellWidth: 72, halign: "center" },
-          4: { cellWidth: 72, halign: "center" },
-          5: { cellWidth: 44, halign: "center" },
-        },
-      });
-
-      const finalY = pdf.lastAutoTable?.finalY || y;
-      const footerTop = Math.min(finalY + 16, pageHeight - 140);
-      const footerHeight = pageHeight - margin - footerTop - 10;
-
-      pdf.setFillColor(248, 250, 255);
-      pdf.rect(margin + 10, footerTop, contentWidth - 20, footerHeight, "F");
-      pdf.setDrawColor(188, 201, 224);
-      pdf.rect(margin + 10, footerTop, contentWidth - 20, footerHeight);
-      pdf.setTextColor(28, 35, 64);
-      pdf.setFontSize(16);
-      pdf.text("Наклейте этот паспорт на коробку заказа", margin + 20, footerTop + 30);
-      pdf.setFontSize(18);
-      pdf.text(`№ ${order.orderNumber || "-"}`, margin + 20, footerTop + 58);
-
+      const pdf = await buildPassportPdf(selectedOrder);
+      await markPassportPrinted(selectedOrder.id);
       const blob = pdf.output("blob");
       const url = URL.createObjectURL(blob);
-      const link = document.createElement("a");
-      link.href = url;
-      link.target = "_self";
-      link.rel = "noopener noreferrer";
-      link.click();
+      openPdfInCurrentTab(url);
       setTimeout(() => URL.revokeObjectURL(url), 60_000);
     } catch (err) {
       setError(normalizeErrorMessage(err, "Ошибка формирования паспорта."));
+    }
+  };
+
+  const printPassportDirect = async () => {
+    if (!selectedOrder) return;
+    if (!canPrintPassport) {
+      setError("Сначала завершите отбор товара.");
+      return;
+    }
+    try {
+      const pdf = await buildPassportPdf(selectedOrder);
+      await markPassportPrinted(selectedOrder.id);
+      const blob = pdf.output("blob");
+      const url = URL.createObjectURL(blob);
+      const isMobile =
+        /Android|iPhone|iPad|iPod|Mobile/i.test(navigator.userAgent || "");
+
+      if (isMobile) {
+        openPdfInCurrentTab(url);
+        setTimeout(() => URL.revokeObjectURL(url), 60_000);
+        return;
+      }
+
+      const frame = document.createElement("iframe");
+      frame.style.position = "fixed";
+      frame.style.right = "0";
+      frame.style.bottom = "0";
+      frame.style.width = "0";
+      frame.style.height = "0";
+      frame.style.border = "0";
+      frame.src = url;
+      document.body.appendChild(frame);
+      frame.onload = () => {
+        try {
+          frame.contentWindow?.focus();
+          frame.contentWindow?.print();
+        } finally {
+          setTimeout(() => {
+            URL.revokeObjectURL(url);
+            frame.remove();
+          }, 10_000);
+        }
+      };
+    } catch (err) {
+      setError(normalizeErrorMessage(err, "Ошибка печати паспорта."));
     }
   };
 
@@ -678,6 +747,14 @@ export default function OrderFulfillmentFlow({ authHeaders, onBack }) {
                     onClick={printPassport}
                   >
                     Паспорт (PDF)
+                  </button>
+                  <button
+                    type="button"
+                    className="tsd-btn tsd-btn--secondary"
+                    disabled={loading || !canPrintPassport}
+                    onClick={printPassportDirect}
+                  >
+                    Печать
                   </button>
                   {!isClosed && (
                     <button
