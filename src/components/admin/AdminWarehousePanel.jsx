@@ -40,6 +40,17 @@ export default function AdminWarehousePanel() {
   const [showOrdersImport, setShowOrdersImport] = useState(false);
   const [showItemsImport, setShowItemsImport] = useState(false);
   const [itemError, setItemError] = useState("");
+  const [adjustStockItems, setAdjustStockItems] = useState([]);
+  const [adjustStockLoading, setAdjustStockLoading] = useState(false);
+  const [adjustLoading, setAdjustLoading] = useState(false);
+  const [adjustError, setAdjustError] = useState("");
+  const [adjustSuccess, setAdjustSuccess] = useState("");
+  const [adjustForm, setAdjustForm] = useState({
+    itemId: "",
+    mode: "PLUS",
+    quantity: "",
+    reason: "",
+  });
 
   const [itemForm, setItemForm] = useState({
     name: "",
@@ -129,9 +140,33 @@ export default function AdminWarehousePanel() {
     }
   };
 
+  const loadAdjustmentItems = async () => {
+    try {
+      setAdjustStockLoading(true);
+      setAdjustError("");
+      const res = await fetch(`${API}/warehouse/stock/summary`, {
+        headers: authHeaders,
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        throw new Error(data?.message || "Не удалось загрузить остатки товаров.");
+      }
+      setAdjustStockItems(Array.isArray(data) ? data : []);
+    } catch (err) {
+      setAdjustError(normalizeErrorMessage(err, "Не удалось загрузить остатки товаров."));
+    } finally {
+      setAdjustStockLoading(false);
+    }
+  };
+
+  const handleRefreshAll = async () => {
+    await Promise.all([loadAll(), loadAdjustmentItems()]);
+  };
+
 
   useEffect(() => {
     loadAll();
+    loadAdjustmentItems();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
@@ -414,12 +449,167 @@ export default function AdminWarehousePanel() {
     }
   };
 
+  const handleAdjustStock = async (event) => {
+    event.preventDefault();
+    try {
+      setAdjustError("");
+      setAdjustSuccess("");
+
+      const itemId = Number(adjustForm.itemId);
+      const quantity = Math.trunc(Number(adjustForm.quantity));
+      const reason = String(adjustForm.reason || "").trim();
+
+      if (!itemId || Number.isNaN(itemId)) {
+        throw new Error("Выберите товар.");
+      }
+      if (!Number.isFinite(quantity) || quantity <= 0) {
+        throw new Error("Количество должно быть положительным целым числом.");
+      }
+      if (!reason) {
+        throw new Error("Укажите причину корректировки.");
+      }
+
+      const delta = adjustForm.mode === "PLUS" ? quantity : -quantity;
+
+      setAdjustLoading(true);
+      const res = await fetch(`${API}/warehouse/stock/adjustment`, {
+        method: "POST",
+        headers: authHeaders,
+        body: JSON.stringify({
+          itemId,
+          delta,
+          reason,
+        }),
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        throw new Error(data?.message || "Не удалось выполнить корректировку.");
+      }
+
+      setAdjustSuccess(
+        `Проведено: ${delta > 0 ? "+" : ""}${delta}. Текущий остаток: ${data.stockAfter}.`
+      );
+      setAdjustForm((prev) => ({
+        ...prev,
+        quantity: "",
+        reason: "",
+      }));
+
+      await Promise.all([loadAll(), loadAdjustmentItems()]);
+    } catch (err) {
+      setAdjustError(normalizeErrorMessage(err, "Ошибка корректировки."));
+    } finally {
+      setAdjustLoading(false);
+    }
+  };
+
 
   return (
     <div className="admin-console__card">
       <div className="admin-console__card-title">Склад</div>
       <div className="admin-console__card-text">
         Редактирование товаров, ячеек и заявок.
+      </div>
+
+      <div
+        className="admin-form"
+        style={{
+          marginTop: 12,
+          marginBottom: 12,
+          padding: 12,
+          border: "1px solid #dbe7ff",
+          borderRadius: 12,
+          background: "#f8fbff",
+        }}
+      >
+        <div className="admin-label" style={{ fontWeight: 700 }}>
+          Служебная корректировка остатков
+        </div>
+        <div className="admin-muted" style={{ marginTop: 4 }}>
+          Доступно только администратору. Корректировка проводится без выбора ячейки.
+        </div>
+        <form
+          onSubmit={handleAdjustStock}
+          style={{
+            display: "grid",
+            gap: 8,
+            marginTop: 10,
+            gridTemplateColumns: "repeat(auto-fit, minmax(180px, 1fr))",
+          }}
+        >
+          <select
+            className="admin-select"
+            value={adjustForm.itemId}
+            onChange={(event) =>
+              setAdjustForm((prev) => ({ ...prev, itemId: event.target.value }))
+            }
+            disabled={adjustStockLoading || adjustLoading}
+          >
+            <option value="">
+              {adjustStockLoading ? "Загрузка остатков..." : "Выберите товар"}
+            </option>
+            {adjustStockItems.map((item) => (
+              <option key={item.id} value={item.id}>
+                {item.name} ({item.sku || "без SKU"}) - {item.currentStock}{" "}
+                {item.unit || "шт"}
+              </option>
+            ))}
+          </select>
+
+          <select
+            className="admin-select"
+            value={adjustForm.mode}
+            onChange={(event) =>
+              setAdjustForm((prev) => ({ ...prev, mode: event.target.value }))
+            }
+            disabled={adjustLoading}
+          >
+            <option value="PLUS">Плюс</option>
+            <option value="MINUS">Минус</option>
+          </select>
+
+          <input
+            className="admin-input"
+            type="number"
+            min="1"
+            step="1"
+            placeholder="Количество"
+            value={adjustForm.quantity}
+            onChange={(event) =>
+              setAdjustForm((prev) => ({ ...prev, quantity: event.target.value }))
+            }
+            disabled={adjustLoading}
+          />
+
+          <input
+            className="admin-input"
+            placeholder="Причина (обязательно)"
+            value={adjustForm.reason}
+            onChange={(event) =>
+              setAdjustForm((prev) => ({ ...prev, reason: event.target.value }))
+            }
+            disabled={adjustLoading}
+          />
+
+          <button
+            type="submit"
+            className="admin-btn admin-btn--primary"
+            disabled={adjustLoading || adjustStockLoading}
+          >
+            {adjustLoading ? "Проводим..." : "Провести"}
+          </button>
+        </form>
+
+        {adjustError && (
+          <div className="admin-alert admin-alert--error" style={{ marginTop: 8 }}>
+            {adjustError}
+          </div>
+        )}
+        {adjustSuccess && (
+          <div className="admin-alert admin-alert--success" style={{ marginTop: 8 }}>
+            {adjustSuccess}
+          </div>
+        )}
       </div>
 
       <div className="admin-console__tabs admin-console__tabs--small">
@@ -467,7 +657,7 @@ export default function AdminWarehousePanel() {
           <button
             type="button"
             className="admin-console__tab admin-console__tab--action"
-            onClick={loadAll}
+            onClick={handleRefreshAll}
           >
             {"Обновить"}
           </button>
