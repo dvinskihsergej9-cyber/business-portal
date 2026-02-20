@@ -428,18 +428,13 @@ export default function OrderFulfillmentFlow({ authHeaders, onBack }) {
         },
       });
 
-      const fileName = `passport-${order.orderNumber || order.id}.pdf`;
       const blob = pdf.output("blob");
       const url = URL.createObjectURL(blob);
-      const win = window.open(url, "_blank", "noopener,noreferrer");
-      if (!win) {
-        const link = document.createElement("a");
-        link.href = url;
-        link.download = fileName;
-        link.target = "_blank";
-        link.rel = "noopener noreferrer";
-        link.click();
-      }
+      const link = document.createElement("a");
+      link.href = url;
+      link.target = "_self";
+      link.rel = "noopener noreferrer";
+      link.click();
       setTimeout(() => URL.revokeObjectURL(url), 60_000);
     } catch (err) {
       setError(normalizeErrorMessage(err, "Ошибка формирования паспорта."));
