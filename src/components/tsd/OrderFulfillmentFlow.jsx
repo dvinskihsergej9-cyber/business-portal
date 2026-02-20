@@ -464,8 +464,8 @@ export default function OrderFulfillmentFlow({ authHeaders, onBack }) {
     pdf.setTextColor(28, 35, 64);
     pdf.setFontSize(16);
     pdf.text("Наклейте этот паспорт на коробку заказа", margin + 20, footerTop + 30);
-    pdf.setFontSize(18);
-    pdf.text(`№ ${order.orderNumber || "-"}`, margin + 20, footerTop + 58);
+    pdf.setFontSize(32);
+    pdf.text(`№ ${order.orderNumber || "-"}`, margin + 20, footerTop + 72);
 
     return pdf;
   };
@@ -508,51 +508,6 @@ export default function OrderFulfillmentFlow({ authHeaders, onBack }) {
       setTimeout(() => URL.revokeObjectURL(url), 60_000);
     } catch (err) {
       setError(normalizeErrorMessage(err, "Ошибка формирования паспорта."));
-    }
-  };
-
-  const printPassportDirect = async () => {
-    if (!selectedOrder) return;
-    if (!canPrintPassport) {
-      setError("Сначала завершите отбор товара.");
-      return;
-    }
-    try {
-      const pdf = await buildPassportPdf(selectedOrder);
-      await markPassportPrinted(selectedOrder.id);
-      const blob = pdf.output("blob");
-      const url = URL.createObjectURL(blob);
-      const isMobile =
-        /Android|iPhone|iPad|iPod|Mobile/i.test(navigator.userAgent || "");
-
-      if (isMobile) {
-        openPdfInCurrentTab(url);
-        setTimeout(() => URL.revokeObjectURL(url), 60_000);
-        return;
-      }
-
-      const frame = document.createElement("iframe");
-      frame.style.position = "fixed";
-      frame.style.right = "0";
-      frame.style.bottom = "0";
-      frame.style.width = "0";
-      frame.style.height = "0";
-      frame.style.border = "0";
-      frame.src = url;
-      document.body.appendChild(frame);
-      frame.onload = () => {
-        try {
-          frame.contentWindow?.focus();
-          frame.contentWindow?.print();
-        } finally {
-          setTimeout(() => {
-            URL.revokeObjectURL(url);
-            frame.remove();
-          }, 10_000);
-        }
-      };
-    } catch (err) {
-      setError(normalizeErrorMessage(err, "Ошибка печати паспорта."));
     }
   };
 
@@ -747,14 +702,6 @@ export default function OrderFulfillmentFlow({ authHeaders, onBack }) {
                     onClick={printPassport}
                   >
                     Паспорт (PDF)
-                  </button>
-                  <button
-                    type="button"
-                    className="tsd-btn tsd-btn--secondary"
-                    disabled={loading || !canPrintPassport}
-                    onClick={printPassportDirect}
-                  >
-                    Печать
                   </button>
                   {!isClosed && (
                     <button
