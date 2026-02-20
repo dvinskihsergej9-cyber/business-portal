@@ -44,6 +44,13 @@ const ORDER_STATUS_LABELS = {
 const getOrderStatusLabel = (status) =>
   ORDER_STATUS_LABELS[String(status || "").trim()] || String(status || "-");
 
+const makePassportFileName = (order) => {
+  const safeOrderNumber = String(order?.orderNumber || "без-номера")
+    .trim()
+    .replace(/[^\p{L}\p{N}_-]+/gu, "_");
+  return `pasport-zakaza-${safeOrderNumber}.pdf`;
+};
+
 export default function OrderFulfillmentFlow({ authHeaders, onBack }) {
   const [mineOnly, setMineOnly] = useState(false);
   const [orders, setOrders] = useState([]);
@@ -464,8 +471,22 @@ export default function OrderFulfillmentFlow({ authHeaders, onBack }) {
     pdf.setTextColor(28, 35, 64);
     pdf.setFontSize(16);
     pdf.text("Наклейте этот паспорт на коробку заказа", margin + 20, footerTop + 30);
-    pdf.setFontSize(32);
-    pdf.text(`№ ${order.orderNumber || "-"}`, margin + 20, footerTop + 72);
+
+    const orderNumberText = `№ ${order.orderNumber || "-"}`;
+    const maxNumberWidth = contentWidth - 40;
+    let orderNumberFontSize = 90;
+    pdf.setFontSize(orderNumberFontSize);
+    while (
+      orderNumberFontSize > 28 &&
+      pdf.getTextWidth(orderNumberText) > maxNumberWidth
+    ) {
+      orderNumberFontSize -= 2;
+      pdf.setFontSize(orderNumberFontSize);
+    }
+    const numberY = footerTop + footerHeight - 24;
+    pdf.text(orderNumberText, margin + contentWidth / 2, numberY, {
+      align: "center",
+    });
 
     return pdf;
   };
@@ -493,6 +514,37 @@ export default function OrderFulfillmentFlow({ authHeaders, onBack }) {
     link.click();
   };
 
+  const trySharePdfFile = async (blob, order) => {
+    if (typeof navigator === "undefined" || typeof navigator.share !== "function") {
+      return false;
+    }
+
+    try {
+      const file = new File([blob], makePassportFileName(order), {
+        type: "application/pdf",
+      });
+
+      if (
+        typeof navigator.canShare === "function" &&
+        !navigator.canShare({ files: [file] })
+      ) {
+        return false;
+      }
+
+      await navigator.share({
+        title: `Паспорт заказа ${order?.orderNumber || "-"}`,
+        text: `Паспорт заказа ${order?.orderNumber || "-"}`,
+        files: [file],
+      });
+      return true;
+    } catch (err) {
+      if (err?.name === "AbortError") {
+        return true;
+      }
+      return false;
+    }
+  };
+
   const printPassport = async () => {
     if (!selectedOrder) return;
     if (!canPrintPassport) {
@@ -503,6 +555,8 @@ export default function OrderFulfillmentFlow({ authHeaders, onBack }) {
       const pdf = await buildPassportPdf(selectedOrder);
       await markPassportPrinted(selectedOrder.id);
       const blob = pdf.output("blob");
+      const shared = await trySharePdfFile(blob, selectedOrder);
+      if (shared) return;
       const url = URL.createObjectURL(blob);
       openPdfInCurrentTab(url);
       setTimeout(() => URL.revokeObjectURL(url), 60_000);
