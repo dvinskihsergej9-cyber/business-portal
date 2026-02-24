@@ -51,19 +51,46 @@ const makePassportFileName = (order) => {
   return `pasport-zakaza-${safeOrderNumber}.pdf`;
 };
 
+const SKIP_REASON_OPTIONS = [
+  "Товар поврежден",
+  "Ячейка недоступна",
+  "Товар не найден",
+  "Нужна проверка администратора",
+  "Другое",
+];
+
+const makeStepKey = (step) =>
+  [
+    String(step?.lineId || ""),
+    String(step?.locationId || ""),
+    String(step?.itemId || ""),
+  ].join(":");
+
 export default function OrderFulfillmentFlow({ authHeaders, onBack }) {
   const [mineOnly, setMineOnly] = useState(false);
   const [orders, setOrders] = useState([]);
   const [selectedOrder, setSelectedOrder] = useState(null);
   const [pickPlan, setPickPlan] = useState([]);
   const [pickPlanRaw, setPickPlanRaw] = useState([]);
+  const [skippedSteps, setSkippedSteps] = useState([]);
   const [currentIndex, setCurrentIndex] = useState(0);
   const [locationScanned, setLocationScanned] = useState(false);
   const [scannedQty, setScannedQty] = useState(0);
+  const [skipModalOpen, setSkipModalOpen] = useState(false);
+  const [skipReason, setSkipReason] = useState(SKIP_REASON_OPTIONS[0]);
+  const [skipComment, setSkipComment] = useState("");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
 
-  const currentStep = pickPlan[currentIndex] || null;
+  const skippedStepKeys = useMemo(
+    () => new Set((skippedSteps || []).map((row) => row.stepKey)),
+    [skippedSteps]
+  );
+  const activePickPlan = useMemo(
+    () => (pickPlan || []).filter((step) => !skippedStepKeys.has(makeStepKey(step))),
+    [pickPlan, skippedStepKeys]
+  );
+  const currentStep = activePickPlan[currentIndex] || null;
   const orderStatus = String(selectedOrder?.status || "");
   const allLinesPicked = useMemo(
     () =>
@@ -89,7 +116,7 @@ export default function OrderFulfillmentFlow({ authHeaders, onBack }) {
     () => Boolean(selectedOrder) && canFinalize,
     [canFinalize, selectedOrder]
   );
-  const hasPlan = pickPlan.length > 0;
+  const hasPlan = activePickPlan.length > 0;
   const unresolvedItems = useMemo(
     () =>
       (pickPlanRaw || []).filter(
@@ -97,7 +124,12 @@ export default function OrderFulfillmentFlow({ authHeaders, onBack }) {
       ),
     [pickPlanRaw]
   );
-  const showPlanMissing = selectedOrder && !canFinalize && !isClosed && pickPlan.length === 0;
+  const showPlanMissing =
+    selectedOrder &&
+    !canFinalize &&
+    !isClosed &&
+    activePickPlan.length === 0 &&
+    skippedSteps.length === 0;
 
   const loadQueue = async () => {
     setLoading(true);
@@ -156,6 +188,9 @@ export default function OrderFulfillmentFlow({ authHeaders, onBack }) {
       });
 
       setPickPlan(flat);
+      setSkippedSteps((prev) =>
+        (prev || []).filter((entry) => flat.some((step) => makeStepKey(step) === entry.stepKey))
+      );
       setPickPlanRaw(data.items || []);
       setCurrentIndex(0);
       setLocationScanned(false);
@@ -186,6 +221,20 @@ export default function OrderFulfillmentFlow({ authHeaders, onBack }) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [mineOnly]);
 
+  useEffect(() => {
+    if (activePickPlan.length === 0) {
+      if (currentIndex !== 0) setCurrentIndex(0);
+      setLocationScanned(false);
+      setScannedQty(0);
+      return;
+    }
+    if (currentIndex > activePickPlan.length - 1) {
+      setCurrentIndex(activePickPlan.length - 1);
+      setLocationScanned(false);
+      setScannedQty(0);
+    }
+  }, [activePickPlan.length, currentIndex]);
+
   const takeOrder = async (orderId) => {
     setLoading(true);
     setError("");
@@ -203,6 +252,7 @@ export default function OrderFulfillmentFlow({ authHeaders, onBack }) {
         throw new Error(data?.message || "Не удалось взять заказ");
       }
       setSelectedOrder(data.order);
+      setSkippedSteps([]);
       await loadPickPlan(orderId);
       await loadQueue();
     } catch (err) {
@@ -228,9 +278,13 @@ export default function OrderFulfillmentFlow({ authHeaders, onBack }) {
     setSelectedOrder(null);
     setPickPlan([]);
     setPickPlanRaw([]);
+    setSkippedSteps([]);
     setCurrentIndex(0);
     setLocationScanned(false);
     setScannedQty(0);
+    setSkipModalOpen(false);
+    setSkipReason(SKIP_REASON_OPTIONS[0]);
+    setSkipComment("");
   };
 
   const leaveSelectedOrder = async (navigateBack = false) => {
@@ -493,6 +547,68 @@ export default function OrderFulfillmentFlow({ authHeaders, onBack }) {
     return pdf;
   };
 
+  const openSkipModal = () => {
+    if (!currentStep) return;
+    setSkipReason(SKIP_REASON_OPTIONS[0]);
+    setSkipComment("");
+    setSkipModalOpen(true);
+    setError("");
+  };
+
+  const closeSkipModal = () => {
+    setSkipModalOpen(false);
+  };
+
+  const confirmSkipCurrentStep = () => {
+    if (!currentStep) {
+      setSkipModalOpen(false);
+      return;
+    }
+    const reason = String(skipReason || "").trim();
+    if (!reason) {
+      setError("Выберите причину пропуска.");
+      return;
+    }
+    const stepKey = makeStepKey(currentStep);
+    const payload = {
+      stepKey,
+      lineId: currentStep.lineId,
+      itemId: currentStep.itemId,
+      itemName: currentStep.itemName,
+      sku: currentStep.sku || null,
+      locationId: currentStep.locationId,
+      locationCode: currentStep.locationCode || currentStep.locationName || null,
+      qty: currentStep.qty,
+      reason,
+      comment: String(skipComment || "").trim(),
+      createdAt: new Date().toISOString(),
+    };
+    setSkippedSteps((prev) => {
+      const list = Array.isArray(prev) ? prev : [];
+      const idx = list.findIndex((entry) => entry.stepKey === stepKey);
+      if (idx >= 0) {
+        const next = [...list];
+        next[idx] = payload;
+        return next;
+      }
+      return [...list, payload];
+    });
+    setSkipModalOpen(false);
+    setLocationScanned(false);
+    setScannedQty(0);
+    setError("");
+  };
+
+  const restoreSkippedStep = (stepKey) => {
+    setSkippedSteps((prev) => (prev || []).filter((entry) => entry.stepKey !== stepKey));
+    setError("");
+  };
+
+  const restoreAllSkipped = () => {
+    setSkippedSteps([]);
+    setError("");
+  };
+
   const markPassportPrinted = async (orderId) => {
     try {
       const printedRes = await fetch(`${API_BASE}/orders/${orderId}/passport-printed`, {
@@ -578,12 +694,7 @@ export default function OrderFulfillmentFlow({ authHeaders, onBack }) {
       });
       const data = await readJsonSafe(res);
       if (!res.ok) throw new Error(data?.message || "Ошибка завершения заказа");
-      setSelectedOrder(null);
-      setPickPlan([]);
-      setPickPlanRaw([]);
-      setCurrentIndex(0);
-      setLocationScanned(false);
-      setScannedQty(0);
+      resetSelection();
       await loadQueue();
     } catch (err) {
       setError(normalizeErrorMessage(err, "Ошибка завершения заказа."));
@@ -694,8 +805,8 @@ export default function OrderFulfillmentFlow({ authHeaders, onBack }) {
 
             {currentStep && (
               <div className="tsd-card">
-                <div className="tsd-card__body">
-                  <div className="tsd-card__title">Шаг {currentIndex + 1} из {pickPlan.length}</div>
+              <div className="tsd-card__body">
+                  <div className="tsd-card__title">Шаг {currentIndex + 1} из {activePickPlan.length}</div>
                   <div className="tsd-card__meta">
                     Ячейка: {currentStep.locationCode || currentStep.locationName || `#${currentStep.locationId}`}
                   </div>
@@ -703,6 +814,58 @@ export default function OrderFulfillmentFlow({ authHeaders, onBack }) {
                   <div className="tsd-card__meta">SKU: {currentStep.sku || "-"}</div>
                   <div className="tsd-card__meta">К отбору: {currentStep.qty}</div>
                   <div className="tsd-card__meta">Сканировано: {scannedQty}</div>
+                </div>
+                <div className="tsd-action-inline">
+                  <button
+                    type="button"
+                    className="tsd-btn tsd-btn--secondary"
+                    onClick={openSkipModal}
+                    disabled={loading}
+                  >
+                    Пропустить позицию
+                  </button>
+                </div>
+              </div>
+            )}
+
+            {selectedOrder && skippedSteps.length > 0 && (
+              <div className="tsd-card">
+                <div className="tsd-card__body">
+                  <div className="tsd-card__title">
+                    Пропущенные позиции: {skippedSteps.length}
+                  </div>
+                  <div className="tsd-card__meta">
+                    Пропуск временный. Можно вернуть позицию в маршрут и продолжить отбор.
+                  </div>
+                </div>
+                <div className="tsd-list">
+                  {skippedSteps.map((row) => (
+                    <div key={row.stepKey} className="tsd-card">
+                      <div className="tsd-card__meta">
+                        {row.locationCode || "-"} • {row.itemName || row.sku || `Товар #${row.itemId}`} • {row.qty} шт
+                      </div>
+                      <div className="tsd-card__meta">Причина: {row.reason}</div>
+                      {row.comment ? (
+                        <div className="tsd-card__meta">Комментарий: {row.comment}</div>
+                      ) : null}
+                      <button
+                        type="button"
+                        className="tsd-btn tsd-btn--ghost"
+                        onClick={() => restoreSkippedStep(row.stepKey)}
+                        disabled={loading}
+                      >
+                        Вернуть в маршрут
+                      </button>
+                    </div>
+                  ))}
+                  <button
+                    type="button"
+                    className="tsd-btn tsd-btn--secondary"
+                    onClick={restoreAllSkipped}
+                    disabled={loading}
+                  >
+                    Вернуть все в маршрут
+                  </button>
                 </div>
               </div>
             )}
@@ -795,6 +958,52 @@ export default function OrderFulfillmentFlow({ authHeaders, onBack }) {
           </>
         )}
       </div>
+
+      {skipModalOpen && (
+        <div className="tsd-modal" role="dialog" aria-modal="true">
+          <div className="tsd-modal__card">
+            <div className="tsd-modal__title">Пропустить позицию</div>
+            <div className="tsd-modal__text">
+              Укажите причину пропуска. Позиция останется в карточке как пропущенная.
+            </div>
+            <div className="tsd-modal__row">
+              <label className="tsd-modal__label">Причина</label>
+              <select
+                className="tsd-input"
+                value={skipReason}
+                onChange={(event) => setSkipReason(event.target.value)}
+              >
+                {SKIP_REASON_OPTIONS.map((option) => (
+                  <option key={option} value={option}>
+                    {option}
+                  </option>
+                ))}
+              </select>
+            </div>
+            <div className="tsd-modal__row">
+              <label className="tsd-modal__label">Комментарий (необязательно)</label>
+              <input
+                className="tsd-input"
+                value={skipComment}
+                onChange={(event) => setSkipComment(event.target.value)}
+                placeholder="Например: брак упаковки"
+              />
+            </div>
+            <div className="tsd-modal__actions">
+              <button type="button" className="tsd-btn tsd-btn--ghost" onClick={closeSkipModal}>
+                Отмена
+              </button>
+              <button
+                type="button"
+                className="tsd-btn tsd-btn--primary"
+                onClick={confirmSkipCurrentStep}
+              >
+                Пропустить
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </>
   );
 }
