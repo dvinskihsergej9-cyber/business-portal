@@ -11004,6 +11004,317 @@ app.get("/api/orders/queue", auth, async (req, res) => {
   }
 });
 
+app.get("/api/orders/:id/pick-skips", auth, async (req, res) => {
+  try {
+    const orderId = Number(req.params.id);
+    if (!orderId || Number.isNaN(orderId)) {
+      return res.status(400).json({ message: "Некорректный ID заказа." });
+    }
+
+    const order = await prisma.salesOrder.findUnique({
+      where: { id: orderId },
+      select: { id: true, assignedToUserId: true },
+    });
+    if (!order) {
+      return res.status(404).json({ message: "Заказ не найден." });
+    }
+
+    if (
+      order.assignedToUserId &&
+      order.assignedToUserId !== req.user.id &&
+      !isWarehouseManager(req.user)
+    ) {
+      return res.status(403).json({ message: "Заказ закреплен за другим сотрудником." });
+    }
+
+    const items = await prisma.salesOrderPickSkip.findMany({
+      where: {
+        orderId,
+        status: "ACTIVE",
+      },
+      orderBy: [{ createdAt: "desc" }, { id: "desc" }],
+      include: {
+        skippedBy: { select: { id: true, name: true, email: true } },
+      },
+    });
+
+    res.json({ items });
+  } catch (err) {
+    console.error("orders pick skips list error:", err);
+    res.status(500).json({ message: "Ошибка загрузки пропусков отбора." });
+  }
+});
+
+app.post("/api/orders/:id/pick-skips", auth, async (req, res) => {
+  try {
+    const orderId = Number(req.params.id);
+    const lineId = Number(req.body?.lineId);
+    const locationRaw = req.body?.locationId;
+    const itemRaw = req.body?.itemId;
+    const qty = Math.max(0, Math.trunc(Number(req.body?.qty) || 0));
+    const reason = String(req.body?.reason || "").trim();
+    const comment = String(req.body?.comment || "").trim();
+
+    if (!orderId || Number.isNaN(orderId)) {
+      return res.status(400).json({ message: "Некорректный ID заказа." });
+    }
+    if (!lineId || Number.isNaN(lineId)) {
+      return res.status(400).json({ message: "Некорректная строка заказа." });
+    }
+    if (!reason) {
+      return res.status(400).json({ message: "Укажите причину пропуска." });
+    }
+    if (reason.length > 180) {
+      return res.status(400).json({ message: "Причина пропуска слишком длинная (максимум 180 символов)." });
+    }
+    if (comment.length > 500) {
+      return res.status(400).json({ message: "Комментарий слишком длинный (максимум 500 символов)." });
+    }
+
+    const locationId =
+      locationRaw === null || locationRaw === undefined || locationRaw === ""
+        ? null
+        : Number(locationRaw);
+    const itemId =
+      itemRaw === null || itemRaw === undefined || itemRaw === ""
+        ? null
+        : Number(itemRaw);
+
+    if (locationId !== null && (!locationId || Number.isNaN(locationId))) {
+      return res.status(400).json({ message: "Некорректная ячейка." });
+    }
+    if (itemId !== null && (!itemId || Number.isNaN(itemId))) {
+      return res.status(400).json({ message: "Некорректный товар." });
+    }
+
+    const item = await prisma.$transaction(async (tx) => {
+      const order = await tx.salesOrder.findUnique({
+        where: { id: orderId },
+        include: {
+          lines: { select: { id: true, itemId: true } },
+        },
+      });
+      if (!order) {
+        const err = new Error("ORDER_NOT_FOUND");
+        err.code = "ORDER_NOT_FOUND";
+        throw err;
+      }
+      if (!["IN_PICKING", "PICKED", "PACKED"].includes(order.status)) {
+        const err = new Error("BAD_STATUS");
+        err.code = "BAD_STATUS";
+        throw err;
+      }
+      if (
+        order.assignedToUserId &&
+        order.assignedToUserId !== req.user.id &&
+        !isWarehouseManager(req.user)
+      ) {
+        const err = new Error("NOT_ASSIGNED_TO_YOU");
+        err.code = "NOT_ASSIGNED_TO_YOU";
+        throw err;
+      }
+
+      const orderLine = (order.lines || []).find((row) => row.id === lineId);
+      if (!orderLine) {
+        const err = new Error("LINE_NOT_FOUND");
+        err.code = "LINE_NOT_FOUND";
+        throw err;
+      }
+
+      const finalItemId = orderLine.itemId || itemId || null;
+      if (itemId && orderLine.itemId && Number(orderLine.itemId) !== Number(itemId)) {
+        const err = new Error("ITEM_MISMATCH");
+        err.code = "ITEM_MISMATCH";
+        throw err;
+      }
+
+      const existing = await tx.salesOrderPickSkip.findFirst({
+        where: {
+          orderId,
+          lineId,
+          itemId: finalItemId,
+          locationId,
+          status: "ACTIVE",
+        },
+        orderBy: { id: "desc" },
+      });
+
+      const payload = {
+        orgId: order.orgId || req.user?.orgId || null,
+        orderId,
+        lineId,
+        itemId: finalItemId,
+        locationId,
+        qty,
+        reason,
+        comment: comment || null,
+        skippedById: req.user?.id || null,
+        restoredById: null,
+        restoredAt: null,
+        status: "ACTIVE",
+      };
+
+      if (existing) {
+        return tx.salesOrderPickSkip.update({
+          where: { id: existing.id },
+          data: payload,
+          include: {
+            skippedBy: { select: { id: true, name: true, email: true } },
+          },
+        });
+      }
+
+      return tx.salesOrderPickSkip.create({
+        data: payload,
+        include: {
+          skippedBy: { select: { id: true, name: true, email: true } },
+        },
+      });
+    });
+
+    res.json({ ok: true, item });
+  } catch (err) {
+    if (err.code === "ORDER_NOT_FOUND") {
+      return res.status(404).json({ message: "Заказ не найден." });
+    }
+    if (err.code === "LINE_NOT_FOUND") {
+      return res.status(404).json({ message: "Строка заказа не найдена." });
+    }
+    if (err.code === "ITEM_MISMATCH") {
+      return res.status(400).json({ message: "Товар не совпадает со строкой заказа." });
+    }
+    if (err.code === "NOT_ASSIGNED_TO_YOU") {
+      return res.status(403).json({ message: "Заказ закреплен за другим сотрудником." });
+    }
+    if (err.code === "BAD_STATUS") {
+      return res.status(400).json({ message: "Пропуск доступен только для заказов в работе." });
+    }
+    console.error("orders pick skip create error:", err);
+    res.status(500).json({ message: "Ошибка сохранения пропуска." });
+  }
+});
+
+app.post("/api/orders/:id/pick-skips/:skipId/restore", auth, async (req, res) => {
+  try {
+    const orderId = Number(req.params.id);
+    const skipId = Number(req.params.skipId);
+    if (!orderId || Number.isNaN(orderId) || !skipId || Number.isNaN(skipId)) {
+      return res.status(400).json({ message: "Некорректные параметры." });
+    }
+
+    const item = await prisma.$transaction(async (tx) => {
+      const order = await tx.salesOrder.findUnique({
+        where: { id: orderId },
+        select: { id: true, assignedToUserId: true },
+      });
+      if (!order) {
+        const err = new Error("ORDER_NOT_FOUND");
+        err.code = "ORDER_NOT_FOUND";
+        throw err;
+      }
+      if (
+        order.assignedToUserId &&
+        order.assignedToUserId !== req.user.id &&
+        !isWarehouseManager(req.user)
+      ) {
+        const err = new Error("NOT_ASSIGNED_TO_YOU");
+        err.code = "NOT_ASSIGNED_TO_YOU";
+        throw err;
+      }
+
+      const skip = await tx.salesOrderPickSkip.findFirst({
+        where: {
+          id: skipId,
+          orderId,
+          status: "ACTIVE",
+        },
+      });
+      if (!skip) {
+        const err = new Error("SKIP_NOT_FOUND");
+        err.code = "SKIP_NOT_FOUND";
+        throw err;
+      }
+
+      return tx.salesOrderPickSkip.update({
+        where: { id: skip.id },
+        data: {
+          status: "RESTORED",
+          restoredAt: new Date(),
+          restoredById: req.user?.id || null,
+        },
+      });
+    });
+
+    res.json({ ok: true, item });
+  } catch (err) {
+    if (err.code === "ORDER_NOT_FOUND") {
+      return res.status(404).json({ message: "Заказ не найден." });
+    }
+    if (err.code === "SKIP_NOT_FOUND") {
+      return res.status(404).json({ message: "Пропуск не найден." });
+    }
+    if (err.code === "NOT_ASSIGNED_TO_YOU") {
+      return res.status(403).json({ message: "Заказ закреплен за другим сотрудником." });
+    }
+    console.error("orders pick skip restore error:", err);
+    res.status(500).json({ message: "Ошибка восстановления пропуска." });
+  }
+});
+
+app.post("/api/orders/:id/pick-skips/restore-all", auth, async (req, res) => {
+  try {
+    const orderId = Number(req.params.id);
+    if (!orderId || Number.isNaN(orderId)) {
+      return res.status(400).json({ message: "Некорректный ID заказа." });
+    }
+
+    const result = await prisma.$transaction(async (tx) => {
+      const order = await tx.salesOrder.findUnique({
+        where: { id: orderId },
+        select: { id: true, assignedToUserId: true },
+      });
+      if (!order) {
+        const err = new Error("ORDER_NOT_FOUND");
+        err.code = "ORDER_NOT_FOUND";
+        throw err;
+      }
+      if (
+        order.assignedToUserId &&
+        order.assignedToUserId !== req.user.id &&
+        !isWarehouseManager(req.user)
+      ) {
+        const err = new Error("NOT_ASSIGNED_TO_YOU");
+        err.code = "NOT_ASSIGNED_TO_YOU";
+        throw err;
+      }
+
+      return tx.salesOrderPickSkip.updateMany({
+        where: {
+          orderId,
+          status: "ACTIVE",
+        },
+        data: {
+          status: "RESTORED",
+          restoredAt: new Date(),
+          restoredById: req.user?.id || null,
+        },
+      });
+    });
+
+    res.json({ ok: true, count: result.count || 0 });
+  } catch (err) {
+    if (err.code === "ORDER_NOT_FOUND") {
+      return res.status(404).json({ message: "Заказ не найден." });
+    }
+    if (err.code === "NOT_ASSIGNED_TO_YOU") {
+      return res.status(403).json({ message: "Заказ закреплен за другим сотрудником." });
+    }
+    console.error("orders pick skip restore all error:", err);
+    res.status(500).json({ message: "Ошибка восстановления пропусков." });
+  }
+});
+
+
 app.post("/api/orders/:id/take", auth, async (req, res) => {
   try {
     const id = Number(req.params.id);
@@ -11182,7 +11493,7 @@ app.post("/api/orders/:id/pick-confirm", auth, async (req, res) => {
     const amount = Math.trunc(Number(qty));
 
     if (!orderId || !line || !location || !Number.isFinite(amount) || amount <= 0) {
-      return res.status(400).json({ message: "???????????? ????????? ?????????????." });
+      return res.status(400).json({ message: "Некорректные параметры подтверждения." });
     }
 
     const updated = await prisma.$transaction(async (tx) => {
@@ -11268,7 +11579,7 @@ app.post("/api/orders/:id/pick-confirm", auth, async (req, res) => {
             itemId: actualItemId,
             qty: syncDelta,
             locationId: location,
-            comment: `РЎРёРЅС…СЂРѕРЅРёР·Р°С†РёСЏ РѕСЃС‚Р°С‚РєРѕРІ РїРµСЂРµРґ РѕС‚Р±РѕСЂРѕРј Р·Р°РєР°Р·Р° ${order.orderNumber}`,
+            comment: `Синхронизация остатков перед отбором заказа ${order.orderNumber}`,
             refType: "ORDER",
             refId: String(orderId),
             userId: req.user?.id || null,
@@ -11283,7 +11594,7 @@ app.post("/api/orders/:id/pick-confirm", auth, async (req, res) => {
         qty: amount,
         locationId: location,
         fromLocationId: location,
-        comment: `????? ?? ?????? ${order.orderNumber}`,
+        comment: `Отбор по заказу ${order.orderNumber}`,
         refType: "ORDER",
         refId: String(orderId),
         userId: req.user?.id || null,
@@ -11292,6 +11603,27 @@ app.post("/api/orders/:id/pick-confirm", auth, async (req, res) => {
       await tx.salesOrderLine.update({
         where: { id: line },
         data: { pickedQty: (Number(orderLine.pickedQty) || 0) + amount },
+      });
+
+      await tx.salesOrderPickSkip.updateMany({
+        where: {
+          orderId,
+          lineId: line,
+          status: "ACTIVE",
+          AND: [
+            {
+              OR: [{ locationId: null }, { locationId: location }],
+            },
+            {
+              OR: [{ itemId: null }, { itemId: actualItemId }],
+            },
+          ],
+        },
+        data: {
+          status: "RESTORED",
+          restoredAt: new Date(),
+          restoredById: req.user?.id || null,
+        },
       });
 
       const freshLines = await tx.salesOrderLine.findMany({
@@ -11317,17 +11649,18 @@ app.post("/api/orders/:id/pick-confirm", auth, async (req, res) => {
 
     res.json({ ok: true, order: updated });
   } catch (err) {
-    if (err.code === "ORDER_NOT_FOUND") return res.status(404).json({ message: "????? ?? ??????." });
-    if (err.code === "LINE_NOT_FOUND") return res.status(404).json({ message: "?????? ?????? ?? ???????." });
-    if (err.code === "NOT_ASSIGNED_TO_YOU") return res.status(403).json({ message: "????? ????????? ?? ?????? ???????????." });
-    if (err.code === "BAD_STATUS") return res.status(400).json({ message: "????? ?? ? ??????? ??????." });
-    if (err.code === "QTY_EXCEEDS_REMAINING") return res.status(400).json({ message: "?????????? ????????? ??????? ?? ??????." });
-    if (err.code === "LINE_ITEM_NOT_LINKED") return res.status(400).json({ message: "?????? ?????? ?? ??????? ? ???????." });
-    if (err.code === "INSUFFICIENT_QTY") return res.status(400).json({ message: "???????????? ??????? ? ??????." });
+    if (err.code === "ORDER_NOT_FOUND") return res.status(404).json({ message: "Заказ не найден." });
+    if (err.code === "LINE_NOT_FOUND") return res.status(404).json({ message: "Строка заказа не найдена." });
+    if (err.code === "NOT_ASSIGNED_TO_YOU") return res.status(403).json({ message: "Заказ закреплен за другим сотрудником." });
+    if (err.code === "BAD_STATUS") return res.status(400).json({ message: "Заказ не в статусе отбора." });
+    if (err.code === "QTY_EXCEEDS_REMAINING") return res.status(400).json({ message: "Количество превышает остаток по строке." });
+    if (err.code === "LINE_ITEM_NOT_LINKED") return res.status(400).json({ message: "Строка заказа не связана с товаром." });
+    if (err.code === "INSUFFICIENT_QTY") return res.status(400).json({ message: "Недостаточно остатка в ячейке." });
     console.error("orders pick confirm error:", err);
-    res.status(500).json({ message: "?????? ????????????? ??????." });
+    res.status(500).json({ message: "Ошибка подтверждения отбора." });
   }
 });
+
 
 app.post("/api/orders/:id/pack", auth, async (req, res) => {
   try {
@@ -11410,19 +11743,19 @@ app.post("/api/orders/:id/complete", auth, async (req, res) => {
   try {
     const id = Number(req.params.id);
     if (!id || Number.isNaN(id)) {
-      return res.status(400).json({ message: "???????????? ID ??????." });
+      return res.status(400).json({ message: "Некорректный ID заказа." });
     }
 
     const order = await prisma.salesOrder.findUnique({
       where: { id },
       include: { lines: true },
     });
-    if (!order) return res.status(404).json({ message: "????? ?? ??????." });
+    if (!order) return res.status(404).json({ message: "Заказ не найден." });
     if (order.assignedToUserId && order.assignedToUserId !== req.user.id) {
-      return res.status(403).json({ message: "????? ????????? ?? ?????? ???????????." });
+      return res.status(403).json({ message: "Заказ закреплен за другим сотрудником." });
     }
     if (!["PICKED", "PACKED", "READY_TO_SHIP"].includes(order.status)) {
-      return res.status(400).json({ message: "??????? ???????? ?????." });
+      return res.status(400).json({ message: "Сначала завершите отбор." });
     }
 
     const updated = await prisma.salesOrder.update({
@@ -11437,32 +11770,42 @@ app.post("/api/orders/:id/complete", auth, async (req, res) => {
       },
     });
 
+    await prisma.salesOrderPickSkip.updateMany({
+      where: {
+        orderId: id,
+        status: "ACTIVE",
+      },
+      data: {
+        status: "RESTORED",
+        restoredAt: new Date(),
+        restoredById: req.user?.id || null,
+      },
+    });
+
     res.json({ ok: true, order: updated });
   } catch (err) {
     console.error("orders complete error:", err);
-    res.status(500).json({ message: "?????? ?????????? ??????." });
+    res.status(500).json({ message: "Ошибка завершения заказа." });
   }
 });
 
-// ================== РћР§Р•Р Р•Р”Р¬ РњРђРЁРРќ РџРћРЎРўРђР’Р©РРљРћР’ ==================
 
-// СЃРїРёСЃРѕРє РјР°С€РёРЅ РІ РѕС‡РµСЂРµРґРё (СЃ С„РёР»СЊС‚СЂР°РјРё)
 app.post("/api/orders/:id/passport-printed", auth, async (req, res) => {
   try {
     const id = Number(req.params.id);
     if (!id || Number.isNaN(id)) {
-      return res.status(400).json({ message: "\u041d\u0435\u043a\u043e\u0440\u0440\u0435\u043a\u0442\u043d\u044b\u0439 ID \u0437\u0430\u043a\u0430\u0437\u0430." });
+      return res.status(400).json({ message: "Некорректный ID заказа." });
     }
 
     const order = await prisma.salesOrder.findUnique({
       where: { id },
     });
-    if (!order) return res.status(404).json({ message: "\u0417\u0430\u043a\u0430\u0437 \u043d\u0435 \u043d\u0430\u0439\u0434\u0435\u043d." });
+    if (!order) return res.status(404).json({ message: "Заказ не найден." });
     if (order.assignedToUserId && order.assignedToUserId !== req.user.id && !isWarehouseManager(req.user)) {
-      return res.status(403).json({ message: "\u0417\u0430\u043a\u0430\u0437 \u0437\u0430\u043a\u0440\u0435\u043f\u043b\u0435\u043d \u0437\u0430 \u0434\u0440\u0443\u0433\u0438\u043c \u0441\u043e\u0442\u0440\u0443\u0434\u043d\u0438\u043a\u043e\u043c." });
+      return res.status(403).json({ message: "Заказ закреплен за другим сотрудником." });
     }
     if (!["PICKED", "PACKED", "READY_TO_SHIP", "SHIPPED"].includes(order.status)) {
-      return res.status(400).json({ message: "\u041f\u0435\u0447\u0430\u0442\u044c \u043f\u0430\u0441\u043f\u043e\u0440\u0442\u0430 \u0434\u043e\u0441\u0442\u0443\u043f\u043d\u0430 \u043f\u043e\u0441\u043b\u0435 \u043e\u0442\u0431\u043e\u0440\u0430." });
+      return res.status(400).json({ message: "Печать паспорта доступна после отбора." });
     }
 
     const now = new Date();
@@ -11483,9 +11826,10 @@ app.post("/api/orders/:id/passport-printed", auth, async (req, res) => {
     res.json({ ok: true, order: updated });
   } catch (err) {
     console.error("orders passport printed error:", err);
-    res.status(500).json({ message: "\u041e\u0448\u0438\u0431\u043a\u0430 \u0444\u0438\u043a\u0441\u0430\u0446\u0438\u0438 \u043f\u0435\u0447\u0430\u0442\u0438 \u043f\u0430\u0441\u043f\u043e\u0440\u0442\u0430." });
+    res.status(500).json({ message: "Ошибка фиксации печати паспорта." });
   }
 });
+
 
 app.get("/api/supplier-trucks", auth, async (req, res) => {
   try {

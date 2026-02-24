@@ -57,6 +57,8 @@ model User {
   receivingLinesPlaced WarehouseReceivingLine[] @relation("ReceivingLinePlacedBy")
   assignedOrders SalesOrder[] @relation("OrderAssignedTo")
   passportPrintedOrders SalesOrder[] @relation("OrderPassportPrintedBy")
+  orderPickSkipsCreated SalesOrderPickSkip[] @relation("OrderPickSkipCreatedBy")
+  orderPickSkipsRestored SalesOrderPickSkip[] @relation("OrderPickSkipRestoredBy")
 
   @@index([orgId])
 }
@@ -370,6 +372,7 @@ model Item {
   revisionItems      StockRevisionItem[]
   receivingLines     WarehouseReceivingLine[]
   salesOrderLines    SalesOrderLine[]
+  pickSkips          SalesOrderPickSkip[]
 }
 
 model WarehouseLocation {
@@ -390,6 +393,7 @@ model WarehouseLocation {
   discrepancies StockDiscrepancy[]
   revisionItems StockRevisionItem[]
   receivingLines WarehouseReceivingLine[]
+  pickSkips      SalesOrderPickSkip[]
 }
 
 model WarehouseReceivingLine {
@@ -685,6 +689,7 @@ model SalesOrder {
   createdAt        DateTime         @default(now())
   updatedAt        DateTime         @updatedAt
   lines            SalesOrderLine[]
+  pickSkips        SalesOrderPickSkip[]
 
   @@index([status])
   @@index([assignedToUserId])
@@ -705,6 +710,7 @@ model SalesOrderLine {
   pickedQty     Int        @default(0)
   createdAt     DateTime   @default(now())
   updatedAt     DateTime   @updatedAt
+  pickSkips     SalesOrderPickSkip[]
 
   @@index([orderId])
   @@index([itemId])
@@ -718,4 +724,38 @@ enum SalesOrderStatus {
   READY_TO_SHIP
   SHIPPED
   CANCELLED
+}
+
+model SalesOrderPickSkip {
+  id           Int             @id @default(autoincrement())
+  orgId        Int?
+  orderId      Int
+  order        SalesOrder      @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  lineId       Int
+  line         SalesOrderLine  @relation(fields: [lineId], references: [id], onDelete: Cascade)
+  itemId       Int?
+  item         Item?           @relation(fields: [itemId], references: [id])
+  locationId   Int?
+  location     WarehouseLocation? @relation(fields: [locationId], references: [id])
+  qty          Int             @default(0)
+  reason       String
+  comment      String?
+  status       SalesOrderPickSkipStatus @default(ACTIVE)
+  skippedById  Int?
+  skippedBy    User?           @relation("OrderPickSkipCreatedBy", fields: [skippedById], references: [id])
+  restoredById Int?
+  restoredBy   User?           @relation("OrderPickSkipRestoredBy", fields: [restoredById], references: [id])
+  restoredAt   DateTime?
+  createdAt    DateTime        @default(now())
+  updatedAt    DateTime        @updatedAt
+
+  @@index([orderId, status])
+  @@index([lineId, status])
+  @@index([itemId])
+  @@index([locationId])
+}
+
+enum SalesOrderPickSkipStatus {
+  ACTIVE
+  RESTORED
 }

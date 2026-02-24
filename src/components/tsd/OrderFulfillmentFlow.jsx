@@ -66,6 +66,57 @@ const makeStepKey = (step) =>
     String(step?.itemId || ""),
   ].join(":");
 
+const buildSkippedStepList = (items, planSteps) => {
+  const flatPlan = Array.isArray(planSteps) ? planSteps : [];
+  const planByKey = new Map(flatPlan.map((step) => [makeStepKey(step), step]));
+
+  const findStep = (row, stepKey) => {
+    const exact = planByKey.get(stepKey);
+    if (exact) return exact;
+    return (
+      flatPlan.find((step) => {
+        const sameLine = Number(step.lineId) === Number(row?.lineId);
+        const sameLocation =
+          row?.locationId == null || Number(step.locationId) === Number(row.locationId);
+        const sameItem =
+          row?.itemId == null || Number(step.itemId) === Number(row.itemId);
+        return sameLine && sameLocation && sameItem;
+      }) || null
+    );
+  };
+
+  return (items || []).map((row) => {
+    const stepKey = makeStepKey({
+      lineId: row?.lineId,
+      locationId: row?.locationId,
+      itemId: row?.itemId,
+    });
+    const step = findStep(row, stepKey);
+    return {
+      id: row?.id || null,
+      stepKey,
+      lineId: row?.lineId || step?.lineId || null,
+      itemId: row?.itemId || step?.itemId || null,
+      itemName:
+        step?.itemName ||
+        row?.item?.name ||
+        (row?.itemId ? `Товар #${row.itemId}` : "Товар не указан"),
+      sku: step?.sku || row?.item?.sku || null,
+      locationId: row?.locationId || step?.locationId || null,
+      locationCode:
+        step?.locationCode ||
+        step?.locationName ||
+        row?.location?.code ||
+        row?.location?.name ||
+        (row?.locationId ? `Ячейка #${row.locationId}` : "Ячейка не указана"),
+      qty: Number(row?.qty || step?.qty || 0),
+      reason: String(row?.reason || "").trim(),
+      comment: String(row?.comment || "").trim(),
+      createdAt: row?.createdAt || null,
+    };
+  });
+};
+
 export default function OrderFulfillmentFlow({ authHeaders, onBack }) {
   const [mineOnly, setMineOnly] = useState(false);
   const [orders, setOrders] = useState([]);
@@ -188,18 +239,32 @@ export default function OrderFulfillmentFlow({ authHeaders, onBack }) {
       });
 
       setPickPlan(flat);
-      setSkippedSteps((prev) =>
-        (prev || []).filter((entry) => flat.some((step) => makeStepKey(step) === entry.stepKey))
-      );
       setPickPlanRaw(data.items || []);
       setCurrentIndex(0);
       setLocationScanned(false);
       setScannedQty(0);
+      try {
+        await loadPickSkips(orderId, flat);
+      } catch (skipErr) {
+        setSkippedSteps([]);
+        setError(normalizeErrorMessage(skipErr, "Ошибка загрузки пропусков отбора."));
+      }
     } catch (err) {
       setError(normalizeErrorMessage(err, "Ошибка построения маршрута отбора."));
     } finally {
       setLoading(false);
     }
+  };
+
+  const loadPickSkips = async (orderId, planSteps) => {
+    const res = await fetch(`${API_BASE}/orders/${orderId}/pick-skips`, {
+      headers: authHeaders,
+    });
+    const data = await readJsonSafe(res);
+    if (!res.ok) {
+      throw new Error(data?.message || "Не удалось загрузить пропуски отбора");
+    }
+    setSkippedSteps(buildSkippedStepList(data?.items || [], planSteps || pickPlan));
   };
 
   const resolveScanEntity = async (code) => {
@@ -559,9 +624,13 @@ export default function OrderFulfillmentFlow({ authHeaders, onBack }) {
     setSkipModalOpen(false);
   };
 
-  const confirmSkipCurrentStep = () => {
+  const confirmSkipCurrentStep = async () => {
     if (!currentStep) {
       setSkipModalOpen(false);
+      return;
+    }
+    if (!selectedOrder?.id) {
+      setError("Сначала выберите заказ.");
       return;
     }
     const reason = String(skipReason || "").trim();
@@ -569,44 +638,91 @@ export default function OrderFulfillmentFlow({ authHeaders, onBack }) {
       setError("Выберите причину пропуска.");
       return;
     }
-    const stepKey = makeStepKey(currentStep);
-    const payload = {
-      stepKey,
-      lineId: currentStep.lineId,
-      itemId: currentStep.itemId,
-      itemName: currentStep.itemName,
-      sku: currentStep.sku || null,
-      locationId: currentStep.locationId,
-      locationCode: currentStep.locationCode || currentStep.locationName || null,
-      qty: currentStep.qty,
-      reason,
-      comment: String(skipComment || "").trim(),
-      createdAt: new Date().toISOString(),
-    };
-    setSkippedSteps((prev) => {
-      const list = Array.isArray(prev) ? prev : [];
-      const idx = list.findIndex((entry) => entry.stepKey === stepKey);
-      if (idx >= 0) {
-        const next = [...list];
-        next[idx] = payload;
-        return next;
+    setLoading(true);
+    setError("");
+    try {
+      const res = await fetch(`${API_BASE}/orders/${selectedOrder.id}/pick-skips`, {
+        method: "POST",
+        headers: authHeaders,
+        body: JSON.stringify({
+          lineId: currentStep.lineId,
+          itemId: currentStep.itemId,
+          locationId: currentStep.locationId,
+          qty: Number(currentStep.qty || 0),
+          reason,
+          comment: String(skipComment || "").trim(),
+        }),
+      });
+      const data = await readJsonSafe(res);
+      if (!res.ok) {
+        throw new Error(data?.message || "Не удалось сохранить пропуск");
       }
-      return [...list, payload];
-    });
-    setSkipModalOpen(false);
-    setLocationScanned(false);
-    setScannedQty(0);
-    setError("");
+      await loadPickSkips(selectedOrder.id);
+      setSkipModalOpen(false);
+      setLocationScanned(false);
+      setScannedQty(0);
+      setError("");
+    } catch (err) {
+      setError(normalizeErrorMessage(err, "Ошибка сохранения пропуска."));
+    } finally {
+      setLoading(false);
+    }
   };
 
-  const restoreSkippedStep = (stepKey) => {
-    setSkippedSteps((prev) => (prev || []).filter((entry) => entry.stepKey !== stepKey));
+  const restoreSkippedStep = async (row) => {
+    if (!selectedOrder?.id) return;
+    if (!row?.id) {
+      setSkippedSteps((prev) =>
+        (prev || []).filter((entry) => entry.stepKey !== row?.stepKey)
+      );
+      setError("");
+      return;
+    }
+    setLoading(true);
     setError("");
+    try {
+      const res = await fetch(
+        `${API_BASE}/orders/${selectedOrder.id}/pick-skips/${row.id}/restore`,
+        {
+          method: "POST",
+          headers: authHeaders,
+        }
+      );
+      const data = await readJsonSafe(res);
+      if (!res.ok) {
+        throw new Error(data?.message || "Не удалось вернуть позицию в маршрут");
+      }
+      await loadPickSkips(selectedOrder.id);
+      setLocationScanned(false);
+      setScannedQty(0);
+    } catch (err) {
+      setError(normalizeErrorMessage(err, "Ошибка восстановления пропуска."));
+    } finally {
+      setLoading(false);
+    }
   };
 
-  const restoreAllSkipped = () => {
-    setSkippedSteps([]);
+  const restoreAllSkipped = async () => {
+    if (!selectedOrder?.id) return;
+    setLoading(true);
     setError("");
+    try {
+      const res = await fetch(`${API_BASE}/orders/${selectedOrder.id}/pick-skips/restore-all`, {
+        method: "POST",
+        headers: authHeaders,
+      });
+      const data = await readJsonSafe(res);
+      if (!res.ok) {
+        throw new Error(data?.message || "Не удалось вернуть позиции в маршрут");
+      }
+      await loadPickSkips(selectedOrder.id);
+      setLocationScanned(false);
+      setScannedQty(0);
+    } catch (err) {
+      setError(normalizeErrorMessage(err, "Ошибка восстановления пропусков."));
+    } finally {
+      setLoading(false);
+    }
   };
 
   const markPassportPrinted = async (orderId) => {
@@ -840,7 +956,7 @@ export default function OrderFulfillmentFlow({ authHeaders, onBack }) {
                 </div>
                 <div className="tsd-list">
                   {skippedSteps.map((row) => (
-                    <div key={row.stepKey} className="tsd-card">
+                    <div key={row.id || row.stepKey} className="tsd-card">
                       <div className="tsd-card__meta">
                         {row.locationCode || "-"} • {row.itemName || row.sku || `Товар #${row.itemId}`} • {row.qty} шт
                       </div>
@@ -851,7 +967,7 @@ export default function OrderFulfillmentFlow({ authHeaders, onBack }) {
                       <button
                         type="button"
                         className="tsd-btn tsd-btn--ghost"
-                        onClick={() => restoreSkippedStep(row.stepKey)}
+                        onClick={() => restoreSkippedStep(row)}
                         disabled={loading}
                       >
                         Вернуть в маршрут
