@@ -56,6 +56,14 @@
   box-shadow: var(--tsd-shadow);
 }
 
+.tsd-home-hub-toggle {
+  margin-top: 14px;
+}
+
+.tsd-home-hub-toggle .tsd-btn {
+  width: 100%;
+}
+
 .tsd-home-hub__top {
   display: grid;
   grid-template-columns: 1fr auto;

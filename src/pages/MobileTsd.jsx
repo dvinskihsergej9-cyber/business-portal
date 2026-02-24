@@ -180,6 +180,7 @@ export default function MobileTsd() {
   const [pickState, setPickState] = useState(emptyPickState);
   const [homeScanState, setHomeScanState] = useState(emptyHomeScanState);
   const [homeModePrefill, setHomeModePrefill] = useState(null);
+  const [homeHubOpen, setHomeHubOpen] = useState(false);
 
   const authHeaders = useMemo(() => {
     const token = localStorage.getItem("token");
@@ -418,6 +419,16 @@ export default function MobileTsd() {
 
   const clearHomeScan = () => {
     setHomeScanState(emptyHomeScanState);
+  };
+
+  const toggleHomeHub = () => {
+    setHomeHubOpen((prev) => {
+      const next = !prev;
+      if (!next) {
+        clearHomeScan();
+      }
+      return next;
+    });
   };
 
   const handleHomeScan = async (code) => {
@@ -2691,67 +2702,80 @@ export default function MobileTsd() {
               setMode(nextMode);
             }}
           />
-          <div className="tsd-home-hub">
-            <div className="tsd-home-hub__top">
-              <div>
-                <div className="tsd-home-hub__title">Единый центр сканирования</div>
-                <div className="tsd-home-hub__subtitle">
-                  Один скан на главном экране, затем быстрый переход в нужный режим.
+          <div className="tsd-home-hub-toggle">
+            <button
+              type="button"
+              className="tsd-btn tsd-btn--secondary"
+              onClick={toggleHomeHub}
+            >
+              {homeHubOpen
+                ? "Скрыть единый центр сканирования"
+                : "Единый центр сканирования"}
+            </button>
+          </div>
+          {homeHubOpen && (
+            <div className="tsd-home-hub">
+              <div className="tsd-home-hub__top">
+                <div>
+                  <div className="tsd-home-hub__title">Единый центр сканирования</div>
+                  <div className="tsd-home-hub__subtitle">
+                    Один скан на главном экране, затем быстрый переход в нужный режим.
+                  </div>
                 </div>
+                {homeScanState.result && (
+                  <button
+                    type="button"
+                    className="tsd-btn tsd-btn--ghost"
+                    onClick={clearHomeScan}
+                  >
+                    Очистить
+                  </button>
+                )}
               </div>
+              <Scanner
+                label="Сканируй товар или ячейку"
+                hint="Система определит тип кода и предложит действия"
+                onScan={handleHomeScan}
+                manualPlaceholder="Введи код вручную"
+                disabled={homeScanState.loading}
+              />
+              <TsdErrorAlert message={homeScanState.error} />
+              {homeScanState.loading && (
+                <div className="tsd-alert tsd-alert--info">Проверяем код...</div>
+              )}
               {homeScanState.result && (
-                <button
-                  type="button"
-                  className="tsd-btn tsd-btn--ghost"
-                  onClick={clearHomeScan}
-                >
-                  Очистить
-                </button>
+                <div className="tsd-home-hub__result">
+                  <div className="tsd-info">
+                    <div className="tsd-info__title">
+                      Тип: {homeScanState.result.type === "location" ? "Ячейка" : "Товар"}
+                    </div>
+                    <div className="tsd-info__text">
+                      Код: {homeScanState.scannedCode || "-"}
+                    </div>
+                  </div>
+                  {homeScanState.result.type === "location" ? (
+                    <LocationCard location={homeScanState.result.entity} />
+                  ) : (
+                    <ItemCard item={homeScanState.result.entity} />
+                  )}
+                  {homeQuickActions.length > 0 && (
+                    <div className="tsd-home-hub__actions">
+                      {homeQuickActions.map((action) => (
+                        <button
+                          key={action.id}
+                          type="button"
+                          className="tsd-btn tsd-btn--primary"
+                          onClick={() => handleHomeAction(action)}
+                        >
+                          {action.label}
+                        </button>
+                      ))}
+                    </div>
+                  )}
+                </div>
               )}
             </div>
-            <Scanner
-              label="Сканируй товар или ячейку"
-              hint="Система определит тип кода и предложит действия"
-              onScan={handleHomeScan}
-              manualPlaceholder="Введи код вручную"
-              disabled={homeScanState.loading}
-            />
-            <TsdErrorAlert message={homeScanState.error} />
-            {homeScanState.loading && (
-              <div className="tsd-alert tsd-alert--info">Проверяем код...</div>
-            )}
-            {homeScanState.result && (
-              <div className="tsd-home-hub__result">
-                <div className="tsd-info">
-                  <div className="tsd-info__title">
-                    Тип: {homeScanState.result.type === "location" ? "Ячейка" : "Товар"}
-                  </div>
-                  <div className="tsd-info__text">
-                    Код: {homeScanState.scannedCode || "-"}
-                  </div>
-                </div>
-                {homeScanState.result.type === "location" ? (
-                  <LocationCard location={homeScanState.result.entity} />
-                ) : (
-                  <ItemCard item={homeScanState.result.entity} />
-                )}
-                {homeQuickActions.length > 0 && (
-                  <div className="tsd-home-hub__actions">
-                    {homeQuickActions.map((action) => (
-                      <button
-                        key={action.id}
-                        type="button"
-                        className="tsd-btn tsd-btn--primary"
-                        onClick={() => handleHomeAction(action)}
-                      >
-                        {action.label}
-                      </button>
-                    ))}
-                  </div>
-                )}
-              </div>
-            )}
-          </div>
+          )}
         </>
       );
     }
