@@ -1,6 +1,6 @@
 {
   "type": "module",
-  "name": "business-portal",
+  "name": "sklad-online",
   "private": true,
   "version": "0.0.0",
   "scripts": {

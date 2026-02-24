@@ -477,12 +477,12 @@ async function sendInviteEmail(email, token) {
     return { sent: false, link };
   }
 
-  const from = process.env.MAIL_FROM || `Business Portal <${process.env.MAIL_USER}>`;
-  const subject = "\u041f\u0440\u0438\u0433\u043b\u0430\u0448\u0435\u043d\u0438\u0435 \u0432 Business Portal";
-  const text = `\u0412\u044b \u043f\u0440\u0438\u0433\u043b\u0430\u0448\u0435\u043d\u044b \u0432 Business Portal. \u041f\u0435\u0440\u0435\u0439\u0434\u0438\u0442\u0435 \u043f\u043e \u0441\u0441\u044b\u043b\u043a\u0435 \u0434\u043b\u044f \u0437\u0430\u0432\u0435\u0440\u0448\u0435\u043d\u0438\u044f \u0440\u0435\u0433\u0438\u0441\u0442\u0440\u0430\u0446\u0438\u0438: ${link}`;
+  const from = process.env.MAIL_FROM || `—ÍÎ‡‰ŒÌÎ‡ÈÌ <${process.env.MAIL_USER}>`;
+  const subject = "\u041f\u0440\u0438\u0433\u043b\u0430\u0448\u0435\u043d\u0438\u0435 \u0432 —ÍÎ‡‰ŒÌÎ‡ÈÌ";
+  const text = `\u0412\u044b \u043f\u0440\u0438\u0433\u043b\u0430\u0448\u0435\u043d\u044b \u0432 —ÍÎ‡‰ŒÌÎ‡ÈÌ. \u041f\u0435\u0440\u0435\u0439\u0434\u0438\u0442\u0435 \u043f\u043e \u0441\u0441\u044b\u043b\u043a\u0435 \u0434\u043b\u044f \u0437\u0430\u0432\u0435\u0440\u0448\u0435\u043d\u0438\u044f \u0440\u0435\u0433\u0438\u0441\u0442\u0440\u0430\u0446\u0438\u0438: ${link}`;
   const html = `
     <div style="font-family:Arial,sans-serif;font-size:14px;">
-      <p>\u0412\u044b \u043f\u0440\u0438\u0433\u043b\u0430\u0448\u0435\u043d\u044b \u0432 Business Portal.</p>
+      <p>\u0412\u044b \u043f\u0440\u0438\u0433\u043b\u0430\u0448\u0435\u043d\u044b \u0432 —ÍÎ‡‰ŒÌÎ‡ÈÌ.</p>
       <p>\u0421\u0441\u044b\u043b\u043a\u0430 \u0434\u043b\u044f \u0437\u0430\u0432\u0435\u0440\u0448\u0435\u043d\u0438\u044f \u0440\u0435\u0433\u0438\u0441\u0442\u0440\u0430\u0446\u0438\u0438:</p>
       <p><a href="${link}">${link}</a></p>
       <p>\u0415\u0441\u043b\u0438 \u0432\u044b \u043d\u0435 \u043e\u0436\u0438\u0434\u0430\u043b\u0438 \u044d\u0442\u043e \u043f\u0438\u0441\u044c\u043c\u043e, \u043f\u0440\u043e\u0441\u0442\u043e \u0438\u0433\u043d\u043e\u0440\u0438\u0440\u0443\u0439\u0442\u0435 \u0435\u0433\u043e.</p>
@@ -509,8 +509,8 @@ async function sendPasswordResetEmail(email, token) {
     return { sent: false, link };
   }
 
-  const from = process.env.MAIL_FROM || `Business Portal <${process.env.MAIL_USER}>`;
-  const subject = "–°–±—Ä–æ—Å –ø–∞—Ä–æ–ª—è –≤ Business Portal";
+  const from = process.env.MAIL_FROM || `—ÍÎ‡‰ŒÌÎ‡ÈÌ <${process.env.MAIL_USER}>`;
+  const subject = "–°–±—Ä–æ—Å –ø–∞—Ä–æ–ª—è –≤ —ÍÎ‡‰ŒÌÎ‡ÈÌ";
   const text = `–î–ª—è —Å–±—Ä–æ—Å–∞ –ø–∞—Ä–æ–ª—è –ø–µ—Ä–µ–π–¥–∏—Ç–µ –ø–æ —Å—Å—ã–ª–∫–µ: ${link}`;
   const html = `
     <div style="font-family:Arial,sans-serif;font-size:14px;">
@@ -534,9 +534,9 @@ async function sendPasswordChangedEmail(email) {
   const transport = getMailTransport();
   if (!transport) return { sent: false };
 
-  const from = process.env.MAIL_FROM || `Business Portal <${process.env.MAIL_USER}>`;
+  const from = process.env.MAIL_FROM || `—ÍÎ‡‰ŒÌÎ‡ÈÌ <${process.env.MAIL_USER}>`;
   const subject = "–ü–∞—Ä–æ–ª—å –∏–∑–º–µ–Ω—ë–Ω";
-  const text = "–ü–∞—Ä–æ–ª—å –≤ Business Portal –±—ã–ª –∏–∑–º–µ–Ω—ë–Ω. –ï—Å–ª–∏ —ç—Ç–æ –±—ã–ª–∏ –Ω–µ –≤—ã, —Å–≤—è–∂–∏—Ç–µ—Å—å —Å –∞–¥–º–∏–Ω–∏—Å—Ç—Ä–∞—Ç–æ—Ä–æ–º.";
+  const text = "–ü–∞—Ä–æ–ª—å –≤ —ÍÎ‡‰ŒÌÎ‡ÈÌ –±—ã–ª –∏–∑–º–µ–Ω—ë–Ω. –ï—Å–ª–∏ —ç—Ç–æ –±—ã–ª–∏ –Ω–µ –≤—ã, —Å–≤—è–∂–∏—Ç–µ—Å—å —Å –∞–¥–º–∏–Ω–∏—Å—Ç—Ä–∞—Ç–æ—Ä–æ–º.";
   const html = `
     <div style="font-family:Arial,sans-serif;font-size:14px;">
       <p>${text}</p>
@@ -559,7 +559,7 @@ async function sendAutoReorderEmail({ to, subject, text }) {
     return { sent: false };
   }
 
-  const from = process.env.MAIL_FROM || `Business Portal <${process.env.MAIL_USER}>`;
+  const from = process.env.MAIL_FROM || `—ÍÎ‡‰ŒÌÎ‡ÈÌ <${process.env.MAIL_USER}>`;
   try {
     await transport.sendMail({ from, to, subject, text });
     return { sent: true };

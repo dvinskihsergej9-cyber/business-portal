@@ -34,7 +34,7 @@ export default function Layout() {
     if (location.pathname.startsWith("/admin")) return "\u0410\u0434\u043c\u0438\u043d\u0438\u0441\u0442\u0440\u0438\u0440\u043e\u0432\u0430\u043d\u0438\u0435";
     if (location.pathname.startsWith("/tmc")) return "\u0422\u041c\u0426 \u0438 \u0420\u041c";
     if (location.pathname.startsWith("/warehouse")) return "\u0421\u043a\u043b\u0430\u0434";
-    return "\u041f\u043e\u0440\u0442\u0430\u043b";
+    return "\u0421\u043a\u043b\u0430\u0434\u041e\u043d\u043b\u0430\u0439\u043d";
   }, [location.pathname]);
 
   useEffect(() => {
@@ -81,7 +81,7 @@ export default function Layout() {
         <div style={styles.logoBlock}>
           <div style={styles.logoMark} />
           <div>
-            <div style={styles.logoTitle}>Business Portal</div>
+            <div style={styles.logoTitle}>СкладОнлайн</div>
             <div style={styles.logoSubtitle}>Внутренний сервис компании</div>
           </div>
         </div>
@@ -167,7 +167,7 @@ export default function Layout() {
             <div style={styles.drawerHeader}>
               <div style={styles.logoMark} />
               <div>
-                <div style={styles.logoTitle}>Business Portal</div>
+                <div style={styles.logoTitle}>СкладОнлайн</div>
                 <div style={styles.logoSubtitle}>Меню</div>
               </div>
             </div>
