@@ -160,13 +160,6 @@ const emptyPickState = {
   done: false,
 };
 
-const emptyHomeScanState = {
-  loading: false,
-  error: "",
-  result: null,
-  scannedCode: "",
-};
-
 export default function MobileTsd() {
   const { user } = useAuth();
   const [mode, setMode] = useState(null);
@@ -178,9 +171,6 @@ export default function MobileTsd() {
   const [putawayState, setPutawayState] = useState(emptyPutawayState);
   const [replenState, setReplenState] = useState(emptyReplenState);
   const [pickState, setPickState] = useState(emptyPickState);
-  const [homeScanState, setHomeScanState] = useState(emptyHomeScanState);
-  const [homeModePrefill, setHomeModePrefill] = useState(null);
-  const [homeHubOpen, setHomeHubOpen] = useState(false);
 
   const authHeaders = useMemo(() => {
     const token = localStorage.getItem("token");
@@ -207,62 +197,6 @@ export default function MobileTsd() {
     [user]
   );
 
-  const homeQuickActions = useMemo(() => {
-    if (!homeScanState.result) return [];
-    const baseActions =
-      homeScanState.result.type === "location"
-        ? [
-            {
-              id: "home-count",
-              label: "Инвентаризация",
-              modeId: "count",
-              prefillLocation: true,
-            },
-            {
-              id: "home-move",
-              label: "Перемещение",
-              modeId: "move",
-              prefillLocation: true,
-            },
-            {
-              id: "home-replen",
-              label: "Подпитка",
-              modeId: "replenish",
-              prefillLocation: true,
-            },
-            {
-              id: "home-bin",
-              label: "Контроль ячейки",
-              modeId: "bin",
-              prefillLocation: true,
-            },
-          ]
-        : homeScanState.result.type === "item"
-          ? [
-              {
-                id: "home-receiving",
-                label: "Приемка",
-                modeId: "receiving",
-                prefillLocation: false,
-              },
-              {
-                id: "home-putaway",
-                label: "Размещение",
-                modeId: "putaway",
-                prefillLocation: false,
-              },
-              {
-                id: "home-pick",
-                label: "Отбор",
-                modeId: "pick",
-                prefillLocation: false,
-              },
-            ]
-          : [];
-    return baseActions.filter((action) => canUseMode(action.modeId));
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [homeScanState.result, user]);
-
   const makeOpId = (prefix) => {
     if (globalThis.crypto?.randomUUID) {
       return `${prefix}-${globalThis.crypto.randomUUID()}`;
@@ -280,54 +214,6 @@ export default function MobileTsd() {
     setReplenState(emptyReplenState);
     setPickState(emptyPickState);
   }, [mode]);
-
-  useEffect(() => {
-    if (!mode || !homeModePrefill) return;
-    if (homeModePrefill.modeId !== mode) return;
-    const location = homeModePrefill.location || null;
-    if (location && mode === "count") {
-      setCountState({
-        ...emptyCountState,
-        location,
-        step: 1,
-        error: "",
-      });
-    }
-    if (location && mode === "move") {
-      setMoveState({
-        ...emptyMoveState,
-        from: location,
-        step: 1,
-        error: "",
-      });
-    }
-    if (location && mode === "replenish") {
-      setReplenState({
-        ...emptyReplenState,
-        from: location,
-        step: 1,
-        error: "",
-      });
-    }
-    if (location && mode === "bin") {
-      setBinState((prev) => ({
-        ...prev,
-        loading: true,
-        error: "",
-        done: false,
-        discrepancySaved: false,
-      }));
-      loadBinLocation(location).catch((err) => {
-        setBinState((prev) => ({
-          ...prev,
-          error: err.message || "Ошибка запроса.",
-          loading: false,
-        }));
-      });
-    }
-    setHomeModePrefill(null);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [mode, homeModePrefill]);
 
   useEffect(() => {
     if (!mode) return;
@@ -432,75 +318,6 @@ export default function MobileTsd() {
     } catch (err) {
       throw new Error(normalizeErrorMessage(err, "Ошибка запроса."));
     }
-  };
-
-  const clearHomeScan = () => {
-    setHomeScanState(emptyHomeScanState);
-  };
-
-  const toggleHomeHub = () => {
-    setHomeHubOpen((prev) => {
-      const next = !prev;
-      if (!next) {
-        clearHomeScan();
-      }
-      return next;
-    });
-  };
-
-  const handleHomeScan = async (code) => {
-    const rawCode = String(code || "").trim();
-    if (!rawCode) {
-      setHomeScanState((prev) => ({
-        ...prev,
-        error: "Введите код.",
-      }));
-      return;
-    }
-    try {
-      setHomeScanState((prev) => ({
-        ...prev,
-        loading: true,
-        error: "",
-      }));
-      const data = await resolveScan(rawCode);
-      if (!["item", "location"].includes(String(data?.type || ""))) {
-        throw new Error("Код пока не поддерживается в едином сканере.");
-      }
-      setHomeScanState({
-        loading: false,
-        error: "",
-        result: data,
-        scannedCode: rawCode,
-      });
-    } catch (err) {
-      setHomeScanState((prev) => ({
-        ...prev,
-        loading: false,
-        result: null,
-        error: err.message || "Ошибка запроса.",
-      }));
-    }
-  };
-
-  const handleHomeAction = (action) => {
-    if (!action || !canUseMode(action.modeId)) {
-      setHomeScanState((prev) => ({
-        ...prev,
-        error: "Нет доступа к выбранному режиму.",
-      }));
-      return;
-    }
-    const result = homeScanState.result;
-    if (action.prefillLocation && result?.type === "location" && result.entity) {
-      setHomeModePrefill({
-        modeId: action.modeId,
-        location: result.entity,
-      });
-    } else {
-      setHomeModePrefill(null);
-    }
-    setMode(action.modeId);
   };
 
   const normalizeLocationToken = (value) =>
@@ -2712,89 +2529,13 @@ export default function MobileTsd() {
         );
       }
       return (
-        <>
-          <TsdHome
-            modes={availableModes}
-            onSelect={(nextMode) => {
-              if (!canUseMode(nextMode)) return;
-              setMode(nextMode);
-            }}
-          />
-          <div className="tsd-home-hub-toggle">
-            <button
-              type="button"
-              className="tsd-btn tsd-btn--secondary"
-              onClick={toggleHomeHub}
-            >
-              {homeHubOpen
-                ? "Скрыть единый центр сканирования"
-                : "Единый центр сканирования"}
-            </button>
-          </div>
-          {homeHubOpen && (
-            <div className="tsd-home-hub">
-              <div className="tsd-home-hub__top">
-                <div>
-                  <div className="tsd-home-hub__title">Единый центр сканирования</div>
-                  <div className="tsd-home-hub__subtitle">
-                    Один скан на главном экране, затем быстрый переход в нужный режим.
-                  </div>
-                </div>
-                {homeScanState.result && (
-                  <button
-                    type="button"
-                    className="tsd-btn tsd-btn--ghost"
-                    onClick={clearHomeScan}
-                  >
-                    Очистить
-                  </button>
-                )}
-              </div>
-              <Scanner
-                label="Сканируй товар или ячейку"
-                hint="Система определит тип кода и предложит действия"
-                onScan={handleHomeScan}
-                manualPlaceholder="Введи код вручную"
-                disabled={homeScanState.loading}
-              />
-              <TsdErrorAlert message={homeScanState.error} />
-              {homeScanState.loading && (
-                <div className="tsd-alert tsd-alert--info">Проверяем код...</div>
-              )}
-              {homeScanState.result && (
-                <div className="tsd-home-hub__result">
-                  <div className="tsd-info">
-                    <div className="tsd-info__title">
-                      Тип: {homeScanState.result.type === "location" ? "Ячейка" : "Товар"}
-                    </div>
-                    <div className="tsd-info__text">
-                      Код: {homeScanState.scannedCode || "-"}
-                    </div>
-                  </div>
-                  {homeScanState.result.type === "location" ? (
-                    <LocationCard location={homeScanState.result.entity} />
-                  ) : (
-                    <ItemCard item={homeScanState.result.entity} />
-                  )}
-                  {homeQuickActions.length > 0 && (
-                    <div className="tsd-home-hub__actions">
-                      {homeQuickActions.map((action) => (
-                        <button
-                          key={action.id}
-                          type="button"
-                          className="tsd-btn tsd-btn--primary"
-                          onClick={() => handleHomeAction(action)}
-                        >
-                          {action.label}
-                        </button>
-                      ))}
-                    </div>
-                  )}
-                </div>
-              )}
-            </div>
-          )}
-        </>
+        <TsdHome
+          modes={availableModes}
+          onSelect={(nextMode) => {
+            if (!canUseMode(nextMode)) return;
+            setMode(nextMode);
+          }}
+        />
       );
     }
     if (mode === "count") return renderCount();
