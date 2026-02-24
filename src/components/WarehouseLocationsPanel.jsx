@@ -155,12 +155,7 @@ export default function WarehouseLocationsPanel() {
       return;
     }
 
-    const printWindow = window.open("", "_blank");
-    if (!printWindow) {
-      setError("Блокировщик всплывающих окон");
-      return;
-    }
-
+    const printWindow = window;
     try {
       setActionLoading(true);
       setError("");
@@ -190,7 +185,6 @@ export default function WarehouseLocationsPanel() {
       printWindow.document.close();
       printWindow.focus();
     } catch (err) {
-      printWindow.close();
       setError(err.message || "Ошибка печати");
     } finally {
       setActionLoading(false);
@@ -326,12 +320,7 @@ export default function WarehouseLocationsPanel() {
       return;
     }
 
-    const printWindow = window.open("", "_blank");
-    if (!printWindow) {
-      setError("Блокировщик всплывающих окон");
-      return;
-    }
-
+    const printWindow = window;
     try {
       setActionLoading(true);
       setError("");
@@ -359,7 +348,6 @@ export default function WarehouseLocationsPanel() {
       printWindow.document.close();
       printWindow.focus();
     } catch (err) {
-      printWindow.close();
       setError(err.message || "Ошибка печати");
     } finally {
       setActionLoading(false);

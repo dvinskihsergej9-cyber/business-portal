@@ -157,11 +157,7 @@ function openInventoryAuditActWindow(items, includeZero) {
 </html>
   `;
 
-  const win = window.open("", "_blank");
-  if (!win) {
-    alert("Разрешите всплывающие окна в браузере, чтобы распечатать ведомость.");
-    return;
-  }
+  const win = window;
   win.document.open();
   win.document.write(html);
   win.document.close();

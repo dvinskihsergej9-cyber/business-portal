@@ -192,13 +192,7 @@ function openDiscrepancyActWindow(order, rows, orgInfo) {
 </html>
   `;
 
-  const win = window.open("", "_blank");
-  if (!win) {
-    alert(
-      "Браузер заблокировал всплывающее окно с актом. Разрешите всплывающие окна и попробуйте ещё раз."
-    );
-    return;
-  }
+  const win = window;
 
   win.document.write(html);
   win.document.close();

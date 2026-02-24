@@ -509,11 +509,7 @@ export default function OrderFulfillmentFlow({ authHeaders, onBack }) {
   };
 
   const openPdfInCurrentTab = (url) => {
-    const link = document.createElement("a");
-    link.href = url;
-    link.target = "_self";
-    link.rel = "noopener noreferrer";
-    link.click();
+    window.location.assign(url);
   };
 
   const trySharePdfFile = async (blob, order) => {

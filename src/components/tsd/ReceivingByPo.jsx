@@ -378,7 +378,7 @@ export default function ReceivingByPo({ authHeaders, makeOpId, onBack }) {
       throw new Error(message);
     }
     const html = await printRes.text();
-    const win = window.open("", "_blank");
+    const win = window;
     if (win) {
       win.document.write(html);
       win.document.close();
