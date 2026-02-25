@@ -82,6 +82,15 @@ export const normalizeErrorMessage = (err, fallback = "Ошибка запрос
   if (message === "LOCATIONS_LIST_ERROR") return "Ошибка загрузки ячеек.";
   if (message === "REQUESTS_LIST_ERROR") return "Ошибка загрузки заявок.";
   if (message === "REQUEST_UPDATE_ERROR") return "Ошибка обновления заявки.";
+  if (message === "PO_RECEIVING_CONFIRM_ERROR") {
+    return "Ошибка сервера при завершении приемки.";
+  }
+  if (message === "PO_ALREADY_RECEIVED") {
+    return "Заказ уже завершен.";
+  }
+  if (message === "TENANT_NOT_FOUND") {
+    return "Данные заказа устарели. Обновите экран и повторите.";
+  }
   if (message === "INVALID_ITEM_ID") return "Некорректный идентификатор товара.";
   if (message === "TENANTS_LIST_ERROR") return "Ошибка загрузки списка клиентов.";
   if (message === "TENANT_CREATE_ERROR") return "Не удалось создать клиента.";

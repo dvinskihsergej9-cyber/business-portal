@@ -9440,7 +9440,6 @@ app.post("/api/warehouse/receiving/:poId/take", auth, async (req, res) => {
     if (order.status === "RECEIVED" || order.status === "CLOSED") {
       return res.status(400).json({ message: "PO_ALREADY_RECEIVED" });
     }
-
     const linkedTruck = await findActiveTruckForOrder(order.number, [
       "IN_QUEUE",
       "UNLOADING",
@@ -10031,6 +10030,13 @@ app.post("/api/warehouse/receiving/:poId/confirm", auth, async (req, res) => {
     if (order.status === "RECEIVED" || order.status === "CLOSED") {
       return res.status(400).json({ message: "PO_ALREADY_RECEIVED" });
     }
+    const effectiveOrgId = order.orgId || req.user?.orgId || null;
+    const fullOrderItems = await runWithoutTenantScope(() =>
+      prismaBase.purchaseOrderItem.findMany({
+        where: { purchaseOrderId: poId },
+        include: { item: true },
+      })
+    );
 
     const linkedTruck = await findActiveTruckForOrder(order.number, [
       "IN_QUEUE",
@@ -10061,7 +10067,7 @@ app.post("/api/warehouse/receiving/:poId/confirm", auth, async (req, res) => {
     }
 
     const orderItemsByItemId = new Map();
-    order.items.forEach((row) => {
+    (fullOrderItems.length ? fullOrderItems : order.items).forEach((row) => {
       orderItemsByItemId.set(row.itemId, row);
     });
 
@@ -10129,10 +10135,12 @@ app.post("/api/warehouse/receiving/:poId/confirm", auth, async (req, res) => {
           const expectedRemaining = Math.max(0, ordered - prevReceived);
           const nextReceived = prevReceived + qtyInt;
 
-          await tx.purchaseOrderItem.update({
-            where: { id: orderRow.id },
-            data: { receivedQty: nextReceived },
-          });
+          await runWithoutTenantScope(() =>
+            tx.purchaseOrderItem.update({
+              where: { id: orderRow.id },
+              data: { receivedQty: nextReceived, orgId: effectiveOrgId },
+            })
+          );
 
           if (qtyInt !== expectedRemaining) {
             const delta = Math.trunc(qtyInt - expectedRemaining);
@@ -10178,10 +10186,12 @@ app.post("/api/warehouse/receiving/:poId/confirm", auth, async (req, res) => {
         }
       }
 
-      const refreshed = await tx.purchaseOrder.findUnique({
-        where: { id: poId },
-        include: { items: true },
-      });
+      const refreshed = await runWithoutTenantScope(() =>
+        tx.purchaseOrder.findUnique({
+          where: { id: poId },
+          include: { items: true },
+        })
+      );
 
       if (refreshed) {
         const allReceived = refreshed.items.every(
@@ -10196,25 +10206,30 @@ app.post("/api/warehouse/receiving/:poId/confirm", auth, async (req, res) => {
             ? "PARTIAL"
             : refreshed.status;
         if (nextStatus !== refreshed.status) {
-          await tx.purchaseOrder.update({
-            where: { id: poId },
-            data: { status: nextStatus },
-          });
+          await runWithoutTenantScope(() =>
+            tx.purchaseOrder.update({
+              where: { id: poId },
+              data: { status: nextStatus, orgId: effectiveOrgId },
+            })
+          );
         }
       }
-
-      await tx.receivingDiscrepancy.findMany({
-        where: { id: { in: createdDiscrepancies } },
-      });
+      if (createdDiscrepancies.length > 0) {
+        await tx.receivingDiscrepancy.findMany({
+          where: { id: { in: createdDiscrepancies } },
+        });
+      }
     });
 
-    const updatedOrder = await prisma.purchaseOrder.findUnique({
-      where: { id: poId },
-      include: {
-        supplier: true,
-        items: { include: { item: true } },
-      },
-    });
+    const updatedOrder = await runWithoutTenantScope(() =>
+      prismaBase.purchaseOrder.findUnique({
+        where: { id: poId },
+        include: {
+          supplier: true,
+          items: { include: { item: true } },
+        },
+      })
+    );
 
     if (
       updatedOrder &&
@@ -10222,13 +10237,16 @@ app.post("/api/warehouse/receiving/:poId/confirm", auth, async (req, res) => {
       linkedTruck.status !== "DONE"
     ) {
       const now = new Date();
-      await prisma.supplierTruck.update({
-        where: { id: linkedTruck.id },
-        data: {
-          status: "DONE",
-          unloadEndAt: linkedTruck.unloadEndAt || now,
-        },
-      });
+      await runWithoutTenantScope(() =>
+        prismaBase.supplierTruck.update({
+          where: { id: linkedTruck.id },
+          data: {
+            status: "DONE",
+            unloadEndAt: linkedTruck.unloadEndAt || now,
+            orgId: linkedTruck.orgId || effectiveOrgId,
+          },
+        })
+      );
     }
 
     res.json({
@@ -10242,7 +10260,21 @@ app.post("/api/warehouse/receiving/:poId/confirm", auth, async (req, res) => {
     if (err.code === "INSUFFICIENT_QTY") {
       return res.status(400).json({ message: "INSUFFICIENT_QTY" });
     }
-    res.status(500).json({ message: "PO_RECEIVING_CONFIRM_ERROR" });
+    if (err.code === "BAD_QTY") {
+      return res.status(400).json({ message: "BAD_QTY" });
+    }
+    if (err.code === "TENANT_NOT_FOUND") {
+      return res.status(409).json({ message: "TENANT_NOT_FOUND" });
+    }
+    if (err.code === "P2002") {
+      return res.status(409).json({
+        message: "?????? ??????? ??? ??????????. ???????? ?????.",
+      });
+    }
+    res.status(500).json({
+      message: "PO_RECEIVING_CONFIRM_ERROR",
+      detail: String(err?.message || ""),
+    });
   }
 });
 
