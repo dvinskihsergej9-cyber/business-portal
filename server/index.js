@@ -9179,10 +9179,12 @@ app.post("/api/purchase-orders", auth, async (req, res) => {
     }
 
     // Генерируем номер заказа: PO-00001, PO-00002, ...
-    const lastOrder = await prisma.purchaseOrder.findFirst({
-      orderBy: { id: "desc" },
-      select: { id: true },
-    });
+    const lastOrder = await runWithoutTenantScope(() =>
+      prismaBase.purchaseOrder.findFirst({
+        orderBy: { id: "desc" },
+        select: { id: true },
+      })
+    );
 
     const nextNumber = `PO-${String((lastOrder?.id || 0) + 1).padStart(
       5,
@@ -12326,10 +12328,12 @@ async function checkAutoReorders() {
         continue;
       }
 
-      const lastOrder = await prisma.purchaseOrder.findFirst({
-        orderBy: { id: "desc" },
-        select: { id: true },
-      });
+      const lastOrder = await runWithoutTenantScope(() =>
+        prismaBase.purchaseOrder.findFirst({
+          orderBy: { id: "desc" },
+          select: { id: true },
+        })
+      );
       const nextNumber = `PO-${String((lastOrder?.id || 0) + 1).padStart(
         5,
         "0"
