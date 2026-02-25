@@ -342,9 +342,9 @@ model Item {
   id          Int      @id @default(autoincrement())
   orgId       Int?
   name        String
-  sku         String?  @unique
-  barcode     String?  @unique
-  qrCode      String?  @unique
+  sku         String?
+  barcode     String?
+  qrCode      String?
   unit        String?
   minStock    Float?
   maxStock    Float?
@@ -373,6 +373,10 @@ model Item {
   receivingLines     WarehouseReceivingLine[]
   salesOrderLines    SalesOrderLine[]
   pickSkips          SalesOrderPickSkip[]
+
+  @@unique([orgId, sku])
+  @@unique([orgId, barcode])
+  @@unique([orgId, qrCode])
 }
 
 model WarehouseLocation {

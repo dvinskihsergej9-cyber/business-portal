@@ -8689,8 +8689,8 @@ app.post(
 
         try {
           // Ищем по SKU (он у тебя уникальный)
-          const existing = await prisma.item.findUnique({
-            where: { sku },
+          const existing = await prisma.item.findFirst({
+            where: { sku, category: "STOCK" },
           });
 
           if (existing) {
@@ -8756,8 +8756,8 @@ app.post("/api/inventory/items/batch", auth, async (req, res) => {
       };
 
       try {
-        const existing = await prisma.item.findUnique({
-          where: { sku: data.sku },
+        const existing = await prisma.item.findFirst({
+          where: { sku: data.sku, category: "STOCK" },
         });
 
         if (existing) {
