@@ -1943,6 +1943,9 @@ function buildReceiveActHtml(order, rows, orgInfo) {
   const orderDateStr = order?.date
     ? new Date(order.date).toLocaleDateString("ru-RU")
     : "";
+  const safeOrderNumberForFile = String(order?.number || "PO")
+    .replace(/[^0-9A-Za-z_-]+/g, "_")
+    .slice(0, 64);
 
   let totalOrdered = 0;
   let totalReceived = 0;
@@ -2102,8 +2105,42 @@ function buildReceiveActHtml(order, rows, orgInfo) {
       </div>
     </div>
 
-    <button class="print-btn" onclick="window.print()">Печать</button>
+    <div style="margin-top:24px; display:flex; gap:8px; flex-wrap:wrap;">
+      <button class="print-btn" onclick="window.print()">&#1055;&#1077;&#1095;&#1072;&#1090;&#1100;</button>
+      <button class="print-btn" onclick="handleShareAct()">&#1055;&#1086;&#1076;&#1077;&#1083;&#1080;&#1090;&#1100;&#1089;&#1103;</button>
+    </div>
   </div>
+<script>
+  async function handleShareAct() {
+    if (!navigator.share) {
+      alert("\u0424\u0443\u043d\u043a\u0446\u0438\u044f \"\u041f\u043e\u0434\u0435\u043b\u0438\u0442\u044c\u0441\u044f\" \u0434\u043e\u0441\u0442\u0443\u043f\u043d\u0430 \u0442\u043e\u043b\u044c\u043a\u043e \u043d\u0430 \u043c\u043e\u0431\u0438\u043b\u044c\u043d\u044b\u0445 \u0443\u0441\u0442\u0440\u043e\u0439\u0441\u0442\u0432\u0430\u0445.");
+      return;
+    }
+    try {
+      const html = document.documentElement.outerHTML;
+      const blob = new Blob([html], { type: "text/html;charset=utf-8" });
+      const file = new File([blob], "act_" + safeOrderNumberForFile + ".html", {
+        type: "text/html;charset=utf-8",
+      });
+      if (navigator.canShare && navigator.canShare({ files: [file] })) {
+        await navigator.share({
+          title: document.title || "\u0410\u043a\u0442 \u0440\u0430\u0441\u0445\u043e\u0436\u0434\u0435\u043d\u0438\u0439",
+          text: "\u0410\u043a\u0442 \u0440\u0430\u0441\u0445\u043e\u0436\u0434\u0435\u043d\u0438\u0439 \u043f\u043e \u043f\u0440\u0438\u0451\u043c\u043a\u0435",
+          files: [file],
+        });
+        return;
+      }
+      await navigator.share({
+        title: document.title || "\u0410\u043a\u0442 \u0440\u0430\u0441\u0445\u043e\u0436\u0434\u0435\u043d\u0438\u0439",
+        text: "\u0410\u043a\u0442 \u0440\u0430\u0441\u0445\u043e\u0436\u0434\u0435\u043d\u0438\u0439 \u043f\u043e \u043f\u0440\u0438\u0451\u043c\u043a\u0435",
+      });
+    } catch (err) {
+      if (err && err.name === "AbortError") return;
+      console.error(err);
+      alert("\u041d\u0435 \u0443\u0434\u0430\u043b\u043e\u0441\u044c \u043e\u0442\u043a\u0440\u044b\u0442\u044c \u043c\u0435\u043d\u044e \u043e\u0442\u043f\u0440\u0430\u0432\u043a\u0438 \u043d\u0430 \u044d\u0442\u043e\u043c \u0443\u0441\u0442\u0440\u043e\u0439\u0441\u0442\u0432\u0435.");
+    }
+  }
+</script>
 </body>
 </html>
   `;

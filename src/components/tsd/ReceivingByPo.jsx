@@ -452,6 +452,19 @@ export default function ReceivingByPo({ authHeaders, makeOpId, onBack }) {
       if (!res.ok) {
         throw new Error(data.message || "Не удалось подтвердить приемку");
       }
+      const hasDiscrepancies =
+        Array.isArray(data?.discrepancies) && data.discrepancies.length > 0;
+
+      if (hasDiscrepancies) {
+        await ensureOrgProfileAndPrint(selectedPo.id);
+        setState((prev) => ({
+          ...prev,
+          loading: false,
+          done: true,
+        }));
+        return;
+      }
+
       setState((prev) => ({
         ...prev,
         loading: false,
