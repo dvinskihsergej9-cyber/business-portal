@@ -944,11 +944,24 @@ app.use("/api/purchase-orders", auth, enforceOperationalTenantScope, (req, res, 
     return next();
   }
 
-  // "Очередь поставщиков" читает номера заказов выбранного поставщика.
+  // "??????? ???????????" ?????? ?????? ??????? ?????????? ??????????.
   if (
     hasPermission(req.user, PERMISSION_KEYS.WAREHOUSE_QUEUE) &&
     isReadRequest(req) &&
     (req.path === "/" || req.path === "")
+  ) {
+    return next();
+  }
+
+  // ???-???????: ?????? ? ?????? ???? ??????????? ?? ??????.
+  if (
+    hasAnyPermission(req.user, [
+      PERMISSION_KEYS.TSD_RECEIVING,
+      PERMISSION_KEYS.WAREHOUSE_TSD,
+    ]) &&
+    isReadRequest(req) &&
+    req.path.endsWith("/print-receive-act") &&
+    Number.isFinite(Number(String(req.path).split("/")[1]))
   ) {
     return next();
   }
@@ -9518,7 +9531,7 @@ app.get("/api/purchase-orders/:id", auth, async (req, res) => {
 // ===== Purchase Order: RECEIVE ACT (PRINT) =====
 app.get("/api/purchase-orders/:id/print-receive-act", auth, async (req, res) => {
   try {
-    if (!isWarehouseManager(req.user)) {
+    if (!canUseReceivingByPo(req.user)) {
       return res.status(403).json({ message: "NO_ACCESS" });
     }
 

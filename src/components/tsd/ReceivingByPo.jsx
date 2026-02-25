@@ -394,29 +394,17 @@ export default function ReceivingByPo({ authHeaders, makeOpId, onBack }) {
   };
 
   const ensureOrgProfileAndPrint = async (poId) => {
-    const res = await fetch(`${API_BASE}/settings/org-profile`, {
-      headers: authHeaders,
-    });
-    if (res.status === 403) {
-      const data = await res.json();
-      throw new Error(data.message || "NO_ACCESS");
-    }
-    const data = await res.json();
-    if (res.ok && data?.profile) {
+    try {
       await openPrintAct(poId);
-      return;
+    } catch (err) {
+      const code = String(err?.message || "");
+      if (code === "ORG_PROFILE_REQUIRED") {
+        throw new Error(
+          "Для акта заполните реквизиты организации под администратором."
+        );
+      }
+      throw err;
     }
-    setOrgForm({
-      orgName: "",
-      legalAddress: "",
-      actualAddress: "",
-      inn: "",
-      kpp: "",
-      phone: "",
-    });
-    setOrgFormError("");
-    setPendingPrintPoId(poId);
-    setOrgModalOpen(true);
   };
 
   const handleConfirm = async () => {
@@ -464,13 +452,14 @@ export default function ReceivingByPo({ authHeaders, makeOpId, onBack }) {
         Array.isArray(data?.discrepancies) && data.discrepancies.length > 0;
 
       if (hasDiscrepancies) {
-        await ensureOrgProfileAndPrint(selectedPo.id);
-        setState((prev) => ({
-          ...prev,
-          loading: false,
-          done: true,
-        }));
-        return;
+        try {
+          await ensureOrgProfileAndPrint(selectedPo.id);
+        } catch (actErr) {
+          setToast({
+            type: "error",
+            message: toUiError(actErr, "Акт не удалось открыть."),
+          });
+        }
       }
 
       setState((prev) => ({
