@@ -114,9 +114,14 @@ export default function ImportItemsModal({ onClose, onImportSuccess }) {
                                 ref={fileInputRef}
                                 style={{ display: "none" }}
                             />
-                            <button onClick={() => fileInputRef.current.click()} className="btn btn-primary">
-                                Выбрать файл
-                            </button>
+                            <div style={{ display: "flex", justifyContent: "center", gap: 10, flexWrap: "wrap" }}>
+                                <button onClick={() => fileInputRef.current.click()} className="btn btn-primary">
+                                    Выбрать файл
+                                </button>
+                                <a href="/templates/items-import-template.xlsx" download className="btn">
+                                    Скачать шаблон
+                                </a>
+                            </div>
                         </div>
                     )}
 
