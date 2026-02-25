@@ -285,7 +285,7 @@ enum WarehouseRequestStatus {
 model PurchaseOrder {
   id          Int                 @id @default(autoincrement())
   orgId       Int?
-  number      String?             @unique
+  number      String?
   date        DateTime            @default(now())
   plannedDate DateTime?
   status      PurchaseOrderStatus @default(DRAFT)
@@ -303,6 +303,8 @@ model PurchaseOrder {
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
+
+  @@unique([orgId, number])
 }
 
 model PurchaseOrderItem {

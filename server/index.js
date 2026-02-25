@@ -319,6 +319,32 @@ async function runWithoutTenantScope(fn) {
     store.skipTenantScope = prev;
   }
 }
+async function getNextPurchaseOrderNumber(orgId) {
+  const normalizedOrgId = orgId ? Number(orgId) : null;
+
+  const recentOrders = await runWithoutTenantScope(() =>
+    prismaBase.purchaseOrder.findMany({
+      where: {
+        orgId: normalizedOrgId,
+        number: { startsWith: "PO-" },
+      },
+      orderBy: { id: "desc" },
+      take: 50,
+      select: { number: true },
+    })
+  );
+
+  let lastSeq = 0;
+  for (const row of recentOrders) {
+    const match = /^PO-(\d+)$/i.exec(String(row?.number || "").trim());
+    if (match) {
+      lastSeq = Number(match[1]) || 0;
+      break;
+    }
+  }
+
+  return "PO-" + String(lastSeq + 1).padStart(5, "0");
+}
 
 prisma = prismaBase.$extends({
   query: {
@@ -9179,17 +9205,7 @@ app.post("/api/purchase-orders", auth, async (req, res) => {
     }
 
     // Генерируем номер заказа: PO-00001, PO-00002, ...
-    const lastOrder = await runWithoutTenantScope(() =>
-      prismaBase.purchaseOrder.findFirst({
-        orderBy: { id: "desc" },
-        select: { id: true },
-      })
-    );
-
-    const nextNumber = `PO-${String((lastOrder?.id || 0) + 1).padStart(
-      5,
-      "0"
-    )}`;
+    const nextNumber = await getNextPurchaseOrderNumber(req.user.orgId || null);
 
     const order = await prisma.purchaseOrder.create({
       data: {
@@ -12328,16 +12344,7 @@ async function checkAutoReorders() {
         continue;
       }
 
-      const lastOrder = await runWithoutTenantScope(() =>
-        prismaBase.purchaseOrder.findFirst({
-          orderBy: { id: "desc" },
-          select: { id: true },
-        })
-      );
-      const nextNumber = `PO-${String((lastOrder?.id || 0) + 1).padStart(
-        5,
-        "0"
-      )}`;
+      const nextNumber = await getNextPurchaseOrderNumber(item.orgId || null);
 
       const order = await prisma.purchaseOrder.create({
         data: {
