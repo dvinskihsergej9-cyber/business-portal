@@ -113,12 +113,20 @@ export default function ReceivingByPo({ authHeaders, makeOpId, onBack }) {
     () => orderRows.filter((row) => row.remaining > 0).length,
     [orderRows]
   );
+  const unfilledRowsCount = useMemo(
+    () =>
+      orderRows.filter((row) => {
+        if (row.expectedRemaining <= 0) return false;
+        return !Object.prototype.hasOwnProperty.call(localAccepted, row.itemId);
+      }).length,
+    [orderRows, localAccepted]
+  );
   const canFinishReceiving = useMemo(
     () =>
       Boolean(selectedPo) &&
       orderRows.length > 0 &&
-      remainingRowsCount === 0,
-    [orderRows.length, remainingRowsCount, selectedPo]
+      unfilledRowsCount === 0,
+    [orderRows.length, unfilledRowsCount, selectedPo]
   );
 
   const progressSummary = useMemo(() => {
@@ -698,7 +706,7 @@ export default function ReceivingByPo({ authHeaders, makeOpId, onBack }) {
               </div>
             ) : (
               <div className="tsd-alert tsd-alert--info">
-                Осталось позиций к приемке: {remainingRowsCount}
+                Осталось заполнить позиций: {unfilledRowsCount}
               </div>
             )}
           </>
