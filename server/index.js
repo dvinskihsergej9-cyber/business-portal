@@ -10136,7 +10136,7 @@ app.post("/api/warehouse/receiving/:poId/confirm", auth, async (req, res) => {
           const nextReceived = prevReceived + qtyInt;
 
           await runWithoutTenantScope(() =>
-            tx.purchaseOrderItem.update({
+            tx.purchaseOrderItem.updateMany({
               where: { id: orderRow.id },
               data: { receivedQty: nextReceived, orgId: effectiveOrgId },
             })
@@ -10207,7 +10207,7 @@ app.post("/api/warehouse/receiving/:poId/confirm", auth, async (req, res) => {
             : refreshed.status;
         if (nextStatus !== refreshed.status) {
           await runWithoutTenantScope(() =>
-            tx.purchaseOrder.update({
+            tx.purchaseOrder.updateMany({
               where: { id: poId },
               data: { status: nextStatus, orgId: effectiveOrgId },
             })
@@ -10276,7 +10276,12 @@ app.post("/api/warehouse/receiving/:poId/confirm", auth, async (req, res) => {
     }
     if (err.code === "P2002") {
       return res.status(409).json({
-        message: "?????? ??????? ??? ??????????. ???????? ?????.",
+        message: "ALREADY_PROCESSED",
+      });
+    }
+    if (err.code === "P2025") {
+      return res.status(409).json({
+        message: "RECORD_CHANGED",
       });
     }
     res.status(500).json({

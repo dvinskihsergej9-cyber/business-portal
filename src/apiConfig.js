@@ -88,6 +88,12 @@ export const normalizeErrorMessage = (err, fallback = "Ошибка запрос
   if (message === "PO_ALREADY_RECEIVED") {
     return "Заказ уже завершен.";
   }
+  if (message === "ALREADY_PROCESSED") {
+    return "Данные уже обработаны. Обновите экран и повторите.";
+  }
+  if (message === "RECORD_CHANGED") {
+    return "Запись уже изменена другим сотрудником. Обновите экран.";
+  }
   if (message === "TENANT_NOT_FOUND") {
     return "Данные заказа устарели. Обновите экран и повторите.";
   }
