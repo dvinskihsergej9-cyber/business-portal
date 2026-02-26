@@ -395,15 +395,63 @@ export default function ReceivingByPo({ authHeaders, makeOpId, onBack }) {
     }
   };
 
+  const openOrgProfileModalForAct = async (poId) => {
+    const emptyProfile = {
+      orgName: "",
+      legalAddress: "",
+      actualAddress: "",
+      inn: "",
+      kpp: "",
+      phone: "",
+    };
+    setPendingPrintPoId(poId);
+    setOrgFormError("");
+    setOrgForm(emptyProfile);
+
+    try {
+      const profileRes = await fetch(`${API_BASE}/settings/org-profile`, {
+        headers: authHeaders,
+      });
+      let profileData = null;
+      try {
+        profileData = await profileRes.json();
+      } catch (parseErr) {
+        profileData = null;
+      }
+      if (profileRes.status === 403) {
+        throw new Error(
+          "Для акта заполните реквизиты организации под администратором."
+        );
+      }
+      if (!profileRes.ok) {
+        throw new Error(profileData?.message || "ORG_PROFILE_GET_ERROR");
+      }
+      const profile = profileData?.profile || null;
+      if (profile) {
+        setOrgForm({
+          orgName: profile.orgName || "",
+          legalAddress: profile.legalAddress || "",
+          actualAddress: profile.actualAddress || "",
+          inn: profile.inn || "",
+          kpp: profile.kpp || "",
+          phone: profile.phone || "",
+        });
+      }
+      setOrgModalOpen(true);
+    } catch (err) {
+      setPendingPrintPoId(null);
+      throw err;
+    }
+  };
+
   const ensureOrgProfileAndPrint = async (poId) => {
     try {
       await openPrintAct(poId);
     } catch (err) {
       const code = String(err?.message || "");
       if (code === "ORG_PROFILE_REQUIRED") {
-        throw new Error(
-          "Для акта заполните реквизиты организации под администратором."
-        );
+        await openOrgProfileModalForAct(poId);
+        return;
       }
       throw err;
     }
@@ -887,15 +935,20 @@ export default function ReceivingByPo({ authHeaders, makeOpId, onBack }) {
                     if (!res.ok) {
                       throw new Error(data.message || "ORG_PROFILE_SAVE_ERROR");
                     }
-                    setOrgSaving(false);
-                    setOrgModalOpen(false);
                     if (pendingPrintPoId) {
                       await openPrintAct(pendingPrintPoId);
-                      setPendingPrintPoId(null);
                     }
+                    setPendingPrintPoId(null);
+                    setOrgSaving(false);
+                    setOrgModalOpen(false);
                   } catch (saveErr) {
                     setOrgSaving(false);
-                    setOrgFormError(saveErr.message || "ORG_PROFILE_SAVE_ERROR");
+                    setOrgFormError(
+                      toUiError(
+                        saveErr,
+                        "Не удалось сохранить реквизиты организации."
+                      )
+                    );
                   }
                 }}
                 disabled={orgSaving}

@@ -9556,15 +9556,20 @@ app.get("/api/purchase-orders/:id/print-receive-act", auth, async (req, res) => 
       return res.status(400).json({ message: "BAD_PO_ID" });
     }
 
-    const order = await prisma.purchaseOrder.findUnique({
-      where: { id },
-      include: {
-        supplier: true,
-        items: {
-          include: { item: true },
+    const order = await runWithoutTenantScope(() =>
+      prismaBase.purchaseOrder.findFirst({
+        where: {
+          id,
+          orgId: req.user?.orgId || null,
         },
-      },
-    });
+        include: {
+          supplier: true,
+          items: {
+            include: { item: true },
+          },
+        },
+      })
+    );
 
     if (!order) {
       return res.status(404).json({ message: "PO_NOT_FOUND" });
@@ -9576,9 +9581,50 @@ app.get("/api/purchase-orders/:id/print-receive-act", auth, async (req, res) => 
       receivedQty: row.receivedQty ?? 0,
     }));
 
-    const shortageRows = rows.filter(
+    let shortageRows = rows.filter(
       (row) => Number(row.orderedQty) > Number(row.receivedQty)
     );
+
+    if (
+      shortageRows.length === 0 &&
+      String(order.status || "").toUpperCase() === "PARTIAL"
+    ) {
+      const orderItemNameById = new Map();
+      order.items.forEach((row) => {
+        const itemId = Number(row.itemId);
+        if (!itemId || Number.isNaN(itemId)) return;
+        orderItemNameById.set(itemId, row.item?.name || row.name || `\u0422\u043e\u0432\u0430\u0440 #${itemId}`);
+      });
+
+      const finalShortages = await prisma.receivingDiscrepancy.findMany({
+        where: {
+          purchaseOrderId: id,
+          note: "FINAL_SHORTAGE",
+          delta: { lt: 0 },
+        },
+        include: { item: true },
+        orderBy: { id: "asc" },
+      });
+
+      const fallbackRows = finalShortages
+        .map((disc) => {
+          const itemId = disc.itemId ? Number(disc.itemId) : null;
+          const name =
+            disc.item?.name ||
+            (itemId ? orderItemNameById.get(itemId) : null) ||
+            (itemId ? `\u0422\u043e\u0432\u0430\u0440 #${itemId}` : "\u0422\u043e\u0432\u0430\u0440");
+          return {
+            name,
+            orderedQty: Number(disc.expectedQty) || 0,
+            receivedQty: Number(disc.receivedQty) || 0,
+          };
+        })
+        .filter((row) => Number(row.orderedQty) > Number(row.receivedQty));
+
+      if (fallbackRows.length > 0) {
+        shortageRows = fallbackRows;
+      }
+    }
 
     if (shortageRows.length === 0) {
       return res.status(204).end();
@@ -9599,7 +9645,6 @@ app.get("/api/purchase-orders/:id/print-receive-act", auth, async (req, res) => 
     res.status(500).json({ message: "PRINT_RECEIVE_ACT_ERROR" });
   }
 });
-
 
 app.get("/api/purchase-orders/:id/excel-file", auth, async (req, res) => {
   try {
