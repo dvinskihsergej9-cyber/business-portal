@@ -1960,13 +1960,15 @@ function buildOrderLabelHtml(order) {
 
 function buildReceiveActHtml(order, rows, orgInfo) {
   const safeOrg = {
-    name: orgInfo?.orgName || orgInfo?.name || "Организация",
+    name: orgInfo?.orgName || orgInfo?.name || "\u041e\u0440\u0433\u0430\u043d\u0438\u0437\u0430\u0446\u0438\u044f",
     legalAddress: orgInfo?.legalAddress || "",
     actualAddress: orgInfo?.actualAddress || "",
     inn: orgInfo?.inn || "",
     kpp: orgInfo?.kpp || "",
     phone: orgInfo?.phone || "",
   };
+
+  const isOrgProfileMissing = Boolean(orgInfo?.__profileMissing);
 
   const actDate = new Date();
   const actDateStr = actDate.toLocaleDateString("ru-RU");
@@ -2005,7 +2007,10 @@ function buildReceiveActHtml(order, rows, orgInfo) {
     .join("");
 
   const phoneRow = safeOrg.phone
-    ? `<tr><td>Тел.: ${safeOrg.phone}</td></tr>`
+    ? `<tr><td>\u0422\u0435\u043b.: ${safeOrg.phone}</td></tr>`
+    : "";
+  const profileNotice = isOrgProfileMissing
+    ? `<div class="small" style="margin-top:6px;color:#b91c1c;">&#1056;&#1077;&#1082;&#1074;&#1080;&#1079;&#1080;&#1090;&#1099; &#1086;&#1088;&#1075;&#1072;&#1085;&#1080;&#1079;&#1072;&#1094;&#1080;&#1080; &#1085;&#1077; &#1079;&#1072;&#1087;&#1086;&#1083;&#1085;&#1077;&#1085;&#1099;. &#1042;&#1083;&#1072;&#1076;&#1077;&#1083;&#1077;&#1094; &#1082;&#1083;&#1080;&#1077;&#1085;&#1090;&#1072; &#1076;&#1086;&#1083;&#1078;&#1077;&#1085; &#1079;&#1072;&#1087;&#1086;&#1083;&#1085;&#1080;&#1090;&#1100; &#1080;&#1093; &#1074; &#1088;&#1072;&#1079;&#1076;&#1077;&#1083;&#1077; &laquo;&#1053;&#1072;&#1089;&#1090;&#1088;&#1086;&#1081;&#1082;&#1080; &rarr; &#1056;&#1077;&#1082;&#1074;&#1080;&#1079;&#1080;&#1090;&#1099; &#1086;&#1088;&#1075;&#1072;&#1085;&#1080;&#1079;&#1072;&#1094;&#1080;&#1080;&raquo;.</div>`
     : "";
 
   return `
@@ -2079,8 +2084,9 @@ function buildReceiveActHtml(order, rows, orgInfo) {
       <tr><td>${safeOrg.name}</td></tr>
       <tr><td>Юридический адрес: ${safeOrg.legalAddress}</td></tr>
       <tr><td>Фактический адрес: ${safeOrg.actualAddress}</td></tr>
-      <tr><td>ИНН ${safeOrg.inn}&nbsp;&nbsp;&nbsp;&nbsp;КПП ${safeOrg.kpp}</td></tr>
+      <tr><td>\u0418\u041d\u041d ${safeOrg.inn}&nbsp;&nbsp;&nbsp;&nbsp;\u041a\u041f\u041f ${safeOrg.kpp}</td></tr>
       ${phoneRow}
+      ${profileNotice}
     </table>
 
     <div class="title">
@@ -2138,6 +2144,7 @@ function buildReceiveActHtml(order, rows, orgInfo) {
     <div style="margin-top:24px; display:flex; gap:8px; flex-wrap:wrap;">
       <button class="print-btn" onclick="window.print()">&#1055;&#1077;&#1095;&#1072;&#1090;&#1100;</button>
       <button class="print-btn" onclick="handleShareAct()">&#1055;&#1086;&#1076;&#1077;&#1083;&#1080;&#1090;&#1100;&#1089;&#1103;</button>
+      <button class="print-btn" onclick="window.location.reload()">&#1042;&#1077;&#1088;&#1085;&#1091;&#1090;&#1100;&#1089;&#1103; &#1074; &#1087;&#1088;&#1080;&#1083;&#1086;&#1078;&#1077;&#1085;&#1080;&#1077;</button>
     </div>
   </div>
 <script>
@@ -9633,16 +9640,17 @@ app.get("/api/purchase-orders/:id/print-receive-act", auth, async (req, res) => 
     const profile = await prisma.orgProfile.findFirst({
       where: { orgId: req.user.orgId || null },
     });
-    const profileForAct =
-      profile ||
-      {
-        orgName: "�����������",
-        legalAddress: "",
-        actualAddress: "",
-        inn: "",
-        kpp: "",
-        phone: "",
-      };
+    const profileForAct = profile
+      ? { ...profile, __profileMissing: false }
+      : {
+          orgName: "\u041e\u0440\u0433\u0430\u043d\u0438\u0437\u0430\u0446\u0438\u044f",
+          legalAddress: "",
+          actualAddress: "",
+          inn: "",
+          kpp: "",
+          phone: "",
+          __profileMissing: true,
+        };
 
     const html = buildReceiveActHtml(order, shortageRows, profileForAct);
     res.setHeader("Content-Type", "text/html; charset=utf-8");

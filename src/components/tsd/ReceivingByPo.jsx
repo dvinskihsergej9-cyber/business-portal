@@ -129,14 +129,6 @@ export default function ReceivingByPo({ authHeaders, makeOpId, onBack }) {
       unfilledRowsCount === 0,
     [orderRows.length, unfilledRowsCount, selectedPo]
   );
-  const hasShortageForAct = useMemo(
-    () =>
-      Boolean(selectedPo) &&
-      orderRows.some(
-        (row) => Number(row.acceptedTotal) < Number(row.orderedQty)
-      ),
-    [orderRows, selectedPo]
-  );
 
   const progressSummary = useMemo(() => {
     const totalLines = orderRows.length;
@@ -473,17 +465,6 @@ export default function ReceivingByPo({ authHeaders, makeOpId, onBack }) {
     }
   };
 
-  const handleManualPrintAct = async () => {
-    if (!selectedPo) return;
-    try {
-      await ensureOrgProfileAndPrint(selectedPo.id, { required: true });
-    } catch (actErr) {
-      const message = toUiError(actErr, "Акт не удалось открыть.");
-      setToast({ type: "error", message });
-      setState((prev) => ({ ...prev, error: message }));
-    }
-  };
-
   const handleConfirm = async () => {
     if (!selectedPo) {
       setState((prev) => ({
@@ -596,11 +577,11 @@ export default function ReceivingByPo({ authHeaders, makeOpId, onBack }) {
           shouldLeaveScreen = false;
           setToast({
             type: "error",
-            message: toUiError(actErr, "��� �� ������� �������."),
+            message: toUiError(actErr, "Акт не удалось открыть."),
           });
           setState((prev) => ({
             ...prev,
-            error: toUiError(actErr, "��� �� ������� �������."),
+            error: toUiError(actErr, "Акт не удалось открыть."),
           }));
         }
       }
@@ -840,16 +821,6 @@ export default function ReceivingByPo({ authHeaders, makeOpId, onBack }) {
                     ? "Сохранение..."
                     : "Завершить приемку"}
                 </button>
-                {hasShortageForAct && (
-                  <button
-                    type="button"
-                    className="tsd-btn tsd-btn--secondary tsd-btn--center"
-                    onClick={handleManualPrintAct}
-                    disabled={state.loading}
-                  >
-                    Распечатать акт
-                  </button>
-                )}
               </div>
             ) : (
               <div className="tsd-alert tsd-alert--info">
