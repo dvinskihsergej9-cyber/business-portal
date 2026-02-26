@@ -2144,7 +2144,7 @@ function buildReceiveActHtml(order, rows, orgInfo) {
     <div style="margin-top:24px; display:flex; gap:8px; flex-wrap:wrap;">
       <button class="print-btn" onclick="window.print()">&#1055;&#1077;&#1095;&#1072;&#1090;&#1100;</button>
       <button class="print-btn" onclick="handleShareAct()">&#1055;&#1086;&#1076;&#1077;&#1083;&#1080;&#1090;&#1100;&#1089;&#1103;</button>
-      <button class="print-btn" onclick="window.location.reload()">&#1042;&#1077;&#1088;&#1085;&#1091;&#1090;&#1100;&#1089;&#1103; &#1074; &#1087;&#1088;&#1080;&#1083;&#1086;&#1078;&#1077;&#1085;&#1080;&#1077;</button>
+      <button class="print-btn" onclick="if (window.history.length > 1) { window.history.back(); } else { window.location.href = \"/warehouse/tsd\"; }">&#1042;&#1077;&#1088;&#1085;&#1091;&#1090;&#1100;&#1089;&#1103; &#1074; &#1087;&#1088;&#1080;&#1083;&#1086;&#1078;&#1077;&#1085;&#1080;&#1077;</button>
     </div>
   </div>
 <script>
@@ -2156,7 +2156,8 @@ function buildReceiveActHtml(order, rows, orgInfo) {
     try {
       const html = document.documentElement.outerHTML;
       const blob = new Blob([html], { type: "text/html;charset=utf-8" });
-      const file = new File([blob], "act_" + safeOrderNumberForFile + ".html", {
+      const fileName = "act_${safeOrderNumberForFile}.html";
+      const file = new File([blob], fileName, {
         type: "text/html;charset=utf-8",
       });
       if (navigator.canShare && navigator.canShare({ files: [file] })) {
