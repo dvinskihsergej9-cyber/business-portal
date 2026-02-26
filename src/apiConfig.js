@@ -103,6 +103,12 @@ export const normalizeErrorMessage = (err, fallback = "Ошибка запрос
   if (message === "RECORD_CHANGED") {
     return "Запись уже изменена другим сотрудником. Обновите экран.";
   }
+  if (message === "ORG_PROFILE_REQUIRED") {
+    return "Для печати акта заполните реквизиты организации.";
+  }
+  if (message === "PRINT_RECEIVE_ACT_ERROR" || message === "PRINT_ACT_ERROR") {
+    return "Не удалось сформировать акт расхождений.";
+  }
   if (message === "TENANT_NOT_FOUND") {
     return "Данные заказа устарели. Обновите экран и повторите.";
   }

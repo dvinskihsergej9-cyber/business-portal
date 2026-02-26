@@ -9633,11 +9633,18 @@ app.get("/api/purchase-orders/:id/print-receive-act", auth, async (req, res) => 
     const profile = await prisma.orgProfile.findFirst({
       where: { orgId: req.user.orgId || null },
     });
-    if (!profile) {
-      return res.status(409).json({ message: "ORG_PROFILE_REQUIRED" });
-    }
+    const profileForAct =
+      profile ||
+      {
+        orgName: "Организация",
+        legalAddress: "",
+        actualAddress: "",
+        inn: "",
+        kpp: "",
+        phone: "",
+      };
 
-    const html = buildReceiveActHtml(order, shortageRows, profile);
+    const html = buildReceiveActHtml(order, shortageRows, profileForAct);
     res.setHeader("Content-Type", "text/html; charset=utf-8");
     res.send(html);
   } catch (err) {
