@@ -568,7 +568,7 @@ export default function ReceivingByPo({ authHeaders, makeOpId, onBack }) {
       if (hasDiscrepancies) {
         try {
           const printedNow = await ensureOrgProfileAndPrint(selectedPo.id, {
-            required: hasLocalShortage,
+            required: true,
           });
           if (!printedNow) {
             shouldLeaveScreen = false;
