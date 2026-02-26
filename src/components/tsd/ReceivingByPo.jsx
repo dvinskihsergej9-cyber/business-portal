@@ -454,11 +454,12 @@ export default function ReceivingByPo({ authHeaders, makeOpId, onBack }) {
   const ensureOrgProfileAndPrint = async (poId, options = {}) => {
     try {
       await openPrintAct(poId, options);
+      return true;
     } catch (err) {
       const code = String(err?.message || "");
       if (code === "ORG_PROFILE_REQUIRED") {
         await openOrgProfileModalForAct(poId);
-        return;
+        return false;
       }
       throw err;
     }
@@ -562,17 +563,26 @@ export default function ReceivingByPo({ authHeaders, makeOpId, onBack }) {
         (Array.isArray(confirmData?.discrepancies) &&
           confirmData.discrepancies.length > 0) ||
         String(finalizeData?.order?.status || "").toUpperCase() === "PARTIAL";
+      let shouldLeaveScreen = true;
 
       if (hasDiscrepancies) {
         try {
-          await ensureOrgProfileAndPrint(selectedPo.id, {
+          const printedNow = await ensureOrgProfileAndPrint(selectedPo.id, {
             required: hasLocalShortage,
           });
+          if (!printedNow) {
+            shouldLeaveScreen = false;
+          }
         } catch (actErr) {
+          shouldLeaveScreen = false;
           setToast({
             type: "error",
-            message: toUiError(actErr, "РђРєС‚ РЅРµ СѓРґР°Р»РѕСЃСЊ РѕС‚РєСЂС‹С‚СЊ."),
+            message: toUiError(actErr, "Акт не удалось открыть."),
           });
+          setState((prev) => ({
+            ...prev,
+            error: toUiError(actErr, "Акт не удалось открыть."),
+          }));
         }
       }
 
@@ -581,9 +591,11 @@ export default function ReceivingByPo({ authHeaders, makeOpId, onBack }) {
       setState((prev) => ({
         ...prev,
         loading: false,
-        done: true,
+        done: shouldLeaveScreen,
       }));
-      onBack?.();
+      if (shouldLeaveScreen) {
+        onBack?.();
+      }
 
     } catch (err) {
       setState((prev) => ({
