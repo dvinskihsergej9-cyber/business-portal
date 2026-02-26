@@ -371,12 +371,19 @@ export default function ReceivingByPo({ authHeaders, makeOpId, onBack }) {
   };
 
 
-  const openPrintAct = async (poId) => {
+  const openPrintAct = async (poId, { required = false } = {}) => {
     const printRes = await fetch(
       `${API_BASE}/purchase-orders/${poId}/print-receive-act`,
       { headers: authHeaders }
     );
-    if (printRes.status === 204) return;
+    if (printRes.status === 204) {
+      if (required) {
+        throw new Error(
+          "Недостача зафиксирована, но акт не сформирован. Обновите экран и повторите печать."
+        );
+      }
+      return;
+    }
     if (!printRes.ok) {
       let message = "PRINT_ACT_ERROR";
       try {
@@ -444,9 +451,9 @@ export default function ReceivingByPo({ authHeaders, makeOpId, onBack }) {
     }
   };
 
-  const ensureOrgProfileAndPrint = async (poId) => {
+  const ensureOrgProfileAndPrint = async (poId, options = {}) => {
     try {
-      await openPrintAct(poId);
+      await openPrintAct(poId, options);
     } catch (err) {
       const code = String(err?.message || "");
       if (code === "ORG_PROFILE_REQUIRED") {
@@ -547,14 +554,20 @@ export default function ReceivingByPo({ authHeaders, makeOpId, onBack }) {
         );
       }
 
+      const hasLocalShortage = orderRows.some(
+        (row) => Number(row.acceptedTotal) < Number(row.orderedQty)
+      );
       const hasDiscrepancies =
+        hasLocalShortage ||
         (Array.isArray(confirmData?.discrepancies) &&
           confirmData.discrepancies.length > 0) ||
         String(finalizeData?.order?.status || "").toUpperCase() === "PARTIAL";
 
       if (hasDiscrepancies) {
         try {
-          await ensureOrgProfileAndPrint(selectedPo.id);
+          await ensureOrgProfileAndPrint(selectedPo.id, {
+            required: hasLocalShortage,
+          });
         } catch (actErr) {
           setToast({
             type: "error",
