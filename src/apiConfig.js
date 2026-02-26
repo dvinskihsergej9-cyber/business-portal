@@ -83,10 +83,19 @@ export const normalizeErrorMessage = (err, fallback = "Ошибка запрос
   if (message === "REQUESTS_LIST_ERROR") return "Ошибка загрузки заявок.";
   if (message === "REQUEST_UPDATE_ERROR") return "Ошибка обновления заявки.";
   if (message === "PO_RECEIVING_CONFIRM_ERROR") {
+    return "Ошибка сервера при сохранении приемки.";
+  }
+  if (message === "PO_RECEIVING_FINALIZE_ERROR") {
     return "Ошибка сервера при завершении приемки.";
   }
   if (message === "PO_ALREADY_RECEIVED") {
     return "Заказ уже завершен.";
+  }
+  if (message === "NO_ACTIVE_TRUCK") {
+    return "Заказ не найден в активной очереди поставщиков.";
+  }
+  if (message === "TAKE_ORDER_FIRST") {
+    return "Сначала возьмите заказ в работу на приемку.";
   }
   if (message === "ALREADY_PROCESSED") {
     return "Данные уже обработаны. Обновите экран и повторите.";

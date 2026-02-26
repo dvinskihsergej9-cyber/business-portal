@@ -51,6 +51,7 @@ export default function ReceivingByPo({ authHeaders, makeOpId, onBack }) {
   const toastTimerRef = useRef(null);
   const highlightTimerRef = useRef(null);
   const userActivatedRef = useRef(false);
+  const confirmFlowRef = useRef({ poId: null, opId: null, saved: false });
 
   const poItemsById = useMemo(() => {
     const map = new Map();
@@ -195,6 +196,7 @@ export default function ReceivingByPo({ authHeaders, makeOpId, onBack }) {
     setLocalAccepted({});
     setHighlightedItemId(null);
     setToast(null);
+    confirmFlowRef.current = { poId: selectedPo.id, opId: null, saved: false };
   }, [selectedPo]);
 
   const safeVibrate = (pattern) => {
@@ -432,36 +434,75 @@ export default function ReceivingByPo({ authHeaders, makeOpId, onBack }) {
     }
     try {
       setState((prev) => ({ ...prev, loading: true, error: "" }));
-      const opId = makeOpId("POREC");
-      const res = await fetch(
-        `${API_BASE}/warehouse/receiving/${selectedPo.id}/confirm`,
+      const flow = confirmFlowRef.current || {};
+      const opId =
+        flow.poId === selectedPo.id && flow.opId ? flow.opId : makeOpId("POREC");
+      const isAlreadySaved =
+        flow.poId === selectedPo.id && flow.opId === opId && flow.saved;
+
+      let confirmData = null;
+      if (!isAlreadySaved) {
+        const confirmRes = await fetch(
+          `${API_BASE}/warehouse/receiving/${selectedPo.id}/confirm`,
+          {
+            method: "POST",
+            headers: authHeaders,
+            body: JSON.stringify({
+              opId,
+              lines: payloadLines,
+            }),
+          }
+        );
+        try {
+          confirmData = await confirmRes.json();
+        } catch (parseErr) {
+          confirmData = null;
+        }
+        if (!confirmRes.ok) {
+          if (
+            confirmData?.message === "PO_RECEIVING_CONFIRM_ERROR" &&
+            confirmData?.detail
+          ) {
+            throw new Error(
+              `Ошибка сервера при сохранении приемки: ${String(confirmData.detail)}`
+            );
+          }
+          throw new Error(confirmData?.message || "Не удалось сохранить приемку");
+        }
+        confirmFlowRef.current = { poId: selectedPo.id, opId, saved: true };
+      }
+
+      const finalizeRes = await fetch(
+        `${API_BASE}/warehouse/receiving/${selectedPo.id}/finalize`,
         {
           method: "POST",
           headers: authHeaders,
-          body: JSON.stringify({
-            opId,
-            lines: payloadLines,
-          }),
         }
       );
-      let data = null;
+      let finalizeData = null;
       try {
-        data = await res.json();
+        finalizeData = await finalizeRes.json();
       } catch (parseErr) {
-        data = null;
+        finalizeData = null;
       }
-      if (!res.ok) {
-        if (data?.message === "PO_RECEIVING_CONFIRM_ERROR" && data?.detail) {
+      if (!finalizeRes.ok) {
+        if (
+          finalizeData?.message === "PO_RECEIVING_FINALIZE_ERROR" &&
+          finalizeData?.detail
+        ) {
           throw new Error(
-            `\u041E\u0448\u0438\u0431\u043A\u0430 \u0441\u0435\u0440\u0432\u0435\u0440\u0430 \u043F\u0440\u0438 \u0437\u0430\u0432\u0435\u0440\u0448\u0435\u043D\u0438\u0438 \u043F\u0440\u0438\u0435\u043C\u043A\u0438: ${String(data.detail)}`
+            `Ошибка сервера при завершении приемки: ${String(finalizeData.detail)}`
           );
         }
         throw new Error(
-          data?.message || "\u041D\u0435 \u0443\u0434\u0430\u043B\u043E\u0441\u044C \u043F\u043E\u0434\u0442\u0432\u0435\u0440\u0434\u0438\u0442\u044C \u043F\u0440\u0438\u0435\u043C\u043A\u0443"
+          finalizeData?.message || "Не удалось завершить приемку"
         );
       }
+
       const hasDiscrepancies =
-        Array.isArray(data?.discrepancies) && data.discrepancies.length > 0;
+        (Array.isArray(confirmData?.discrepancies) &&
+          confirmData.discrepancies.length > 0) ||
+        String(finalizeData?.order?.status || "").toUpperCase() === "PARTIAL";
 
       if (hasDiscrepancies) {
         try {
@@ -473,6 +514,8 @@ export default function ReceivingByPo({ authHeaders, makeOpId, onBack }) {
           });
         }
       }
+
+      confirmFlowRef.current = { poId: null, opId: null, saved: false };
 
       setState((prev) => ({
         ...prev,
@@ -491,6 +534,7 @@ export default function ReceivingByPo({ authHeaders, makeOpId, onBack }) {
   };
 
   const resetFlow = () => {
+    confirmFlowRef.current = { poId: null, opId: null, saved: false };
     setSelectedPo(null);
     setLocalAccepted({});
     setHighlightedItemId(null);

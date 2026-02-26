@@ -10186,34 +10186,6 @@ app.post("/api/warehouse/receiving/:poId/confirm", auth, async (req, res) => {
         }
       }
 
-      const refreshed = await runWithoutTenantScope(() =>
-        tx.purchaseOrder.findUnique({
-          where: { id: poId },
-          include: { items: true },
-        })
-      );
-
-      if (refreshed) {
-        const allReceived = refreshed.items.every(
-          (row) => Number(row.receivedQty) >= Number(row.quantity)
-        );
-        const anyReceived = refreshed.items.some(
-          (row) => Number(row.receivedQty) > 0
-        );
-        const nextStatus = allReceived
-          ? "RECEIVED"
-          : anyReceived
-            ? "PARTIAL"
-            : refreshed.status;
-        if (nextStatus !== refreshed.status) {
-          await runWithoutTenantScope(() =>
-            tx.purchaseOrder.updateMany({
-              where: { id: poId },
-              data: { status: nextStatus, orgId: effectiveOrgId },
-            })
-          );
-        }
-      }
       if (createdDiscrepancies.length > 0) {
         await tx.receivingDiscrepancy.findMany({
           where: { id: { in: createdDiscrepancies } },
@@ -10235,33 +10207,11 @@ app.post("/api/warehouse/receiving/:poId/confirm", auth, async (req, res) => {
       console.error("po receiving confirm post-read error:", postReadErr);
     }
 
-    if (
-      updatedOrder &&
-      ["RECEIVED", "CLOSED"].includes(updatedOrder.status) &&
-      linkedTruck.status !== "DONE"
-    ) {
-      const now = new Date();
-      try {
-        await runWithoutTenantScope(() =>
-          prismaBase.supplierTruck.updateMany({
-            where: { id: linkedTruck.id, status: { not: "DONE" } },
-            data: {
-              status: "DONE",
-              unloadEndAt: linkedTruck.unloadEndAt || now,
-              orgId: linkedTruck.orgId || effectiveOrgId,
-            },
-          })
-        );
-      } catch (truckCloseErr) {
-        console.error("po receiving confirm truck close error:", truckCloseErr);
-      }
-    }
-
     res.json({
       ok: true,
       movementIds,
       discrepancies: createdDiscrepancies,
-      order: updatedOrder || { id: poId, status: "PARTIAL" },
+      order: updatedOrder || { id: poId },
     });
   } catch (err) {
     console.error("po receiving confirm error:", err);
@@ -10286,6 +10236,153 @@ app.post("/api/warehouse/receiving/:poId/confirm", auth, async (req, res) => {
     }
     res.status(500).json({
       message: "PO_RECEIVING_CONFIRM_ERROR",
+      detail: String(err?.message || ""),
+    });
+  }
+});
+
+app.post("/api/warehouse/receiving/:poId/finalize", auth, async (req, res) => {
+  try {
+    if (!canUseReceivingByPo(req.user)) {
+      return res.status(403).json({ message: "NO_ACCESS" });
+    }
+
+    const poId = Number(req.params.poId);
+    if (!poId || Number.isNaN(poId)) {
+      return res.status(400).json({ message: "BAD_PO_ID" });
+    }
+
+    const order = await runWithoutTenantScope(() =>
+      prismaBase.purchaseOrder.findUnique({
+        where: { id: poId },
+        include: {
+          supplier: true,
+          items: { include: { item: true } },
+        },
+      })
+    );
+
+    if (!order) {
+      return res.status(404).json({ message: "PO_NOT_FOUND" });
+    }
+
+    const effectiveOrgId = order.orgId || req.user?.orgId || null;
+    const linkedTruck = await findActiveTruckForOrder(order.number, [
+      "IN_QUEUE",
+      "UNLOADING",
+      "DONE",
+    ]);
+
+    if (!linkedTruck) {
+      return res.status(409).json({ message: "NO_ACTIVE_TRUCK" });
+    }
+    if (linkedTruck.status === "IN_QUEUE") {
+      return res.status(409).json({ message: "TAKE_ORDER_FIRST" });
+    }
+
+    await prisma.$transaction(async (tx) => {
+      const refreshed = await runWithoutTenantScope(() =>
+        tx.purchaseOrder.findUnique({
+          where: { id: poId },
+          include: { items: true },
+        })
+      );
+      if (!refreshed) return;
+
+      for (const row of refreshed.items || []) {
+        const ordered = Number(row.quantity) || 0;
+        const received = Number(row.receivedQty) || 0;
+        if (ordered === received) continue;
+
+        const delta = Math.trunc(received - ordered);
+        const existingFinal = await tx.receivingDiscrepancy.findFirst({
+          where: {
+            purchaseOrderId: poId,
+            itemId: row.itemId,
+            status: "OPEN",
+            delta,
+            note: { in: ["FINAL_SHORTAGE", "FINAL_OVERAGE"] },
+          },
+        });
+        if (!existingFinal) {
+          await tx.receivingDiscrepancy.create({
+            data: {
+              purchaseOrderId: poId,
+              itemId: row.itemId,
+              expectedQty: Math.trunc(ordered),
+              receivedQty: Math.trunc(received),
+              delta,
+              status: "OPEN",
+              note: delta < 0 ? "FINAL_SHORTAGE" : "FINAL_OVERAGE",
+            },
+          });
+        }
+      }
+
+      const allReceived = refreshed.items.every(
+        (row) => Number(row.receivedQty) >= Number(row.quantity)
+      );
+      const anyReceived = refreshed.items.some(
+        (row) => Number(row.receivedQty) > 0
+      );
+      const nextStatus = allReceived
+        ? "RECEIVED"
+        : anyReceived
+          ? "PARTIAL"
+          : refreshed.status;
+
+      if (nextStatus !== refreshed.status || !refreshed.orgId) {
+        await runWithoutTenantScope(() =>
+          tx.purchaseOrder.updateMany({
+            where: { id: poId },
+            data: { status: nextStatus, orgId: effectiveOrgId },
+          })
+        );
+      }
+    });
+
+    const now = new Date();
+    if (linkedTruck.status !== "DONE") {
+      try {
+        await runWithoutTenantScope(() =>
+          prismaBase.supplierTruck.updateMany({
+            where: { id: linkedTruck.id, status: { not: "DONE" } },
+            data: {
+              status: "DONE",
+              unloadEndAt: linkedTruck.unloadEndAt || now,
+              orgId: linkedTruck.orgId || effectiveOrgId,
+            },
+          })
+        );
+      } catch (truckCloseErr) {
+        console.error("po receiving finalize truck close error:", truckCloseErr);
+      }
+    }
+
+    const updatedOrder = await runWithoutTenantScope(() =>
+      prismaBase.purchaseOrder.findUnique({
+        where: { id: poId },
+        include: {
+          supplier: true,
+          items: { include: { item: true } },
+        },
+      })
+    );
+
+    res.json({ ok: true, order: updatedOrder || { id: poId } });
+  } catch (err) {
+    console.error("po receiving finalize error:", err);
+    if (err.code === "TENANT_NOT_FOUND") {
+      return res.status(409).json({ message: "TENANT_NOT_FOUND" });
+    }
+    if (err.code === "P2002") {
+      return res.status(409).json({ message: "ALREADY_PROCESSED" });
+    }
+    if (err.code === "P2025") {
+      return res.status(409).json({ message: "RECORD_CHANGED" });
+    }
+    res.status(500).json({
+      message: "PO_RECEIVING_FINALIZE_ERROR",
       detail: String(err?.message || ""),
     });
   }
