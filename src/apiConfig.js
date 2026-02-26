@@ -109,6 +109,18 @@ export const normalizeErrorMessage = (err, fallback = "Ошибка запрос
   if (message === "PRINT_RECEIVE_ACT_ERROR" || message === "PRINT_ACT_ERROR") {
     return "Не удалось сформировать акт расхождений.";
   }
+  if (message === "ORG_PROFILE_GET_ERROR") {
+    return "Не удалось загрузить реквизиты организации.";
+  }
+  if (message === "ORG_PROFILE_SAVE_ERROR") {
+    return "Не удалось сохранить реквизиты организации.";
+  }
+  if (message === "BAD_ORG_PROFILE") {
+    return "Заполните обязательные реквизиты организации.";
+  }
+  if (message === "ORG_REQUIRED") {
+    return "Организация пользователя не настроена.";
+  }
   if (message === "TENANT_NOT_FOUND") {
     return "Данные заказа устарели. Обновите экран и повторите.";
   }
