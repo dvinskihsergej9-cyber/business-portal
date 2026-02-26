@@ -444,9 +444,21 @@ export default function ReceivingByPo({ authHeaders, makeOpId, onBack }) {
           }),
         }
       );
-      const data = await res.json();
+      let data = null;
+      try {
+        data = await res.json();
+      } catch (parseErr) {
+        data = null;
+      }
       if (!res.ok) {
-        throw new Error(data.message || "Не удалось подтвердить приемку");
+        if (data?.message === "PO_RECEIVING_CONFIRM_ERROR" && data?.detail) {
+          throw new Error(
+            `\u041E\u0448\u0438\u0431\u043A\u0430 \u0441\u0435\u0440\u0432\u0435\u0440\u0430 \u043F\u0440\u0438 \u0437\u0430\u0432\u0435\u0440\u0448\u0435\u043D\u0438\u0438 \u043F\u0440\u0438\u0435\u043C\u043A\u0438: ${String(data.detail)}`
+          );
+        }
+        throw new Error(
+          data?.message || "\u041D\u0435 \u0443\u0434\u0430\u043B\u043E\u0441\u044C \u043F\u043E\u0434\u0442\u0432\u0435\u0440\u0434\u0438\u0442\u044C \u043F\u0440\u0438\u0435\u043C\u043A\u0443"
+        );
       }
       const hasDiscrepancies =
         Array.isArray(data?.discrepancies) && data.discrepancies.length > 0;

@@ -10220,16 +10220,20 @@ app.post("/api/warehouse/receiving/:poId/confirm", auth, async (req, res) => {
         });
       }
     });
-
-    const updatedOrder = await runWithoutTenantScope(() =>
-      prismaBase.purchaseOrder.findUnique({
-        where: { id: poId },
-        include: {
-          supplier: true,
-          items: { include: { item: true } },
-        },
-      })
-    );
+    let updatedOrder = null;
+    try {
+      updatedOrder = await runWithoutTenantScope(() =>
+        prismaBase.purchaseOrder.findUnique({
+          where: { id: poId },
+          include: {
+            supplier: true,
+            items: { include: { item: true } },
+          },
+        })
+      );
+    } catch (postReadErr) {
+      console.error("po receiving confirm post-read error:", postReadErr);
+    }
 
     if (
       updatedOrder &&
@@ -10237,23 +10241,27 @@ app.post("/api/warehouse/receiving/:poId/confirm", auth, async (req, res) => {
       linkedTruck.status !== "DONE"
     ) {
       const now = new Date();
-      await runWithoutTenantScope(() =>
-        prismaBase.supplierTruck.update({
-          where: { id: linkedTruck.id },
-          data: {
-            status: "DONE",
-            unloadEndAt: linkedTruck.unloadEndAt || now,
-            orgId: linkedTruck.orgId || effectiveOrgId,
-          },
-        })
-      );
+      try {
+        await runWithoutTenantScope(() =>
+          prismaBase.supplierTruck.updateMany({
+            where: { id: linkedTruck.id, status: { not: "DONE" } },
+            data: {
+              status: "DONE",
+              unloadEndAt: linkedTruck.unloadEndAt || now,
+              orgId: linkedTruck.orgId || effectiveOrgId,
+            },
+          })
+        );
+      } catch (truckCloseErr) {
+        console.error("po receiving confirm truck close error:", truckCloseErr);
+      }
     }
 
     res.json({
       ok: true,
       movementIds,
       discrepancies: createdDiscrepancies,
-      order: updatedOrder,
+      order: updatedOrder || { id: poId, status: "PARTIAL" },
     });
   } catch (err) {
     console.error("po receiving confirm error:", err);
