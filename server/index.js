@@ -10033,7 +10033,7 @@ app.post("/api/warehouse/receiving/:poId/confirm", auth, async (req, res) => {
     const effectiveOrgId = order.orgId || req.user?.orgId || null;
     const fullOrderItems = await runWithoutTenantScope(() =>
       prismaBase.purchaseOrderItem.findMany({
-        where: { purchaseOrderId: poId },
+        where: { orderId: poId },
         include: { item: true },
       })
     );
