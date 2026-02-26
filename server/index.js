@@ -1624,16 +1624,33 @@ async function findStockItemForOrderLine(db, raw = {}) {
 
 async function getOrCreateReceivingLocation() {
   const code = "RECEIVING";
-  let location = await prisma.warehouseLocation.findFirst({
-    where: { code },
-  });
+  const findByCode = () =>
+    runWithoutTenantScope(() =>
+      prismaBase.warehouseLocation.findFirst({
+        where: { code },
+      })
+    );
+
+  let location = await findByCode();
   if (!location) {
-    location = await prisma.warehouseLocation.create({
-      data: {
-        code,
-        name: "Зона приемки",
-      },
-    });
+    try {
+      location = await runWithoutTenantScope(() =>
+        prismaBase.warehouseLocation.create({
+          data: {
+            code,
+            name: "\u0417\u043e\u043d\u0430 \u043f\u0440\u0438\u0435\u043c\u043a\u0438",
+          },
+        })
+      );
+    } catch (err) {
+      if (err?.code !== "P2002") throw err;
+      location = await findByCode();
+    }
+  }
+  if (!location) {
+    const e = new Error("RECEIVING_LOCATION_CREATE_FAILED");
+    e.code = "RECEIVING_LOCATION_CREATE_FAILED";
+    throw e;
   }
   return location;
 }
