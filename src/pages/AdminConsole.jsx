@@ -6,7 +6,6 @@ import PickingReport from "./PickingReport";
 import AdminWarehousePanel from "../components/admin/AdminWarehousePanel";
 import AdminOrgProfilePanel from "../components/admin/AdminOrgProfilePanel";
 import AdminPickingShortagePanel from "../components/admin/AdminPickingShortagePanel";
-import AdminOrderStatusHistoryPanel from "../components/admin/AdminOrderStatusHistoryPanel";
 import "../components/admin/admin.css";
 import { hasPermission, PERMISSION_KEYS } from "../utils/permissions";
 
@@ -14,7 +13,6 @@ const BASE_TABS = [
   { id: "users", label: "Пользователи" },
   { id: "warehouse", label: "Склад" },
   { id: "picking-shortage", label: "Отбор" },
-  { id: "order-status-history", label: "Журнал статусов" },
   { id: "org-profile", label: "Реквизиты" },
   { id: "picking-report", label: "Биллинг ресурсов" },
 ];
@@ -38,9 +36,6 @@ export default function AdminConsole({ initialTab = "users" }) {
         canWarehouse ? BASE_TABS.find((item) => item.id === "warehouse") : null,
         canWarehouse
           ? BASE_TABS.find((item) => item.id === "picking-shortage")
-          : null,
-        canWarehouse
-          ? BASE_TABS.find((item) => item.id === "order-status-history")
           : null,
         canWarehouse
           ? BASE_TABS.find((item) => item.id === "org-profile")
@@ -121,7 +116,6 @@ export default function AdminConsole({ initialTab = "users" }) {
         {activeTab === "users" && <UserManagement />}
         {activeTab === "warehouse" && <AdminWarehousePanel />}
         {activeTab === "picking-shortage" && <AdminPickingShortagePanel />}
-        {activeTab === "order-status-history" && <AdminOrderStatusHistoryPanel />}
         {activeTab === "org-profile" && <AdminOrgProfilePanel />}
         {activeTab === "picking-report" && <PickingReport />}
       </div>

@@ -42,15 +42,8 @@ const ORDER_STATUS_LABELS = {
   CANCELLED: "Отменен",
 };
 
-const ORDER_EVENT_LABELS = {
-  COMPLETE: "Завершение отбора",
-  SHIP: "Отгрузка",
-};
-
 const getOrderStatusLabel = (status) =>
   ORDER_STATUS_LABELS[String(status || "").trim()] || String(status || "-");
-const getOrderEventLabel = (eventType) =>
-  ORDER_EVENT_LABELS[String(eventType || "").trim()] || String(eventType || "-");
 
 const makePassportFileName = (order) => {
   const safeOrderNumber = String(order?.orderNumber || "без-номера")
@@ -138,8 +131,6 @@ export default function OrderFulfillmentFlow({ authHeaders, onBack }) {
   const [skipModalOpen, setSkipModalOpen] = useState(false);
   const [skipReason, setSkipReason] = useState(SKIP_REASON_OPTIONS[0]);
   const [skipComment, setSkipComment] = useState("");
-  const [statusHistory, setStatusHistory] = useState([]);
-  const [statusHistoryLoading, setStatusHistoryLoading] = useState(false);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
 
@@ -207,26 +198,6 @@ export default function OrderFulfillmentFlow({ authHeaders, onBack }) {
       setError(normalizeErrorMessage(err, "Ошибка загрузки очереди заказов."));
     } finally {
       setLoading(false);
-    }
-  };
-
-  const loadStatusHistory = async (orderId) => {
-    if (!orderId) return;
-    setStatusHistoryLoading(true);
-    try {
-      const res = await fetch(`${API_BASE}/orders/${orderId}/status-history`, {
-        headers: authHeaders,
-      });
-      const data = await readJsonSafe(res);
-      if (!res.ok) {
-        throw new Error(data?.message || "Не удалось загрузить историю статусов.");
-      }
-      setStatusHistory(Array.isArray(data?.items) ? data.items : []);
-    } catch (err) {
-      setStatusHistory([]);
-      setError(normalizeErrorMessage(err, "Ошибка загрузки истории статусов."));
-    } finally {
-      setStatusHistoryLoading(false);
     }
   };
 
@@ -317,15 +288,6 @@ export default function OrderFulfillmentFlow({ authHeaders, onBack }) {
   }, [mineOnly]);
 
   useEffect(() => {
-    if (!selectedOrder?.id) {
-      setStatusHistory([]);
-      return;
-    }
-    loadStatusHistory(selectedOrder.id);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [selectedOrder?.id]);
-
-  useEffect(() => {
     if (activePickPlan.length === 0) {
       if (currentIndex !== 0) setCurrentIndex(0);
       setLocationScanned(false);
@@ -389,7 +351,6 @@ export default function OrderFulfillmentFlow({ authHeaders, onBack }) {
     setSkipModalOpen(false);
     setSkipReason(SKIP_REASON_OPTIONS[0]);
     setSkipComment("");
-    setStatusHistory([]);
   };
 
   const leaveSelectedOrder = async (navigateBack = false) => {
@@ -875,16 +836,7 @@ export default function OrderFulfillmentFlow({ authHeaders, onBack }) {
       resetSelection();
       await loadQueue();
     } catch (err) {
-      const raw = String(err?.message || "").trim();
-      if (raw === "ORDER_NOT_FOUND") {
-        setError("Заказ не найден.");
-      } else if (raw === "NOT_ASSIGNED_TO_YOU") {
-        setError("Заказ закреплен за другим сотрудником.");
-      } else if (raw === "ORDER_BAD_STATUS") {
-        setError("Сначала завершите отбор.");
-      } else {
-        setError(normalizeErrorMessage(err, "Ошибка завершения заказа."));
-      }
+      setError(normalizeErrorMessage(err, "Ошибка завершения заказа."));
     } finally {
       setLoading(false);
     }
@@ -988,46 +940,6 @@ export default function OrderFulfillmentFlow({ authHeaders, onBack }) {
                     К списку
                   </button>
                 </div>
-            </div>
-
-            <div className="tsd-card">
-              <div className="tsd-card__body">
-                <div className="tsd-card__title">История статусов</div>
-                {statusHistoryLoading ? (
-                  <div className="tsd-card__meta">Загрузка...</div>
-                ) : null}
-                {!statusHistoryLoading && statusHistory.length === 0 ? (
-                  <div className="tsd-card__meta">Событий пока нет.</div>
-                ) : null}
-                {!statusHistoryLoading && statusHistory.length > 0 ? (
-                  <div className="tsd-list">
-                    {statusHistory.map((event) => {
-                      const actor =
-                        event?.actorUser?.name ||
-                        event?.actorUser?.email ||
-                        (event?.actorUserId ? `#${event.actorUserId}` : "Система");
-                      const meta = event?.metaJson && typeof event.metaJson === "object"
-                        ? Object.entries(event.metaJson)
-                            .filter(([, value]) => value != null && String(value).trim())
-                            .map(([key, value]) => `${key}: ${value}`)
-                            .join(" • ")
-                        : "";
-                      return (
-                        <div key={event.id} className="tsd-card">
-                          <div className="tsd-card__meta">
-                            {formatDateTime(event.createdAt)} • {getOrderEventLabel(event.eventType)}
-                          </div>
-                          <div className="tsd-card__meta">
-                            {getOrderStatusLabel(event.fromStatus)} {"->"} {getOrderStatusLabel(event.toStatus)}
-                          </div>
-                          <div className="tsd-card__meta">Кто: {actor}</div>
-                          {meta ? <div className="tsd-card__meta">Данные: {meta}</div> : null}
-                        </div>
-                      );
-                    })}
-                  </div>
-                ) : null}
-              </div>
             </div>
 
             {currentStep && (
