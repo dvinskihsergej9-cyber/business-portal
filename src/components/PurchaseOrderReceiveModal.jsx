@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { API_BASE } from "../apiConfig";
+import { openHtmlDocumentInNewTab } from "../utils/openInNewTab";
 
 const API = API_BASE;
 
@@ -192,10 +193,7 @@ function openDiscrepancyActWindow(order, rows, orgInfo) {
 </html>
   `;
 
-  const win = window;
-
-  win.document.write(html);
-  win.document.close();
+  openHtmlDocumentInNewTab(html);
 }
 
 /**

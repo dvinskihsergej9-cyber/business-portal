@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { API_BASE, normalizeErrorMessage } from "../../apiConfig";
+import { openHtmlDocumentInNewTab } from "../../utils/openInNewTab";
 import Scanner from "./Scanner";
 import Stepper from "./Stepper";
 import TsdHeader from "./TsdHeader";
@@ -395,11 +396,7 @@ export default function ReceivingByPo({ authHeaders, makeOpId, onBack }) {
       throw new Error(message);
     }
     const html = await printRes.text();
-    const win = window;
-    if (win) {
-      win.document.write(html);
-      win.document.close();
-    }
+    openHtmlDocumentInNewTab(html);
   };
 
   const openOrgProfileModalForAct = async (poId) => {

@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { API_BASE } from "../apiConfig";
+import { openHtmlDocumentInNewTab } from "../utils/openInNewTab";
 
 const API = API_BASE;
 
@@ -155,7 +156,6 @@ export default function WarehouseLocationsPanel() {
       return;
     }
 
-    const printWindow = window;
     try {
       setActionLoading(true);
       setError("");
@@ -181,9 +181,7 @@ export default function WarehouseLocationsPanel() {
         } catch {}
         throw new Error(messageText);
       }
-      printWindow.document.write(html);
-      printWindow.document.close();
-      printWindow.focus();
+      openHtmlDocumentInNewTab(html);
     } catch (err) {
       setError(err.message || "Ошибка печати");
     } finally {
@@ -320,7 +318,6 @@ export default function WarehouseLocationsPanel() {
       return;
     }
 
-    const printWindow = window;
     try {
       setActionLoading(true);
       setError("");
@@ -344,9 +341,7 @@ export default function WarehouseLocationsPanel() {
         } catch {}
         throw new Error(messageText);
       }
-      printWindow.document.write(html);
-      printWindow.document.close();
-      printWindow.focus();
+      openHtmlDocumentInNewTab(html);
     } catch (err) {
       setError(err.message || "Ошибка печати");
     } finally {

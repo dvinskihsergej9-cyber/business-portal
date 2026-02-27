@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import { API_BASE } from "../apiConfig";
+import { openHtmlDocumentInNewTab } from "../utils/openInNewTab";
 
 const API = API_BASE;
 
@@ -157,10 +158,7 @@ function openInventoryAuditActWindow(items, includeZero) {
 </html>
   `;
 
-  const win = window;
-  win.document.open();
-  win.document.write(html);
-  win.document.close();
+  openHtmlDocumentInNewTab(html);
 }
 
 /**

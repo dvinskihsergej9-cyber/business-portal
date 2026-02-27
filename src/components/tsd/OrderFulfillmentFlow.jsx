@@ -4,6 +4,7 @@ import { jsPDF } from "jspdf";
 import autoTable from "jspdf-autotable";
 import QRCode from "qrcode";
 import { ARIAL_TTF_BASE64 } from "../../utils/arialFontBase64";
+import { openBlobInNewTab } from "../../utils/openInNewTab";
 import TsdHeader from "./TsdHeader";
 import Scanner from "./Scanner";
 import TsdErrorAlert from "./TsdErrorAlert";
@@ -802,10 +803,6 @@ export default function OrderFulfillmentFlow({ authHeaders, onBack }) {
     }
   };
 
-  const openPdfInCurrentTab = (url) => {
-    window.location.assign(url);
-  };
-
   const trySharePdfFile = async (blob, order) => {
     if (typeof navigator === "undefined" || typeof navigator.share !== "function") {
       return false;
@@ -849,9 +846,7 @@ export default function OrderFulfillmentFlow({ authHeaders, onBack }) {
       const blob = pdf.output("blob");
       const shared = await trySharePdfFile(blob, selectedOrder);
       if (shared) return;
-      const url = URL.createObjectURL(blob);
-      openPdfInCurrentTab(url);
-      setTimeout(() => URL.revokeObjectURL(url), 60_000);
+      openBlobInNewTab(blob);
     } catch (err) {
       setError(normalizeErrorMessage(err, "Ошибка формирования паспорта."));
     }

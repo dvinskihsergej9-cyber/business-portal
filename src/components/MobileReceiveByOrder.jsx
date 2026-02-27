@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { BrowserMultiFormatReader } from "@zxing/browser";
 import { API_BASE } from "../apiConfig";
+import { openHtmlDocumentInNewTab } from "../utils/openInNewTab";
 
 const API = API_BASE;
 
@@ -225,10 +226,7 @@ function openMobileDiscrepancyActWindow(order, rows, orgInfo) {
 </html>
   `;
 
-  const win = window;
-
-  win.document.write(html);
-  win.document.close();
+  openHtmlDocumentInNewTab(html);
 }
 
 /**
