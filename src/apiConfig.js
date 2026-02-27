@@ -127,6 +127,9 @@ export const normalizeErrorMessage = (err, fallback = "Ошибка запрос
   if (message === "ORDER_SHORTAGE_JOURNAL_ERROR") {
     return "Не удалось загрузить журнал закрытий.";
   }
+  if (message === "ORDER_PICKING_JOURNAL_ERROR") {
+    return "Не удалось загрузить общий журнал отбора.";
+  }
   if (message === "ORDER_ADMIN_CLOSE_ERROR") {
     return "Не удалось закрыть задание с недостачей.";
   }

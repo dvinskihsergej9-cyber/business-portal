@@ -34,6 +34,7 @@ export default function AdminPickingShortagePanel() {
   const [error, setError] = useState("");
   const [success, setSuccess] = useState("");
   const [candidates, setCandidates] = useState([]);
+  const [allJournal, setAllJournal] = useState([]);
   const [journal, setJournal] = useState([]);
   const [modalOrder, setModalOrder] = useState(null);
   const [closeReason, setCloseReason] = useState("");
@@ -50,17 +51,21 @@ export default function AdminPickingShortagePanel() {
     try {
       setLoading(true);
       setError("");
-      const [candRes, journalRes] = await Promise.all([
+      const [candRes, journalRes, allJournalRes] = await Promise.all([
         fetch(`${API_BASE}/orders/admin-shortage-candidates`, {
           headers: authHeaders,
         }),
         fetch(`${API_BASE}/orders/admin-shortage-journal`, {
           headers: authHeaders,
         }),
+        fetch(`${API_BASE}/orders/admin-picking-journal`, {
+          headers: authHeaders,
+        }),
       ]);
 
       const candData = await candRes.json();
       const journalData = await journalRes.json();
+      const allJournalData = await allJournalRes.json();
 
       if (!candRes.ok) {
         throw new Error(candData?.message || "ORDER_SHORTAGE_CANDIDATES_ERROR");
@@ -68,9 +73,17 @@ export default function AdminPickingShortagePanel() {
       if (!journalRes.ok) {
         throw new Error(journalData?.message || "ORDER_SHORTAGE_JOURNAL_ERROR");
       }
+      if (!allJournalRes.ok) {
+        throw new Error(
+          allJournalData?.message || "ORDER_PICKING_JOURNAL_ERROR"
+        );
+      }
 
       setCandidates(Array.isArray(candData?.items) ? candData.items : []);
       setJournal(Array.isArray(journalData?.items) ? journalData.items : []);
+      setAllJournal(
+        Array.isArray(allJournalData?.items) ? allJournalData.items : []
+      );
     } catch (err) {
       setError(normalizeErrorMessage(err, "Не удалось загрузить данные по отбору."));
     } finally {
@@ -189,6 +202,60 @@ export default function AdminPickingShortagePanel() {
           </div>
 
           <div style={{ marginTop: 18, fontWeight: 700 }}>
+            Общий журнал отбора
+          </div>
+          <div className="admin-table-wrapper">
+            <table className="admin-table">
+              <thead>
+                <tr>
+                  <th>Дата</th>
+                  <th>Заказ</th>
+                  <th>Статус</th>
+                  <th>Исполнитель</th>
+                  <th>Отобрано</th>
+                  <th>Комментарий закрытия</th>
+                </tr>
+              </thead>
+              <tbody>
+                {allJournal.map((row) => (
+                  <tr key={row.id}>
+                    <td data-label="date">
+                      {formatDate(
+                        row.completedAt ||
+                          row.packedAt ||
+                          row.pickedAt ||
+                          row.updatedAt ||
+                          row.createdAt
+                      )}
+                    </td>
+                    <td data-label="order">
+                      <div className="admin-table__title">{row.orderNumber || "-"}</div>
+                      <div className="admin-table__meta">{row.customerName || "-"}</div>
+                    </td>
+                    <td data-label="status">{statusLabel(row.status)}</td>
+                    <td data-label="assignee">{userLabel(row.assignedToUser)}</td>
+                    <td data-label="picked">
+                      {(row.pickedQty || 0)} / {(row.totalQty || 0)}
+                    </td>
+                    <td data-label="close">
+                      {row?.closeMeta?.reason
+                        ? `Недостача: ${row.closeMeta.reason}`
+                        : "-"}
+                    </td>
+                  </tr>
+                ))}
+                {allJournal.length === 0 ? (
+                  <tr>
+                    <td colSpan={6} className="admin-muted">
+                      Записей пока нет.
+                    </td>
+                  </tr>
+                ) : null}
+              </tbody>
+            </table>
+          </div>
+
+          <div style={{ marginTop: 18, fontWeight: 700 }}>
             Журнал закрытий с недостачей
           </div>
           <div className="admin-table-wrapper">
@@ -285,4 +352,3 @@ export default function AdminPickingShortagePanel() {
     </div>
   );
 }
-

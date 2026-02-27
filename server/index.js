@@ -11577,6 +11577,80 @@ app.get("/api/orders/admin-shortage-journal", auth, async (req, res) => {
     res.status(500).json({ message: "ORDER_SHORTAGE_JOURNAL_ERROR" });
   }
 });
+app.get("/api/orders/admin-picking-journal", auth, async (req, res) => {
+  try {
+    if (!isWarehouseManager(req.user)) {
+      return res.status(403).json({ message: "NO_ACCESS" });
+    }
+
+    const limitRaw = Number(req.query.limit);
+    const limit = Number.isFinite(limitRaw)
+      ? Math.min(Math.max(Math.trunc(limitRaw), 1), 500)
+      : 200;
+
+    const statusFilter = String(
+      req.query.status || "NEW,IN_PICKING,PICKED,PACKED,READY_TO_SHIP,SHIPPED,CANCELLED"
+    )
+      .split(",")
+      .map((value) => String(value || "").trim())
+      .filter(Boolean);
+
+    const orders = await prisma.salesOrder.findMany({
+      where: {
+        status: { in: statusFilter },
+      },
+      orderBy: [{ updatedAt: "desc" }, { id: "desc" }],
+      include: {
+        assignedToUser: { select: { id: true, name: true, email: true } },
+        lines: {
+          select: {
+            id: true,
+            qty: true,
+            pickedQty: true,
+          },
+        },
+      },
+      take: limit,
+    });
+
+    const items = orders.map((order) => {
+      const parsed = parseAdminShortageMetaFromComment(order.deliveryComment);
+      const totalQty = (order.lines || []).reduce(
+        (sum, line) => sum + (Number(line.qty) || 0),
+        0
+      );
+      const pickedQty = (order.lines || []).reduce(
+        (sum, line) => sum + (Number(line.pickedQty) || 0),
+        0
+      );
+
+      return {
+        id: order.id,
+        orderNumber: order.orderNumber,
+        customerName: order.customerName,
+        customerPhone: order.customerPhone,
+        shippingAddress: order.shippingAddress,
+        status: order.status,
+        createdAt: order.createdAt,
+        updatedAt: order.updatedAt,
+        takenAt: order.takenAt,
+        pickedAt: order.pickedAt,
+        packedAt: order.packedAt,
+        completedAt: order.completedAt,
+        assignedToUser: order.assignedToUser,
+        totalQty,
+        pickedQty,
+        remainingQty: Math.max(0, totalQty - pickedQty),
+        closeMeta: parsed.meta || null,
+      };
+    });
+
+    res.json({ items });
+  } catch (err) {
+    console.error("orders admin picking journal error:", err);
+    res.status(500).json({ message: "ORDER_PICKING_JOURNAL_ERROR" });
+  }
+});
 app.get("/api/orders/:id/pick-skips", auth, async (req, res) => {
   try {
     const orderId = Number(req.params.id);
