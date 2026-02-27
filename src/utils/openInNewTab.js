@@ -9,14 +9,21 @@ function getPopupBlockedErrorMessage(customMessage) {
 export function openHtmlDocumentInNewTab(html, options = {}) {
   if (typeof window === "undefined") return null;
 
-  const popup = window.open("about:blank", "_blank", "noopener,noreferrer");
+  const popup = window.open("", "_blank");
   if (!popup) {
     throw new Error(getPopupBlockedErrorMessage(options.popupBlockedMessage));
   }
 
-  popup.document.open();
-  popup.document.write(String(html || ""));
-  popup.document.close();
+  const normalizedHtml = String(html || "");
+  try {
+    popup.document.open();
+    popup.document.write(normalizedHtml);
+    popup.document.close();
+  } catch {
+    popup.location.href = `data:text/html;charset=utf-8,${encodeURIComponent(
+      normalizedHtml
+    )}`;
+  }
   popup.focus();
   return popup;
 }
@@ -33,12 +40,13 @@ export function openBlobInNewTab(blob, options = {}) {
       : 60_000;
 
   const objectUrl = URL.createObjectURL(blob);
-  const popup = window.open(objectUrl, "_blank", "noopener,noreferrer");
-
+  const popup = window.open("", "_blank");
   if (!popup) {
     URL.revokeObjectURL(objectUrl);
     throw new Error(popupBlockedMessage);
   }
+
+  popup.location.href = objectUrl;
 
   window.setTimeout(() => {
     URL.revokeObjectURL(objectUrl);
