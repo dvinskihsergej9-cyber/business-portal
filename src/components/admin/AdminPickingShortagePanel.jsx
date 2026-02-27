@@ -35,7 +35,6 @@ export default function AdminPickingShortagePanel() {
   const [success, setSuccess] = useState("");
   const [candidates, setCandidates] = useState([]);
   const [allJournal, setAllJournal] = useState([]);
-  const [journal, setJournal] = useState([]);
   const [modalOrder, setModalOrder] = useState(null);
   const [closeReason, setCloseReason] = useState("");
 
@@ -51,11 +50,8 @@ export default function AdminPickingShortagePanel() {
     try {
       setLoading(true);
       setError("");
-      const [candRes, journalRes, allJournalRes] = await Promise.all([
+      const [candRes, allJournalRes] = await Promise.all([
         fetch(`${API_BASE}/orders/admin-shortage-candidates`, {
-          headers: authHeaders,
-        }),
-        fetch(`${API_BASE}/orders/admin-shortage-journal`, {
           headers: authHeaders,
         }),
         fetch(`${API_BASE}/orders/admin-picking-journal`, {
@@ -64,14 +60,10 @@ export default function AdminPickingShortagePanel() {
       ]);
 
       const candData = await candRes.json();
-      const journalData = await journalRes.json();
       const allJournalData = await allJournalRes.json();
 
       if (!candRes.ok) {
         throw new Error(candData?.message || "ORDER_SHORTAGE_CANDIDATES_ERROR");
-      }
-      if (!journalRes.ok) {
-        throw new Error(journalData?.message || "ORDER_SHORTAGE_JOURNAL_ERROR");
       }
       if (!allJournalRes.ok) {
         throw new Error(
@@ -80,7 +72,6 @@ export default function AdminPickingShortagePanel() {
       }
 
       setCandidates(Array.isArray(candData?.items) ? candData.items : []);
-      setJournal(Array.isArray(journalData?.items) ? journalData.items : []);
       setAllJournal(
         Array.isArray(allJournalData?.items) ? allJournalData.items : []
       );
@@ -255,51 +246,6 @@ export default function AdminPickingShortagePanel() {
             </table>
           </div>
 
-          <div style={{ marginTop: 18, fontWeight: 700 }}>
-            Журнал закрытий с недостачей
-          </div>
-          <div className="admin-table-wrapper">
-            <table className="admin-table">
-              <thead>
-                <tr>
-                  <th>Дата</th>
-                  <th>Заказ</th>
-                  <th>Причина</th>
-                  <th>Кто закрыл</th>
-                  <th>Пропуски</th>
-                  <th>Осталось шт.</th>
-                </tr>
-              </thead>
-              <tbody>
-                {journal.map((row) => (
-                  <tr key={row.id}>
-                    <td data-label="date">
-                      {formatDate(row?.closeMeta?.closedAt || row?.completedAt)}
-                    </td>
-                    <td data-label="order">
-                      <div className="admin-table__title">{row.orderNumber || "-"}</div>
-                      <div className="admin-table__meta">{row.customerName || "-"}</div>
-                    </td>
-                    <td data-label="reason">{row?.closeMeta?.reason || "-"}</td>
-                    <td data-label="closedBy">
-                      {row?.closeMeta?.closedByName ||
-                        row?.closeMeta?.closedByEmail ||
-                        "-"}
-                    </td>
-                    <td data-label="skips">{row.activeSkipCount || 0}</td>
-                    <td data-label="remaining">{row.remainingQty || 0}</td>
-                  </tr>
-                ))}
-                {journal.length === 0 ? (
-                  <tr>
-                    <td colSpan={6} className="admin-muted">
-                      Записей пока нет.
-                    </td>
-                  </tr>
-                ) : null}
-              </tbody>
-            </table>
-          </div>
         </>
       )}
 
