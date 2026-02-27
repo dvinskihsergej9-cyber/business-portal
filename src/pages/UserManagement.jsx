@@ -8,7 +8,7 @@ import {
 } from "../utils/permissions";
 
 const API = API_BASE;
-const ALL_ROLES = ["EMPLOYEE", "HR", "ACCOUNTING", "WAREHOUSE", "ADMIN"];
+const ALL_ROLES = ["EMPLOYEE", "ADMIN"];
 const CREATED_USER_PASSWORDS_KEY = "bp.createdUserPasswords.v1";
 
 const FALLBACK_PERMISSION_CATALOG = {
@@ -35,17 +35,16 @@ const roleLabel = (role) => {
   switch (role) {
     case "EMPLOYEE":
       return "Сотрудник";
-    case "HR":
-      return "HR";
-    case "ACCOUNTING":
-      return "Бухгалтерия";
-    case "WAREHOUSE":
-      return "Склад";
     case "ADMIN":
       return "Админ";
     default:
-      return role;
+      return "Сотрудник";
   }
+};
+
+const normalizeManagedRole = (role) => {
+  const nextRole = String(role || "").trim().toUpperCase();
+  return ALL_ROLES.includes(nextRole) ? nextRole : "EMPLOYEE";
 };
 
 const mapCreateUserError = (code) => {
@@ -139,7 +138,9 @@ export default function UserManagement() {
   const createErrorRef = useRef(null);
   const [createdPasswords, setCreatedPasswords] = useState(() => readCreatedPasswords());
   const [pendingScrollUserId, setPendingScrollUserId] = useState(null);
+  const [copiedUserId, setCopiedUserId] = useState(null);
   const userRowRefs = useRef({});
+  const copiedUserTimerRef = useRef(null);
   const [newUser, setNewUser] = useState({
     name: "",
     login: "",
@@ -267,7 +268,10 @@ export default function UserManagement() {
       if (!res.ok) {
         throw new Error(data.message || "Ошибка загрузки пользователей");
       }
-      const list = Array.isArray(data) ? data : [];
+      const list = (Array.isArray(data) ? data : []).map((row) => ({
+        ...row,
+        role: normalizeManagedRole(row?.role),
+      }));
       setUsers(list);
       syncPermissionDrafts(list);
     } catch (e) {
@@ -307,11 +311,21 @@ export default function UserManagement() {
     }
   }, [createdPasswords]);
 
+  useEffect(
+    () => () => {
+      if (copiedUserTimerRef.current) {
+        clearTimeout(copiedUserTimerRef.current);
+      }
+    },
+    []
+  );
+
   const handleCreateRoleChange = (nextRole) => {
+    const safeRole = normalizeManagedRole(nextRole);
     setNewUser((prev) => ({
       ...prev,
-      role: nextRole,
-      permissions: getTemplatePermissions(prev.template, nextRole),
+      role: safeRole,
+      permissions: getTemplatePermissions(prev.template, safeRole),
     }));
   };
 
@@ -349,7 +363,7 @@ export default function UserManagement() {
   const handleCreateUser = async () => {
     const login = normalizeLoginForSubmit(newUser.login);
     const name = String(newUser.name || "").trim();
-    const role = String(newUser.role || "EMPLOYEE");
+    const role = normalizeManagedRole(newUser.role);
     const password = String(newUser.password || "");
 
     if (!login) {
@@ -486,7 +500,7 @@ export default function UserManagement() {
     }
   };
 
-  const handleCopyCredentials = async (targetUser) => {
+  const handleCopyCredentials = async (targetUser, userId = null) => {
     const login = String(
       targetUser?.login || targetUser?.username || targetUser?.email || ""
     ).trim();
@@ -500,15 +514,23 @@ export default function UserManagement() {
     try {
       await copyText(`Логин: ${login}\nПароль: ${password}`);
       setError("");
-      setCreateSuccess(`Данные сотрудника "${login}" скопированы.`);
+      if (userId) {
+        setCopiedUserId(userId);
+        if (copiedUserTimerRef.current) clearTimeout(copiedUserTimerRef.current);
+        copiedUserTimerRef.current = setTimeout(() => setCopiedUserId(null), 1800);
+      }
+      if (document.activeElement instanceof HTMLElement) {
+        document.activeElement.blur();
+      }
     } catch (err) {
       setError("Не удалось скопировать логин и пароль.");
     }
   };
 
   const handleRoleChangeLocal = (id, newRole) => {
+    const safeRole = normalizeManagedRole(newRole);
     setUsers((prev) =>
-      prev.map((u) => (u.id === id ? { ...u, role: newRole } : u))
+      prev.map((u) => (u.id === id ? { ...u, role: safeRole } : u))
     );
 
     setPermissionDrafts((prev) => {
@@ -520,7 +542,7 @@ export default function UserManagement() {
         ...prev,
         [id]: {
           template: "ROLE_DEFAULT",
-          permissions: getTemplatePermissions("ROLE_DEFAULT", newRole),
+          permissions: getTemplatePermissions("ROLE_DEFAULT", safeRole),
         },
       };
     });
@@ -549,10 +571,11 @@ export default function UserManagement() {
         throw new Error("Сервер вернул пустые данные пользователя");
       }
 
-      setUsers((prev) => prev.map((u) => (u.id === id ? nextUser : u)));
+      const safeUser = { ...nextUser, role: normalizeManagedRole(nextUser.role) };
+      setUsers((prev) => prev.map((u) => (u.id === id ? safeUser : u)));
       setPermissionDrafts((prev) => ({
         ...prev,
-        [id]: buildPermissionDraft(nextUser),
+        [id]: buildPermissionDraft(safeUser),
       }));
     } catch (e) {
       console.error(e);
@@ -629,10 +652,11 @@ export default function UserManagement() {
         throw new Error("Сервер вернул пустые данные пользователя");
       }
 
-      setUsers((prev) => prev.map((row) => (row.id === userId ? nextUser : row)));
+      const safeUser = { ...nextUser, role: normalizeManagedRole(nextUser.role) };
+      setUsers((prev) => prev.map((row) => (row.id === userId ? safeUser : row)));
       setPermissionDrafts((prev) => ({
         ...prev,
-        [userId]: buildPermissionDraft(nextUser),
+        [userId]: buildPermissionDraft(safeUser),
       }));
     } catch (e) {
       console.error(e);
@@ -646,6 +670,8 @@ export default function UserManagement() {
     const query = String(userSearch || "").trim().toLowerCase();
     if (!query) return users;
     return users.filter((u) => {
+      const organizationName = String(u?.organization?.name || "").trim();
+      const organizationCode = String(u?.organization?.code || "").trim();
       const haystack = [
         u.id,
         u.name,
@@ -654,6 +680,8 @@ export default function UserManagement() {
         u.email,
         u.role,
         roleLabel(u.role),
+        organizationName,
+        organizationCode,
       ]
         .filter(Boolean)
         .join(" ")
@@ -866,6 +894,7 @@ export default function UserManagement() {
                 <th style={thStyle}>Имя</th>
                 <th style={thStyle}>Логин</th>
                 <th style={thStyle}>Пароль</th>
+                <th style={thStyle}>Компания</th>
                 <th style={thStyle}>Роль</th>
                 <th style={thStyle}>Создан</th>
                 <th style={thStyle}></th>
@@ -886,6 +915,8 @@ export default function UserManagement() {
                   createdPasswords[u.username] ||
                   createdPasswords[u.email] ||
                   "-";
+                const organizationName =
+                  String(u?.organization?.name || "").trim() || "-";
 
                 return (
                   <Fragment key={u.id}>
@@ -906,6 +937,9 @@ export default function UserManagement() {
                       <td data-label="Пароль" style={tdStyle}>
                         {userPassword}
                       </td>
+                      <td data-label="Компания" style={tdStyle}>
+                        {organizationName}
+                      </td>
                       <td data-label="Роль" style={tdStyle}>
                         <select
                           value={u.role}
@@ -924,52 +958,41 @@ export default function UserManagement() {
                         {u.createdAt ? new Date(u.createdAt).toLocaleString() : "-"}
                       </td>
                       <td
-                        data-label="Действия"
+                        data-label=""
                         style={tdStyle}
                         className="admin-table__actions"
                       >
-                        <button
-                          type="button"
-                          className="admin-btn admin-btn--ghost admin-icon-btn admin-copy-btn"
-                          title="Скопировать логин и пароль"
-                          aria-label="Скопировать логин и пароль"
-                          onClick={() =>
-                            handleCopyCredentials({
-                              login: userLogin === "-" ? "" : userLogin,
-                              username: u.username,
-                              email: u.email,
-                              passwordVisible:
-                                userPassword === "-" ? "" : userPassword,
-                            })
-                          }
-                          disabled={userPassword === "-"}
-                        >
-                          <svg
-                            width="16"
-                            height="16"
-                            viewBox="0 0 24 24"
-                            fill="none"
-                            xmlns="http://www.w3.org/2000/svg"
-                            aria-hidden="true"
+                        <div className="admin-copy-wrap">
+                          <button
+                            type="button"
+                            className={
+                              "admin-btn admin-btn--ghost admin-copy-btn" +
+                              (copiedUserId === u.id ? " admin-copy-btn--copied" : "")
+                            }
+                            title="Скопировать логин и пароль"
+                            aria-label="Скопировать логин и пароль"
+                            onClick={() =>
+                              handleCopyCredentials(
+                                {
+                                  login: userLogin === "-" ? "" : userLogin,
+                                  username: u.username,
+                                  email: u.email,
+                                  passwordVisible:
+                                    userPassword === "-" ? "" : userPassword,
+                                },
+                                u.id
+                              )
+                            }
+                            disabled={userPassword === "-"}
                           >
-                            <path
-                              d="M8.5 6.5H6.5C5.4 6.5 4.5 7.4 4.5 8.5V17.5C4.5 18.6 5.4 19.5 6.5 19.5H15.5C16.6 19.5 17.5 18.6 17.5 17.5V15.5"
-                              stroke="currentColor"
-                              strokeWidth="2.4"
-                              strokeLinecap="round"
-                              strokeLinejoin="round"
-                            />
-                            <rect
-                              x="8.5"
-                              y="4.5"
-                              width="11"
-                              height="11"
-                              rx="2.5"
-                              stroke="currentColor"
-                              strokeWidth="2.4"
-                            />
-                          </svg>
-                        </button>
+                            Скопировать
+                          </button>
+                          {copiedUserId === u.id ? (
+                            <span className="admin-copy-toast">
+                              Скопировано логин и пароль
+                            </span>
+                          ) : null}
+                        </div>
                         <button
                           onClick={() => handleSaveRole(u.id)}
                           disabled={savingId === u.id || u.isSystemOwner}
@@ -1001,7 +1024,7 @@ export default function UserManagement() {
                     </tr>
                     {isExpanded && (
                       <tr>
-                        <td style={{ ...tdStyle, background: "#fafcff" }} colSpan={7}>
+                        <td style={{ ...tdStyle, background: "#fafcff" }} colSpan={8}>
                           <div style={{ display: "grid", gap: 12 }}>
                             <div
                               style={{

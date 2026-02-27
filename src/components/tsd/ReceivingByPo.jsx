@@ -51,6 +51,7 @@ export default function ReceivingByPo({ authHeaders, makeOpId, onBack }) {
   const toastTimerRef = useRef(null);
   const highlightTimerRef = useRef(null);
   const userActivatedRef = useRef(false);
+  const confirmFlowRef = useRef({ poId: null, opId: null, saved: false });
 
   const poItemsById = useMemo(() => {
     const map = new Map();
@@ -113,12 +114,20 @@ export default function ReceivingByPo({ authHeaders, makeOpId, onBack }) {
     () => orderRows.filter((row) => row.remaining > 0).length,
     [orderRows]
   );
+  const unfilledRowsCount = useMemo(
+    () =>
+      orderRows.filter((row) => {
+        if (row.expectedRemaining <= 0) return false;
+        return !Object.prototype.hasOwnProperty.call(localAccepted, row.itemId);
+      }).length,
+    [orderRows, localAccepted]
+  );
   const canFinishReceiving = useMemo(
     () =>
       Boolean(selectedPo) &&
       orderRows.length > 0 &&
-      remainingRowsCount === 0,
-    [orderRows.length, remainingRowsCount, selectedPo]
+      unfilledRowsCount === 0,
+    [orderRows.length, unfilledRowsCount, selectedPo]
   );
 
   const progressSummary = useMemo(() => {
@@ -187,6 +196,7 @@ export default function ReceivingByPo({ authHeaders, makeOpId, onBack }) {
     setLocalAccepted({});
     setHighlightedItemId(null);
     setToast(null);
+    confirmFlowRef.current = { poId: selectedPo.id, opId: null, saved: false };
   }, [selectedPo]);
 
   const safeVibrate = (pattern) => {
@@ -361,12 +371,19 @@ export default function ReceivingByPo({ authHeaders, makeOpId, onBack }) {
   };
 
 
-  const openPrintAct = async (poId) => {
+  const openPrintAct = async (poId, { required = false } = {}) => {
     const printRes = await fetch(
       `${API_BASE}/purchase-orders/${poId}/print-receive-act`,
       { headers: authHeaders }
     );
-    if (printRes.status === 204) return;
+    if (printRes.status === 204) {
+      if (required) {
+        throw new Error(
+          "Недостача зафиксирована, но акт не сформирован. Обновите экран и повторите печать."
+        );
+      }
+      return;
+    }
     if (!printRes.ok) {
       let message = "PRINT_ACT_ERROR";
       try {
@@ -378,37 +395,74 @@ export default function ReceivingByPo({ authHeaders, makeOpId, onBack }) {
       throw new Error(message);
     }
     const html = await printRes.text();
-    const win = window.open("", "_blank");
+    const win = window;
     if (win) {
       win.document.write(html);
       win.document.close();
     }
   };
 
-  const ensureOrgProfileAndPrint = async (poId) => {
-    const res = await fetch(`${API_BASE}/settings/org-profile`, {
-      headers: authHeaders,
-    });
-    if (res.status === 403) {
-      const data = await res.json();
-      throw new Error(data.message || "NO_ACCESS");
-    }
-    const data = await res.json();
-    if (res.ok && data?.profile) {
-      await openPrintAct(poId);
-      return;
-    }
-    setOrgForm({
+  const openOrgProfileModalForAct = async (poId) => {
+    const emptyProfile = {
       orgName: "",
       legalAddress: "",
       actualAddress: "",
       inn: "",
       kpp: "",
       phone: "",
-    });
-    setOrgFormError("");
+    };
     setPendingPrintPoId(poId);
-    setOrgModalOpen(true);
+    setOrgFormError("");
+    setOrgForm(emptyProfile);
+
+    try {
+      const profileRes = await fetch(`${API_BASE}/settings/org-profile`, {
+        headers: authHeaders,
+      });
+      let profileData = null;
+      try {
+        profileData = await profileRes.json();
+      } catch (parseErr) {
+        profileData = null;
+      }
+      if (profileRes.status === 403) {
+        throw new Error(
+          "Для акта заполните реквизиты организации под администратором."
+        );
+      }
+      if (!profileRes.ok) {
+        throw new Error(profileData?.message || "ORG_PROFILE_GET_ERROR");
+      }
+      const profile = profileData?.profile || null;
+      if (profile) {
+        setOrgForm({
+          orgName: profile.orgName || "",
+          legalAddress: profile.legalAddress || "",
+          actualAddress: profile.actualAddress || "",
+          inn: profile.inn || "",
+          kpp: profile.kpp || "",
+          phone: profile.phone || "",
+        });
+      }
+      setOrgModalOpen(true);
+    } catch (err) {
+      setPendingPrintPoId(null);
+      throw err;
+    }
+  };
+
+  const ensureOrgProfileAndPrint = async (poId, options = {}) => {
+    try {
+      await openPrintAct(poId, options);
+      return true;
+    } catch (err) {
+      const code = String(err?.message || "");
+      if (code === "ORG_PROFILE_REQUIRED") {
+        await openOrgProfileModalForAct(poId);
+        return false;
+      }
+      throw err;
+    }
   };
 
   const handleConfirm = async () => {
@@ -436,28 +490,112 @@ export default function ReceivingByPo({ authHeaders, makeOpId, onBack }) {
     }
     try {
       setState((prev) => ({ ...prev, loading: true, error: "" }));
-      const opId = makeOpId("POREC");
-      const res = await fetch(
-        `${API_BASE}/warehouse/receiving/${selectedPo.id}/confirm`,
+      const flow = confirmFlowRef.current || {};
+      const opId =
+        flow.poId === selectedPo.id && flow.opId ? flow.opId : makeOpId("POREC");
+      const isAlreadySaved =
+        flow.poId === selectedPo.id && flow.opId === opId && flow.saved;
+
+      let confirmData = null;
+      if (!isAlreadySaved) {
+        const confirmRes = await fetch(
+          `${API_BASE}/warehouse/receiving/${selectedPo.id}/confirm`,
+          {
+            method: "POST",
+            headers: authHeaders,
+            body: JSON.stringify({
+              opId,
+              lines: payloadLines,
+            }),
+          }
+        );
+        try {
+          confirmData = await confirmRes.json();
+        } catch (parseErr) {
+          confirmData = null;
+        }
+        if (!confirmRes.ok) {
+          if (
+            confirmData?.message === "PO_RECEIVING_CONFIRM_ERROR" &&
+            confirmData?.detail
+          ) {
+            throw new Error(
+              `Ошибка сервера при сохранении приемки: ${String(confirmData.detail)}`
+            );
+          }
+          throw new Error(confirmData?.message || "Не удалось сохранить приемку");
+        }
+        confirmFlowRef.current = { poId: selectedPo.id, opId, saved: true };
+      }
+
+      const finalizeRes = await fetch(
+        `${API_BASE}/warehouse/receiving/${selectedPo.id}/finalize`,
         {
           method: "POST",
           headers: authHeaders,
-          body: JSON.stringify({
-            opId,
-            lines: payloadLines,
-          }),
         }
       );
-      const data = await res.json();
-      if (!res.ok) {
-        throw new Error(data.message || "Не удалось подтвердить приемку");
+      let finalizeData = null;
+      try {
+        finalizeData = await finalizeRes.json();
+      } catch (parseErr) {
+        finalizeData = null;
       }
+      if (!finalizeRes.ok) {
+        if (
+          finalizeData?.message === "PO_RECEIVING_FINALIZE_ERROR" &&
+          finalizeData?.detail
+        ) {
+          throw new Error(
+            `Ошибка сервера при завершении приемки: ${String(finalizeData.detail)}`
+          );
+        }
+        throw new Error(
+          finalizeData?.message || "Не удалось завершить приемку"
+        );
+      }
+
+      const hasLocalShortage = orderRows.some(
+        (row) => Number(row.acceptedTotal) < Number(row.orderedQty)
+      );
+      const hasDiscrepancies =
+        hasLocalShortage ||
+        (Array.isArray(confirmData?.discrepancies) &&
+          confirmData.discrepancies.length > 0) ||
+        String(finalizeData?.order?.status || "").toUpperCase() === "PARTIAL";
+      let shouldLeaveScreen = true;
+
+      if (hasDiscrepancies) {
+        try {
+          const printedNow = await ensureOrgProfileAndPrint(selectedPo.id, {
+            required: true,
+          });
+          if (!printedNow) {
+            shouldLeaveScreen = false;
+          }
+        } catch (actErr) {
+          shouldLeaveScreen = false;
+          setToast({
+            type: "error",
+            message: toUiError(actErr, "Акт не удалось открыть."),
+          });
+          setState((prev) => ({
+            ...prev,
+            error: toUiError(actErr, "Акт не удалось открыть."),
+          }));
+        }
+      }
+
+      confirmFlowRef.current = { poId: null, opId: null, saved: false };
+
       setState((prev) => ({
         ...prev,
         loading: false,
-        done: true,
+        done: shouldLeaveScreen,
       }));
-      onBack?.();
+      if (shouldLeaveScreen) {
+        onBack?.();
+      }
 
     } catch (err) {
       setState((prev) => ({
@@ -469,6 +607,7 @@ export default function ReceivingByPo({ authHeaders, makeOpId, onBack }) {
   };
 
   const resetFlow = () => {
+    confirmFlowRef.current = { poId: null, opId: null, saved: false };
     setSelectedPo(null);
     setLocalAccepted({});
     setHighlightedItemId(null);
@@ -685,7 +824,7 @@ export default function ReceivingByPo({ authHeaders, makeOpId, onBack }) {
               </div>
             ) : (
               <div className="tsd-alert tsd-alert--info">
-                Осталось позиций к приемке: {remainingRowsCount}
+                Осталось заполнить позиций: {unfilledRowsCount}
               </div>
             )}
           </>
@@ -821,15 +960,20 @@ export default function ReceivingByPo({ authHeaders, makeOpId, onBack }) {
                     if (!res.ok) {
                       throw new Error(data.message || "ORG_PROFILE_SAVE_ERROR");
                     }
-                    setOrgSaving(false);
-                    setOrgModalOpen(false);
                     if (pendingPrintPoId) {
                       await openPrintAct(pendingPrintPoId);
-                      setPendingPrintPoId(null);
                     }
+                    setPendingPrintPoId(null);
+                    setOrgSaving(false);
+                    setOrgModalOpen(false);
                   } catch (saveErr) {
                     setOrgSaving(false);
-                    setOrgFormError(saveErr.message || "ORG_PROFILE_SAVE_ERROR");
+                    setOrgFormError(
+                      toUiError(
+                        saveErr,
+                        "Не удалось сохранить реквизиты организации."
+                      )
+                    );
                   }
                 }}
                 disabled={orgSaving}

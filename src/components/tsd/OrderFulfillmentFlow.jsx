@@ -31,19 +31,117 @@ const formatDateTime = (value) => {
   return date.toLocaleString("ru-RU");
 };
 
+const ORDER_STATUS_LABELS = {
+  NEW: "Новый",
+  IN_PICKING: "В отборе",
+  PICKED: "Отобран",
+  PACKED: "Упакован",
+  READY_TO_SHIP: "Готов к отгрузке",
+  SHIPPED: "Отгружен",
+  CANCELLED: "Отменен",
+};
+
+const getOrderStatusLabel = (status) =>
+  ORDER_STATUS_LABELS[String(status || "").trim()] || String(status || "-");
+
+const makePassportFileName = (order) => {
+  const safeOrderNumber = String(order?.orderNumber || "без-номера")
+    .trim()
+    .replace(/[^\p{L}\p{N}_-]+/gu, "_");
+  return `pasport-zakaza-${safeOrderNumber}.pdf`;
+};
+
+const SKIP_REASON_OPTIONS = [
+  "Товар поврежден",
+  "Ячейка недоступна",
+  "Товар не найден",
+  "Нужна проверка администратора",
+  "Другое",
+];
+
+const makeStepKey = (step) =>
+  [
+    String(step?.lineId || ""),
+    String(step?.locationId || ""),
+    String(step?.itemId || ""),
+  ].join(":");
+
+const buildSkippedStepList = (items, planSteps) => {
+  const flatPlan = Array.isArray(planSteps) ? planSteps : [];
+  const planByKey = new Map(flatPlan.map((step) => [makeStepKey(step), step]));
+
+  const findStep = (row, stepKey) => {
+    const exact = planByKey.get(stepKey);
+    if (exact) return exact;
+    return (
+      flatPlan.find((step) => {
+        const sameLine = Number(step.lineId) === Number(row?.lineId);
+        const sameLocation =
+          row?.locationId == null || Number(step.locationId) === Number(row.locationId);
+        const sameItem =
+          row?.itemId == null || Number(step.itemId) === Number(row.itemId);
+        return sameLine && sameLocation && sameItem;
+      }) || null
+    );
+  };
+
+  return (items || []).map((row) => {
+    const stepKey = makeStepKey({
+      lineId: row?.lineId,
+      locationId: row?.locationId,
+      itemId: row?.itemId,
+    });
+    const step = findStep(row, stepKey);
+    return {
+      id: row?.id || null,
+      stepKey,
+      lineId: row?.lineId || step?.lineId || null,
+      itemId: row?.itemId || step?.itemId || null,
+      itemName:
+        step?.itemName ||
+        row?.item?.name ||
+        (row?.itemId ? `Товар #${row.itemId}` : "Товар не указан"),
+      sku: step?.sku || row?.item?.sku || null,
+      locationId: row?.locationId || step?.locationId || null,
+      locationCode:
+        step?.locationCode ||
+        step?.locationName ||
+        row?.location?.code ||
+        row?.location?.name ||
+        (row?.locationId ? `Ячейка #${row.locationId}` : "Ячейка не указана"),
+      qty: Number(row?.qty || step?.qty || 0),
+      reason: String(row?.reason || "").trim(),
+      comment: String(row?.comment || "").trim(),
+      createdAt: row?.createdAt || null,
+    };
+  });
+};
+
 export default function OrderFulfillmentFlow({ authHeaders, onBack }) {
   const [mineOnly, setMineOnly] = useState(false);
   const [orders, setOrders] = useState([]);
   const [selectedOrder, setSelectedOrder] = useState(null);
   const [pickPlan, setPickPlan] = useState([]);
   const [pickPlanRaw, setPickPlanRaw] = useState([]);
+  const [skippedSteps, setSkippedSteps] = useState([]);
   const [currentIndex, setCurrentIndex] = useState(0);
   const [locationScanned, setLocationScanned] = useState(false);
   const [scannedQty, setScannedQty] = useState(0);
+  const [skipModalOpen, setSkipModalOpen] = useState(false);
+  const [skipReason, setSkipReason] = useState(SKIP_REASON_OPTIONS[0]);
+  const [skipComment, setSkipComment] = useState("");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
 
-  const currentStep = pickPlan[currentIndex] || null;
+  const skippedStepKeys = useMemo(
+    () => new Set((skippedSteps || []).map((row) => row.stepKey)),
+    [skippedSteps]
+  );
+  const activePickPlan = useMemo(
+    () => (pickPlan || []).filter((step) => !skippedStepKeys.has(makeStepKey(step))),
+    [pickPlan, skippedStepKeys]
+  );
+  const currentStep = activePickPlan[currentIndex] || null;
   const orderStatus = String(selectedOrder?.status || "");
   const allLinesPicked = useMemo(
     () =>
@@ -69,7 +167,7 @@ export default function OrderFulfillmentFlow({ authHeaders, onBack }) {
     () => Boolean(selectedOrder) && canFinalize,
     [canFinalize, selectedOrder]
   );
-  const hasPlan = pickPlan.length > 0;
+  const hasPlan = activePickPlan.length > 0;
   const unresolvedItems = useMemo(
     () =>
       (pickPlanRaw || []).filter(
@@ -77,7 +175,12 @@ export default function OrderFulfillmentFlow({ authHeaders, onBack }) {
       ),
     [pickPlanRaw]
   );
-  const showPlanMissing = selectedOrder && !canFinalize && !isClosed && pickPlan.length === 0;
+  const showPlanMissing =
+    selectedOrder &&
+    !canFinalize &&
+    !isClosed &&
+    activePickPlan.length === 0 &&
+    skippedSteps.length === 0;
 
   const loadQueue = async () => {
     setLoading(true);
@@ -140,11 +243,28 @@ export default function OrderFulfillmentFlow({ authHeaders, onBack }) {
       setCurrentIndex(0);
       setLocationScanned(false);
       setScannedQty(0);
+      try {
+        await loadPickSkips(orderId, flat);
+      } catch (skipErr) {
+        setSkippedSteps([]);
+        setError(normalizeErrorMessage(skipErr, "Ошибка загрузки пропусков отбора."));
+      }
     } catch (err) {
       setError(normalizeErrorMessage(err, "Ошибка построения маршрута отбора."));
     } finally {
       setLoading(false);
     }
+  };
+
+  const loadPickSkips = async (orderId, planSteps) => {
+    const res = await fetch(`${API_BASE}/orders/${orderId}/pick-skips`, {
+      headers: authHeaders,
+    });
+    const data = await readJsonSafe(res);
+    if (!res.ok) {
+      throw new Error(data?.message || "Не удалось загрузить пропуски отбора");
+    }
+    setSkippedSteps(buildSkippedStepList(data?.items || [], planSteps || pickPlan));
   };
 
   const resolveScanEntity = async (code) => {
@@ -166,6 +286,20 @@ export default function OrderFulfillmentFlow({ authHeaders, onBack }) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [mineOnly]);
 
+  useEffect(() => {
+    if (activePickPlan.length === 0) {
+      if (currentIndex !== 0) setCurrentIndex(0);
+      setLocationScanned(false);
+      setScannedQty(0);
+      return;
+    }
+    if (currentIndex > activePickPlan.length - 1) {
+      setCurrentIndex(activePickPlan.length - 1);
+      setLocationScanned(false);
+      setScannedQty(0);
+    }
+  }, [activePickPlan.length, currentIndex]);
+
   const takeOrder = async (orderId) => {
     setLoading(true);
     setError("");
@@ -175,12 +309,64 @@ export default function OrderFulfillmentFlow({ authHeaders, onBack }) {
         headers: authHeaders,
       });
       const data = await readJsonSafe(res);
-      if (!res.ok) throw new Error(data?.message || "Не удалось взять заказ");
+      if (!res.ok) {
+        if (res.status === 409) {
+          await loadQueue();
+          throw new Error(data?.message || "Заказ уже взят другим сотрудником.");
+        }
+        throw new Error(data?.message || "Не удалось взять заказ");
+      }
       setSelectedOrder(data.order);
+      setSkippedSteps([]);
       await loadPickPlan(orderId);
       await loadQueue();
     } catch (err) {
       setError(normalizeErrorMessage(err, "Ошибка при взятии заказа."));
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const releaseOrder = async (orderId) => {
+    const res = await fetch(`${API_BASE}/orders/${orderId}/release`, {
+      method: "POST",
+      headers: authHeaders,
+    });
+    const data = await readJsonSafe(res);
+    if (!res.ok) {
+      throw new Error(data?.message || "Не удалось вернуть заказ в очередь");
+    }
+    return data?.order || null;
+  };
+
+  const resetSelection = () => {
+    setSelectedOrder(null);
+    setPickPlan([]);
+    setPickPlanRaw([]);
+    setSkippedSteps([]);
+    setCurrentIndex(0);
+    setLocationScanned(false);
+    setScannedQty(0);
+    setSkipModalOpen(false);
+    setSkipReason(SKIP_REASON_OPTIONS[0]);
+    setSkipComment("");
+  };
+
+  const leaveSelectedOrder = async (navigateBack = false) => {
+    if (!selectedOrder) {
+      if (navigateBack) onBack?.();
+      return;
+    }
+
+    setLoading(true);
+    setError("");
+    try {
+      await releaseOrder(selectedOrder.id);
+      resetSelection();
+      await loadQueue();
+      if (navigateBack) onBack?.();
+    } catch (err) {
+      setError(normalizeErrorMessage(err, "Ошибка при возврате заказа в очередь."));
     } finally {
       setLoading(false);
     }
@@ -310,6 +496,285 @@ export default function OrderFulfillmentFlow({ authHeaders, onBack }) {
     }
   };
 
+  const buildPassportPdf = async (order) => {
+    const pdf = new jsPDF("p", "pt", "a4");
+    await ensurePdfFont(pdf);
+    const pageWidth = pdf.internal.pageSize.getWidth();
+    const pageHeight = pdf.internal.pageSize.getHeight();
+    const margin = 28;
+    const contentWidth = pageWidth - margin * 2;
+
+    pdf.setDrawColor(28, 35, 64);
+    pdf.setLineWidth(1.3);
+    pdf.rect(margin, margin, contentWidth, pageHeight - margin * 2);
+
+    pdf.setFillColor(241, 246, 255);
+    pdf.rect(margin + 10, margin + 10, contentWidth - 20, 96, "F");
+
+    pdf.setTextColor(11, 18, 42);
+    pdf.setFontSize(25);
+    pdf.text(`Паспорт заказа ${order.orderNumber || "-"}`, margin + 20, margin + 44);
+    pdf.setFontSize(13);
+    pdf.text(`Дата: ${formatDateTime(order.createdAt)}`, margin + 20, margin + 68);
+    pdf.text(`Статус: ${getOrderStatusLabel(order.status)}`, margin + 20, margin + 88);
+
+    let y = margin + 132;
+    pdf.setFontSize(15);
+    pdf.text(`Получатель: ${order.customerName || "-"}`, margin + 20, y);
+    y += 22;
+    pdf.text(`Телефон: ${order.customerPhone || "-"}`, margin + 20, y);
+    y += 22;
+
+    const addressLines = pdf.splitTextToSize(
+      `Адрес: ${order.shippingAddress || "-"}`,
+      contentWidth - 40
+    );
+    pdf.text(addressLines, margin + 20, y);
+    y += addressLines.length * 17 + 4;
+
+    const commentLines = pdf.splitTextToSize(
+      `Комментарий: ${order.deliveryComment || "-"}`,
+      contentWidth - 40
+    );
+    pdf.text(commentLines, margin + 20, y);
+    y += commentLines.length * 17 + 14;
+
+    const rows = (order.lines || []).map((line, index) => [
+      String(index + 1),
+      line.item?.sku || line.requestedSku || "-",
+      line.item?.name || line.requestedName || "-",
+      String(toNum(line.qty)),
+      String(toNum(line.pickedQty)),
+      line.item?.unit || "шт",
+    ]);
+
+    autoTable(pdf, {
+      startY: y,
+      margin: { left: margin + 10, right: margin + 10 },
+      head: [["#", "SKU", "Товар", "Заказано", "Отобрано", "Ед."]],
+      body: rows.length ? rows : [["-", "-", "Нет позиций", "-", "-", "-"]],
+      theme: "grid",
+      styles: {
+        font: "Arial",
+        fontSize: 12,
+        cellPadding: 6,
+        minCellHeight: 24,
+        overflow: "linebreak",
+        valign: "top",
+      },
+      headStyles: {
+        fillColor: [225, 234, 248],
+        textColor: [15, 23, 42],
+        fontStyle: "bold",
+        font: "Arial",
+        fontSize: 12,
+      },
+      columnStyles: {
+        0: { cellWidth: 34 },
+        1: { cellWidth: 88 },
+        2: { cellWidth: 206 },
+        3: { cellWidth: 72, halign: "center" },
+        4: { cellWidth: 72, halign: "center" },
+        5: { cellWidth: 44, halign: "center" },
+      },
+    });
+
+    const finalY = pdf.lastAutoTable?.finalY || y;
+    const footerTop = Math.min(finalY + 16, pageHeight - 140);
+    const footerHeight = pageHeight - margin - footerTop - 10;
+
+    pdf.setFillColor(248, 250, 255);
+    pdf.rect(margin + 10, footerTop, contentWidth - 20, footerHeight, "F");
+    pdf.setDrawColor(188, 201, 224);
+    pdf.rect(margin + 10, footerTop, contentWidth - 20, footerHeight);
+    pdf.setTextColor(28, 35, 64);
+    pdf.setFontSize(16);
+    pdf.text("Наклейте этот паспорт на коробку заказа", margin + 20, footerTop + 30);
+
+    const orderNumberText = `№ ${order.orderNumber || "-"}`;
+    const maxNumberWidth = contentWidth - 40;
+
+    let orderNumberFontSize = 90;
+    pdf.setFontSize(orderNumberFontSize);
+    while (
+      orderNumberFontSize > 28 &&
+      pdf.getTextWidth(orderNumberText) > maxNumberWidth
+    ) {
+      orderNumberFontSize -= 2;
+      pdf.setFontSize(orderNumberFontSize);
+    }
+    const numberY = footerTop + footerHeight - 24;
+    pdf.setTextColor(28, 35, 64);
+    pdf.text(orderNumberText, margin + contentWidth / 2, numberY, {
+      align: "center",
+    });
+
+    return pdf;
+  };
+
+  const openSkipModal = () => {
+    if (!currentStep) return;
+    setSkipReason(SKIP_REASON_OPTIONS[0]);
+    setSkipComment("");
+    setSkipModalOpen(true);
+    setError("");
+  };
+
+  const closeSkipModal = () => {
+    setSkipModalOpen(false);
+  };
+
+  const confirmSkipCurrentStep = async () => {
+    if (!currentStep) {
+      setSkipModalOpen(false);
+      return;
+    }
+    if (!selectedOrder?.id) {
+      setError("Сначала выберите заказ.");
+      return;
+    }
+    const reason = String(skipReason || "").trim();
+    if (!reason) {
+      setError("Выберите причину пропуска.");
+      return;
+    }
+    setLoading(true);
+    setError("");
+    try {
+      const res = await fetch(`${API_BASE}/orders/${selectedOrder.id}/pick-skips`, {
+        method: "POST",
+        headers: authHeaders,
+        body: JSON.stringify({
+          lineId: currentStep.lineId,
+          itemId: currentStep.itemId,
+          locationId: currentStep.locationId,
+          qty: Number(currentStep.qty || 0),
+          reason,
+          comment: String(skipComment || "").trim(),
+        }),
+      });
+      const data = await readJsonSafe(res);
+      if (!res.ok) {
+        throw new Error(data?.message || "Не удалось сохранить пропуск");
+      }
+      await loadPickSkips(selectedOrder.id);
+      setSkipModalOpen(false);
+      setLocationScanned(false);
+      setScannedQty(0);
+      setError("");
+    } catch (err) {
+      setError(normalizeErrorMessage(err, "Ошибка сохранения пропуска."));
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const restoreSkippedStep = async (row) => {
+    if (!selectedOrder?.id) return;
+    if (!row?.id) {
+      setSkippedSteps((prev) =>
+        (prev || []).filter((entry) => entry.stepKey !== row?.stepKey)
+      );
+      setError("");
+      return;
+    }
+    setLoading(true);
+    setError("");
+    try {
+      const res = await fetch(
+        `${API_BASE}/orders/${selectedOrder.id}/pick-skips/${row.id}/restore`,
+        {
+          method: "POST",
+          headers: authHeaders,
+        }
+      );
+      const data = await readJsonSafe(res);
+      if (!res.ok) {
+        throw new Error(data?.message || "Не удалось вернуть позицию в маршрут");
+      }
+      await loadPickSkips(selectedOrder.id);
+      setLocationScanned(false);
+      setScannedQty(0);
+    } catch (err) {
+      setError(normalizeErrorMessage(err, "Ошибка восстановления пропуска."));
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const restoreAllSkipped = async () => {
+    if (!selectedOrder?.id) return;
+    setLoading(true);
+    setError("");
+    try {
+      const res = await fetch(`${API_BASE}/orders/${selectedOrder.id}/pick-skips/restore-all`, {
+        method: "POST",
+        headers: authHeaders,
+      });
+      const data = await readJsonSafe(res);
+      if (!res.ok) {
+        throw new Error(data?.message || "Не удалось вернуть позиции в маршрут");
+      }
+      await loadPickSkips(selectedOrder.id);
+      setLocationScanned(false);
+      setScannedQty(0);
+    } catch (err) {
+      setError(normalizeErrorMessage(err, "Ошибка восстановления пропусков."));
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const markPassportPrinted = async (orderId) => {
+    try {
+      const printedRes = await fetch(`${API_BASE}/orders/${orderId}/passport-printed`, {
+        method: "POST",
+        headers: authHeaders,
+      });
+      const printedData = await readJsonSafe(printedRes);
+      if (printedRes.ok && printedData?.order) {
+        setSelectedOrder(printedData.order);
+      }
+    } catch {
+      // Не блокируем выдачу/печать PDF при ошибке фиксации.
+    }
+  };
+
+  const openPdfInCurrentTab = (url) => {
+    window.location.assign(url);
+  };
+
+  const trySharePdfFile = async (blob, order) => {
+    if (typeof navigator === "undefined" || typeof navigator.share !== "function") {
+      return false;
+    }
+
+    try {
+      const file = new File([blob], makePassportFileName(order), {
+        type: "application/pdf",
+      });
+
+      if (
+        typeof navigator.canShare === "function" &&
+        !navigator.canShare({ files: [file] })
+      ) {
+        return false;
+      }
+
+      await navigator.share({
+        title: `Паспорт заказа ${order?.orderNumber || "-"}`,
+        text: `Паспорт заказа ${order?.orderNumber || "-"}`,
+        files: [file],
+      });
+      return true;
+    } catch (err) {
+      if (err?.name === "AbortError") {
+        return true;
+      }
+      return false;
+    }
+  };
+
   const printPassport = async () => {
     if (!selectedOrder) return;
     if (!canPrintPassport) {
@@ -317,69 +782,13 @@ export default function OrderFulfillmentFlow({ authHeaders, onBack }) {
       return;
     }
     try {
-      const order = selectedOrder;
-      const pdf = new jsPDF("p", "pt", "a4");
-      await ensurePdfFont(pdf);
-
-      pdf.setFontSize(16);
-      pdf.text(`Паспорт заказа ${order.orderNumber || "-"}`, 40, 36);
-      pdf.setFontSize(11);
-      pdf.text(`Дата: ${formatDateTime(order.createdAt)}`, 40, 56);
-      pdf.text(`Статус: ${order.status || "-"}`, 40, 72);
-      pdf.text(`Получатель: ${order.customerName || "-"}`, 40, 88);
-      pdf.text(`Телефон: ${order.customerPhone || "-"}`, 40, 104);
-      pdf.text(`Адрес: ${order.shippingAddress || "-"}`, 40, 120);
-      pdf.text(`Комментарий: ${order.deliveryComment || "-"}`, 40, 136);
-
-      const rows = (order.lines || []).map((line, index) => [
-        String(index + 1),
-        line.item?.sku || line.requestedSku || "-",
-        line.item?.name || line.requestedName || "-",
-        String(toNum(line.qty)),
-        String(toNum(line.pickedQty)),
-        line.item?.unit || "шт",
-      ]);
-
-      autoTable(pdf, {
-        startY: 152,
-        head: [["#", "SKU", "Товар", "Заказано", "Отобрано", "Ед."]],
-        body: rows.length ? rows : [["-", "-", "Нет позиций", "-", "-", "-"]],
-        theme: "grid",
-        styles: {
-          font: "Arial",
-          fontSize: 9,
-          cellPadding: 3,
-          overflow: "linebreak",
-          valign: "top",
-        },
-        headStyles: {
-          fillColor: [245, 246, 248],
-          textColor: [15, 23, 42],
-          fontStyle: "bold",
-          font: "Arial",
-        },
-        columnStyles: {
-          0: { cellWidth: 26 },
-          1: { cellWidth: 76 },
-          2: { cellWidth: 250 },
-          3: { cellWidth: 70 },
-          4: { cellWidth: 70 },
-          5: { cellWidth: 44 },
-        },
-      });
-
-      const fileName = `passport-${order.orderNumber || order.id}.pdf`;
+      const pdf = await buildPassportPdf(selectedOrder);
+      await markPassportPrinted(selectedOrder.id);
       const blob = pdf.output("blob");
+      const shared = await trySharePdfFile(blob, selectedOrder);
+      if (shared) return;
       const url = URL.createObjectURL(blob);
-      const win = window.open(url, "_blank", "noopener,noreferrer");
-      if (!win) {
-        const link = document.createElement("a");
-        link.href = url;
-        link.download = fileName;
-        link.target = "_blank";
-        link.rel = "noopener noreferrer";
-        link.click();
-      }
+      openPdfInCurrentTab(url);
       setTimeout(() => URL.revokeObjectURL(url), 60_000);
     } catch (err) {
       setError(normalizeErrorMessage(err, "Ошибка формирования паспорта."));
@@ -401,12 +810,7 @@ export default function OrderFulfillmentFlow({ authHeaders, onBack }) {
       });
       const data = await readJsonSafe(res);
       if (!res.ok) throw new Error(data?.message || "Ошибка завершения заказа");
-      setSelectedOrder(null);
-      setPickPlan([]);
-      setPickPlanRaw([]);
-      setCurrentIndex(0);
-      setLocationScanned(false);
-      setScannedQty(0);
+      resetSelection();
       await loadQueue();
     } catch (err) {
       setError(normalizeErrorMessage(err, "Ошибка завершения заказа."));
@@ -422,7 +826,7 @@ export default function OrderFulfillmentFlow({ authHeaders, onBack }) {
         subtitle="Сборка, паспорт, завершение"
         contextLabel="Режим"
         contextValue={mineOnly ? "Мои" : "Общий"}
-        onBack={onBack}
+        onBack={() => leaveSelectedOrder(true)}
       />
       <div className="tsd-section">
         <TsdErrorAlert message={error} />
@@ -459,10 +863,15 @@ export default function OrderFulfillmentFlow({ authHeaders, onBack }) {
               <div className="tsd-card" key={order.id}>
                 <div className="tsd-card__body">
                   <div className="tsd-card__title">
-                    {order.orderNumber} ({order.status})
+                    {order.orderNumber} ({getOrderStatusLabel(order.status)})
                   </div>
                   <div className="tsd-card__meta">{order.customerName}</div>
                   <div className="tsd-card__meta">{order.shippingAddress}</div>
+                  <div className="tsd-card__meta">
+                    {order.assignedToUser
+                      ? `Исполнитель: ${order.assignedToUser.name || order.assignedToUser.email || "назначен"}`
+                      : "Исполнитель: не назначен"}
+                  </div>
                 </div>
                 <div className="tsd-action-inline">
                   <button
@@ -471,7 +880,9 @@ export default function OrderFulfillmentFlow({ authHeaders, onBack }) {
                     disabled={loading}
                     onClick={() => takeOrder(order.id)}
                   >
-                    Взять задание
+                    {["PICKED", "PACKED"].includes(String(order.status || ""))
+                      ? "Открыть задание"
+                      : "Взять задание"}
                   </button>
                 </div>
               </div>
@@ -484,7 +895,7 @@ export default function OrderFulfillmentFlow({ authHeaders, onBack }) {
             <div className="tsd-card">
               <div className="tsd-card__body">
                 <div className="tsd-card__title">
-                  {selectedOrder.orderNumber} ({selectedOrder.status})
+                  {selectedOrder.orderNumber} ({getOrderStatusLabel(selectedOrder.status)})
                 </div>
                 <div className="tsd-card__meta">
                   Получатель: {selectedOrder.customerName}
@@ -496,26 +907,22 @@ export default function OrderFulfillmentFlow({ authHeaders, onBack }) {
                   Телефон: {selectedOrder.customerPhone || "-"}
                 </div>
               </div>
-              <div className="tsd-action-inline">
-                <button
-                  type="button"
-                  className="tsd-btn tsd-btn--secondary"
-                  onClick={() => {
-                    setSelectedOrder(null);
-                    setPickPlan([]);
-                    setPickPlanRaw([]);
-                    setError("");
-                  }}
-                >
-                  К списку
-                </button>
-              </div>
+                <div className="tsd-action-inline">
+                  <button
+                    type="button"
+                    className="tsd-btn tsd-btn--secondary"
+                    onClick={() => leaveSelectedOrder(false)}
+                    disabled={loading}
+                  >
+                    К списку
+                  </button>
+                </div>
             </div>
 
             {currentStep && (
               <div className="tsd-card">
-                <div className="tsd-card__body">
-                  <div className="tsd-card__title">Шаг {currentIndex + 1} из {pickPlan.length}</div>
+              <div className="tsd-card__body">
+                  <div className="tsd-card__title">Шаг {currentIndex + 1} из {activePickPlan.length}</div>
                   <div className="tsd-card__meta">
                     Ячейка: {currentStep.locationCode || currentStep.locationName || `#${currentStep.locationId}`}
                   </div>
@@ -523,6 +930,58 @@ export default function OrderFulfillmentFlow({ authHeaders, onBack }) {
                   <div className="tsd-card__meta">SKU: {currentStep.sku || "-"}</div>
                   <div className="tsd-card__meta">К отбору: {currentStep.qty}</div>
                   <div className="tsd-card__meta">Сканировано: {scannedQty}</div>
+                </div>
+                <div className="tsd-action-inline">
+                  <button
+                    type="button"
+                    className="tsd-btn tsd-btn--secondary"
+                    onClick={openSkipModal}
+                    disabled={loading}
+                  >
+                    Пропустить позицию
+                  </button>
+                </div>
+              </div>
+            )}
+
+            {selectedOrder && skippedSteps.length > 0 && (
+              <div className="tsd-card">
+                <div className="tsd-card__body">
+                  <div className="tsd-card__title">
+                    Пропущенные позиции: {skippedSteps.length}
+                  </div>
+                  <div className="tsd-card__meta">
+                    Пропуск временный. Можно вернуть позицию в маршрут и продолжить отбор.
+                  </div>
+                </div>
+                <div className="tsd-list">
+                  {skippedSteps.map((row) => (
+                    <div key={row.id || row.stepKey} className="tsd-card">
+                      <div className="tsd-card__meta">
+                        {row.locationCode || "-"} • {row.itemName || row.sku || `Товар #${row.itemId}`} • {row.qty} шт
+                      </div>
+                      <div className="tsd-card__meta">Причина: {row.reason}</div>
+                      {row.comment ? (
+                        <div className="tsd-card__meta">Комментарий: {row.comment}</div>
+                      ) : null}
+                      <button
+                        type="button"
+                        className="tsd-btn tsd-btn--ghost"
+                        onClick={() => restoreSkippedStep(row)}
+                        disabled={loading}
+                      >
+                        Вернуть в маршрут
+                      </button>
+                    </div>
+                  ))}
+                  <button
+                    type="button"
+                    className="tsd-btn tsd-btn--secondary"
+                    onClick={restoreAllSkipped}
+                    disabled={loading}
+                  >
+                    Вернуть все в маршрут
+                  </button>
                 </div>
               </div>
             )}
@@ -615,6 +1074,52 @@ export default function OrderFulfillmentFlow({ authHeaders, onBack }) {
           </>
         )}
       </div>
+
+      {skipModalOpen && (
+        <div className="tsd-modal" role="dialog" aria-modal="true">
+          <div className="tsd-modal__card">
+            <div className="tsd-modal__title">Пропустить позицию</div>
+            <div className="tsd-modal__text">
+              Укажите причину пропуска. Позиция останется в карточке как пропущенная.
+            </div>
+            <div className="tsd-modal__row">
+              <label className="tsd-modal__label">Причина</label>
+              <select
+                className="tsd-input"
+                value={skipReason}
+                onChange={(event) => setSkipReason(event.target.value)}
+              >
+                {SKIP_REASON_OPTIONS.map((option) => (
+                  <option key={option} value={option}>
+                    {option}
+                  </option>
+                ))}
+              </select>
+            </div>
+            <div className="tsd-modal__row">
+              <label className="tsd-modal__label">Комментарий (необязательно)</label>
+              <input
+                className="tsd-input"
+                value={skipComment}
+                onChange={(event) => setSkipComment(event.target.value)}
+                placeholder="Например: брак упаковки"
+              />
+            </div>
+            <div className="tsd-modal__actions">
+              <button type="button" className="tsd-btn tsd-btn--ghost" onClick={closeSkipModal}>
+                Отмена
+              </button>
+              <button
+                type="button"
+                className="tsd-btn tsd-btn--primary"
+                onClick={confirmSkipCurrentStep}
+              >
+                Пропустить
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </>
   );
 }

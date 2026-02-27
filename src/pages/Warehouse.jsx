@@ -184,7 +184,6 @@ export default function Warehouse({
 
   const isWarehouseManager =
     user?.role === "ADMIN" ||
-    user?.role === "ACCOUNTING" ||
     hasPermission(user, PERMISSION_KEYS.WAREHOUSE_MANAGE);
 
 
@@ -2308,16 +2307,6 @@ export default function Warehouse({
   return (
 
     <div className="page">
-
-      <div className="page-header">
-
-        <h1 className="page-title">{pageTitle}</h1>
-
-        <p className="page-subtitle">
-          {pageSubtitle}
-        </p>
-
-      </div>
 
       {sections.length === 0 && (
         <div className="card" style={{ marginBottom: 16 }}>

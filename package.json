@@ -1,6 +1,6 @@
 {
   "type": "module",
-  "name": "business-portal",
+  "name": "sklad-online",
   "private": true,
   "version": "0.0.0",
   "scripts": {
@@ -9,7 +9,7 @@
     "seed": "node tools/seed-employee.mjs",
     "build": "vite build",
     "preview": "vite preview",
-    "db:deploy": "prisma db push && prisma generate",
+    "db:deploy": "prisma db push --accept-data-loss && prisma generate",
     "reset:items": "node tools/reset-items.mjs",
     "smoke": "node tools/smoke-check.mjs",
     "e2e": "playwright test",

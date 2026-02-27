@@ -56,6 +56,9 @@ model User {
   receivingLinesCreated WarehouseReceivingLine[] @relation("ReceivingLineCreatedBy")
   receivingLinesPlaced WarehouseReceivingLine[] @relation("ReceivingLinePlacedBy")
   assignedOrders SalesOrder[] @relation("OrderAssignedTo")
+  passportPrintedOrders SalesOrder[] @relation("OrderPassportPrintedBy")
+  orderPickSkipsCreated SalesOrderPickSkip[] @relation("OrderPickSkipCreatedBy")
+  orderPickSkipsRestored SalesOrderPickSkip[] @relation("OrderPickSkipRestoredBy")
 
   @@index([orgId])
 }
@@ -282,7 +285,7 @@ enum WarehouseRequestStatus {
 model PurchaseOrder {
   id          Int                 @id @default(autoincrement())
   orgId       Int?
-  number      String?             @unique
+  number      String?
   date        DateTime            @default(now())
   plannedDate DateTime?
   status      PurchaseOrderStatus @default(DRAFT)
@@ -300,6 +303,8 @@ model PurchaseOrder {
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
+
+  @@unique([orgId, number])
 }
 
 model PurchaseOrderItem {
@@ -339,9 +344,9 @@ model Item {
   id          Int      @id @default(autoincrement())
   orgId       Int?
   name        String
-  sku         String?  @unique
-  barcode     String?  @unique
-  qrCode      String?  @unique
+  sku         String?
+  barcode     String?
+  qrCode      String?
   unit        String?
   minStock    Float?
   maxStock    Float?
@@ -369,6 +374,11 @@ model Item {
   revisionItems      StockRevisionItem[]
   receivingLines     WarehouseReceivingLine[]
   salesOrderLines    SalesOrderLine[]
+  pickSkips          SalesOrderPickSkip[]
+
+  @@unique([orgId, sku])
+  @@unique([orgId, barcode])
+  @@unique([orgId, qrCode])
 }
 
 model WarehouseLocation {
@@ -389,6 +399,7 @@ model WarehouseLocation {
   discrepancies StockDiscrepancy[]
   revisionItems StockRevisionItem[]
   receivingLines WarehouseReceivingLine[]
+  pickSkips      SalesOrderPickSkip[]
 }
 
 model WarehouseReceivingLine {
@@ -677,12 +688,18 @@ model SalesOrder {
   boxCode          String?
   boxType          String?
   labelPrintedAt   DateTime?
+  passportPrintedAt DateTime?
+  passportPrintCount Int @default(0)
+  passportPrintedById Int?
+  passportPrintedBy User? @relation("OrderPassportPrintedBy", fields: [passportPrintedById], references: [id])
   createdAt        DateTime         @default(now())
   updatedAt        DateTime         @updatedAt
   lines            SalesOrderLine[]
+  pickSkips        SalesOrderPickSkip[]
 
   @@index([status])
   @@index([assignedToUserId])
+  @@index([passportPrintedById])
   @@index([createdAt])
 }
 
@@ -699,6 +716,7 @@ model SalesOrderLine {
   pickedQty     Int        @default(0)
   createdAt     DateTime   @default(now())
   updatedAt     DateTime   @updatedAt
+  pickSkips     SalesOrderPickSkip[]
 
   @@index([orderId])
   @@index([itemId])
@@ -712,4 +730,38 @@ enum SalesOrderStatus {
   READY_TO_SHIP
   SHIPPED
   CANCELLED
+}
+
+model SalesOrderPickSkip {
+  id           Int             @id @default(autoincrement())
+  orgId        Int?
+  orderId      Int
+  order        SalesOrder      @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  lineId       Int
+  line         SalesOrderLine  @relation(fields: [lineId], references: [id], onDelete: Cascade)
+  itemId       Int?
+  item         Item?           @relation(fields: [itemId], references: [id])
+  locationId   Int?
+  location     WarehouseLocation? @relation(fields: [locationId], references: [id])
+  qty          Int             @default(0)
+  reason       String
+  comment      String?
+  status       SalesOrderPickSkipStatus @default(ACTIVE)
+  skippedById  Int?
+  skippedBy    User?           @relation("OrderPickSkipCreatedBy", fields: [skippedById], references: [id])
+  restoredById Int?
+  restoredBy   User?           @relation("OrderPickSkipRestoredBy", fields: [restoredById], references: [id])
+  restoredAt   DateTime?
+  createdAt    DateTime        @default(now())
+  updatedAt    DateTime        @updatedAt
+
+  @@index([orderId, status])
+  @@index([lineId, status])
+  @@index([itemId])
+  @@index([locationId])
+}
+
+enum SalesOrderPickSkipStatus {
+  ACTIVE
+  RESTORED
 }

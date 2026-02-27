@@ -1,19 +1,20 @@
-import { useEffect, useMemo, useState } from "react";
+﻿import { useEffect, useMemo, useState } from "react";
 import { useAuth } from "../context/AuthContext";
 import UserManagement from "./UserManagement";
 import TenantManagement from "./TenantManagement";
 import PickingReport from "./PickingReport";
 import AdminWarehousePanel from "../components/admin/AdminWarehousePanel";
+import AdminOrgProfilePanel from "../components/admin/AdminOrgProfilePanel";
+import AdminPickingShortagePanel from "../components/admin/AdminPickingShortagePanel";
 import "../components/admin/admin.css";
 import { hasPermission, PERMISSION_KEYS } from "../utils/permissions";
 
 const BASE_TABS = [
-  { id: "users", label: "\u041f\u043e\u043b\u044c\u0437\u043e\u0432\u0430\u0442\u0435\u043b\u0438" },
-  { id: "warehouse", label: "\u0421\u043a\u043b\u0430\u0434" },
-  {
-    id: "picking-report",
-    label: "\u0411\u0438\u043b\u043b\u0438\u043d\u0433 \u0440\u0435\u0441\u0443\u0440\u0441\u043e\u0432",
-  },
+  { id: "users", label: "Пользователи" },
+  { id: "warehouse", label: "Склад" },
+  { id: "picking-shortage", label: "Отбор" },
+  { id: "org-profile", label: "Реквизиты" },
+  { id: "picking-report", label: "Биллинг ресурсов" },
 ];
 
 const OWNER_TAB = { id: "tenants", label: "Клиенты" };
@@ -33,10 +34,19 @@ export default function AdminConsole({ initialTab = "users" }) {
         canTenants ? OWNER_TAB : null,
         canUsers ? BASE_TABS.find((item) => item.id === "users") : null,
         canWarehouse ? BASE_TABS.find((item) => item.id === "warehouse") : null,
-        canWarehouse ? BASE_TABS.find((item) => item.id === "picking-report") : null,
+        canWarehouse
+          ? BASE_TABS.find((item) => item.id === "picking-shortage")
+          : null,
+        canWarehouse
+          ? BASE_TABS.find((item) => item.id === "org-profile")
+          : null,
+        canWarehouse
+          ? BASE_TABS.find((item) => item.id === "picking-report")
+          : null,
       ].filter(Boolean),
     [canUsers, canWarehouse, canTenants]
   );
+
   const initialTabId = tabs.some((tab) => tab.id === initialTab)
     ? initialTab
     : tabs[0]?.id || "users";
@@ -85,15 +95,6 @@ export default function AdminConsole({ initialTab = "users" }) {
 
   return (
     <div className="admin-console">
-      <div className="admin-console__header">
-        <div>
-          <div className="admin-console__title">Администрирование</div>
-          <div className="admin-console__subtitle">
-            Управление пользователями, складом и клиентами SaaS.
-          </div>
-        </div>
-      </div>
-
       <div className="admin-console__tabs">
         {tabs.map((tab) => (
           <button
@@ -114,6 +115,8 @@ export default function AdminConsole({ initialTab = "users" }) {
         {activeTab === "tenants" && <TenantManagement />}
         {activeTab === "users" && <UserManagement />}
         {activeTab === "warehouse" && <AdminWarehousePanel />}
+        {activeTab === "picking-shortage" && <AdminPickingShortagePanel />}
+        {activeTab === "org-profile" && <AdminOrgProfilePanel />}
         {activeTab === "picking-report" && <PickingReport />}
       </div>
     </div>

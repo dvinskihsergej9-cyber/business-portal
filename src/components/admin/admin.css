@@ -166,20 +166,91 @@
 }
 
 .admin-table__actions .admin-copy-btn {
-  width: 30px;
-  height: 30px;
-  min-width: 30px;
-  border: 1px solid #d1d5db;
+  width: auto;
+  min-width: 0;
+  height: auto;
+  padding: 8px 14px;
+  border: 1px solid #cbd5e1;
   border-radius: 8px;
-  background: #f8fafc;
+  background: #ffffff;
   color: #475569;
+  font-size: 13px;
+  font-weight: 600;
+  -webkit-tap-highlight-color: transparent;
 }
 
 .admin-table__actions .admin-copy-btn:hover,
-.admin-table__actions .admin-copy-btn:focus-visible {
+.admin-table__actions .admin-copy-btn:focus-visible,
+.admin-table__actions .admin-copy-btn:active {
   border-color: #94a3b8;
   background: #f1f5f9;
   color: #1f2937;
+}
+
+.admin-table__actions .admin-copy-btn:focus {
+  outline: none;
+  box-shadow: none;
+}
+
+.admin-table__actions .admin-copy-btn:disabled {
+  opacity: 0.55;
+}
+
+.admin-table__actions .admin-copy-btn.admin-copy-btn--copied {
+  border-color: #22c55e;
+  background: #dcfce7;
+  color: #166534;
+  animation: adminCopyFlash 0.28s ease-in-out 2;
+}
+
+.admin-table__actions .admin-copy-btn.admin-copy-btn--copied:hover,
+.admin-table__actions .admin-copy-btn.admin-copy-btn--copied:focus-visible,
+.admin-table__actions .admin-copy-btn.admin-copy-btn--copied:active {
+  border-color: #22c55e;
+  background: #dcfce7;
+  color: #166534;
+}
+
+.admin-copy-wrap {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.admin-copy-toast {
+  position: absolute;
+  left: 50%;
+  top: calc(100% + 6px);
+  transform: translateX(-50%);
+  padding: 4px 8px;
+  border-radius: 8px;
+  border: 1px solid rgba(148, 163, 184, 0.45);
+  background: rgba(255, 255, 255, 0.7);
+  color: #334155;
+  font-size: 11px;
+  line-height: 1.2;
+  white-space: normal;
+  max-width: 170px;
+  text-align: center;
+  pointer-events: none;
+  backdrop-filter: blur(2px);
+  z-index: 5;
+}
+
+@keyframes adminCopyFlash {
+  0% {
+    filter: brightness(1);
+    transform: scale(1);
+  }
+  50% {
+    filter: brightness(1.08);
+    transform: scale(1.015);
+  }
+  100% {
+    filter: brightness(1);
+    transform: scale(1);
+  }
 }
 
 .admin-table-wrapper {
@@ -223,6 +294,13 @@
 .admin-table__actions {
   display: flex;
   gap: 8px;
+}
+
+.admin-table__actions .admin-btn {
+  min-height: 38px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
 }
 
 .admin-alert {
@@ -430,6 +508,11 @@
     font-weight: 700;
   }
 
+  .admin-table td.admin-table__actions::before {
+    content: "";
+    display: none;
+  }
+
   .admin-table__actions {
     flex-direction: column;
     align-items: stretch;
@@ -437,6 +520,17 @@
 
   .admin-table__actions .admin-btn {
     width: 100%;
+  }
+
+  .admin-copy-wrap {
+    width: 100%;
+  }
+
+  .admin-copy-toast {
+    left: 50%;
+    top: calc(100% + 6px);
+    transform: translateX(-50%);
+    max-width: min(220px, calc(100vw - 64px));
   }
 
   .admin-table__actions .admin-icon-btn {

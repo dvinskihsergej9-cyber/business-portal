@@ -614,6 +614,32 @@ export default function MobileTsd() {
     }
   };
 
+  const loadBinLocation = async (location) => {
+    const res = await fetch(
+      `${API_BASE}/warehouse/bin-audit/location/${location.id}/expected`,
+      { headers: authHeaders }
+    );
+    const stockData = await res.json().catch(() => null);
+    if (!res.ok) {
+      throw new Error(stockData?.message || "Не удалось загрузить остатки");
+    }
+    const counts = {};
+    (stockData?.items || []).forEach((row) => {
+      counts[row.item.id] = row.expectedQty;
+    });
+    setBinState((prev) => ({
+      ...prev,
+      step: 1,
+      location: stockData?.location || location,
+      items: stockData?.items || [],
+      counts,
+      loading: false,
+      error: "",
+      done: false,
+      discrepancySaved: false,
+    }));
+  };
+
   const handleBinLocation = async (code) => {
     try {
       setBinState((prev) => ({
@@ -623,33 +649,8 @@ export default function MobileTsd() {
         done: false,
         discrepancySaved: false,
       }));
-      const data = await resolveScan(code);
-      if (data.type !== "location") {
-        throw new Error("Это не ячейка.");
-      }
-      const res = await fetch(
-        `${API_BASE}/warehouse/bin-audit/location/${data.entity.id}/expected`,
-        { headers: authHeaders }
-      );
-      const stockData = await res.json();
-      if (!res.ok) {
-        throw new Error(stockData.message || "Не удалось загрузить остатки");
-      }
-      const counts = {};
-      (stockData.items || []).forEach((row) => {
-        counts[row.item.id] = row.expectedQty;
-      });
-      setBinState({
-        step: 1,
-        sessionId: binState.sessionId,
-        location: stockData.location || data.entity,
-        items: stockData.items || [],
-        counts,
-        loading: false,
-        error: "",
-        done: false,
-        discrepancySaved: false,
-      });
+      const location = await resolveLocationEntity(code);
+      await loadBinLocation(location);
     } catch (err) {
       setBinState((prev) => ({
         ...prev,

@@ -2,6 +2,39 @@ import { useState, useRef } from "react";
 import { API_BASE } from "../apiConfig";
 import * as XLSX from "xlsx";
 
+const ITEM_HEADER_ALIASES = {
+    name: "name",
+    наименование: "name",
+    товар: "name",
+    sku: "sku",
+    артикул: "sku",
+    barcode: "barcode",
+    штрихкод: "barcode",
+    unit: "unit",
+    едизм: "unit",
+    единица: "unit",
+    ед: "unit",
+    minstock: "minStock",
+    min: "minStock",
+    мин: "minStock",
+    миностаток: "minStock",
+    миност: "minStock",
+    maxstock: "maxStock",
+    max: "maxStock",
+    макс: "maxStock",
+    максостаток: "maxStock",
+    максост: "maxStock",
+    price: "defaultPrice",
+    цена: "defaultPrice",
+};
+
+function normalizeHeader(value) {
+    return String(value || "")
+        .toLowerCase()
+        .replace(/\s+/g, "")
+        .replace(/[^a-z0-9а-яё]/gi, "");
+}
+
 export default function ImportItemsModal({ onClose, onImportSuccess }) {
     const [step, setStep] = useState(1); // 1: Upload, 2: Preview, 3: Result
     const [items, setItems] = useState([]);
@@ -20,21 +53,43 @@ export default function ImportItemsModal({ onClose, onImportSuccess }) {
             const worksheet = workbook.Sheets[workbook.SheetNames[0]];
             const jsonData = XLSX.utils.sheet_to_json(worksheet, { header: 1 });
 
-            // Ожидаем заголовки в первой строке, данные со второй
-            // Формат: Name, SKU, Barcode, Unit, Min, Max, Price
+            const headerRow = jsonData[0] || [];
+            const headerMap = headerRow.map((cell) => {
+                const normalized = normalizeHeader(cell);
+                return ITEM_HEADER_ALIASES[normalized] || null;
+            });
+            const hasKnownHeaders = headerMap.some(Boolean);
             const rows = jsonData.slice(1);
+
             const parsedItems = rows.map((row, index) => {
                 const rowNum = index + 2;
+
+                const record = {};
+                if (hasKnownHeaders) {
+                    headerMap.forEach((key, idx) => {
+                        if (!key) return;
+                        record[key] = row[idx];
+                    });
+                } else {
+                    // Legacy fallback by index if headers are unknown.
+                    record.name = row[0];
+                    record.sku = row[1];
+                    record.barcode = row[2];
+                    record.unit = row[3];
+                    record.minStock = row[5];
+                    record.maxStock = row[8];
+                    record.defaultPrice = row[9];
+                }
+
                 const item = {
                     row: rowNum,
-                    name: row[0],
-                    sku: row[1],
-                    barcode: row[2],
-                    unit: row[3],
-                    // F=5 (Min), I=8 (Max), J=9 (Price)
-                    minStock: row[5],
-                    maxStock: row[8],
-                    defaultPrice: row[9],
+                    name: record.name,
+                    sku: record.sku,
+                    barcode: record.barcode,
+                    unit: record.unit,
+                    minStock: record.minStock,
+                    maxStock: record.maxStock,
+                    defaultPrice: record.defaultPrice,
                     isValid: true,
                     validationError: null,
                 };
@@ -114,9 +169,14 @@ export default function ImportItemsModal({ onClose, onImportSuccess }) {
                                 ref={fileInputRef}
                                 style={{ display: "none" }}
                             />
-                            <button onClick={() => fileInputRef.current.click()} className="btn btn-primary">
-                                Выбрать файл
-                            </button>
+                            <div style={{ display: "flex", justifyContent: "center", gap: 10, flexWrap: "wrap" }}>
+                                <button onClick={() => fileInputRef.current.click()} className="btn btn-primary">
+                                    Выбрать файл
+                                </button>
+                                <a href="/templates/items-import-template.xlsx" download className="btn">
+                                    Скачать шаблон
+                                </a>
+                            </div>
                         </div>
                     )}
 

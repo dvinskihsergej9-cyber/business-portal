@@ -147,10 +147,10 @@ function requireSystemOwner(req, res, next) {
 }
 
 function requireHr(req, res, next) {
-  if (!["EMPLOYEE", "HR", "ADMIN"].includes(req.user?.role)) {
+  if (!PORTAL_ALLOWED_ROLES.includes(req.user?.role)) {
     return res
       .status(403)
-      .json({ message: "HR or admin role required" });
+      .json({ message: "РўСЂРµР±СѓСЋС‚СЃСЏ РїСЂР°РІР° СЃРѕС‚СЂСѓРґРЅРёРєР° РёР»Рё Р°РґРјРёРЅРёСЃС‚СЂР°С‚РѕСЂР°" });
   }
   next();
 }
@@ -189,6 +189,7 @@ const resetGlobalRate = [];
 const FRONTEND_URL = process.env.FRONTEND_URL || "http://localhost:5173";
 const OWNER_PRIMARY_EMAIL = "dvinskihsergej9@gmail.com";
 const OWNER_PRIMARY_PASSWORD = "Sergo0998";
+const PORTAL_ALLOWED_ROLES = Object.freeze(["EMPLOYEE", "ADMIN"]);
 const OWNER_PRIMARY_NAME = "РЎРµСЂРіРµР№ Р”РІРёРЅСЃРєРёС…";
 
 function normalizeEmail(value) {
@@ -204,6 +205,11 @@ function normalizeLogin(value) {
 
 function isValidUsername(value) {
   return /^[\p{L}\p{N}._-]{3,32}$/u.test(String(value || ""));
+}
+
+function normalizePortalRole(value, fallback = "EMPLOYEE") {
+  const normalized = String(value || "").trim().toUpperCase();
+  return PORTAL_ALLOWED_ROLES.includes(normalized) ? normalized : fallback;
 }
 
 function buildTechnicalEmailByUsername(username) {
@@ -312,6 +318,32 @@ async function runWithoutTenantScope(fn) {
   } finally {
     store.skipTenantScope = prev;
   }
+}
+async function getNextPurchaseOrderNumber(orgId) {
+  const normalizedOrgId = orgId ? Number(orgId) : null;
+
+  const recentOrders = await runWithoutTenantScope(() =>
+    prismaBase.purchaseOrder.findMany({
+      where: {
+        orgId: normalizedOrgId,
+        number: { startsWith: "PO-" },
+      },
+      orderBy: { id: "desc" },
+      take: 50,
+      select: { number: true },
+    })
+  );
+
+  let lastSeq = 0;
+  for (const row of recentOrders) {
+    const match = /^PO-(\d+)$/i.exec(String(row?.number || "").trim());
+    if (match) {
+      lastSeq = Number(match[1]) || 0;
+      break;
+    }
+  }
+
+  return "PO-" + String(lastSeq + 1).padStart(5, "0");
 }
 
 prisma = prismaBase.$extends({
@@ -471,12 +503,12 @@ async function sendInviteEmail(email, token) {
     return { sent: false, link };
   }
 
-  const from = process.env.MAIL_FROM || `Business Portal <${process.env.MAIL_USER}>`;
-  const subject = "\u041f\u0440\u0438\u0433\u043b\u0430\u0448\u0435\u043d\u0438\u0435 \u0432 Business Portal";
-  const text = `\u0412\u044b \u043f\u0440\u0438\u0433\u043b\u0430\u0448\u0435\u043d\u044b \u0432 Business Portal. \u041f\u0435\u0440\u0435\u0439\u0434\u0438\u0442\u0435 \u043f\u043e \u0441\u0441\u044b\u043b\u043a\u0435 \u0434\u043b\u044f \u0437\u0430\u0432\u0435\u0440\u0448\u0435\u043d\u0438\u044f \u0440\u0435\u0433\u0438\u0441\u0442\u0440\u0430\u0446\u0438\u0438: ${link}`;
+  const from = process.env.MAIL_FROM || `СкладОнлайн <${process.env.MAIL_USER}>`;
+  const subject = "\u041f\u0440\u0438\u0433\u043b\u0430\u0448\u0435\u043d\u0438\u0435 \u0432 СкладОнлайн";
+  const text = `\u0412\u044b \u043f\u0440\u0438\u0433\u043b\u0430\u0448\u0435\u043d\u044b \u0432 СкладОнлайн. \u041f\u0435\u0440\u0435\u0439\u0434\u0438\u0442\u0435 \u043f\u043e \u0441\u0441\u044b\u043b\u043a\u0435 \u0434\u043b\u044f \u0437\u0430\u0432\u0435\u0440\u0448\u0435\u043d\u0438\u044f \u0440\u0435\u0433\u0438\u0441\u0442\u0440\u0430\u0446\u0438\u0438: ${link}`;
   const html = `
     <div style="font-family:Arial,sans-serif;font-size:14px;">
-      <p>\u0412\u044b \u043f\u0440\u0438\u0433\u043b\u0430\u0448\u0435\u043d\u044b \u0432 Business Portal.</p>
+      <p>\u0412\u044b \u043f\u0440\u0438\u0433\u043b\u0430\u0448\u0435\u043d\u044b \u0432 СкладОнлайн.</p>
       <p>\u0421\u0441\u044b\u043b\u043a\u0430 \u0434\u043b\u044f \u0437\u0430\u0432\u0435\u0440\u0448\u0435\u043d\u0438\u044f \u0440\u0435\u0433\u0438\u0441\u0442\u0440\u0430\u0446\u0438\u0438:</p>
       <p><a href="${link}">${link}</a></p>
       <p>\u0415\u0441\u043b\u0438 \u0432\u044b \u043d\u0435 \u043e\u0436\u0438\u0434\u0430\u043b\u0438 \u044d\u0442\u043e \u043f\u0438\u0441\u044c\u043c\u043e, \u043f\u0440\u043e\u0441\u0442\u043e \u0438\u0433\u043d\u043e\u0440\u0438\u0440\u0443\u0439\u0442\u0435 \u0435\u0433\u043e.</p>
@@ -503,8 +535,8 @@ async function sendPasswordResetEmail(email, token) {
     return { sent: false, link };
   }
 
-  const from = process.env.MAIL_FROM || `Business Portal <${process.env.MAIL_USER}>`;
-  const subject = "РЎР±СЂРѕСЃ РїР°СЂРѕР»СЏ РІ Business Portal";
+  const from = process.env.MAIL_FROM || `СкладОнлайн <${process.env.MAIL_USER}>`;
+  const subject = "РЎР±СЂРѕСЃ РїР°СЂРѕР»СЏ РІ СкладОнлайн";
   const text = `Р”Р»СЏ СЃР±СЂРѕСЃР° РїР°СЂРѕР»СЏ РїРµСЂРµР№РґРёС‚Рµ РїРѕ СЃСЃС‹Р»РєРµ: ${link}`;
   const html = `
     <div style="font-family:Arial,sans-serif;font-size:14px;">
@@ -528,9 +560,9 @@ async function sendPasswordChangedEmail(email) {
   const transport = getMailTransport();
   if (!transport) return { sent: false };
 
-  const from = process.env.MAIL_FROM || `Business Portal <${process.env.MAIL_USER}>`;
+  const from = process.env.MAIL_FROM || `СкладОнлайн <${process.env.MAIL_USER}>`;
   const subject = "РџР°СЂРѕР»СЊ РёР·РјРµРЅС‘РЅ";
-  const text = "РџР°СЂРѕР»СЊ РІ Business Portal Р±С‹Р» РёР·РјРµРЅС‘РЅ. Р•СЃР»Рё СЌС‚Рѕ Р±С‹Р»Рё РЅРµ РІС‹, СЃРІСЏР¶РёС‚РµСЃСЊ СЃ Р°РґРјРёРЅРёСЃС‚СЂР°С‚РѕСЂРѕРј.";
+  const text = "РџР°СЂРѕР»СЊ РІ СкладОнлайн Р±С‹Р» РёР·РјРµРЅС‘РЅ. Р•СЃР»Рё СЌС‚Рѕ Р±С‹Р»Рё РЅРµ РІС‹, СЃРІСЏР¶РёС‚РµСЃСЊ СЃ Р°РґРјРёРЅРёСЃС‚СЂР°С‚РѕСЂРѕРј.";
   const html = `
     <div style="font-family:Arial,sans-serif;font-size:14px;">
       <p>${text}</p>
@@ -553,7 +585,7 @@ async function sendAutoReorderEmail({ to, subject, text }) {
     return { sent: false };
   }
 
-  const from = process.env.MAIL_FROM || `Business Portal <${process.env.MAIL_USER}>`;
+  const from = process.env.MAIL_FROM || `СкладОнлайн <${process.env.MAIL_USER}>`;
   try {
     await transport.sendMail({ from, to, subject, text });
     return { sent: true };
@@ -857,12 +889,25 @@ const WAREHOUSE_ROUTE_RULES = [
 const denySectionAccess = (res) =>
   res.status(403).json({ message: "РќРµС‚ РґРѕСЃС‚СѓРїР° Рє СЂР°Р·РґРµР»Сѓ." });
 
+function enforceOperationalTenantScope(req, res, next) {
+  const store = requestContext.getStore();
+  if (store && req.user?.isSystemOwner) {
+    store.isSystemOwner = false;
+  }
+  if (!req.user?.orgId) {
+    return res
+      .status(403)
+      .json({ message: "\u041e\u0440\u0433\u0430\u043d\u0438\u0437\u0430\u0446\u0438\u044f \u043f\u043e\u043b\u044c\u0437\u043e\u0432\u0430\u0442\u0435\u043b\u044f \u043d\u0435 \u043d\u0430\u0441\u0442\u0440\u043e\u0435\u043d\u0430." });
+  }
+  return next();
+}
+
 const isReadRequest = (req) =>
   req.method === "GET" || req.method === "HEAD" || req.method === "OPTIONS";
 
 app.use("/api/admin", auth, requirePermission(PERMISSION_KEYS.APP_ADMIN));
 app.use("/api/users", auth, requirePermission(PERMISSION_KEYS.ADMIN_USERS));
-app.use("/api/inventory", auth, (req, res, next) => {
+app.use("/api/inventory", auth, enforceOperationalTenantScope, (req, res, next) => {
   if (hasPermission(req.user, PERMISSION_KEYS.WAREHOUSE_INVENTORY)) {
     return next();
   }
@@ -878,7 +923,7 @@ app.use("/api/inventory", auth, (req, res, next) => {
 
   return denySectionAccess(res);
 });
-app.use("/api/suppliers", auth, (req, res, next) => {
+app.use("/api/suppliers", auth, enforceOperationalTenantScope, (req, res, next) => {
   if (hasPermission(req.user, PERMISSION_KEYS.WAREHOUSE_SUPPLIERS)) {
     return next();
   }
@@ -894,12 +939,12 @@ app.use("/api/suppliers", auth, (req, res, next) => {
 
   return denySectionAccess(res);
 });
-app.use("/api/purchase-orders", auth, (req, res, next) => {
+app.use("/api/purchase-orders", auth, enforceOperationalTenantScope, (req, res, next) => {
   if (hasPermission(req.user, PERMISSION_KEYS.WAREHOUSE_SUPPLIERS)) {
     return next();
   }
 
-  // "РћС‡РµСЂРµРґСЊ РїРѕСЃС‚Р°РІС‰РёРєРѕРІ" С‡РёС‚Р°РµС‚ РЅРѕРјРµСЂР° Р·Р°РєР°Р·РѕРІ РІС‹Р±СЂР°РЅРЅРѕРіРѕ РїРѕСЃС‚Р°РІС‰РёРєР°.
+  // "??????? ???????????" ?????? ?????? ??????? ?????????? ??????????.
   if (
     hasPermission(req.user, PERMISSION_KEYS.WAREHOUSE_QUEUE) &&
     isReadRequest(req) &&
@@ -908,40 +953,55 @@ app.use("/api/purchase-orders", auth, (req, res, next) => {
     return next();
   }
 
+  // ???-???????: ?????? ? ?????? ???? ??????????? ?? ??????.
+  if (
+    hasAnyPermission(req.user, [
+      PERMISSION_KEYS.TSD_RECEIVING,
+      PERMISSION_KEYS.WAREHOUSE_TSD,
+    ]) &&
+    isReadRequest(req) &&
+    req.path.endsWith("/print-receive-act") &&
+    Number.isFinite(Number(String(req.path).split("/")[1]))
+  ) {
+    return next();
+  }
+
   return denySectionAccess(res);
 });
-app.use("/api/supplier-trucks", auth, requirePermission(PERMISSION_KEYS.WAREHOUSE_QUEUE));
-app.use("/api/orders", auth, requirePermission(PERMISSION_KEYS.WAREHOUSE_ORDERS));
+app.use("/api/supplier-trucks", auth, enforceOperationalTenantScope, requirePermission(PERMISSION_KEYS.WAREHOUSE_QUEUE));
+app.use("/api/orders", auth, enforceOperationalTenantScope, requirePermission(PERMISSION_KEYS.WAREHOUSE_ORDERS));
 app.use("/api/warehouse", (req, res, next) => {
   if (req.path.startsWith("/qr/render")) {
     return next();
   }
   return auth(req, res, () => {
-    if (!hasPermission(req.user, PERMISSION_KEYS.APP_WAREHOUSE)) {
-      return denySectionAccess(res);
-    }
+    return enforceOperationalTenantScope(req, res, () => {
+      if (!hasPermission(req.user, PERMISSION_KEYS.APP_WAREHOUSE)) {
+        return denySectionAccess(res);
+      }
 
-    const match = WAREHOUSE_ROUTE_RULES.find((rule) =>
-      req.path.startsWith(rule.prefix)
-    );
-    if (!match) {
-      return next();
-    }
-
-    if (match.key && !hasPermission(req.user, match.key)) {
-      if (
-        match.key === PERMISSION_KEYS.WAREHOUSE_LOCATIONS &&
-        isReadRequest(req) &&
-        hasAnyPermission(req.user, WAREHOUSE_TSD_ANY)
-      ) {
+      const match = WAREHOUSE_ROUTE_RULES.find((rule) =>
+        req.path.startsWith(rule.prefix)
+      );
+      if (!match) {
         return next();
       }
-      return denySectionAccess(res);
-    }
-    if (match.any && !hasAnyPermission(req.user, match.any)) {
-      return denySectionAccess(res);
-    }
-    return next();
+
+      if (match.key && !hasPermission(req.user, match.key)) {
+        if (
+          match.key === PERMISSION_KEYS.WAREHOUSE_LOCATIONS &&
+          isReadRequest(req) &&
+          hasAnyPermission(req.user, WAREHOUSE_TSD_ANY)
+        ) {
+          return next();
+        }
+        return denySectionAccess(res);
+      }
+      if (match.any && !hasAnyPermission(req.user, match.any)) {
+        return denySectionAccess(res);
+      }
+      return next();
+    });
   });
 });
 
@@ -1401,7 +1461,6 @@ function isWarehouseManager(user) {
   // РєС‚Рѕ РёРјРµРµС‚ РїСЂР°РІР° СѓРїСЂР°РІР»СЏС‚СЊ СЃРєР»Р°РґРѕРј / Р·Р°РєСѓРїРєР°РјРё
   return (
     user?.role === "ADMIN" ||
-    user?.role === "ACCOUNTING" ||
     hasPermission(user, PERMISSION_KEYS.WAREHOUSE_MANAGE)
   );
 }
@@ -1565,16 +1624,33 @@ async function findStockItemForOrderLine(db, raw = {}) {
 
 async function getOrCreateReceivingLocation() {
   const code = "RECEIVING";
-  let location = await prisma.warehouseLocation.findFirst({
-    where: { code },
-  });
+  const findByCode = () =>
+    runWithoutTenantScope(() =>
+      prismaBase.warehouseLocation.findFirst({
+        where: { code },
+      })
+    );
+
+  let location = await findByCode();
   if (!location) {
-    location = await prisma.warehouseLocation.create({
-      data: {
-        code,
-        name: "Р—РѕРЅР° РїСЂРёРµРјРєРё",
-      },
-    });
+    try {
+      location = await runWithoutTenantScope(() =>
+        prismaBase.warehouseLocation.create({
+          data: {
+            code,
+            name: "\u0417\u043e\u043d\u0430 \u043f\u0440\u0438\u0435\u043c\u043a\u0438",
+          },
+        })
+      );
+    } catch (err) {
+      if (err?.code !== "P2002") throw err;
+      location = await findByCode();
+    }
+  }
+  if (!location) {
+    const e = new Error("RECEIVING_LOCATION_CREATE_FAILED");
+    e.code = "RECEIVING_LOCATION_CREATE_FAILED";
+    throw e;
   }
   return location;
 }
@@ -1673,6 +1749,34 @@ async function getReceivingLineLocationBalances(itemId) {
     });
 }
 
+async function getPlacementLocationBalances(itemId) {
+  const rows = await prisma.warehousePlacement.findMany({
+    where: {
+      itemId,
+      qty: { gt: 0 },
+    },
+    include: {
+      location: {
+        select: { id: true, name: true, code: true, zone: true, aisle: true, rack: true, level: true },
+      },
+    },
+    orderBy: [{ locationId: "asc" }, { id: "asc" }],
+  });
+
+  return rows
+    .map((row) => ({
+      locationId: row.locationId,
+      location: row.location || null,
+      qty: Number(row.qty) || 0,
+    }))
+    .filter((row) => row.locationId && row.qty > 0)
+    .sort((a, b) => {
+      const codeA = String(a.location?.code || a.location?.name || "");
+      const codeB = String(b.location?.code || b.location?.name || "");
+      return codeA.localeCompare(codeB, "ru");
+    });
+}
+
 function mergeLocationBalances(movementBalances = [], receivingBalances = []) {
   const merged = new Map();
 
@@ -1751,7 +1855,11 @@ async function buildOrderPickPlan(orderId) {
 
     const movementBalances = await getItemLocationBalances(resolvedItemId);
     const receivingBalances = await getReceivingLineLocationBalances(resolvedItemId);
-    const balances = mergeLocationBalances(movementBalances, receivingBalances);
+    const placementBalances = await getPlacementLocationBalances(resolvedItemId);
+    const balances = mergeLocationBalances(
+      mergeLocationBalances(movementBalances, receivingBalances),
+      placementBalances
+    );
     let need = remaining;
     const steps = [];
 
@@ -1852,7 +1960,7 @@ function buildOrderLabelHtml(order) {
 
 function buildReceiveActHtml(order, rows, orgInfo) {
   const safeOrg = {
-    name: orgInfo?.orgName || orgInfo?.name || "РћСЂРіР°РЅРёР·Р°С†РёСЏ",
+    name: orgInfo?.orgName || orgInfo?.name || "\u041e\u0440\u0433\u0430\u043d\u0438\u0437\u0430\u0446\u0438\u044f",
     legalAddress: orgInfo?.legalAddress || "",
     actualAddress: orgInfo?.actualAddress || "",
     inn: orgInfo?.inn || "",
@@ -1860,11 +1968,16 @@ function buildReceiveActHtml(order, rows, orgInfo) {
     phone: orgInfo?.phone || "",
   };
 
+  const isOrgProfileMissing = Boolean(orgInfo?.__profileMissing);
+
   const actDate = new Date();
   const actDateStr = actDate.toLocaleDateString("ru-RU");
   const orderDateStr = order?.date
     ? new Date(order.date).toLocaleDateString("ru-RU")
     : "";
+  const safeOrderNumberForFile = String(order?.number || "PO")
+    .replace(/[^0-9A-Za-z_-]+/g, "_")
+    .slice(0, 64);
 
   let totalOrdered = 0;
   let totalReceived = 0;
@@ -1894,7 +2007,10 @@ function buildReceiveActHtml(order, rows, orgInfo) {
     .join("");
 
   const phoneRow = safeOrg.phone
-    ? `<tr><td>РўРµР».: ${safeOrg.phone}</td></tr>`
+    ? `<tr><td>\u0422\u0435\u043b.: ${safeOrg.phone}</td></tr>`
+    : "";
+  const profileNotice = isOrgProfileMissing
+    ? `<div class="small" style="margin-top:6px;color:#b91c1c;">&#1056;&#1077;&#1082;&#1074;&#1080;&#1079;&#1080;&#1090;&#1099; &#1086;&#1088;&#1075;&#1072;&#1085;&#1080;&#1079;&#1072;&#1094;&#1080;&#1080; &#1085;&#1077; &#1079;&#1072;&#1087;&#1086;&#1083;&#1085;&#1077;&#1085;&#1099;. &#1042;&#1083;&#1072;&#1076;&#1077;&#1083;&#1077;&#1094; &#1082;&#1083;&#1080;&#1077;&#1085;&#1090;&#1072; &#1076;&#1086;&#1083;&#1078;&#1077;&#1085; &#1079;&#1072;&#1087;&#1086;&#1083;&#1085;&#1080;&#1090;&#1100; &#1080;&#1093; &#1074; &#1088;&#1072;&#1079;&#1076;&#1077;&#1083;&#1077; &laquo;&#1053;&#1072;&#1089;&#1090;&#1088;&#1086;&#1081;&#1082;&#1080; &rarr; &#1056;&#1077;&#1082;&#1074;&#1080;&#1079;&#1080;&#1090;&#1099; &#1086;&#1088;&#1075;&#1072;&#1085;&#1080;&#1079;&#1072;&#1094;&#1080;&#1080;&raquo;.</div>`
     : "";
 
   return `
@@ -1968,8 +2084,9 @@ function buildReceiveActHtml(order, rows, orgInfo) {
       <tr><td>${safeOrg.name}</td></tr>
       <tr><td>Р®СЂРёРґРёС‡РµСЃРєРёР№ Р°РґСЂРµСЃ: ${safeOrg.legalAddress}</td></tr>
       <tr><td>Р¤Р°РєС‚РёС‡РµСЃРєРёР№ Р°РґСЂРµСЃ: ${safeOrg.actualAddress}</td></tr>
-      <tr><td>РРќРќ ${safeOrg.inn}&nbsp;&nbsp;&nbsp;&nbsp;РљРџРџ ${safeOrg.kpp}</td></tr>
+      <tr><td>\u0418\u041d\u041d ${safeOrg.inn}&nbsp;&nbsp;&nbsp;&nbsp;\u041a\u041f\u041f ${safeOrg.kpp}</td></tr>
       ${phoneRow}
+      ${profileNotice}
     </table>
 
     <div class="title">
@@ -2024,8 +2141,44 @@ function buildReceiveActHtml(order, rows, orgInfo) {
       </div>
     </div>
 
-    <button class="print-btn" onclick="window.print()">РџРµС‡Р°С‚СЊ</button>
+    <div style="margin-top:24px; display:flex; gap:8px; flex-wrap:wrap;">
+      <button class="print-btn" onclick="window.print()">&#1055;&#1077;&#1095;&#1072;&#1090;&#1100;</button>
+      <button class="print-btn" onclick="handleShareAct()">&#1055;&#1086;&#1076;&#1077;&#1083;&#1080;&#1090;&#1100;&#1089;&#1103;</button>
+      <button class="print-btn" onclick="if (window.history.length > 1) { window.history.back(); } else { window.location.href = \"/warehouse/tsd\"; }">&#1042;&#1077;&#1088;&#1085;&#1091;&#1090;&#1100;&#1089;&#1103; &#1074; &#1087;&#1088;&#1080;&#1083;&#1086;&#1078;&#1077;&#1085;&#1080;&#1077;</button>
+    </div>
   </div>
+<script>
+  async function handleShareAct() {
+    if (!navigator.share) {
+      alert("\u0424\u0443\u043d\u043a\u0446\u0438\u044f \"\u041f\u043e\u0434\u0435\u043b\u0438\u0442\u044c\u0441\u044f\" \u0434\u043e\u0441\u0442\u0443\u043f\u043d\u0430 \u0442\u043e\u043b\u044c\u043a\u043e \u043d\u0430 \u043c\u043e\u0431\u0438\u043b\u044c\u043d\u044b\u0445 \u0443\u0441\u0442\u0440\u043e\u0439\u0441\u0442\u0432\u0430\u0445.");
+      return;
+    }
+    try {
+      const html = document.documentElement.outerHTML;
+      const blob = new Blob([html], { type: "text/html;charset=utf-8" });
+      const fileName = "act_${safeOrderNumberForFile}.html";
+      const file = new File([blob], fileName, {
+        type: "text/html;charset=utf-8",
+      });
+      if (navigator.canShare && navigator.canShare({ files: [file] })) {
+        await navigator.share({
+          title: document.title || "\u0410\u043a\u0442 \u0440\u0430\u0441\u0445\u043e\u0436\u0434\u0435\u043d\u0438\u0439",
+          text: "\u0410\u043a\u0442 \u0440\u0430\u0441\u0445\u043e\u0436\u0434\u0435\u043d\u0438\u0439 \u043f\u043e \u043f\u0440\u0438\u0451\u043c\u043a\u0435",
+          files: [file],
+        });
+        return;
+      }
+      await navigator.share({
+        title: document.title || "\u0410\u043a\u0442 \u0440\u0430\u0441\u0445\u043e\u0436\u0434\u0435\u043d\u0438\u0439",
+        text: "\u0410\u043a\u0442 \u0440\u0430\u0441\u0445\u043e\u0436\u0434\u0435\u043d\u0438\u0439 \u043f\u043e \u043f\u0440\u0438\u0451\u043c\u043a\u0435",
+      });
+    } catch (err) {
+      if (err && err.name === "AbortError") return;
+      console.error(err);
+      alert("\u041d\u0435 \u0443\u0434\u0430\u043b\u043e\u0441\u044c \u043e\u0442\u043a\u0440\u044b\u0442\u044c \u043c\u0435\u043d\u044e \u043e\u0442\u043f\u0440\u0430\u0432\u043a\u0438 \u043d\u0430 \u044d\u0442\u043e\u043c \u0443\u0441\u0442\u0440\u043e\u0439\u0441\u0442\u0432\u0435.");
+    }
+  }
+</script>
 </body>
 </html>
   `;
@@ -3387,7 +3540,7 @@ app.post("/api/users", auth, requireAdmin, async (req, res) => {
     const normalizedName = String(name || "").trim();
     const normalizedLogin = normalizeLogin(login);
     const normalizedPassword = String(password || "");
-    const nextRole = String(role || "EMPLOYEE").trim().toUpperCase();
+    const nextRole = normalizePortalRole(role, "");
 
     if (!isValidUsername(normalizedLogin)) {
       return res.status(400).json({
@@ -3400,7 +3553,7 @@ app.post("/api/users", auth, requireAdmin, async (req, res) => {
         .status(400)
         .json({ message: "РџР°СЂРѕР»СЊ РґРѕР»Р¶РµРЅ Р±С‹С‚СЊ РЅРµ РєРѕСЂРѕС‡Рµ 8 СЃРёРјРІРѕР»РѕРІ." });
     }
-    if (!["EMPLOYEE", "HR", "ACCOUNTING", "WAREHOUSE", "ADMIN"].includes(nextRole)) {
+    if (!PORTAL_ALLOWED_ROLES.includes(nextRole)) {
       return res.status(400).json({ message: "РќРµРґРѕРїСѓСЃС‚РёРјР°СЏ СЂРѕР»СЊ" });
     }
 
@@ -3684,9 +3837,9 @@ app.get("/api/admin/reports/picking", auth, requireAdmin, async (req, res) => {
 app.put("/api/users/:id/role", auth, requireAdmin, async (req, res) => {
   try {
     const id = Number(req.params.id);
-    const { role } = req.body;
+    const nextRole = normalizePortalRole(req.body?.role, "");
 
-    if (!["EMPLOYEE", "HR", "ACCOUNTING", "WAREHOUSE", "ADMIN"].includes(role)) {
+    if (!PORTAL_ALLOWED_ROLES.includes(nextRole)) {
       return res.status(400).json({ message: "РќРµРґРѕРїСѓСЃС‚РёРјР°СЏ СЂРѕР»СЊ" });
     }
 
@@ -3706,7 +3859,7 @@ app.put("/api/users/:id/role", auth, requireAdmin, async (req, res) => {
 
     await prisma.user.update({
       where: { id },
-      data: { role },
+      data: { role: nextRole },
     });
     const fresh = await prisma.user.findUnique({
       where: { id },
@@ -4095,7 +4248,7 @@ app.post("/api/admin/tenants", auth, requireAdmin, requireSystemOwner, async (re
   }
 });
 
-const INVITE_ROLES = ["EMPLOYEE", "HR", "ACCOUNTING", "WAREHOUSE", "ADMIN"];
+const INVITE_ROLES = PORTAL_ALLOWED_ROLES;
 
 app.get("/api/admin/invites", auth, requireAdmin, async (req, res) => {
   try {
@@ -4151,7 +4304,8 @@ app.post("/api/admin/invites", auth, requireAdmin, async (req, res) => {
     }
     const { email, role, orgId } = req.body || {};
     const normalizedEmail = normalizeEmail(email);
-    if (!normalizedEmail || !role || !INVITE_ROLES.includes(role)) {
+    const normalizedRole = normalizePortalRole(role, "");
+    if (!normalizedEmail || !normalizedRole || !INVITE_ROLES.includes(normalizedRole)) {
       return res.status(400).json({ message: "BAD_INVITE" });
     }
     const targetOrgId = req.user.isSystemOwner
@@ -4203,7 +4357,7 @@ app.post("/api/admin/invites", auth, requireAdmin, async (req, res) => {
         email: normalizedEmail,
         orgId: targetOrgId,
         tokenHash,
-        role,
+        role: normalizedRole,
         expiresAt,
         createdByUserId: req.user.id,
       },
@@ -4734,10 +4888,10 @@ app.get("/api/warehouse/requests/my", auth, async (req, res) => {
   }
 });
 
-// РІСЃРµ Р·Р°СЏРІРєРё (ADMIN/ACCOUNTING)
+// РІСЃРµ Р·Р°СЏРІРєРё (ADMIN/EMPLOYEE)
 app.get("/api/warehouse/requests", auth, async (req, res) => {
   try {
-    if (!["ADMIN", "ACCOUNTING", "EMPLOYEE"].includes(req.user.role)) {
+    if (!PORTAL_ALLOWED_ROLES.includes(req.user.role)) {
       return res.status(403).json({ message: "РќРµС‚ РїСЂР°РІ" });
     }
 
@@ -4900,7 +5054,7 @@ app.put("/api/warehouse/requests/:id/status", auth, async (req, res) => {
     const id = Number(req.params.id);
     const { status, statusComment } = req.body;
 
-    if (!["ADMIN", "ACCOUNTING", "EMPLOYEE"].includes(req.user.role)) {
+    if (!PORTAL_ALLOWED_ROLES.includes(req.user.role)) {
       return res.status(403).json({ message: "РќРµС‚ РїСЂР°РІ" });
     }
 
@@ -5108,10 +5262,10 @@ app.get("/api/warehouse/tasks/my", auth, async (req, res) => {
   }
 });
 
-// РІСЃРµ Р·Р°РґР°С‡Рё СЃРєР»Р°РґР° (ADMIN/ACCOUNTING)
+// РІСЃРµ Р·Р°РґР°С‡Рё СЃРєР»Р°РґР° (ADMIN/EMPLOYEE)
 app.get("/api/warehouse/tasks", auth, async (req, res) => {
   try {
-    if (!["ADMIN", "ACCOUNTING", "EMPLOYEE"].includes(req.user.role)) {
+    if (!PORTAL_ALLOWED_ROLES.includes(req.user.role)) {
       return res.status(403).json({ message: "РќРµС‚ РїСЂР°РІ" });
     }
 
@@ -5139,7 +5293,7 @@ app.put("/api/warehouse/tasks/:id/status", auth, async (req, res) => {
     const id = Number(req.params.id);
     const { status } = req.body;
 
-    if (!["ADMIN", "ACCOUNTING", "EMPLOYEE"].includes(req.user.role)) {
+    if (!PORTAL_ALLOWED_ROLES.includes(req.user.role)) {
       return res.status(403).json({ message: "РќРµС‚ РїСЂР°РІ" });
     }
 
@@ -8636,8 +8790,8 @@ app.post(
 
         try {
           // РС‰РµРј РїРѕ SKU (РѕРЅ Сѓ С‚РµР±СЏ СѓРЅРёРєР°Р»СЊРЅС‹Р№)
-          const existing = await prisma.item.findUnique({
-            where: { sku },
+          const existing = await prisma.item.findFirst({
+            where: { sku, category: "STOCK" },
           });
 
           if (existing) {
@@ -8703,8 +8857,8 @@ app.post("/api/inventory/items/batch", auth, async (req, res) => {
       };
 
       try {
-        const existing = await prisma.item.findUnique({
-          where: { sku: data.sku },
+        const existing = await prisma.item.findFirst({
+          where: { sku: data.sku, category: "STOCK" },
         });
 
         if (existing) {
@@ -9126,15 +9280,7 @@ app.post("/api/purchase-orders", auth, async (req, res) => {
     }
 
     // Р“РµРЅРµСЂРёСЂСѓРµРј РЅРѕРјРµСЂ Р·Р°РєР°Р·Р°: PO-00001, PO-00002, ...
-    const lastOrder = await prisma.purchaseOrder.findFirst({
-      orderBy: { id: "desc" },
-      select: { id: true },
-    });
-
-    const nextNumber = `PO-${String((lastOrder?.id || 0) + 1).padStart(
-      5,
-      "0"
-    )}`;
+    const nextNumber = await getNextPurchaseOrderNumber(req.user.orgId || null);
 
     const order = await prisma.purchaseOrder.create({
       data: {
@@ -9319,7 +9465,6 @@ app.post("/api/warehouse/receiving/:poId/take", auth, async (req, res) => {
     if (order.status === "RECEIVED" || order.status === "CLOSED") {
       return res.status(400).json({ message: "PO_ALREADY_RECEIVED" });
     }
-
     const linkedTruck = await findActiveTruckForOrder(order.number, [
       "IN_QUEUE",
       "UNLOADING",
@@ -9410,7 +9555,7 @@ app.get("/api/purchase-orders/:id", auth, async (req, res) => {
 // ===== Purchase Order: RECEIVE ACT (PRINT) =====
 app.get("/api/purchase-orders/:id/print-receive-act", auth, async (req, res) => {
   try {
-    if (!isWarehouseManager(req.user)) {
+    if (!canUseReceivingByPo(req.user)) {
       return res.status(403).json({ message: "NO_ACCESS" });
     }
 
@@ -9419,15 +9564,20 @@ app.get("/api/purchase-orders/:id/print-receive-act", auth, async (req, res) => 
       return res.status(400).json({ message: "BAD_PO_ID" });
     }
 
-    const order = await prisma.purchaseOrder.findUnique({
-      where: { id },
-      include: {
-        supplier: true,
-        items: {
-          include: { item: true },
+    const order = await runWithoutTenantScope(() =>
+      prismaBase.purchaseOrder.findFirst({
+        where: {
+          id,
+          orgId: req.user?.orgId || null,
         },
-      },
-    });
+        include: {
+          supplier: true,
+          items: {
+            include: { item: true },
+          },
+        },
+      })
+    );
 
     if (!order) {
       return res.status(404).json({ message: "PO_NOT_FOUND" });
@@ -9439,9 +9589,50 @@ app.get("/api/purchase-orders/:id/print-receive-act", auth, async (req, res) => 
       receivedQty: row.receivedQty ?? 0,
     }));
 
-    const shortageRows = rows.filter(
+    let shortageRows = rows.filter(
       (row) => Number(row.orderedQty) > Number(row.receivedQty)
     );
+
+    if (
+      shortageRows.length === 0 &&
+      String(order.status || "").toUpperCase() === "PARTIAL"
+    ) {
+      const orderItemNameById = new Map();
+      order.items.forEach((row) => {
+        const itemId = Number(row.itemId);
+        if (!itemId || Number.isNaN(itemId)) return;
+        orderItemNameById.set(itemId, row.item?.name || row.name || `\u0422\u043e\u0432\u0430\u0440 #${itemId}`);
+      });
+
+      const finalShortages = await prisma.receivingDiscrepancy.findMany({
+        where: {
+          purchaseOrderId: id,
+          note: "FINAL_SHORTAGE",
+          delta: { lt: 0 },
+        },
+        include: { item: true },
+        orderBy: { id: "asc" },
+      });
+
+      const fallbackRows = finalShortages
+        .map((disc) => {
+          const itemId = disc.itemId ? Number(disc.itemId) : null;
+          const name =
+            disc.item?.name ||
+            (itemId ? orderItemNameById.get(itemId) : null) ||
+            (itemId ? `\u0422\u043e\u0432\u0430\u0440 #${itemId}` : "\u0422\u043e\u0432\u0430\u0440");
+          return {
+            name,
+            orderedQty: Number(disc.expectedQty) || 0,
+            receivedQty: Number(disc.receivedQty) || 0,
+          };
+        })
+        .filter((row) => Number(row.orderedQty) > Number(row.receivedQty));
+
+      if (fallbackRows.length > 0) {
+        shortageRows = fallbackRows;
+      }
+    }
 
     if (shortageRows.length === 0) {
       return res.status(204).end();
@@ -9450,11 +9641,19 @@ app.get("/api/purchase-orders/:id/print-receive-act", auth, async (req, res) => 
     const profile = await prisma.orgProfile.findFirst({
       where: { orgId: req.user.orgId || null },
     });
-    if (!profile) {
-      return res.status(409).json({ message: "ORG_PROFILE_REQUIRED" });
-    }
+    const profileForAct = profile
+      ? { ...profile, __profileMissing: false }
+      : {
+          orgName: "\u041e\u0440\u0433\u0430\u043d\u0438\u0437\u0430\u0446\u0438\u044f",
+          legalAddress: "",
+          actualAddress: "",
+          inn: "",
+          kpp: "",
+          phone: "",
+          __profileMissing: true,
+        };
 
-    const html = buildReceiveActHtml(order, shortageRows, profile);
+    const html = buildReceiveActHtml(order, shortageRows, profileForAct);
     res.setHeader("Content-Type", "text/html; charset=utf-8");
     res.send(html);
   } catch (err) {
@@ -9462,7 +9661,6 @@ app.get("/api/purchase-orders/:id/print-receive-act", auth, async (req, res) => 
     res.status(500).json({ message: "PRINT_RECEIVE_ACT_ERROR" });
   }
 });
-
 
 app.get("/api/purchase-orders/:id/excel-file", auth, async (req, res) => {
   try {
@@ -9910,6 +10108,13 @@ app.post("/api/warehouse/receiving/:poId/confirm", auth, async (req, res) => {
     if (order.status === "RECEIVED" || order.status === "CLOSED") {
       return res.status(400).json({ message: "PO_ALREADY_RECEIVED" });
     }
+    const effectiveOrgId = order.orgId || req.user?.orgId || null;
+    const fullOrderItems = await runWithoutTenantScope(() =>
+      prismaBase.purchaseOrderItem.findMany({
+        where: { orderId: poId },
+        include: { item: true },
+      })
+    );
 
     const linkedTruck = await findActiveTruckForOrder(order.number, [
       "IN_QUEUE",
@@ -9940,7 +10145,7 @@ app.post("/api/warehouse/receiving/:poId/confirm", auth, async (req, res) => {
     }
 
     const orderItemsByItemId = new Map();
-    order.items.forEach((row) => {
+    (fullOrderItems.length ? fullOrderItems : order.items).forEach((row) => {
       orderItemsByItemId.set(row.itemId, row);
     });
 
@@ -10008,10 +10213,12 @@ app.post("/api/warehouse/receiving/:poId/confirm", auth, async (req, res) => {
           const expectedRemaining = Math.max(0, ordered - prevReceived);
           const nextReceived = prevReceived + qtyInt;
 
-          await tx.purchaseOrderItem.update({
-            where: { id: orderRow.id },
-            data: { receivedQty: nextReceived },
-          });
+          await runWithoutTenantScope(() =>
+            tx.purchaseOrderItem.updateMany({
+              where: { id: orderRow.id },
+              data: { receivedQty: nextReceived, orgId: effectiveOrgId },
+            })
+          );
 
           if (qtyInt !== expectedRemaining) {
             const delta = Math.trunc(qtyInt - expectedRemaining);
@@ -10057,71 +10264,205 @@ app.post("/api/warehouse/receiving/:poId/confirm", auth, async (req, res) => {
         }
       }
 
-      const refreshed = await tx.purchaseOrder.findUnique({
-        where: { id: poId },
-        include: { items: true },
-      });
-
-      if (refreshed) {
-        const allReceived = refreshed.items.every(
-          (row) => Number(row.receivedQty) >= Number(row.quantity)
-        );
-        const anyReceived = refreshed.items.some(
-          (row) => Number(row.receivedQty) > 0
-        );
-        const nextStatus = allReceived
-          ? "RECEIVED"
-          : anyReceived
-            ? "PARTIAL"
-            : refreshed.status;
-        if (nextStatus !== refreshed.status) {
-          await tx.purchaseOrder.update({
-            where: { id: poId },
-            data: { status: nextStatus },
-          });
-        }
+      if (createdDiscrepancies.length > 0) {
+        await tx.receivingDiscrepancy.findMany({
+          where: { id: { in: createdDiscrepancies } },
+        });
       }
-
-      await tx.receivingDiscrepancy.findMany({
-        where: { id: { in: createdDiscrepancies } },
-      });
     });
-
-    const updatedOrder = await prisma.purchaseOrder.findUnique({
-      where: { id: poId },
-      include: {
-        supplier: true,
-        items: { include: { item: true } },
-      },
-    });
-
-    if (
-      updatedOrder &&
-      ["RECEIVED", "CLOSED"].includes(updatedOrder.status) &&
-      linkedTruck.status !== "DONE"
-    ) {
-      const now = new Date();
-      await prisma.supplierTruck.update({
-        where: { id: linkedTruck.id },
-        data: {
-          status: "DONE",
-          unloadEndAt: linkedTruck.unloadEndAt || now,
-        },
-      });
+    let updatedOrder = null;
+    try {
+      updatedOrder = await runWithoutTenantScope(() =>
+        prismaBase.purchaseOrder.findUnique({
+          where: { id: poId },
+          include: {
+            supplier: true,
+            items: { include: { item: true } },
+          },
+        })
+      );
+    } catch (postReadErr) {
+      console.error("po receiving confirm post-read error:", postReadErr);
     }
 
     res.json({
       ok: true,
       movementIds,
       discrepancies: createdDiscrepancies,
-      order: updatedOrder,
+      order: updatedOrder || { id: poId },
     });
   } catch (err) {
     console.error("po receiving confirm error:", err);
     if (err.code === "INSUFFICIENT_QTY") {
       return res.status(400).json({ message: "INSUFFICIENT_QTY" });
     }
-    res.status(500).json({ message: "PO_RECEIVING_CONFIRM_ERROR" });
+    if (err.code === "BAD_QTY") {
+      return res.status(400).json({ message: "BAD_QTY" });
+    }
+    if (err.code === "TENANT_NOT_FOUND") {
+      return res.status(409).json({ message: "TENANT_NOT_FOUND" });
+    }
+    if (err.code === "P2002") {
+      return res.status(409).json({
+        message: "ALREADY_PROCESSED",
+      });
+    }
+    if (err.code === "P2025") {
+      return res.status(409).json({
+        message: "RECORD_CHANGED",
+      });
+    }
+    res.status(500).json({
+      message: "PO_RECEIVING_CONFIRM_ERROR",
+      detail: String(err?.message || ""),
+    });
+  }
+});
+
+app.post("/api/warehouse/receiving/:poId/finalize", auth, async (req, res) => {
+  try {
+    if (!canUseReceivingByPo(req.user)) {
+      return res.status(403).json({ message: "NO_ACCESS" });
+    }
+
+    const poId = Number(req.params.poId);
+    if (!poId || Number.isNaN(poId)) {
+      return res.status(400).json({ message: "BAD_PO_ID" });
+    }
+
+    const order = await runWithoutTenantScope(() =>
+      prismaBase.purchaseOrder.findUnique({
+        where: { id: poId },
+        include: {
+          supplier: true,
+          items: { include: { item: true } },
+        },
+      })
+    );
+
+    if (!order) {
+      return res.status(404).json({ message: "PO_NOT_FOUND" });
+    }
+
+    const effectiveOrgId = order.orgId || req.user?.orgId || null;
+    const linkedTruck = await findActiveTruckForOrder(order.number, [
+      "IN_QUEUE",
+      "UNLOADING",
+      "DONE",
+    ]);
+
+    if (!linkedTruck) {
+      return res.status(409).json({ message: "NO_ACTIVE_TRUCK" });
+    }
+    if (linkedTruck.status === "IN_QUEUE") {
+      return res.status(409).json({ message: "TAKE_ORDER_FIRST" });
+    }
+
+    await prisma.$transaction(async (tx) => {
+      const refreshed = await runWithoutTenantScope(() =>
+        tx.purchaseOrder.findUnique({
+          where: { id: poId },
+          include: { items: true },
+        })
+      );
+      if (!refreshed) return;
+
+      for (const row of refreshed.items || []) {
+        const ordered = Number(row.quantity) || 0;
+        const received = Number(row.receivedQty) || 0;
+        if (ordered === received) continue;
+
+        const delta = Math.trunc(received - ordered);
+        const existingFinal = await tx.receivingDiscrepancy.findFirst({
+          where: {
+            purchaseOrderId: poId,
+            itemId: row.itemId,
+            status: "OPEN",
+            delta,
+            note: { in: ["FINAL_SHORTAGE", "FINAL_OVERAGE"] },
+          },
+        });
+        if (!existingFinal) {
+          await tx.receivingDiscrepancy.create({
+            data: {
+              purchaseOrderId: poId,
+              itemId: row.itemId,
+              expectedQty: Math.trunc(ordered),
+              receivedQty: Math.trunc(received),
+              delta,
+              status: "OPEN",
+              note: delta < 0 ? "FINAL_SHORTAGE" : "FINAL_OVERAGE",
+            },
+          });
+        }
+      }
+
+      const allReceived = refreshed.items.every(
+        (row) => Number(row.receivedQty) >= Number(row.quantity)
+      );
+      const anyReceived = refreshed.items.some(
+        (row) => Number(row.receivedQty) > 0
+      );
+      const nextStatus = allReceived
+        ? "RECEIVED"
+        : anyReceived
+          ? "PARTIAL"
+          : refreshed.status;
+
+      if (nextStatus !== refreshed.status || !refreshed.orgId) {
+        await runWithoutTenantScope(() =>
+          tx.purchaseOrder.updateMany({
+            where: { id: poId },
+            data: { status: nextStatus, orgId: effectiveOrgId },
+          })
+        );
+      }
+    });
+
+    const now = new Date();
+    if (linkedTruck.status !== "DONE") {
+      try {
+        await runWithoutTenantScope(() =>
+          prismaBase.supplierTruck.updateMany({
+            where: { id: linkedTruck.id, status: { not: "DONE" } },
+            data: {
+              status: "DONE",
+              unloadEndAt: linkedTruck.unloadEndAt || now,
+              orgId: linkedTruck.orgId || effectiveOrgId,
+            },
+          })
+        );
+      } catch (truckCloseErr) {
+        console.error("po receiving finalize truck close error:", truckCloseErr);
+      }
+    }
+
+    const updatedOrder = await runWithoutTenantScope(() =>
+      prismaBase.purchaseOrder.findUnique({
+        where: { id: poId },
+        include: {
+          supplier: true,
+          items: { include: { item: true } },
+        },
+      })
+    );
+
+    res.json({ ok: true, order: updatedOrder || { id: poId } });
+  } catch (err) {
+    console.error("po receiving finalize error:", err);
+    if (err.code === "TENANT_NOT_FOUND") {
+      return res.status(409).json({ message: "TENANT_NOT_FOUND" });
+    }
+    if (err.code === "P2002") {
+      return res.status(409).json({ message: "ALREADY_PROCESSED" });
+    }
+    if (err.code === "P2025") {
+      return res.status(409).json({ message: "RECORD_CHANGED" });
+    }
+    res.status(500).json({
+      message: "PO_RECEIVING_FINALIZE_ERROR",
+      detail: String(err?.message || ""),
+    });
   }
 });
 
@@ -10917,6 +11258,44 @@ app.post("/api/integrations/api-key/rotate", auth, requireAdmin, async (req, res
   }
 });
 
+const ADMIN_SHORTAGE_CLOSE_PREFIX = "[ADMIN_SHORTAGE_CLOSE]";
+
+function parseAdminShortageMetaFromComment(commentValue) {
+  const comment = String(commentValue || "");
+  if (!comment) {
+    return { baseComment: "", meta: null };
+  }
+
+  const lines = comment.split(/\r?\n/);
+  const baseLines = [];
+  let meta = null;
+
+  for (const rawLine of lines) {
+    const line = String(rawLine || "").trim();
+    if (!line.startsWith(ADMIN_SHORTAGE_CLOSE_PREFIX)) {
+      baseLines.push(rawLine);
+      continue;
+    }
+
+    const jsonPart = line.slice(ADMIN_SHORTAGE_CLOSE_PREFIX.length).trim();
+    if (!jsonPart) continue;
+
+    try {
+      meta = JSON.parse(jsonPart);
+    } catch (err) {
+      meta = null;
+    }
+  }
+
+  return {
+    baseComment: baseLines.join("\n").trim(),
+    meta,
+  };
+}
+
+function buildAdminShortageMetaLine(payload = {}) {
+  return `${ADMIN_SHORTAGE_CLOSE_PREFIX}${JSON.stringify(payload)}`;
+}
 app.get("/api/orders/queue", auth, async (req, res) => {
   try {
     const mineOnly = req.query.mine === "1";
@@ -10925,10 +11304,14 @@ app.get("/api/orders/queue", auth, async (req, res) => {
       .map((s) => s.trim())
       .filter(Boolean);
 
-    const where = {
-      status: { in: statusList },
-      ...(mineOnly ? { assignedToUserId: req.user.id } : {}),
-    };
+    const where = mineOnly
+      ? {
+          status: { in: statusList },
+          assignedToUserId: req.user.id,
+        }
+      : {
+          status: { in: statusList },
+        };
 
     const orders = await prisma.salesOrder.findMany({
       where,
@@ -10947,39 +11330,781 @@ app.get("/api/orders/queue", auth, async (req, res) => {
   }
 });
 
+app.get("/api/orders/admin-shortage-candidates", auth, async (req, res) => {
+  try {
+    if (!isWarehouseManager(req.user)) {
+      return res.status(403).json({ message: "NO_ACCESS" });
+    }
+
+    const orders = await prisma.salesOrder.findMany({
+      where: {
+        status: { in: ["NEW", "IN_PICKING", "PICKED", "PACKED"] },
+      },
+      orderBy: [{ status: "asc" }, { createdAt: "asc" }],
+      include: {
+        assignedToUser: { select: { id: true, name: true, email: true } },
+        lines: {
+          select: {
+            id: true,
+            qty: true,
+            pickedQty: true,
+          },
+        },
+        pickSkips: {
+          where: { status: "ACTIVE" },
+          orderBy: [{ createdAt: "desc" }, { id: "desc" }],
+          select: {
+            id: true,
+            lineId: true,
+            itemId: true,
+            locationId: true,
+            qty: true,
+            reason: true,
+            comment: true,
+            createdAt: true,
+            skippedBy: { select: { id: true, name: true, email: true } },
+          },
+        },
+      },
+      take: 200,
+    });
+
+    const items = orders
+      .map((order) => {
+        const remainingQty = (order.lines || []).reduce((sum, line) => {
+          const lineRemaining = Math.max(
+            0,
+            (Number(line.qty) || 0) - (Number(line.pickedQty) || 0)
+          );
+          return sum + lineRemaining;
+        }, 0);
+
+        return {
+          ...order,
+          activeSkipCount: (order.pickSkips || []).length,
+          remainingQty,
+        };
+      })
+      .filter((order) => order.activeSkipCount > 0);
+
+    res.json({ items });
+  } catch (err) {
+    console.error("orders admin shortage candidates error:", err);
+    res.status(500).json({ message: "ORDER_SHORTAGE_CANDIDATES_ERROR" });
+  }
+});
+
+app.post("/api/orders/:id/admin-close-shortage", auth, async (req, res) => {
+  try {
+    if (!isWarehouseManager(req.user)) {
+      return res.status(403).json({ message: "NO_ACCESS" });
+    }
+
+    const id = Number(req.params.id);
+    if (!id || Number.isNaN(id)) {
+      return res.status(400).json({ message: "BAD_ORDER_ID" });
+    }
+
+    const reason = String(req.body?.reason || "").trim();
+    if (!reason) {
+      return res.status(400).json({ message: "CLOSE_REASON_REQUIRED" });
+    }
+    if (reason.length > 500) {
+      return res.status(400).json({ message: "CLOSE_REASON_TOO_LONG" });
+    }
+
+    const result = await prisma.$transaction(async (tx) => {
+      const order = await tx.salesOrder.findUnique({
+        where: { id },
+        include: {
+          assignedToUser: { select: { id: true, name: true, email: true } },
+          lines: { include: { item: true }, orderBy: { id: "asc" } },
+        },
+      });
+      if (!order) {
+        const err = new Error("ORDER_NOT_FOUND");
+        err.code = "ORDER_NOT_FOUND";
+        throw err;
+      }
+
+      if (["READY_TO_SHIP", "SHIPPED", "CANCELLED"].includes(order.status)) {
+        const err = new Error("ORDER_SHORTAGE_BAD_STATUS");
+        err.code = "ORDER_SHORTAGE_BAD_STATUS";
+        throw err;
+      }
+
+      const activeSkipCount = await tx.salesOrderPickSkip.count({
+        where: {
+          orderId: id,
+          status: "ACTIVE",
+        },
+      });
+      if (!activeSkipCount) {
+        const err = new Error("ORDER_NO_ACTIVE_SKIPS");
+        err.code = "ORDER_NO_ACTIVE_SKIPS";
+        throw err;
+      }
+
+      const parsed = parseAdminShortageMetaFromComment(order.deliveryComment);
+      const closeMeta = {
+        closedAt: new Date().toISOString(),
+        closedById: req.user?.id || null,
+        closedByName: req.user?.name || "",
+        closedByEmail: req.user?.email || "",
+        reason,
+      };
+      const nextComment = [
+        parsed.baseComment,
+        buildAdminShortageMetaLine(closeMeta),
+      ]
+        .filter(Boolean)
+        .join("\n")
+        .trim();
+
+      const updated = await tx.salesOrder.update({
+        where: { id },
+        data: {
+          status: "CANCELLED",
+          completedAt: new Date(),
+          deliveryComment: nextComment,
+        },
+        include: {
+          assignedToUser: { select: { id: true, name: true, email: true } },
+          lines: { include: { item: true }, orderBy: { id: "asc" } },
+        },
+      });
+
+      return {
+        order: updated,
+        activeSkipCount,
+        closeMeta,
+      };
+    });
+
+    res.json({ ok: true, ...result });
+  } catch (err) {
+    if (err.code === "ORDER_NOT_FOUND") {
+      return res.status(404).json({ message: "ORDER_NOT_FOUND" });
+    }
+    if (err.code === "ORDER_SHORTAGE_BAD_STATUS") {
+      return res.status(400).json({ message: "ORDER_SHORTAGE_BAD_STATUS" });
+    }
+    if (err.code === "ORDER_NO_ACTIVE_SKIPS") {
+      return res.status(409).json({ message: "ORDER_NO_ACTIVE_SKIPS" });
+    }
+
+    console.error("orders admin close shortage error:", err);
+    res.status(500).json({ message: "ORDER_ADMIN_CLOSE_ERROR" });
+  }
+});
+
+app.get("/api/orders/admin-shortage-journal", auth, async (req, res) => {
+  try {
+    if (!isWarehouseManager(req.user)) {
+      return res.status(403).json({ message: "NO_ACCESS" });
+    }
+
+    const limitRaw = Number(req.query.limit);
+    const limit = Number.isFinite(limitRaw)
+      ? Math.min(Math.max(Math.trunc(limitRaw), 1), 500)
+      : 100;
+
+    const orders = await prisma.salesOrder.findMany({
+      where: {
+        status: "CANCELLED",
+      },
+      orderBy: [{ completedAt: "desc" }, { updatedAt: "desc" }, { id: "desc" }],
+      include: {
+        assignedToUser: { select: { id: true, name: true, email: true } },
+        lines: {
+          select: {
+            id: true,
+            qty: true,
+            pickedQty: true,
+          },
+        },
+        pickSkips: {
+          where: { status: "ACTIVE" },
+          select: {
+            id: true,
+            lineId: true,
+            reason: true,
+            comment: true,
+            qty: true,
+            createdAt: true,
+          },
+        },
+      },
+      take: limit,
+    });
+
+    const items = orders
+      .map((order) => {
+        const parsed = parseAdminShortageMetaFromComment(order.deliveryComment);
+        if (!parsed.meta) return null;
+
+        const totalQty = (order.lines || []).reduce(
+          (sum, line) => sum + (Number(line.qty) || 0),
+          0
+        );
+        const pickedQty = (order.lines || []).reduce(
+          (sum, line) => sum + (Number(line.pickedQty) || 0),
+          0
+        );
+
+        return {
+          id: order.id,
+          orderNumber: order.orderNumber,
+          customerName: order.customerName,
+          customerPhone: order.customerPhone,
+          shippingAddress: order.shippingAddress,
+          status: order.status,
+          completedAt: order.completedAt,
+          createdAt: order.createdAt,
+          closeMeta: parsed.meta,
+          remainingQty: Math.max(0, totalQty - pickedQty),
+          totalQty,
+          pickedQty,
+          activeSkipCount: (order.pickSkips || []).length,
+          assignedToUser: order.assignedToUser,
+        };
+      })
+      .filter(Boolean);
+
+    res.json({ items });
+  } catch (err) {
+    console.error("orders admin shortage journal error:", err);
+    res.status(500).json({ message: "ORDER_SHORTAGE_JOURNAL_ERROR" });
+  }
+});
+app.get("/api/orders/admin-picking-journal", auth, async (req, res) => {
+  try {
+    if (!isWarehouseManager(req.user)) {
+      return res.status(403).json({ message: "NO_ACCESS" });
+    }
+
+    const limitRaw = Number(req.query.limit);
+    const limit = Number.isFinite(limitRaw)
+      ? Math.min(Math.max(Math.trunc(limitRaw), 1), 500)
+      : 200;
+
+    const statusFilter = String(
+      req.query.status || "NEW,IN_PICKING,PICKED,PACKED,READY_TO_SHIP,SHIPPED,CANCELLED"
+    )
+      .split(",")
+      .map((value) => String(value || "").trim())
+      .filter(Boolean);
+
+    const orders = await prisma.salesOrder.findMany({
+      where: {
+        status: { in: statusFilter },
+      },
+      orderBy: [{ updatedAt: "desc" }, { id: "desc" }],
+      include: {
+        assignedToUser: { select: { id: true, name: true, email: true } },
+        lines: {
+          select: {
+            id: true,
+            qty: true,
+            pickedQty: true,
+          },
+        },
+      },
+      take: limit,
+    });
+
+    const items = orders.map((order) => {
+      const parsed = parseAdminShortageMetaFromComment(order.deliveryComment);
+      const totalQty = (order.lines || []).reduce(
+        (sum, line) => sum + (Number(line.qty) || 0),
+        0
+      );
+      const pickedQty = (order.lines || []).reduce(
+        (sum, line) => sum + (Number(line.pickedQty) || 0),
+        0
+      );
+
+      return {
+        id: order.id,
+        orderNumber: order.orderNumber,
+        customerName: order.customerName,
+        customerPhone: order.customerPhone,
+        shippingAddress: order.shippingAddress,
+        status: order.status,
+        createdAt: order.createdAt,
+        updatedAt: order.updatedAt,
+        takenAt: order.takenAt,
+        pickedAt: order.pickedAt,
+        packedAt: order.packedAt,
+        completedAt: order.completedAt,
+        assignedToUser: order.assignedToUser,
+        totalQty,
+        pickedQty,
+        remainingQty: Math.max(0, totalQty - pickedQty),
+        closeMeta: parsed.meta || null,
+      };
+    });
+
+    res.json({ items });
+  } catch (err) {
+    console.error("orders admin picking journal error:", err);
+    res.status(500).json({ message: "ORDER_PICKING_JOURNAL_ERROR" });
+  }
+});
+app.get("/api/orders/:id/pick-skips", auth, async (req, res) => {
+  try {
+    const orderId = Number(req.params.id);
+    if (!orderId || Number.isNaN(orderId)) {
+      return res.status(400).json({ message: "Некорректный ID заказа." });
+    }
+
+    const order = await prisma.salesOrder.findUnique({
+      where: { id: orderId },
+      select: { id: true, assignedToUserId: true },
+    });
+    if (!order) {
+      return res.status(404).json({ message: "Заказ не найден." });
+    }
+
+    if (
+      order.assignedToUserId &&
+      order.assignedToUserId !== req.user.id &&
+      !isWarehouseManager(req.user)
+    ) {
+      return res.status(403).json({ message: "Заказ закреплен за другим сотрудником." });
+    }
+
+    const items = await prisma.salesOrderPickSkip.findMany({
+      where: {
+        orderId,
+        status: "ACTIVE",
+      },
+      orderBy: [{ createdAt: "desc" }, { id: "desc" }],
+      include: {
+        skippedBy: { select: { id: true, name: true, email: true } },
+      },
+    });
+
+    res.json({ items });
+  } catch (err) {
+    console.error("orders pick skips list error:", err);
+    res.status(500).json({ message: "Ошибка загрузки пропусков отбора." });
+  }
+});
+
+app.post("/api/orders/:id/pick-skips", auth, async (req, res) => {
+  try {
+    const orderId = Number(req.params.id);
+    const lineId = Number(req.body?.lineId);
+    const locationRaw = req.body?.locationId;
+    const itemRaw = req.body?.itemId;
+    const qty = Math.max(0, Math.trunc(Number(req.body?.qty) || 0));
+    const reason = String(req.body?.reason || "").trim();
+    const comment = String(req.body?.comment || "").trim();
+
+    if (!orderId || Number.isNaN(orderId)) {
+      return res.status(400).json({ message: "Некорректный ID заказа." });
+    }
+    if (!lineId || Number.isNaN(lineId)) {
+      return res.status(400).json({ message: "Некорректная строка заказа." });
+    }
+    if (!reason) {
+      return res.status(400).json({ message: "Укажите причину пропуска." });
+    }
+    if (reason.length > 180) {
+      return res.status(400).json({ message: "Причина пропуска слишком длинная (максимум 180 символов)." });
+    }
+    if (comment.length > 500) {
+      return res.status(400).json({ message: "Комментарий слишком длинный (максимум 500 символов)." });
+    }
+
+    const locationId =
+      locationRaw === null || locationRaw === undefined || locationRaw === ""
+        ? null
+        : Number(locationRaw);
+    const itemId =
+      itemRaw === null || itemRaw === undefined || itemRaw === ""
+        ? null
+        : Number(itemRaw);
+
+    if (locationId !== null && (!locationId || Number.isNaN(locationId))) {
+      return res.status(400).json({ message: "Некорректная ячейка." });
+    }
+    if (itemId !== null && (!itemId || Number.isNaN(itemId))) {
+      return res.status(400).json({ message: "Некорректный товар." });
+    }
+
+    const item = await prisma.$transaction(async (tx) => {
+      const order = await tx.salesOrder.findUnique({
+        where: { id: orderId },
+        include: {
+          lines: { select: { id: true, itemId: true } },
+        },
+      });
+      if (!order) {
+        const err = new Error("ORDER_NOT_FOUND");
+        err.code = "ORDER_NOT_FOUND";
+        throw err;
+      }
+      if (!["IN_PICKING", "PICKED", "PACKED"].includes(order.status)) {
+        const err = new Error("BAD_STATUS");
+        err.code = "BAD_STATUS";
+        throw err;
+      }
+      if (
+        order.assignedToUserId &&
+        order.assignedToUserId !== req.user.id &&
+        !isWarehouseManager(req.user)
+      ) {
+        const err = new Error("NOT_ASSIGNED_TO_YOU");
+        err.code = "NOT_ASSIGNED_TO_YOU";
+        throw err;
+      }
+
+      const orderLine = (order.lines || []).find((row) => row.id === lineId);
+      if (!orderLine) {
+        const err = new Error("LINE_NOT_FOUND");
+        err.code = "LINE_NOT_FOUND";
+        throw err;
+      }
+
+      const finalItemId = orderLine.itemId || itemId || null;
+      if (itemId && orderLine.itemId && Number(orderLine.itemId) !== Number(itemId)) {
+        const err = new Error("ITEM_MISMATCH");
+        err.code = "ITEM_MISMATCH";
+        throw err;
+      }
+
+      const existing = await tx.salesOrderPickSkip.findFirst({
+        where: {
+          orderId,
+          lineId,
+          itemId: finalItemId,
+          locationId,
+          status: "ACTIVE",
+        },
+        orderBy: { id: "desc" },
+      });
+
+      const payload = {
+        orgId: order.orgId || req.user?.orgId || null,
+        orderId,
+        lineId,
+        itemId: finalItemId,
+        locationId,
+        qty,
+        reason,
+        comment: comment || null,
+        skippedById: req.user?.id || null,
+        restoredById: null,
+        restoredAt: null,
+        status: "ACTIVE",
+      };
+
+      if (existing) {
+        return tx.salesOrderPickSkip.update({
+          where: { id: existing.id },
+          data: payload,
+          include: {
+            skippedBy: { select: { id: true, name: true, email: true } },
+          },
+        });
+      }
+
+      return tx.salesOrderPickSkip.create({
+        data: payload,
+        include: {
+          skippedBy: { select: { id: true, name: true, email: true } },
+        },
+      });
+    });
+
+    res.json({ ok: true, item });
+  } catch (err) {
+    if (err.code === "ORDER_NOT_FOUND") {
+      return res.status(404).json({ message: "Заказ не найден." });
+    }
+    if (err.code === "LINE_NOT_FOUND") {
+      return res.status(404).json({ message: "Строка заказа не найдена." });
+    }
+    if (err.code === "ITEM_MISMATCH") {
+      return res.status(400).json({ message: "Товар не совпадает со строкой заказа." });
+    }
+    if (err.code === "NOT_ASSIGNED_TO_YOU") {
+      return res.status(403).json({ message: "Заказ закреплен за другим сотрудником." });
+    }
+    if (err.code === "BAD_STATUS") {
+      return res.status(400).json({ message: "Пропуск доступен только для заказов в работе." });
+    }
+    console.error("orders pick skip create error:", err);
+    res.status(500).json({ message: "Ошибка сохранения пропуска." });
+  }
+});
+
+app.post("/api/orders/:id/pick-skips/:skipId/restore", auth, async (req, res) => {
+  try {
+    const orderId = Number(req.params.id);
+    const skipId = Number(req.params.skipId);
+    if (!orderId || Number.isNaN(orderId) || !skipId || Number.isNaN(skipId)) {
+      return res.status(400).json({ message: "Некорректные параметры." });
+    }
+
+    const item = await prisma.$transaction(async (tx) => {
+      const order = await tx.salesOrder.findUnique({
+        where: { id: orderId },
+        select: { id: true, assignedToUserId: true },
+      });
+      if (!order) {
+        const err = new Error("ORDER_NOT_FOUND");
+        err.code = "ORDER_NOT_FOUND";
+        throw err;
+      }
+      if (
+        order.assignedToUserId &&
+        order.assignedToUserId !== req.user.id &&
+        !isWarehouseManager(req.user)
+      ) {
+        const err = new Error("NOT_ASSIGNED_TO_YOU");
+        err.code = "NOT_ASSIGNED_TO_YOU";
+        throw err;
+      }
+
+      const skip = await tx.salesOrderPickSkip.findFirst({
+        where: {
+          id: skipId,
+          orderId,
+          status: "ACTIVE",
+        },
+      });
+      if (!skip) {
+        const err = new Error("SKIP_NOT_FOUND");
+        err.code = "SKIP_NOT_FOUND";
+        throw err;
+      }
+
+      return tx.salesOrderPickSkip.update({
+        where: { id: skip.id },
+        data: {
+          status: "RESTORED",
+          restoredAt: new Date(),
+          restoredById: req.user?.id || null,
+        },
+      });
+    });
+
+    res.json({ ok: true, item });
+  } catch (err) {
+    if (err.code === "ORDER_NOT_FOUND") {
+      return res.status(404).json({ message: "Заказ не найден." });
+    }
+    if (err.code === "SKIP_NOT_FOUND") {
+      return res.status(404).json({ message: "Пропуск не найден." });
+    }
+    if (err.code === "NOT_ASSIGNED_TO_YOU") {
+      return res.status(403).json({ message: "Заказ закреплен за другим сотрудником." });
+    }
+    console.error("orders pick skip restore error:", err);
+    res.status(500).json({ message: "Ошибка восстановления пропуска." });
+  }
+});
+
+app.post("/api/orders/:id/pick-skips/restore-all", auth, async (req, res) => {
+  try {
+    const orderId = Number(req.params.id);
+    if (!orderId || Number.isNaN(orderId)) {
+      return res.status(400).json({ message: "Некорректный ID заказа." });
+    }
+
+    const result = await prisma.$transaction(async (tx) => {
+      const order = await tx.salesOrder.findUnique({
+        where: { id: orderId },
+        select: { id: true, assignedToUserId: true },
+      });
+      if (!order) {
+        const err = new Error("ORDER_NOT_FOUND");
+        err.code = "ORDER_NOT_FOUND";
+        throw err;
+      }
+      if (
+        order.assignedToUserId &&
+        order.assignedToUserId !== req.user.id &&
+        !isWarehouseManager(req.user)
+      ) {
+        const err = new Error("NOT_ASSIGNED_TO_YOU");
+        err.code = "NOT_ASSIGNED_TO_YOU";
+        throw err;
+      }
+
+      return tx.salesOrderPickSkip.updateMany({
+        where: {
+          orderId,
+          status: "ACTIVE",
+        },
+        data: {
+          status: "RESTORED",
+          restoredAt: new Date(),
+          restoredById: req.user?.id || null,
+        },
+      });
+    });
+
+    res.json({ ok: true, count: result.count || 0 });
+  } catch (err) {
+    if (err.code === "ORDER_NOT_FOUND") {
+      return res.status(404).json({ message: "Заказ не найден." });
+    }
+    if (err.code === "NOT_ASSIGNED_TO_YOU") {
+      return res.status(403).json({ message: "Заказ закреплен за другим сотрудником." });
+    }
+    console.error("orders pick skip restore all error:", err);
+    res.status(500).json({ message: "Ошибка восстановления пропусков." });
+  }
+});
+
+
 app.post("/api/orders/:id/take", auth, async (req, res) => {
   try {
     const id = Number(req.params.id);
     if (!id || Number.isNaN(id)) {
-      return res.status(400).json({ message: "???????????? ID ??????." });
+      return res.status(400).json({ message: "\u041d\u0435\u043a\u043e\u0440\u0440\u0435\u043a\u0442\u043d\u044b\u0439 ID \u0437\u0430\u043a\u0430\u0437\u0430." });
     }
 
-    const order = await prisma.salesOrder.findUnique({ where: { id } });
-    if (!order) return res.status(404).json({ message: "????? ?? ??????." });
-    if (!["NEW", "IN_PICKING"].includes(order.status)) {
-      return res.status(400).json({ message: "????? ?????????? ??? ??????." });
-    }
-    if (order.assignedToUserId && order.assignedToUserId !== req.user.id) {
-      return res.status(409).json({ message: "????? ??? ???? ?????? ???????????." });
-    }
+    const updated = await prisma.$transaction(async (tx) => {
+      const order = await tx.salesOrder.findUnique({
+        where: { id },
+        include: {
+          assignedToUser: { select: { id: true, name: true, email: true } },
+          lines: { select: { pickedQty: true } },
+        },
+      });
+      if (!order) {
+        const err = new Error("ORDER_NOT_FOUND");
+        err.code = "ORDER_NOT_FOUND";
+        throw err;
+      }
+      if (!["NEW", "IN_PICKING", "PICKED", "PACKED"].includes(order.status)) {
+        const err = new Error("ORDER_BAD_STATUS");
+        err.code = "ORDER_BAD_STATUS";
+        throw err;
+      }
 
-    const updated = await prisma.salesOrder.update({
-      where: { id },
-      data: {
-        assignedToUserId: req.user.id,
-        status: "IN_PICKING",
-        takenAt: order.takenAt || new Date(),
-      },
-      include: {
-        assignedToUser: { select: { id: true, name: true, email: true } },
-        lines: { include: { item: true }, orderBy: { id: "asc" } },
-      },
+      const pickedStarted = (order.lines || []).some((line) => Number(line.pickedQty) > 0);
+      if (order.assignedToUserId && order.assignedToUserId !== req.user.id && pickedStarted) {
+        const err = new Error("ORDER_ALREADY_TAKEN");
+        err.code = "ORDER_ALREADY_TAKEN";
+        err.assigneeName =
+          order.assignedToUser?.name || order.assignedToUser?.email || "\u0434\u0440\u0443\u0433\u0438\u043c \u0441\u043e\u0442\u0440\u0443\u0434\u043d\u0438\u043a\u043e\u043c";
+        throw err;
+      }
+
+      return tx.salesOrder.update({
+        where: { id },
+        data: {
+          assignedToUserId: req.user.id,
+          status:
+            order.status === "NEW" || order.status === "IN_PICKING"
+              ? "IN_PICKING"
+              : order.status,
+          takenAt: order.takenAt || new Date(),
+        },
+        include: {
+          assignedToUser: { select: { id: true, name: true, email: true } },
+          lines: { include: { item: true }, orderBy: { id: "asc" } },
+        },
+      });
     });
 
     res.json({ ok: true, order: updated });
   } catch (err) {
+    if (err.code === "ORDER_NOT_FOUND") {
+      return res.status(404).json({ message: "\u0417\u0430\u043a\u0430\u0437 \u043d\u0435 \u043d\u0430\u0439\u0434\u0435\u043d." });
+    }
+    if (err.code === "ORDER_BAD_STATUS") {
+      return res.status(400).json({ message: "\u0417\u0430\u043a\u0430\u0437 \u043d\u0435\u0434\u043e\u0441\u0442\u0443\u043f\u0435\u043d \u0434\u043b\u044f \u043e\u0431\u0440\u0430\u0431\u043e\u0442\u043a\u0438." });
+    }
+    if (err.code === "ORDER_ALREADY_TAKEN") {
+      return res.status(409).json({
+        message: `\u0417\u0430\u043a\u0430\u0437 \u0443\u0436\u0435 \u0432 \u0440\u0430\u0431\u043e\u0442\u0435 \u0443 \u0441\u043e\u0442\u0440\u0443\u0434\u043d\u0438\u043a\u0430: ${err.assigneeName}.`,
+      });
+    }
     console.error("orders take error:", err);
-    res.status(500).json({ message: "?????? ??? ?????? ??????." });
+    res.status(500).json({ message: "\u041e\u0448\u0438\u0431\u043a\u0430 \u043f\u0440\u0438 \u0432\u0437\u044f\u0442\u0438\u0438 \u0437\u0430\u043a\u0430\u0437\u0430." });
+  }
+});
+
+app.post("/api/orders/:id/release", auth, async (req, res) => {
+  try {
+    const id = Number(req.params.id);
+    if (!id || Number.isNaN(id)) {
+      return res.status(400).json({ message: "\u041d\u0435\u043a\u043e\u0440\u0440\u0435\u043a\u0442\u043d\u044b\u0439 ID \u0437\u0430\u043a\u0430\u0437\u0430." });
+    }
+
+    const updated = await prisma.$transaction(async (tx) => {
+      const order = await tx.salesOrder.findUnique({
+        where: { id },
+        include: {
+          lines: { select: { pickedQty: true } },
+        },
+      });
+      if (!order) {
+        const err = new Error("ORDER_NOT_FOUND");
+        err.code = "ORDER_NOT_FOUND";
+        throw err;
+      }
+      if (!["NEW", "IN_PICKING", "PICKED", "PACKED"].includes(order.status)) {
+        const err = new Error("ORDER_BAD_STATUS");
+        err.code = "ORDER_BAD_STATUS";
+        throw err;
+      }
+
+      if (!order.assignedToUserId) {
+        return tx.salesOrder.findUnique({
+          where: { id },
+          include: {
+            assignedToUser: { select: { id: true, name: true, email: true } },
+            lines: { include: { item: true }, orderBy: { id: "asc" } },
+          },
+        });
+      }
+
+      const canManage =
+        order.assignedToUserId === req.user.id || isWarehouseManager(req.user);
+      if (!canManage) {
+        const err = new Error("NOT_ALLOWED");
+        err.code = "NOT_ALLOWED";
+        throw err;
+      }
+
+      const pickedStarted = (order.lines || []).some((line) => Number(line.pickedQty) > 0);
+      const nextStatus =
+        order.status === "IN_PICKING" && !pickedStarted ? "NEW" : order.status;
+
+      return tx.salesOrder.update({
+        where: { id },
+        data: {
+          assignedToUserId: null,
+          status: nextStatus,
+        },
+        include: {
+          assignedToUser: { select: { id: true, name: true, email: true } },
+          lines: { include: { item: true }, orderBy: { id: "asc" } },
+        },
+      });
+    });
+
+    res.json({ ok: true, order: updated });
+  } catch (err) {
+    if (err.code === "ORDER_NOT_FOUND") {
+      return res.status(404).json({ message: "\u0417\u0430\u043a\u0430\u0437 \u043d\u0435 \u043d\u0430\u0439\u0434\u0435\u043d." });
+    }
+    if (err.code === "ORDER_BAD_STATUS") {
+      return res.status(400).json({ message: "\u0417\u0430\u043a\u0430\u0437 \u043d\u0435\u043b\u044c\u0437\u044f \u0432\u0435\u0440\u043d\u0443\u0442\u044c \u0432 \u043e\u0447\u0435\u0440\u0435\u0434\u044c \u0432 \u0442\u0435\u043a\u0443\u0449\u0435\u043c \u0441\u0442\u0430\u0442\u0443\u0441\u0435." });
+    }
+    if (err.code === "NOT_ALLOWED") {
+      return res.status(403).json({ message: "\u042d\u0442\u043e\u0442 \u0437\u0430\u043a\u0430\u0437 \u0437\u0430\u043a\u0440\u0435\u043f\u043b\u0435\u043d \u0437\u0430 \u0434\u0440\u0443\u0433\u0438\u043c \u0441\u043e\u0442\u0440\u0443\u0434\u043d\u0438\u043a\u043e\u043c." });
+    }
+    console.error("orders release error:", err);
+    res.status(500).json({ message: "\u041e\u0448\u0438\u0431\u043a\u0430 \u043f\u0440\u0438 \u0432\u043e\u0437\u0432\u0440\u0430\u0442\u0435 \u0437\u0430\u043a\u0430\u0437\u0430 \u0432 \u043e\u0447\u0435\u0440\u0435\u0434\u044c." });
   }
 });
 
@@ -11015,7 +12140,7 @@ app.post("/api/orders/:id/pick-confirm", auth, async (req, res) => {
     const amount = Math.trunc(Number(qty));
 
     if (!orderId || !line || !location || !Number.isFinite(amount) || amount <= 0) {
-      return res.status(400).json({ message: "???????????? ????????? ?????????????." });
+      return res.status(400).json({ message: "Некорректные параметры подтверждения." });
     }
 
     const updated = await prisma.$transaction(async (tx) => {
@@ -11088,14 +12213,20 @@ app.post("/api/orders/:id/pick-confirm", auth, async (req, res) => {
           _sum: { remainingQty: true },
         });
         const lotsQty = Number(lotsAgg?._sum?.remainingQty) || 0;
-        const syncDelta = Math.max(0, lotsQty - currentLocationQty);
+        const placement = await tx.warehousePlacement.findUnique({
+          where: { itemId_locationId: { itemId: actualItemId, locationId: location } },
+          select: { qty: true },
+        });
+        const placementQty = Number(placement?.qty) || 0;
+        const expectedQty = Math.max(lotsQty, placementQty);
+        const syncDelta = Math.max(0, expectedQty - currentLocationQty);
         if (syncDelta > 0) {
           await stockService.createMovementInTx(tx, {
             type: "ADJUSTMENT",
             itemId: actualItemId,
             qty: syncDelta,
             locationId: location,
-            comment: `РЎРёРЅС…СЂРѕРЅРёР·Р°С†РёСЏ РѕСЃС‚Р°С‚РєРѕРІ РїРµСЂРµРґ РѕС‚Р±РѕСЂРѕРј Р·Р°РєР°Р·Р° ${order.orderNumber}`,
+            comment: `Синхронизация остатков перед отбором заказа ${order.orderNumber}`,
             refType: "ORDER",
             refId: String(orderId),
             userId: req.user?.id || null,
@@ -11110,7 +12241,7 @@ app.post("/api/orders/:id/pick-confirm", auth, async (req, res) => {
         qty: amount,
         locationId: location,
         fromLocationId: location,
-        comment: `????? ?? ?????? ${order.orderNumber}`,
+        comment: `Отбор по заказу ${order.orderNumber}`,
         refType: "ORDER",
         refId: String(orderId),
         userId: req.user?.id || null,
@@ -11119,6 +12250,27 @@ app.post("/api/orders/:id/pick-confirm", auth, async (req, res) => {
       await tx.salesOrderLine.update({
         where: { id: line },
         data: { pickedQty: (Number(orderLine.pickedQty) || 0) + amount },
+      });
+
+      await tx.salesOrderPickSkip.updateMany({
+        where: {
+          orderId,
+          lineId: line,
+          status: "ACTIVE",
+          AND: [
+            {
+              OR: [{ locationId: null }, { locationId: location }],
+            },
+            {
+              OR: [{ itemId: null }, { itemId: actualItemId }],
+            },
+          ],
+        },
+        data: {
+          status: "RESTORED",
+          restoredAt: new Date(),
+          restoredById: req.user?.id || null,
+        },
       });
 
       const freshLines = await tx.salesOrderLine.findMany({
@@ -11144,17 +12296,18 @@ app.post("/api/orders/:id/pick-confirm", auth, async (req, res) => {
 
     res.json({ ok: true, order: updated });
   } catch (err) {
-    if (err.code === "ORDER_NOT_FOUND") return res.status(404).json({ message: "????? ?? ??????." });
-    if (err.code === "LINE_NOT_FOUND") return res.status(404).json({ message: "?????? ?????? ?? ???????." });
-    if (err.code === "NOT_ASSIGNED_TO_YOU") return res.status(403).json({ message: "????? ????????? ?? ?????? ???????????." });
-    if (err.code === "BAD_STATUS") return res.status(400).json({ message: "????? ?? ? ??????? ??????." });
-    if (err.code === "QTY_EXCEEDS_REMAINING") return res.status(400).json({ message: "?????????? ????????? ??????? ?? ??????." });
-    if (err.code === "LINE_ITEM_NOT_LINKED") return res.status(400).json({ message: "?????? ?????? ?? ??????? ? ???????." });
-    if (err.code === "INSUFFICIENT_QTY") return res.status(400).json({ message: "???????????? ??????? ? ??????." });
+    if (err.code === "ORDER_NOT_FOUND") return res.status(404).json({ message: "Заказ не найден." });
+    if (err.code === "LINE_NOT_FOUND") return res.status(404).json({ message: "Строка заказа не найдена." });
+    if (err.code === "NOT_ASSIGNED_TO_YOU") return res.status(403).json({ message: "Заказ закреплен за другим сотрудником." });
+    if (err.code === "BAD_STATUS") return res.status(400).json({ message: "Заказ не в статусе отбора." });
+    if (err.code === "QTY_EXCEEDS_REMAINING") return res.status(400).json({ message: "Количество превышает остаток по строке." });
+    if (err.code === "LINE_ITEM_NOT_LINKED") return res.status(400).json({ message: "Строка заказа не связана с товаром." });
+    if (err.code === "INSUFFICIENT_QTY") return res.status(400).json({ message: "Недостаточно остатка в ячейке." });
     console.error("orders pick confirm error:", err);
-    res.status(500).json({ message: "?????? ????????????? ??????." });
+    res.status(500).json({ message: "Ошибка подтверждения отбора." });
   }
 });
+
 
 app.post("/api/orders/:id/pack", auth, async (req, res) => {
   try {
@@ -11237,19 +12390,19 @@ app.post("/api/orders/:id/complete", auth, async (req, res) => {
   try {
     const id = Number(req.params.id);
     if (!id || Number.isNaN(id)) {
-      return res.status(400).json({ message: "???????????? ID ??????." });
+      return res.status(400).json({ message: "Некорректный ID заказа." });
     }
 
     const order = await prisma.salesOrder.findUnique({
       where: { id },
       include: { lines: true },
     });
-    if (!order) return res.status(404).json({ message: "????? ?? ??????." });
+    if (!order) return res.status(404).json({ message: "Заказ не найден." });
     if (order.assignedToUserId && order.assignedToUserId !== req.user.id) {
-      return res.status(403).json({ message: "????? ????????? ?? ?????? ???????????." });
+      return res.status(403).json({ message: "Заказ закреплен за другим сотрудником." });
     }
     if (!["PICKED", "PACKED", "READY_TO_SHIP"].includes(order.status)) {
-      return res.status(400).json({ message: "??????? ???????? ?????." });
+      return res.status(400).json({ message: "Сначала завершите отбор." });
     }
 
     const updated = await prisma.salesOrder.update({
@@ -11264,16 +12417,67 @@ app.post("/api/orders/:id/complete", auth, async (req, res) => {
       },
     });
 
+    await prisma.salesOrderPickSkip.updateMany({
+      where: {
+        orderId: id,
+        status: "ACTIVE",
+      },
+      data: {
+        status: "RESTORED",
+        restoredAt: new Date(),
+        restoredById: req.user?.id || null,
+      },
+    });
+
     res.json({ ok: true, order: updated });
   } catch (err) {
     console.error("orders complete error:", err);
-    res.status(500).json({ message: "?????? ?????????? ??????." });
+    res.status(500).json({ message: "Ошибка завершения заказа." });
   }
 });
 
-// ================== РћР§Р•Р Р•Р”Р¬ РњРђРЁРРќ РџРћРЎРўРђР’Р©РРљРћР’ ==================
 
-// СЃРїРёСЃРѕРє РјР°С€РёРЅ РІ РѕС‡РµСЂРµРґРё (СЃ С„РёР»СЊС‚СЂР°РјРё)
+app.post("/api/orders/:id/passport-printed", auth, async (req, res) => {
+  try {
+    const id = Number(req.params.id);
+    if (!id || Number.isNaN(id)) {
+      return res.status(400).json({ message: "Некорректный ID заказа." });
+    }
+
+    const order = await prisma.salesOrder.findUnique({
+      where: { id },
+    });
+    if (!order) return res.status(404).json({ message: "Заказ не найден." });
+    if (order.assignedToUserId && order.assignedToUserId !== req.user.id && !isWarehouseManager(req.user)) {
+      return res.status(403).json({ message: "Заказ закреплен за другим сотрудником." });
+    }
+    if (!["PICKED", "PACKED", "READY_TO_SHIP", "SHIPPED"].includes(order.status)) {
+      return res.status(400).json({ message: "Печать паспорта доступна после отбора." });
+    }
+
+    const now = new Date();
+    const updated = await prisma.salesOrder.update({
+      where: { id },
+      data: {
+        labelPrintedAt: now,
+        passportPrintedAt: now,
+        passportPrintedById: req.user?.id || null,
+        passportPrintCount: { increment: 1 },
+      },
+      include: {
+        assignedToUser: { select: { id: true, name: true, email: true } },
+        lines: { include: { item: true }, orderBy: { id: "asc" } },
+      },
+    });
+
+    res.json({ ok: true, order: updated });
+  } catch (err) {
+    console.error("orders passport printed error:", err);
+    res.status(500).json({ message: "Ошибка фиксации печати паспорта." });
+  }
+});
+
+
 app.get("/api/supplier-trucks", auth, async (req, res) => {
   try {
     const onlyActive = req.query.onlyActive === "1";
@@ -11769,14 +12973,7 @@ async function checkAutoReorders() {
         continue;
       }
 
-      const lastOrder = await prisma.purchaseOrder.findFirst({
-        orderBy: { id: "desc" },
-        select: { id: true },
-      });
-      const nextNumber = `PO-${String((lastOrder?.id || 0) + 1).padStart(
-        5,
-        "0"
-      )}`;
+      const nextNumber = await getNextPurchaseOrderNumber(item.orgId || null);
 
       const order = await prisma.purchaseOrder.create({
         data: {
@@ -11883,6 +13080,153 @@ async function startBackgroundTasks() {
   }, 60 * 1000);
 }
 
+app.post("/api/warehouse/stock/adjustment", requireAdmin, async (req, res) => {
+  try {
+    const itemId = Number(req.body?.itemId);
+    const delta = Math.trunc(Number(req.body?.delta));
+    const reason = String(req.body?.reason || "").trim();
+
+    if (!itemId || Number.isNaN(itemId)) {
+      return res.status(400).json({ message: "РЈРєР°Р¶РёС‚Рµ С‚РѕРІР°СЂ РґР»СЏ РєРѕСЂСЂРµРєС‚РёСЂРѕРІРєРё." });
+    }
+    if (!Number.isFinite(delta) || delta === 0) {
+      return res.status(400).json({
+        message: "РљРѕР»РёС‡РµСЃС‚РІРѕ РєРѕСЂСЂРµРєС‚РёСЂРѕРІРєРё РґРѕР»Р¶РЅРѕ Р±С‹С‚СЊ РЅРµРЅСѓР»РµРІС‹Рј С†РµР»С‹Рј С‡РёСЃР»РѕРј.",
+      });
+    }
+    if (!reason) {
+      return res.status(400).json({ message: "РЈРєР°Р¶РёС‚Рµ РїСЂРёС‡РёРЅСѓ РєРѕСЂСЂРµРєС‚РёСЂРѕРІРєРё." });
+    }
+
+    const result = await prisma.$transaction(async (tx) => {
+      const item = await tx.item.findUnique({
+        where: { id: itemId },
+        select: { id: true, name: true, sku: true, unit: true, category: true },
+      });
+
+      if (!item || item.category !== "STOCK") {
+        const err = new Error("ITEM_NOT_FOUND");
+        err.code = "ITEM_NOT_FOUND";
+        throw err;
+      }
+
+      const rows = await tx.stockMovement.findMany({
+        where: { itemId, locationId: { not: null } },
+        select: { locationId: true, type: true, quantity: true },
+        orderBy: [{ locationId: "asc" }, { createdAt: "asc" }],
+      });
+
+      const byLocation = new Map();
+      for (const row of rows) {
+        const locationId = Number(row.locationId);
+        if (!locationId) continue;
+        const qty = Number(row.quantity) || 0;
+        const prev = byLocation.get(locationId) || 0;
+        if (row.type === "INCOME" || row.type === "ADJUSTMENT") {
+          byLocation.set(locationId, prev + qty);
+        } else if (row.type === "ISSUE") {
+          byLocation.set(locationId, prev - qty);
+        }
+      }
+
+      const balances = Array.from(byLocation.entries()).map(([locationId, qty]) => ({
+        locationId: Number(locationId),
+        qty: Number(qty) || 0,
+      }));
+      const totalBefore = balances.reduce((sum, row) => sum + row.qty, 0);
+      const positiveBalances = balances
+        .filter((row) => row.qty > 0)
+        .sort((a, b) => b.qty - a.qty);
+
+      if (delta < 0 && Math.abs(delta) > totalBefore) {
+        const err = new Error("INSUFFICIENT_STOCK");
+        err.code = "INSUFFICIENT_STOCK";
+        err.current = Math.max(0, Math.round(totalBefore));
+        throw err;
+      }
+
+      let affectedLocations = 0;
+
+      if (delta > 0) {
+        const receivingLocationId = await getReceivingLocationId(tx);
+        await stockService.createMovementInTx(tx, {
+          opId: `ADMIN_ADJ:${itemId}:${Date.now()}:PLUS`,
+          type: "ADJUSTMENT",
+          itemId,
+          qty: delta,
+          locationId: receivingLocationId,
+          comment: `РЎР»СѓР¶РµР±РЅР°СЏ РєРѕСЂСЂРµРєС‚РёСЂРѕРІРєР° (+): ${reason}`,
+          refType: "ADMIN_ADJUSTMENT",
+          refId: String(itemId),
+          userId: req.user?.id || null,
+        });
+        affectedLocations = 1;
+      } else {
+        let remaining = Math.abs(delta);
+        for (const row of positiveBalances) {
+          if (remaining <= 0) break;
+          const take = Math.min(remaining, Math.trunc(row.qty));
+          if (take <= 0) continue;
+          await stockService.createMovementInTx(tx, {
+            opId: `ADMIN_ADJ:${itemId}:${row.locationId}:${Date.now()}:${remaining}`,
+            type: "ADJUSTMENT",
+            itemId,
+            qty: -take,
+            locationId: row.locationId,
+            comment: `РЎР»СѓР¶РµР±РЅР°СЏ РєРѕСЂСЂРµРєС‚РёСЂРѕРІРєР° (-): ${reason}`,
+            refType: "ADMIN_ADJUSTMENT",
+            refId: String(itemId),
+            userId: req.user?.id || null,
+          });
+          remaining -= take;
+          affectedLocations += 1;
+        }
+
+        if (remaining > 0) {
+          const err = new Error("INSUFFICIENT_STOCK");
+          err.code = "INSUFFICIENT_STOCK";
+          err.current = Math.max(
+            0,
+            Math.round(totalBefore - Math.abs(delta) + remaining)
+          );
+          throw err;
+        }
+      }
+
+      return {
+        item,
+        totalBefore: Math.round(totalBefore),
+        totalAfter: Math.round(totalBefore + delta),
+        delta,
+        affectedLocations,
+      };
+    });
+
+    return res.json({
+      ok: true,
+      message: "РљРѕСЂСЂРµРєС‚РёСЂРѕРІРєР° РїСЂРѕРІРµРґРµРЅР°.",
+      item: result.item,
+      delta: result.delta,
+      stockBefore: result.totalBefore,
+      stockAfter: result.totalAfter,
+      affectedLocations: result.affectedLocations,
+    });
+  } catch (err) {
+    if (err.code === "ITEM_NOT_FOUND") {
+      return res.status(404).json({ message: "РўРѕРІР°СЂ РЅРµ РЅР°Р№РґРµРЅ." });
+    }
+    if (err.code === "INSUFFICIENT_STOCK") {
+      return res.status(400).json({
+        message: `РќРµРґРѕСЃС‚Р°С‚РѕС‡РЅРѕ РѕСЃС‚Р°С‚РєР° РґР»СЏ СЃРїРёСЃР°РЅРёСЏ. Р”РѕСЃС‚СѓРїРЅРѕ: ${Number(err.current) || 0}.`,
+      });
+    }
+    console.error("warehouse stock adjustment error:", err);
+    return res
+      .status(500)
+      .json({ message: "РћС€РёР±РєР° СЃРµСЂРІРµСЂР° РїСЂРё РєРѕСЂСЂРµРєС‚РёСЂРѕРІРєРµ РѕСЃС‚Р°С‚РєРѕРІ." });
+  }
+});
+
 // Р·Р°РїСѓСЃРє long polling Telegram (РѕРґРёРЅ СЌРєР·РµРјРїР»СЏСЂ)
 startTelegramPolling().catch((err) =>
   console.error("РћС€РёР±РєР° РїСЂРё Р·Р°РїСѓСЃРєРµ startTelegramPolling:", err)
@@ -11923,4 +13267,3 @@ async function bootstrapServer() {
 bootstrapServer().catch((err) =>
   console.error("РћС€РёР±РєР° Р·Р°РїСѓСЃРєР° bootstrapServer:", err)
 );
-

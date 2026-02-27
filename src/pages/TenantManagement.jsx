@@ -83,7 +83,9 @@ export default function TenantManagement() {
     readTenantCredentials()
   );
   const [pendingScrollTenantId, setPendingScrollTenantId] = useState(null);
+  const [copiedTenantId, setCopiedTenantId] = useState(null);
   const tenantRowRefs = useRef({});
+  const copiedTenantTimerRef = useRef(null);
 
   const token = localStorage.getItem("token");
   const headers = useMemo(
@@ -132,6 +134,15 @@ export default function TenantManagement() {
       // ignore storage write errors
     }
   }, [tenantCredentials]);
+
+  useEffect(
+    () => () => {
+      if (copiedTenantTimerRef.current) {
+        clearTimeout(copiedTenantTimerRef.current);
+      }
+    },
+    []
+  );
 
   const updateField = (field) => (event) => {
     setForm((prev) => ({ ...prev, [field]: event.target.value }));
@@ -240,7 +251,12 @@ export default function TenantManagement() {
     try {
       await copyText(`Логин: ${login}\nПароль: ${password}`);
       setError("");
-      setSuccess(`Данные клиента \"${tenant.name || login}\" скопированы.`);
+      setCopiedTenantId(tenant.id);
+      if (copiedTenantTimerRef.current) clearTimeout(copiedTenantTimerRef.current);
+      copiedTenantTimerRef.current = setTimeout(() => setCopiedTenantId(null), 1800);
+      if (document.activeElement instanceof HTMLElement) {
+        document.activeElement.blur();
+      }
     } catch {
       setError("Не удалось скопировать логин и пароль.");
     }
@@ -430,41 +446,27 @@ export default function TenantManagement() {
                         ? new Date(item.createdAt).toLocaleString("ru-RU")
                         : "-"}
                     </td>
-                    <td data-label="Действия">
-                      <button
-                        type="button"
-                        className="admin-btn admin-btn--ghost admin-icon-btn admin-copy-btn"
-                        title="Скопировать логин и пароль"
-                        aria-label="Скопировать логин и пароль"
-                        onClick={() => handleCopyTenantCredentials(item)}
-                        disabled={adminPassword === "-"}
-                      >
-                        <svg
-                          width="16"
-                          height="16"
-                          viewBox="0 0 24 24"
-                          fill="none"
-                          xmlns="http://www.w3.org/2000/svg"
-                          aria-hidden="true"
+                    <td data-label="" className="admin-table__actions">
+                      <div className="admin-copy-wrap">
+                        <button
+                          type="button"
+                          className={
+                            "admin-btn admin-btn--ghost admin-copy-btn" +
+                            (copiedTenantId === item.id ? " admin-copy-btn--copied" : "")
+                          }
+                          title="Скопировать логин и пароль"
+                          aria-label="Скопировать логин и пароль"
+                          onClick={() => handleCopyTenantCredentials(item)}
+                          disabled={adminPassword === "-"}
                         >
-                          <path
-                            d="M8.5 6.5H6.5C5.4 6.5 4.5 7.4 4.5 8.5V17.5C4.5 18.6 5.4 19.5 6.5 19.5H15.5C16.6 19.5 17.5 18.6 17.5 17.5V15.5"
-                            stroke="currentColor"
-                            strokeWidth="2.4"
-                            strokeLinecap="round"
-                            strokeLinejoin="round"
-                          />
-                          <rect
-                            x="8.5"
-                            y="4.5"
-                            width="11"
-                            height="11"
-                            rx="2.5"
-                            stroke="currentColor"
-                            strokeWidth="2.4"
-                          />
-                        </svg>
-                      </button>
+                          Скопировать
+                        </button>
+                        {copiedTenantId === item.id ? (
+                          <span className="admin-copy-toast">
+                            Скопировано логин и пароль
+                          </span>
+                        ) : null}
+                      </div>
                       <button
                         type="button"
                         className="admin-btn admin-btn--secondary"

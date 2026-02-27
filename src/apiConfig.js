@@ -82,6 +82,72 @@ export const normalizeErrorMessage = (err, fallback = "Ошибка запрос
   if (message === "LOCATIONS_LIST_ERROR") return "Ошибка загрузки ячеек.";
   if (message === "REQUESTS_LIST_ERROR") return "Ошибка загрузки заявок.";
   if (message === "REQUEST_UPDATE_ERROR") return "Ошибка обновления заявки.";
+  if (message === "PO_RECEIVING_CONFIRM_ERROR") {
+    return "Ошибка сервера при сохранении приемки.";
+  }
+  if (message === "PO_RECEIVING_FINALIZE_ERROR") {
+    return "Ошибка сервера при завершении приемки.";
+  }
+  if (message === "PO_ALREADY_RECEIVED") {
+    return "Заказ уже завершен.";
+  }
+  if (message === "NO_ACTIVE_TRUCK") {
+    return "Заказ не найден в активной очереди поставщиков.";
+  }
+  if (message === "TAKE_ORDER_FIRST") {
+    return "Сначала возьмите заказ в работу на приемку.";
+  }
+  if (message === "ALREADY_PROCESSED") {
+    return "Данные уже обработаны. Обновите экран и повторите.";
+  }
+  if (message === "RECORD_CHANGED") {
+    return "Запись уже изменена другим сотрудником. Обновите экран.";
+  }
+  if (message === "ORG_PROFILE_REQUIRED") {
+    return "Для печати акта заполните реквизиты организации.";
+  }
+  if (message === "PRINT_RECEIVE_ACT_ERROR" || message === "PRINT_ACT_ERROR") {
+    return "Не удалось сформировать акт расхождений.";
+  }
+  if (message === "ORG_PROFILE_GET_ERROR") {
+    return "Не удалось загрузить реквизиты организации.";
+  }
+  if (message === "ORG_PROFILE_SAVE_ERROR") {
+    return "Не удалось сохранить реквизиты организации.";
+  }
+  if (message === "BAD_ORG_PROFILE") {
+    return "Заполните обязательные реквизиты организации.";
+  }
+  if (message === "ORG_REQUIRED") {
+    return "Организация пользователя не настроена.";
+  }
+  if (message === "ORDER_SHORTAGE_CANDIDATES_ERROR") {
+    return "Не удалось загрузить задания с пропусками.";
+  }
+  if (message === "ORDER_SHORTAGE_JOURNAL_ERROR") {
+    return "Не удалось загрузить журнал закрытий.";
+  }
+  if (message === "ORDER_PICKING_JOURNAL_ERROR") {
+    return "Не удалось загрузить общий журнал отбора.";
+  }
+  if (message === "ORDER_ADMIN_CLOSE_ERROR") {
+    return "Не удалось закрыть задание с недостачей.";
+  }
+  if (message === "CLOSE_REASON_REQUIRED") {
+    return "Укажите причину закрытия.";
+  }
+  if (message === "CLOSE_REASON_TOO_LONG") {
+    return "Причина закрытия слишком длинная (максимум 500 символов).";
+  }
+  if (message === "ORDER_NO_ACTIVE_SKIPS") {
+    return "Нельзя закрыть: в заказе нет активных пропущенных позиций.";
+  }
+  if (message === "ORDER_SHORTAGE_BAD_STATUS") {
+    return "Этот заказ нельзя закрыть с недостачей в текущем статусе.";
+  }
+  if (message === "TENANT_NOT_FOUND") {
+    return "Данные заказа устарели. Обновите экран и повторите.";
+  }
   if (message === "INVALID_ITEM_ID") return "Некорректный идентификатор товара.";
   if (message === "TENANTS_LIST_ERROR") return "Ошибка загрузки списка клиентов.";
   if (message === "TENANT_CREATE_ERROR") return "Не удалось создать клиента.";
