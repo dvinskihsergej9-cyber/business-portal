@@ -2,7 +2,6 @@
 import { API_BASE, normalizeErrorMessage } from "../../apiConfig";
 import { jsPDF } from "jspdf";
 import autoTable from "jspdf-autotable";
-import QRCode from "qrcode";
 import { ARIAL_TTF_BASE64 } from "../../utils/arialFontBase64";
 import TsdHeader from "./TsdHeader";
 import Scanner from "./Scanner";
@@ -518,28 +517,6 @@ export default function OrderFulfillmentFlow({ authHeaders, onBack }) {
     pdf.setFontSize(13);
     pdf.text(`Дата: ${formatDateTime(order.createdAt)}`, margin + 20, margin + 68);
     pdf.text(`Статус: ${getOrderStatusLabel(order.status)}`, margin + 20, margin + 88);
-    pdf.text(`ID заказа: ${order.id || "-"}`, margin + 20, margin + 108);
-
-    const passportPayload = `bp:order:${order.id || ""}`;
-    if (order?.id) {
-      try {
-        const qrDataUrl = await QRCode.toDataURL(passportPayload, {
-          errorCorrectionLevel: "M",
-          margin: 1,
-          width: 220,
-        });
-        const qrSize = 88;
-        const qrX = margin + contentWidth - qrSize - 22;
-        const qrY = margin + 14;
-        pdf.addImage(qrDataUrl, "PNG", qrX, qrY, qrSize, qrSize);
-        pdf.setFontSize(9);
-        pdf.text("QR паспорта", qrX, qrY + qrSize + 11);
-        const payloadLines = pdf.splitTextToSize(passportPayload, qrSize + 20);
-        pdf.text(payloadLines, qrX, qrY + qrSize + 23);
-      } catch {
-        // If QR generation fails, keep printable text payload in the document.
-      }
-    }
 
     let y = margin + 132;
     pdf.setFontSize(15);
