@@ -301,7 +301,6 @@ const TENANT_SCOPED_MODELS = new Set([
   "SupplierTruck",
   "SalesOrder",
   "SalesOrderLine",
-  "OrderStatusHistory",
 ]);
 
 function withTenantWhere(where, orgId) {
@@ -11297,54 +11296,6 @@ function parseAdminShortageMetaFromComment(commentValue) {
 function buildAdminShortageMetaLine(payload = {}) {
   return `${ADMIN_SHORTAGE_CLOSE_PREFIX}${JSON.stringify(payload)}`;
 }
-
-function parseSalesOrderStatusesCsv(value) {
-  const statuses = String(value || "")
-    .split(",")
-    .map((entry) => String(entry || "").trim().toUpperCase())
-    .filter(Boolean);
-  return Array.from(new Set(statuses));
-}
-
-function sanitizeOptionalText(value, maxLength = 255) {
-  if (value == null) return null;
-  const textValue = String(value).trim();
-  if (!textValue) return null;
-  return textValue.slice(0, maxLength);
-}
-
-function buildOrderStatusHistoryMeta(payload = {}) {
-  const entries = Object.entries(payload).filter(([, value]) => {
-    if (value == null) return false;
-    if (typeof value === "string") return value.trim().length > 0;
-    return true;
-  });
-  if (!entries.length) return null;
-  return Object.fromEntries(entries);
-}
-
-async function writeOrderStatusHistory(tx, {
-  orderId,
-  orgId = null,
-  fromStatus = null,
-  toStatus,
-  eventType,
-  actorUserId = null,
-  metaJson = null,
-}) {
-  if (!orderId || !toStatus || !eventType) return null;
-  return tx.orderStatusHistory.create({
-    data: {
-      orderId,
-      orgId: orgId || null,
-      fromStatus: fromStatus || null,
-      toStatus,
-      eventType,
-      actorUserId: actorUserId || null,
-      metaJson: metaJson || null,
-    },
-  });
-}
 app.get("/api/orders/queue", auth, async (req, res) => {
   try {
     const mineOnly = req.query.mine === "1";
@@ -11378,114 +11329,6 @@ app.get("/api/orders/queue", auth, async (req, res) => {
     res.status(500).json({ message: "?????? ???????? ??????? ???????." });
   }
 });
-
-app.get("/api/orders/status-history", auth, async (req, res) => {
-  try {
-    const orderId = Number(req.query.orderId || 0);
-    const actorUserId = Number(req.query.actorUserId || 0);
-    const statusFilter = parseSalesOrderStatusesCsv(req.query.toStatus);
-    const fromDate = parseDateInput(req.query.fromDate);
-    const toDate = parseDateInput(req.query.toDate);
-    const page = Math.max(1, Number(req.query.page) || 1);
-    const limit = Math.min(200, Math.max(1, Number(req.query.limit) || 50));
-    const skip = (page - 1) * limit;
-
-    const where = {};
-    if (orderId > 0) where.orderId = orderId;
-    if (actorUserId > 0) where.actorUserId = actorUserId;
-    if (statusFilter.length === 1) {
-      where.toStatus = statusFilter[0];
-    } else if (statusFilter.length > 1) {
-      where.toStatus = { in: statusFilter };
-    }
-    if (fromDate || toDate) {
-      where.createdAt = {};
-      if (fromDate) where.createdAt.gte = fromDate;
-      if (toDate) where.createdAt.lte = toDate;
-    }
-
-    const [total, events] = await Promise.all([
-      prisma.orderStatusHistory.count({ where }),
-      prisma.orderStatusHistory.findMany({
-        where,
-        orderBy: [{ createdAt: "desc" }, { id: "desc" }],
-        skip,
-        take: limit,
-        include: {
-          order: {
-            select: {
-              id: true,
-              orderNumber: true,
-              customerName: true,
-              status: true,
-            },
-          },
-          actorUser: {
-            select: {
-              id: true,
-              name: true,
-              email: true,
-            },
-          },
-        },
-      }),
-    ]);
-
-    res.json({
-      items: events,
-      page,
-      limit,
-      total,
-    });
-  } catch (err) {
-    console.error("orders status history list error:", err);
-    res.status(500).json({ message: "ORDER_STATUS_HISTORY_LIST_ERROR" });
-  }
-});
-
-app.get("/api/orders/:id/status-history", auth, async (req, res) => {
-  try {
-    const id = Number(req.params.id);
-    if (!id || Number.isNaN(id)) {
-      return res.status(400).json({ message: "BAD_ORDER_ID" });
-    }
-
-    const order = await prisma.salesOrder.findUnique({
-      where: { id },
-      select: {
-        id: true,
-        orderNumber: true,
-        customerName: true,
-        status: true,
-      },
-    });
-    if (!order) {
-      return res.status(404).json({ message: "ORDER_NOT_FOUND" });
-    }
-
-    const limit = Math.min(500, Math.max(1, Number(req.query.limit) || 200));
-    const items = await prisma.orderStatusHistory.findMany({
-      where: { orderId: id },
-      orderBy: [{ createdAt: "asc" }, { id: "asc" }],
-      take: limit,
-      include: {
-        actorUser: {
-          select: {
-            id: true,
-            name: true,
-            email: true,
-          },
-        },
-      },
-    });
-
-    res.json({ order, items });
-  } catch (err) {
-    console.error("orders status history by order error:", err);
-    res.status(500).json({ message: "ORDER_STATUS_HISTORY_BY_ORDER_ERROR" });
-  }
-});
-
 
 app.get("/api/orders/admin-shortage-candidates", auth, async (req, res) => {
   try {
@@ -11808,34 +11651,6 @@ app.get("/api/orders/admin-picking-journal", auth, async (req, res) => {
     res.status(500).json({ message: "ORDER_PICKING_JOURNAL_ERROR" });
   }
 });
-app.get("/api/orders/:id", auth, async (req, res) => {
-  try {
-    const id = Number(req.params.id);
-    if (!id || Number.isNaN(id)) {
-      return res.status(400).json({ message: "BAD_ORDER_ID" });
-    }
-
-    const order = await prisma.salesOrder.findUnique({
-      where: { id },
-      include: {
-        assignedToUser: { select: { id: true, name: true, email: true } },
-        passportPrintedBy: { select: { id: true, name: true, email: true } },
-        shippedBy: { select: { id: true, name: true, email: true } },
-        lines: { include: { item: true }, orderBy: { id: "asc" } },
-      },
-    });
-
-    if (!order) {
-      return res.status(404).json({ message: "ORDER_NOT_FOUND" });
-    }
-
-    res.json({ order });
-  } catch (err) {
-    console.error("orders get by id error:", err);
-    res.status(500).json({ message: "ORDER_GET_ERROR" });
-  }
-});
-
 app.get("/api/orders/:id/pick-skips", auth, async (req, res) => {
   try {
     const orderId = Number(req.params.id);
@@ -12499,24 +12314,24 @@ app.post("/api/orders/:id/pack", auth, async (req, res) => {
     const id = Number(req.params.id);
     const { boxCode, boxType } = req.body || {};
     if (!id || Number.isNaN(id)) {
-      return res.status(400).json({ message: "BAD_ORDER_ID" });
+      return res.status(400).json({ message: "???????????? ID ??????." });
     }
     if (!boxCode) {
-      return res.status(400).json({ message: "BOX_CODE_REQUIRED" });
+      return res.status(400).json({ message: "??????? ????? ???????." });
     }
 
     const order = await prisma.salesOrder.findUnique({
       where: { id },
       include: { lines: true },
     });
-    if (!order) return res.status(404).json({ message: "ORDER_NOT_FOUND" });
+    if (!order) return res.status(404).json({ message: "????? ?? ??????." });
     if (order.assignedToUserId && order.assignedToUserId !== req.user.id) {
-      return res.status(403).json({ message: "NOT_ASSIGNED_TO_YOU" });
+      return res.status(403).json({ message: "????? ????????? ?? ?????? ???????????." });
     }
 
     const allPicked = order.lines.every((row) => Number(row.pickedQty) >= Number(row.qty));
     if (!allPicked) {
-      return res.status(400).json({ message: "ORDER_NOT_FULLY_PICKED" });
+      return res.status(400).json({ message: "??????? ????????? ?????." });
     }
 
     const updated = await prisma.salesOrder.update({
@@ -12536,7 +12351,7 @@ app.post("/api/orders/:id/pack", auth, async (req, res) => {
     res.json({ ok: true, order: updated });
   } catch (err) {
     console.error("orders pack error:", err);
-    res.status(500).json({ message: "ORDER_PACK_ERROR" });
+    res.status(500).json({ message: "?????? ???????? ??????." });
   }
 });
 
@@ -12575,169 +12390,52 @@ app.post("/api/orders/:id/complete", auth, async (req, res) => {
   try {
     const id = Number(req.params.id);
     if (!id || Number.isNaN(id)) {
-      return res.status(400).json({ message: "BAD_ORDER_ID" });
+      return res.status(400).json({ message: "Некорректный ID заказа." });
     }
 
     const order = await prisma.salesOrder.findUnique({
       where: { id },
       include: { lines: true },
     });
-    if (!order) return res.status(404).json({ message: "ORDER_NOT_FOUND" });
+    if (!order) return res.status(404).json({ message: "Заказ не найден." });
     if (order.assignedToUserId && order.assignedToUserId !== req.user.id) {
-      return res.status(403).json({ message: "NOT_ASSIGNED_TO_YOU" });
+      return res.status(403).json({ message: "Заказ закреплен за другим сотрудником." });
     }
     if (!["PICKED", "PACKED", "READY_TO_SHIP"].includes(order.status)) {
-      return res.status(400).json({ message: "ORDER_BAD_STATUS" });
+      return res.status(400).json({ message: "Сначала завершите отбор." });
     }
 
-    const updated = await prisma.$transaction(async (tx) => {
-      const current = await tx.salesOrder.findUnique({ where: { id } });
-      if (!current) {
-        const err = new Error("ORDER_NOT_FOUND");
-        err.code = "ORDER_NOT_FOUND";
-        throw err;
-      }
-
-      const nextStatus = "READY_TO_SHIP";
-      const fromStatus = current.status;
-
-      const savedOrder = await tx.salesOrder.update({
-        where: { id },
-        data: {
-          status: nextStatus,
-          completedAt: new Date(),
-        },
-        include: {
-          assignedToUser: { select: { id: true, name: true, email: true } },
-          lines: { include: { item: true }, orderBy: { id: "asc" } },
-        },
-      });
-
-      await tx.salesOrderPickSkip.updateMany({
-        where: {
-          orderId: id,
-          status: "ACTIVE",
-        },
-        data: {
-          status: "RESTORED",
-          restoredAt: new Date(),
-          restoredById: req.user?.id || null,
-        },
-      });
-
-      if (fromStatus !== nextStatus) {
-        await writeOrderStatusHistory(tx, {
-          orderId: id,
-          orgId: savedOrder.orgId || req.user?.orgId || null,
-          fromStatus,
-          toStatus: nextStatus,
-          eventType: "COMPLETE",
-          actorUserId: req.user?.id || null,
-        });
-      }
-
-      return savedOrder;
+    const updated = await prisma.salesOrder.update({
+      where: { id },
+      data: {
+        status: "READY_TO_SHIP",
+        completedAt: new Date(),
+      },
+      include: {
+        assignedToUser: { select: { id: true, name: true, email: true } },
+        lines: { include: { item: true }, orderBy: { id: "asc" } },
+      },
     });
 
-    res.json({ ok: true, order: updated });
-  } catch (err) {
-    if (err.code === "ORDER_NOT_FOUND") {
-      return res.status(404).json({ message: "ORDER_NOT_FOUND" });
-    }
-    console.error("orders complete error:", err);
-    res.status(500).json({ message: "ORDER_COMPLETE_ERROR" });
-  }
-});
-
-app.post("/api/orders/:id/ship", auth, async (req, res) => {
-  try {
-    const id = Number(req.params.id);
-    if (!id || Number.isNaN(id)) {
-      return res.status(400).json({ message: "BAD_ORDER_ID" });
-    }
-
-    const carrier = sanitizeOptionalText(req.body?.carrier, 120);
-    const trackingNumber = sanitizeOptionalText(req.body?.trackingNumber, 160);
-    const notes = sanitizeOptionalText(req.body?.notes, 1000);
-    const methodRaw = sanitizeOptionalText(req.body?.method, 32);
-    const method = methodRaw ? methodRaw.toUpperCase() : null;
-
-    const updated = await prisma.$transaction(async (tx) => {
-      const order = await tx.salesOrder.findUnique({
-        where: { id },
-      });
-      if (!order) {
-        const err = new Error("ORDER_NOT_FOUND");
-        err.code = "ORDER_NOT_FOUND";
-        throw err;
-      }
-
-      if (order.status === "SHIPPED") {
-        const err = new Error("ORDER_ALREADY_SHIPPED");
-        err.code = "ORDER_ALREADY_SHIPPED";
-        throw err;
-      }
-
-      if (order.status !== "READY_TO_SHIP") {
-        const err = new Error("ORDER_BAD_STATUS");
-        err.code = "ORDER_BAD_STATUS";
-        throw err;
-      }
-
-      const now = new Date();
-      const nextStatus = "SHIPPED";
-
-      const savedOrder = await tx.salesOrder.update({
-        where: { id },
-        data: {
-          status: nextStatus,
-          shippedAt: now,
-          shippedByUserId: req.user?.id || null,
-          carrier,
-          trackingNumber,
-          shipNotes: notes,
-        },
-        include: {
-          assignedToUser: { select: { id: true, name: true, email: true } },
-          shippedBy: { select: { id: true, name: true, email: true } },
-          lines: { include: { item: true }, orderBy: { id: "asc" } },
-        },
-      });
-
-      await writeOrderStatusHistory(tx, {
+    await prisma.salesOrderPickSkip.updateMany({
+      where: {
         orderId: id,
-        orgId: savedOrder.orgId || req.user?.orgId || null,
-        fromStatus: order.status,
-        toStatus: nextStatus,
-        eventType: "SHIP",
-        actorUserId: req.user?.id || null,
-        metaJson: buildOrderStatusHistoryMeta({
-          carrier,
-          trackingNumber,
-          notes,
-          method,
-        }),
-      });
-
-      return savedOrder;
+        status: "ACTIVE",
+      },
+      data: {
+        status: "RESTORED",
+        restoredAt: new Date(),
+        restoredById: req.user?.id || null,
+      },
     });
 
     res.json({ ok: true, order: updated });
   } catch (err) {
-    if (err.code === "ORDER_NOT_FOUND") {
-      return res.status(404).json({ message: "ORDER_NOT_FOUND" });
-    }
-    if (err.code === "ORDER_ALREADY_SHIPPED") {
-      return res.status(409).json({ message: "ORDER_ALREADY_SHIPPED" });
-    }
-    if (err.code === "ORDER_BAD_STATUS") {
-      return res.status(409).json({ message: "ORDER_BAD_STATUS" });
-    }
-
-    console.error("orders ship error:", err);
-    res.status(500).json({ message: "ORDER_SHIP_ERROR" });
+    console.error("orders complete error:", err);
+    res.status(500).json({ message: "Ошибка завершения заказа." });
   }
 });
+
 
 app.post("/api/orders/:id/passport-printed", auth, async (req, res) => {
   try {
