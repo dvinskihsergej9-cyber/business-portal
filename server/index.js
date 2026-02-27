@@ -11258,6 +11258,44 @@ app.post("/api/integrations/api-key/rotate", auth, requireAdmin, async (req, res
   }
 });
 
+const ADMIN_SHORTAGE_CLOSE_PREFIX = "[ADMIN_SHORTAGE_CLOSE]";
+
+function parseAdminShortageMetaFromComment(commentValue) {
+  const comment = String(commentValue || "");
+  if (!comment) {
+    return { baseComment: "", meta: null };
+  }
+
+  const lines = comment.split(/\r?\n/);
+  const baseLines = [];
+  let meta = null;
+
+  for (const rawLine of lines) {
+    const line = String(rawLine || "").trim();
+    if (!line.startsWith(ADMIN_SHORTAGE_CLOSE_PREFIX)) {
+      baseLines.push(rawLine);
+      continue;
+    }
+
+    const jsonPart = line.slice(ADMIN_SHORTAGE_CLOSE_PREFIX.length).trim();
+    if (!jsonPart) continue;
+
+    try {
+      meta = JSON.parse(jsonPart);
+    } catch (err) {
+      meta = null;
+    }
+  }
+
+  return {
+    baseComment: baseLines.join("\n").trim(),
+    meta,
+  };
+}
+
+function buildAdminShortageMetaLine(payload = {}) {
+  return `${ADMIN_SHORTAGE_CLOSE_PREFIX}${JSON.stringify(payload)}`;
+}
 app.get("/api/orders/queue", auth, async (req, res) => {
   try {
     const mineOnly = req.query.mine === "1";
@@ -11292,6 +11330,253 @@ app.get("/api/orders/queue", auth, async (req, res) => {
   }
 });
 
+app.get("/api/orders/admin-shortage-candidates", auth, async (req, res) => {
+  try {
+    if (!isWarehouseManager(req.user)) {
+      return res.status(403).json({ message: "NO_ACCESS" });
+    }
+
+    const orders = await prisma.salesOrder.findMany({
+      where: {
+        status: { in: ["NEW", "IN_PICKING", "PICKED", "PACKED"] },
+      },
+      orderBy: [{ status: "asc" }, { createdAt: "asc" }],
+      include: {
+        assignedToUser: { select: { id: true, name: true, email: true } },
+        lines: {
+          select: {
+            id: true,
+            qty: true,
+            pickedQty: true,
+          },
+        },
+        pickSkips: {
+          where: { status: "ACTIVE" },
+          orderBy: [{ createdAt: "desc" }, { id: "desc" }],
+          select: {
+            id: true,
+            lineId: true,
+            itemId: true,
+            locationId: true,
+            qty: true,
+            reason: true,
+            comment: true,
+            createdAt: true,
+            skippedBy: { select: { id: true, name: true, email: true } },
+          },
+        },
+      },
+      take: 200,
+    });
+
+    const items = orders
+      .map((order) => {
+        const remainingQty = (order.lines || []).reduce((sum, line) => {
+          const lineRemaining = Math.max(
+            0,
+            (Number(line.qty) || 0) - (Number(line.pickedQty) || 0)
+          );
+          return sum + lineRemaining;
+        }, 0);
+
+        return {
+          ...order,
+          activeSkipCount: (order.pickSkips || []).length,
+          remainingQty,
+        };
+      })
+      .filter((order) => order.activeSkipCount > 0);
+
+    res.json({ items });
+  } catch (err) {
+    console.error("orders admin shortage candidates error:", err);
+    res.status(500).json({ message: "ORDER_SHORTAGE_CANDIDATES_ERROR" });
+  }
+});
+
+app.post("/api/orders/:id/admin-close-shortage", auth, async (req, res) => {
+  try {
+    if (!isWarehouseManager(req.user)) {
+      return res.status(403).json({ message: "NO_ACCESS" });
+    }
+
+    const id = Number(req.params.id);
+    if (!id || Number.isNaN(id)) {
+      return res.status(400).json({ message: "BAD_ORDER_ID" });
+    }
+
+    const reason = String(req.body?.reason || "").trim();
+    if (!reason) {
+      return res.status(400).json({ message: "CLOSE_REASON_REQUIRED" });
+    }
+    if (reason.length > 500) {
+      return res.status(400).json({ message: "CLOSE_REASON_TOO_LONG" });
+    }
+
+    const result = await prisma.$transaction(async (tx) => {
+      const order = await tx.salesOrder.findUnique({
+        where: { id },
+        include: {
+          assignedToUser: { select: { id: true, name: true, email: true } },
+          lines: { include: { item: true }, orderBy: { id: "asc" } },
+        },
+      });
+      if (!order) {
+        const err = new Error("ORDER_NOT_FOUND");
+        err.code = "ORDER_NOT_FOUND";
+        throw err;
+      }
+
+      if (["READY_TO_SHIP", "SHIPPED", "CANCELLED"].includes(order.status)) {
+        const err = new Error("ORDER_SHORTAGE_BAD_STATUS");
+        err.code = "ORDER_SHORTAGE_BAD_STATUS";
+        throw err;
+      }
+
+      const activeSkipCount = await tx.salesOrderPickSkip.count({
+        where: {
+          orderId: id,
+          status: "ACTIVE",
+        },
+      });
+      if (!activeSkipCount) {
+        const err = new Error("ORDER_NO_ACTIVE_SKIPS");
+        err.code = "ORDER_NO_ACTIVE_SKIPS";
+        throw err;
+      }
+
+      const parsed = parseAdminShortageMetaFromComment(order.deliveryComment);
+      const closeMeta = {
+        closedAt: new Date().toISOString(),
+        closedById: req.user?.id || null,
+        closedByName: req.user?.name || "",
+        closedByEmail: req.user?.email || "",
+        reason,
+      };
+      const nextComment = [
+        parsed.baseComment,
+        buildAdminShortageMetaLine(closeMeta),
+      ]
+        .filter(Boolean)
+        .join("\n")
+        .trim();
+
+      const updated = await tx.salesOrder.update({
+        where: { id },
+        data: {
+          status: "CANCELLED",
+          completedAt: new Date(),
+          deliveryComment: nextComment,
+        },
+        include: {
+          assignedToUser: { select: { id: true, name: true, email: true } },
+          lines: { include: { item: true }, orderBy: { id: "asc" } },
+        },
+      });
+
+      return {
+        order: updated,
+        activeSkipCount,
+        closeMeta,
+      };
+    });
+
+    res.json({ ok: true, ...result });
+  } catch (err) {
+    if (err.code === "ORDER_NOT_FOUND") {
+      return res.status(404).json({ message: "ORDER_NOT_FOUND" });
+    }
+    if (err.code === "ORDER_SHORTAGE_BAD_STATUS") {
+      return res.status(400).json({ message: "ORDER_SHORTAGE_BAD_STATUS" });
+    }
+    if (err.code === "ORDER_NO_ACTIVE_SKIPS") {
+      return res.status(409).json({ message: "ORDER_NO_ACTIVE_SKIPS" });
+    }
+
+    console.error("orders admin close shortage error:", err);
+    res.status(500).json({ message: "ORDER_ADMIN_CLOSE_ERROR" });
+  }
+});
+
+app.get("/api/orders/admin-shortage-journal", auth, async (req, res) => {
+  try {
+    if (!isWarehouseManager(req.user)) {
+      return res.status(403).json({ message: "NO_ACCESS" });
+    }
+
+    const limitRaw = Number(req.query.limit);
+    const limit = Number.isFinite(limitRaw)
+      ? Math.min(Math.max(Math.trunc(limitRaw), 1), 500)
+      : 100;
+
+    const orders = await prisma.salesOrder.findMany({
+      where: {
+        status: "CANCELLED",
+      },
+      orderBy: [{ completedAt: "desc" }, { updatedAt: "desc" }, { id: "desc" }],
+      include: {
+        assignedToUser: { select: { id: true, name: true, email: true } },
+        lines: {
+          select: {
+            id: true,
+            qty: true,
+            pickedQty: true,
+          },
+        },
+        pickSkips: {
+          where: { status: "ACTIVE" },
+          select: {
+            id: true,
+            lineId: true,
+            reason: true,
+            comment: true,
+            qty: true,
+            createdAt: true,
+          },
+        },
+      },
+      take: limit,
+    });
+
+    const items = orders
+      .map((order) => {
+        const parsed = parseAdminShortageMetaFromComment(order.deliveryComment);
+        if (!parsed.meta) return null;
+
+        const totalQty = (order.lines || []).reduce(
+          (sum, line) => sum + (Number(line.qty) || 0),
+          0
+        );
+        const pickedQty = (order.lines || []).reduce(
+          (sum, line) => sum + (Number(line.pickedQty) || 0),
+          0
+        );
+
+        return {
+          id: order.id,
+          orderNumber: order.orderNumber,
+          customerName: order.customerName,
+          customerPhone: order.customerPhone,
+          shippingAddress: order.shippingAddress,
+          status: order.status,
+          completedAt: order.completedAt,
+          createdAt: order.createdAt,
+          closeMeta: parsed.meta,
+          remainingQty: Math.max(0, totalQty - pickedQty),
+          totalQty,
+          pickedQty,
+          activeSkipCount: (order.pickSkips || []).length,
+          assignedToUser: order.assignedToUser,
+        };
+      })
+      .filter(Boolean);
+
+    res.json({ items });
+  } catch (err) {
+    console.error("orders admin shortage journal error:", err);
+    res.status(500).json({ message: "ORDER_SHORTAGE_JOURNAL_ERROR" });
+  }
+});
 app.get("/api/orders/:id/pick-skips", auth, async (req, res) => {
   try {
     const orderId = Number(req.params.id);

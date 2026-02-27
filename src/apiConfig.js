@@ -121,6 +121,27 @@ export const normalizeErrorMessage = (err, fallback = "Ошибка запрос
   if (message === "ORG_REQUIRED") {
     return "Организация пользователя не настроена.";
   }
+  if (message === "ORDER_SHORTAGE_CANDIDATES_ERROR") {
+    return "Не удалось загрузить задания с пропусками.";
+  }
+  if (message === "ORDER_SHORTAGE_JOURNAL_ERROR") {
+    return "Не удалось загрузить журнал закрытий.";
+  }
+  if (message === "ORDER_ADMIN_CLOSE_ERROR") {
+    return "Не удалось закрыть задание с недостачей.";
+  }
+  if (message === "CLOSE_REASON_REQUIRED") {
+    return "Укажите причину закрытия.";
+  }
+  if (message === "CLOSE_REASON_TOO_LONG") {
+    return "Причина закрытия слишком длинная (максимум 500 символов).";
+  }
+  if (message === "ORDER_NO_ACTIVE_SKIPS") {
+    return "Нельзя закрыть: в заказе нет активных пропущенных позиций.";
+  }
+  if (message === "ORDER_SHORTAGE_BAD_STATUS") {
+    return "Этот заказ нельзя закрыть с недостачей в текущем статусе.";
+  }
   if (message === "TENANT_NOT_FOUND") {
     return "Данные заказа устарели. Обновите экран и повторите.";
   }

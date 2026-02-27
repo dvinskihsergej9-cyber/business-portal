@@ -5,12 +5,14 @@ import TenantManagement from "./TenantManagement";
 import PickingReport from "./PickingReport";
 import AdminWarehousePanel from "../components/admin/AdminWarehousePanel";
 import AdminOrgProfilePanel from "../components/admin/AdminOrgProfilePanel";
+import AdminPickingShortagePanel from "../components/admin/AdminPickingShortagePanel";
 import "../components/admin/admin.css";
 import { hasPermission, PERMISSION_KEYS } from "../utils/permissions";
 
 const BASE_TABS = [
   { id: "users", label: "Пользователи" },
   { id: "warehouse", label: "Склад" },
+  { id: "picking-shortage", label: "Отбор" },
   { id: "org-profile", label: "Реквизиты" },
   { id: "picking-report", label: "Биллинг ресурсов" },
 ];
@@ -32,6 +34,9 @@ export default function AdminConsole({ initialTab = "users" }) {
         canTenants ? OWNER_TAB : null,
         canUsers ? BASE_TABS.find((item) => item.id === "users") : null,
         canWarehouse ? BASE_TABS.find((item) => item.id === "warehouse") : null,
+        canWarehouse
+          ? BASE_TABS.find((item) => item.id === "picking-shortage")
+          : null,
         canWarehouse
           ? BASE_TABS.find((item) => item.id === "org-profile")
           : null,
@@ -110,6 +115,7 @@ export default function AdminConsole({ initialTab = "users" }) {
         {activeTab === "tenants" && <TenantManagement />}
         {activeTab === "users" && <UserManagement />}
         {activeTab === "warehouse" && <AdminWarehousePanel />}
+        {activeTab === "picking-shortage" && <AdminPickingShortagePanel />}
         {activeTab === "org-profile" && <AdminOrgProfilePanel />}
         {activeTab === "picking-report" && <PickingReport />}
       </div>
