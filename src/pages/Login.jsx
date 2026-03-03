@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { useNavigate, Link } from "react-router-dom";
 import { useAuth } from "../context/AuthContext";
+import modernWmsWarehouseAnimation from "../assets/login/modernwms-warehouse.json";
 
 const normalizeLoginInput = (value) =>
   String(value || "").replace(/\s+/g, "_");
@@ -13,6 +14,8 @@ function LoginHero() {
 
     let instance;
     let isUnmounted = false;
+    let rafId = 0;
+    let resizeTimer = 0;
 
     const setupAnimation = async () => {
       const lottieModule = await import("lottie-web");
@@ -23,14 +26,26 @@ function LoginHero() {
         renderer: "svg",
         loop: true,
         autoplay: true,
-        path: "/animations/modernwms-warehouse.json",
+        animationData: modernWmsWarehouseAnimation,
+        rendererSettings: {
+          preserveAspectRatio: "xMidYMid slice",
+        },
       });
+
+      rafId = requestAnimationFrame(() => {
+        instance?.resize();
+      });
+      resizeTimer = window.setTimeout(() => {
+        instance?.resize();
+      }, 220);
     };
 
     setupAnimation();
 
     return () => {
       isUnmounted = true;
+      if (rafId) cancelAnimationFrame(rafId);
+      if (resizeTimer) clearTimeout(resizeTimer);
       if (instance) instance.destroy();
     };
   }, []);
