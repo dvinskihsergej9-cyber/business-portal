@@ -61,6 +61,8 @@ model User {
   orderPickSkipsCreated        SalesOrderPickSkip[]     @relation("OrderPickSkipCreatedBy")
   orderPickSkipsRestored       SalesOrderPickSkip[]     @relation("OrderPickSkipRestoredBy")
   orderStatusHistoryEvents     OrderStatusHistory[]     @relation("OrderStatusHistoryActor")
+  stockHoldsCreated            StockHold[]              @relation("StockHoldCreatedBy")
+  stockHoldsReleased           StockHold[]              @relation("StockHoldReleasedBy")
 
   @@index([orgId])
 }
@@ -288,6 +290,7 @@ model PurchaseOrder {
   date        DateTime            @default(now())
   plannedDate DateTime?
   status      PurchaseOrderStatus @default(DRAFT)
+  receivingStage PurchaseOrderReceivingStage @default(NEW)
 
   supplierId Int
   supplier   Supplier @relation(fields: [supplierId], references: [id])
@@ -326,6 +329,13 @@ enum PurchaseOrderStatus {
   PARTIAL
   RECEIVED
   CLOSED
+}
+
+enum PurchaseOrderReceivingStage {
+  NEW
+  IN_PROGRESS
+  CONFIRMED
+  FINALIZED
 }
 
 enum ReceivingLineStatus {
@@ -374,6 +384,7 @@ model Item {
   receivingLines         WarehouseReceivingLine[]
   salesOrderLines        SalesOrderLine[]
   pickSkips              SalesOrderPickSkip[]
+  stockHolds             StockHold[]
 
   @@unique([orgId, sku])
   @@unique([orgId, barcode])
@@ -399,6 +410,7 @@ model WarehouseLocation {
   revisionItems  StockRevisionItem[]
   receivingLines WarehouseReceivingLine[]
   pickSkips      SalesOrderPickSkip[]
+  stockHolds     StockHold[]
 }
 
 model WarehouseReceivingLine {
@@ -461,6 +473,30 @@ model StockMovement {
   createdAt      DateTime          @default(now())
   createdById    Int?
   createdBy      User?             @relation(fields: [createdById], references: [id])
+}
+
+model StockHold {
+  id               Int             @id @default(autoincrement())
+  orgId            Int?
+  itemId           Int
+  item             Item            @relation(fields: [itemId], references: [id])
+  locationId       Int
+  location         WarehouseLocation @relation(fields: [locationId], references: [id])
+  qty              Float
+  status           StockHoldStatus @default(ACTIVE)
+  reason           String
+  note             String?
+  createdAt        DateTime        @default(now())
+  createdByUserId  Int?
+  createdBy        User?           @relation("StockHoldCreatedBy", fields: [createdByUserId], references: [id])
+  releasedAt       DateTime?
+  releasedByUserId Int?
+  releasedBy       User?           @relation("StockHoldReleasedBy", fields: [releasedByUserId], references: [id])
+  releaseNote      String?
+
+  @@index([orgId, status, createdAt])
+  @@index([orgId, itemId, locationId, status])
+  @@index([orgId, locationId, status])
 }
 
 model BinAuditSession {
@@ -583,6 +619,11 @@ enum StockMovementType {
   INCOME
   ISSUE
   ADJUSTMENT
+}
+
+enum StockHoldStatus {
+  ACTIVE
+  RELEASED
 }
 
 enum BinAuditSessionStatus {
