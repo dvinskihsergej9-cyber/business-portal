@@ -72,6 +72,7 @@ export default function Login() {
     <div className="login-page">
       <div className="login-card">
         <div className="login-card__brand">СкладОнлайн</div>
+        <div className="login-card__tagline">Операционный центр вашего склада</div>
         <LoginHero />
         <h1 className="login-card__title">Вход</h1>
 

@@ -2609,12 +2609,21 @@ input[type="number"] {
 }
 
 .login-card__brand {
-  font-size: 15px;
-  font-weight: 700;
+  font-size: 34px;
+  font-weight: 900;
+  line-height: 1.02;
+  letter-spacing: 0.01em;
   color: #1d4ed8;
-  letter-spacing: 0.03em;
+  text-shadow: 0 2px 10px rgba(37, 99, 235, 0.18);
+}
+
+.login-card__tagline {
+  margin-top: 4px;
+  margin-bottom: 10px;
+  font-size: 13px;
+  color: #334155;
+  letter-spacing: 0.04em;
   text-transform: uppercase;
-  margin-bottom: 6px;
 }
 
 .login-card__title {
@@ -2691,7 +2700,7 @@ input[type="number"] {
 }
 
 .login-hero__lottie {
-  height: 320px;
+  height: 350px;
   width: 100%;
 }
 
@@ -2699,7 +2708,7 @@ input[type="number"] {
   width: 100% !important;
   height: 100% !important;
   display: block;
-  transform: scale(2.02) translate(22%, 18%);
+  transform: scale(4.04) translate(10%, 8%);
   transform-origin: center center;
 }
 
@@ -2714,8 +2723,14 @@ input[type="number"] {
   }
 
   .login-card__brand {
-    font-size: 13px;
-    margin-bottom: 4px;
+    font-size: 28px;
+  }
+
+  .login-card__tagline {
+    font-size: 11px;
+    margin-top: 3px;
+    margin-bottom: 8px;
+    letter-spacing: 0.03em;
   }
 
   .login-card__title {
@@ -2724,11 +2739,11 @@ input[type="number"] {
   }
 
   .login-hero__lottie {
-    height: 258px;
+    height: 280px;
   }
 
   .login-hero__lottie svg {
-    transform: scale(2.08) translate(23%, 22%);
+    transform: scale(4.2) translate(11%, 11%);
   }
 }
 

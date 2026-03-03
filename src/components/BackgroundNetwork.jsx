@@ -30,8 +30,8 @@ export default function BackgroundNetwork() {
 
     // создаём частицы
     const count = Math.min(
-      70,
-      Math.max(30, Math.floor((window.innerWidth * window.innerHeight) / 25000))
+      150,
+      Math.max(70, Math.floor((window.innerWidth * window.innerHeight) / 13000))
     );
     const particles = [];
 
@@ -41,7 +41,7 @@ export default function BackgroundNetwork() {
         y: Math.random() * window.innerHeight,
         vx: (Math.random() - 0.5) * 0.4,
         vy: (Math.random() - 0.5) * 0.4,
-        radius: 2 + Math.random() * 1.8,
+        radius: 1.8 + Math.random() * 1.6,
       });
     }
 
@@ -53,7 +53,7 @@ export default function BackgroundNetwork() {
 
       ctx.clearRect(0, 0, w, h);
 
-      const maxDist = 160;
+      const maxDist = 215;
 
       // линии между близкими точками
       for (let i = 0; i < particles.length; i++) {
@@ -65,8 +65,8 @@ export default function BackgroundNetwork() {
           const dist = Math.sqrt(dx * dx + dy * dy);
           if (dist < maxDist) {
             const alpha = 1 - dist / maxDist;
-            ctx.strokeStyle = `rgba(59, 130, 246, ${alpha * 0.7})`;
-            ctx.lineWidth = 1;
+            ctx.strokeStyle = `rgba(59, 130, 246, ${alpha * 0.82})`;
+            ctx.lineWidth = 1.05;
             ctx.beginPath();
             ctx.moveTo(p1.x, p1.y);
             ctx.lineTo(p2.x, p2.y);
@@ -78,7 +78,7 @@ export default function BackgroundNetwork() {
       // сами шарики
       for (const p of particles) {
         ctx.beginPath();
-        ctx.fillStyle = "rgba(37, 99, 235, 0.9)";
+        ctx.fillStyle = "rgba(37, 99, 235, 0.95)";
         ctx.arc(p.x, p.y, p.radius, 0, Math.PI * 2);
         ctx.fill();
 
