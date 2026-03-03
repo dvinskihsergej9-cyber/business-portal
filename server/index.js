@@ -876,6 +876,7 @@ const WAREHOUSE_ROUTE_RULES = [
   { prefix: "/locations", key: PERMISSION_KEYS.WAREHOUSE_LOCATIONS },
   { prefix: "/transactions", key: PERMISSION_KEYS.WAREHOUSE_TRANSACTIONS },
   { prefix: "/revisions", key: PERMISSION_KEYS.WAREHOUSE_REVISION },
+  { prefix: "/holds", key: PERMISSION_KEYS.WAREHOUSE_MANAGE },
   { prefix: "/discrepancies", key: PERMISSION_KEYS.TSD_DISCREPANCIES },
   { prefix: "/inventory/count", key: PERMISSION_KEYS.TSD_COUNT },
   { prefix: "/bin-audit", key: PERMISSION_KEYS.TSD_BIN },
@@ -1803,6 +1804,62 @@ function mergeLocationBalances(movementBalances = [], receivingBalances = []) {
   });
 }
 
+async function getActiveHoldQtyForLocation(tx, itemId, locationId) {
+  const item = Number(itemId);
+  const location = Number(locationId);
+  if (!item || !location) return 0;
+  const result = await tx.stockHold.aggregate({
+    where: {
+      itemId: item,
+      locationId: location,
+      status: "ACTIVE",
+    },
+    _sum: { qty: true },
+  });
+  return Math.max(0, Number(result?._sum?.qty) || 0);
+}
+
+async function getActiveHoldQtyByLocation(tx, itemId) {
+  const item = Number(itemId);
+  if (!item) return new Map();
+  const rows = await tx.stockHold.groupBy({
+    by: ["locationId"],
+    where: {
+      itemId: item,
+      status: "ACTIVE",
+      locationId: { not: null },
+    },
+    _sum: { qty: true },
+  });
+
+  const map = new Map();
+  for (const row of rows || []) {
+    const locationId = Number(row.locationId);
+    const qty = Math.max(0, Number(row?._sum?.qty) || 0);
+    if (locationId && qty > 0) {
+      map.set(locationId, qty);
+    }
+  }
+  return map;
+}
+
+async function applyActiveHoldsToBalances(tx, itemId, balances = []) {
+  if (!Array.isArray(balances) || balances.length === 0) {
+    return [];
+  }
+  const holdByLocation = await getActiveHoldQtyByLocation(tx, itemId);
+  return balances
+    .map((row) => {
+      const heldQty = Math.max(0, Number(holdByLocation.get(row.locationId)) || 0);
+      const qty = Math.max(0, (Number(row.qty) || 0) - heldQty);
+      return {
+        ...row,
+        qty,
+        heldQty,
+      };
+    })
+    .filter((row) => row.qty > 0);
+}
 async function buildOrderPickPlan(orderId) {
   const order = await prisma.salesOrder.findUnique({
     where: { id: orderId },
@@ -1857,10 +1914,11 @@ async function buildOrderPickPlan(orderId) {
     const movementBalances = await getItemLocationBalances(resolvedItemId);
     const receivingBalances = await getReceivingLineLocationBalances(resolvedItemId);
     const placementBalances = await getPlacementLocationBalances(resolvedItemId);
-    const balances = mergeLocationBalances(
+    const balancesBase = mergeLocationBalances(
       mergeLocationBalances(movementBalances, receivingBalances),
       placementBalances
     );
+    const balances = await applyActiveHoldsToBalances(prisma, resolvedItemId, balancesBase);
     let need = remaining;
     const steps = [];
 
@@ -8396,6 +8454,7 @@ app.get("/api/inventory/stock", auth, async (req, res) => {
       orderBy: { name: "asc" },
       include: {
         movements: true,
+        stockHolds: { where: { status: "ACTIVE" } },
       },
     });
 
@@ -8410,6 +8469,12 @@ app.get("/api/inventory/stock", auth, async (req, res) => {
         }
       }
 
+      const heldQty = (item.stockHolds || []).reduce(
+        (sum, hold) => sum + (Number(hold?.qty) || 0),
+        0
+      );
+      const availableQty = Math.max(0, qty - heldQty);
+
       return {
         id: item.id,
         name: item.name,
@@ -8419,6 +8484,8 @@ app.get("/api/inventory/stock", auth, async (req, res) => {
         minStock: item.minStock,
         maxStock: item.maxStock,
         currentStock: Math.round(qty),
+        heldStock: Math.round(heldQty),
+        availableStock: Math.round(availableQty),
       };
     });
 
@@ -8437,7 +8504,7 @@ app.get("/api/warehouse/stock/summary", auth, async (req, res) => {
     const items = await prisma.item.findMany({
       where: { category: "STOCK" },
       orderBy: { name: "asc" },
-      include: { movements: true },
+      include: { movements: true, stockHolds: { where: { status: "ACTIVE" } } },
     });
 
     const result = items.map((item) => {
@@ -8451,6 +8518,12 @@ app.get("/api/warehouse/stock/summary", auth, async (req, res) => {
         }
       }
 
+      const heldQty = (item.stockHolds || []).reduce(
+        (sum, hold) => sum + (Number(hold?.qty) || 0),
+        0
+      );
+      const availableQty = Math.max(0, qty - heldQty);
+
       return {
         id: item.id,
         name: item.name,
@@ -8458,6 +8531,8 @@ app.get("/api/warehouse/stock/summary", auth, async (req, res) => {
         barcode: item.barcode,
         unit: item.unit,
         currentStock: Math.round(qty),
+        heldStock: Math.round(heldQty),
+        availableStock: Math.round(availableQty),
       };
     });
 
@@ -8468,6 +8543,181 @@ app.get("/api/warehouse/stock/summary", auth, async (req, res) => {
   }
 });
 
+app.get("/api/warehouse/holds", auth, async (req, res) => {
+  try {
+    const orgId = req.user?.orgId || null;
+    const status = String(req.query.status || "ACTIVE").toUpperCase();
+    const itemId = Number(req.query.itemId);
+    const locationId = Number(req.query.locationId);
+    const page = Math.max(1, Number(req.query.page) || 1);
+    const limit = Math.min(200, Math.max(1, Number(req.query.limit) || 50));
+
+    const where = {
+      orgId,
+      status: ["ACTIVE", "RELEASED"].includes(status) ? status : "ACTIVE",
+    };
+    if (Number.isFinite(itemId) && itemId > 0) where.itemId = itemId;
+    if (Number.isFinite(locationId) && locationId > 0) where.locationId = locationId;
+
+    const [total, rows] = await prisma.$transaction([
+      prisma.stockHold.count({ where }),
+      prisma.stockHold.findMany({
+        where,
+        include: {
+          item: { select: { id: true, name: true, sku: true, unit: true } },
+          location: {
+            select: { id: true, code: true, name: true, zone: true, aisle: true, rack: true, level: true },
+          },
+          createdBy: { select: { id: true, name: true, email: true } },
+          releasedBy: { select: { id: true, name: true, email: true } },
+        },
+        orderBy: [{ status: "asc" }, { createdAt: "desc" }],
+        skip: (page - 1) * limit,
+        take: limit,
+      }),
+    ]);
+
+    res.json({
+      items: rows,
+      paging: {
+        page,
+        limit,
+        total,
+        pages: Math.max(1, Math.ceil(total / limit)),
+      },
+    });
+  } catch (err) {
+    console.error("warehouse holds list error:", err);
+    res.status(500).json({ message: "\u041e\u0448\u0438\u0431\u043a\u0430 \u0437\u0430\u0433\u0440\u0443\u0437\u043a\u0438 \u0431\u043b\u043e\u043a\u0438\u0440\u043e\u0432\u043e\u043a \u043e\u0441\u0442\u0430\u0442\u043a\u043e\u0432." });
+  }
+});
+
+app.post("/api/warehouse/holds", auth, async (req, res) => {
+  try {
+    const orgId = req.user?.orgId || null;
+    const itemId = Number(req.body?.itemId);
+    const locationId = Number(req.body?.locationId);
+    const qty = Number(req.body?.qty);
+    const reason = String(req.body?.reason || "").trim();
+    const note = req.body?.note ? String(req.body.note).trim() : null;
+
+    if (!itemId || !locationId || !Number.isFinite(qty) || qty <= 0 || !reason) {
+      return res.status(400).json({
+        message: "\u041d\u0443\u0436\u043d\u043e \u0443\u043a\u0430\u0437\u0430\u0442\u044c \u0442\u043e\u0432\u0430\u0440, \u044f\u0447\u0435\u0439\u043a\u0443, \u043a\u043e\u043b\u0438\u0447\u0435\u0441\u0442\u0432\u043e (>0) \u0438 \u043f\u0440\u0438\u0447\u0438\u043d\u0443 \u0431\u043b\u043e\u043a\u0438\u0440\u043e\u0432\u043a\u0438.",
+      });
+    }
+
+    const created = await prisma.$transaction(async (tx) => {
+      const item = await tx.item.findFirst({ where: { id: itemId, orgId } });
+      if (!item || item.category === "TMC") {
+        const err = new Error("ITEM_NOT_FOUND");
+        err.code = "ITEM_NOT_FOUND";
+        throw err;
+      }
+
+      const location = await tx.warehouseLocation.findFirst({ where: { id: locationId, orgId } });
+      if (!location) {
+        const err = new Error("LOCATION_NOT_FOUND");
+        err.code = "LOCATION_NOT_FOUND";
+        throw err;
+      }
+
+      const onHandQty = await stockService.getItemLocationQty(tx, itemId, locationId);
+      const activeHoldQty = await getActiveHoldQtyForLocation(tx, itemId, locationId);
+      const availableQty = Math.max(0, (Number(onHandQty) || 0) - activeHoldQty);
+
+      if (availableQty < qty) {
+        const err = new Error("HOLD_EXCEEDS_AVAILABLE");
+        err.code = "HOLD_EXCEEDS_AVAILABLE";
+        err.detail = {
+          onHandQty: Number(onHandQty) || 0,
+          activeHoldQty,
+          availableQty,
+        };
+        throw err;
+      }
+
+      return tx.stockHold.create({
+        data: {
+          orgId,
+          itemId,
+          locationId,
+          qty,
+          reason,
+          note,
+          createdByUserId: req.user?.id || null,
+        },
+        include: {
+          item: { select: { id: true, name: true, sku: true, unit: true } },
+          location: {
+            select: { id: true, code: true, name: true, zone: true, aisle: true, rack: true, level: true },
+          },
+          createdBy: { select: { id: true, name: true, email: true } },
+        },
+      });
+    });
+
+    res.status(201).json({ ok: true, hold: created });
+  } catch (err) {
+    if (err.code === "ITEM_NOT_FOUND") {
+      return res.status(404).json({ message: "\u0422\u043e\u0432\u0430\u0440 \u043d\u0435 \u043d\u0430\u0439\u0434\u0435\u043d." });
+    }
+    if (err.code === "LOCATION_NOT_FOUND") {
+      return res.status(404).json({ message: "\u042f\u0447\u0435\u0439\u043a\u0430 \u043d\u0435 \u043d\u0430\u0439\u0434\u0435\u043d\u0430." });
+    }
+    if (err.code === "HOLD_EXCEEDS_AVAILABLE") {
+      return res.status(409).json({
+        message: "\u041d\u0435\u0434\u043e\u0441\u0442\u0430\u0442\u043e\u0447\u043d\u043e \u0434\u043e\u0441\u0442\u0443\u043f\u043d\u043e\u0433\u043e \u043e\u0441\u0442\u0430\u0442\u043a\u0430 \u0434\u043b\u044f \u0431\u043b\u043e\u043a\u0438\u0440\u043e\u0432\u043a\u0438.",
+        detail: err.detail || null,
+      });
+    }
+    console.error("warehouse hold create error:", err);
+    res.status(500).json({ message: "\u041e\u0448\u0438\u0431\u043a\u0430 \u0441\u043e\u0437\u0434\u0430\u043d\u0438\u044f \u0431\u043b\u043e\u043a\u0438\u0440\u043e\u0432\u043a\u0438 \u043e\u0441\u0442\u0430\u0442\u043a\u0430." });
+  }
+});
+
+app.post("/api/warehouse/holds/:id/release", auth, async (req, res) => {
+  try {
+    const orgId = req.user?.orgId || null;
+    const id = Number(req.params.id);
+    const releaseNote = req.body?.note ? String(req.body.note).trim() : null;
+
+    if (!id || Number.isNaN(id)) {
+      return res.status(400).json({ message: "\u041d\u0435\u043a\u043e\u0440\u0440\u0435\u043a\u0442\u043d\u044b\u0439 ID \u0431\u043b\u043e\u043a\u0438\u0440\u043e\u0432\u043a\u0438." });
+    }
+
+    const hold = await prisma.stockHold.findFirst({ where: { id, orgId } });
+    if (!hold) {
+      return res.status(404).json({ message: "\u0411\u043b\u043e\u043a\u0438\u0440\u043e\u0432\u043a\u0430 \u043d\u0435 \u043d\u0430\u0439\u0434\u0435\u043d\u0430." });
+    }
+    if (hold.status !== "ACTIVE") {
+      return res.status(409).json({ message: "\u0411\u043b\u043e\u043a\u0438\u0440\u043e\u0432\u043a\u0430 \u0443\u0436\u0435 \u0441\u043d\u044f\u0442\u0430." });
+    }
+
+    const updated = await prisma.stockHold.update({
+      where: { id },
+      data: {
+        status: "RELEASED",
+        releasedAt: new Date(),
+        releasedByUserId: req.user?.id || null,
+        releaseNote,
+      },
+      include: {
+        item: { select: { id: true, name: true, sku: true, unit: true } },
+        location: {
+          select: { id: true, code: true, name: true, zone: true, aisle: true, rack: true, level: true },
+        },
+        createdBy: { select: { id: true, name: true, email: true } },
+        releasedBy: { select: { id: true, name: true, email: true } },
+      },
+    });
+
+    res.json({ ok: true, hold: updated });
+  } catch (err) {
+    console.error("warehouse hold release error:", err);
+    res.status(500).json({ message: "\u041e\u0448\u0438\u0431\u043a\u0430 \u0441\u043d\u044f\u0442\u0438\u044f \u0431\u043b\u043e\u043a\u0438\u0440\u043e\u0432\u043a\u0438 \u043e\u0441\u0442\u0430\u0442\u043a\u0430." });
+  }
+});
 app.get("/api/warehouse/stock/item/:id", auth, async (req, res) => {
   try {
     const id = Number(req.params.id);
@@ -8507,7 +8757,7 @@ app.get("/api/inventory/low-stock-order-file", auth, async (req, res) => {
     const items = await prisma.item.findMany({
       where: { category: "STOCK" },
       orderBy: { name: "asc" },
-      include: { movements: true },
+      include: { movements: true, stockHolds: { where: { status: "ACTIVE" } } },
     });
 
     const lowItems = [];
@@ -9412,6 +9662,7 @@ app.get("/api/warehouse/receiving/open-pos", auth, async (req, res) => {
           number: order.number,
           date: order.date,
           status: order.status,
+          receivingStage: order.receivingStage,
           supplier: order.supplier
             ? { id: order.supplier.id, name: order.supplier.name }
             : null,
@@ -9489,14 +9740,25 @@ app.post("/api/warehouse/receiving/:poId/take", auth, async (req, res) => {
           })
         : linkedTruck;
 
+    const updatedOrder = await prisma.purchaseOrder.update({
+      where: { id: poId },
+      data: {
+        receivingStage:
+          order.receivingStage === "FINALIZED" ? "FINALIZED" : "IN_PROGRESS",
+      },
+      include: { supplier: true },
+    });
+
+
     res.json({
       ok: true,
       order: {
-        id: order.id,
-        number: order.number,
-        status: order.status,
-        supplier: order.supplier
-          ? { id: order.supplier.id, name: order.supplier.name }
+        id: updatedOrder.id,
+        number: updatedOrder.number,
+        status: updatedOrder.status,
+        receivingStage: updatedOrder.receivingStage,
+        supplier: updatedOrder.supplier
+          ? { id: updatedOrder.supplier.id, name: updatedOrder.supplier.name }
           : null,
       },
       queue: {
@@ -9890,9 +10152,15 @@ app.put("/api/purchase-orders/:id/status", auth, async (req, res) => {
       }
     }
 
+    const nextReceivingStage =
+      status === "RECEIVED" || status === "CLOSED"
+        ? "FINALIZED"
+        : status === "PARTIAL"
+          ? "CONFIRMED"
+          : "NEW";
     const updated = await prisma.purchaseOrder.update({
       where: { id },
-      data: { status },
+      data: { status, receivingStage: nextReceivingStage },
       include: {
         supplier: true,
         items: {
@@ -10052,7 +10320,10 @@ app.post("/api/purchase-orders/:id/receive", auth, async (req, res) => {
 
     await prisma.purchaseOrder.update({
       where: { id: order.id },
-      data: { status: nextStatus },
+      data: {
+        status: nextStatus,
+        receivingStage: nextStatus === "RECEIVED" ? "FINALIZED" : "CONFIRMED",
+      },
     });
 
     return res.json({
@@ -10265,6 +10536,18 @@ app.post("/api/warehouse/receiving/:poId/confirm", auth, async (req, res) => {
         }
       }
 
+      await runWithoutTenantScope(() =>
+        tx.purchaseOrder.updateMany({
+          where: {
+            id: poId,
+            receivingStage: { not: "FINALIZED" },
+          },
+          data: {
+            receivingStage: "CONFIRMED",
+            orgId: effectiveOrgId,
+          },
+        })
+      );
       if (createdDiscrepancies.length > 0) {
         await tx.receivingDiscrepancy.findMany({
           where: { id: { in: createdDiscrepancies } },
@@ -10410,11 +10693,19 @@ app.post("/api/warehouse/receiving/:poId/finalize", auth, async (req, res) => {
           ? "PARTIAL"
           : refreshed.status;
 
-      if (nextStatus !== refreshed.status || !refreshed.orgId) {
+      if (
+        nextStatus !== refreshed.status ||
+        !refreshed.orgId ||
+        refreshed.receivingStage !== "FINALIZED"
+      ) {
         await runWithoutTenantScope(() =>
           tx.purchaseOrder.updateMany({
             where: { id: poId },
-            data: { status: nextStatus, orgId: effectiveOrgId },
+            data: {
+              status: nextStatus,
+              orgId: effectiveOrgId,
+              receivingStage: "FINALIZED",
+            },
           })
         );
       }
@@ -12419,6 +12710,27 @@ app.post("/api/orders/:id/pick-confirm", auth, async (req, res) => {
         }
       }
 
+      const holdQty = await getActiveHoldQtyForLocation(tx, actualItemId, location);
+      const locationQtyAfterSync = await stockService.getItemLocationQty(
+        tx,
+        actualItemId,
+        location
+      );
+      const locationAvailableQty = Math.max(
+        0,
+        (Number(locationQtyAfterSync) || 0) - holdQty
+      );
+      if (locationAvailableQty < amount) {
+        const err = new Error("HOLD_QTY_BLOCKED");
+        err.code = "HOLD_QTY_BLOCKED";
+        err.detail = {
+          holdQty,
+          locationQty: Number(locationQtyAfterSync) || 0,
+          availableQty: locationAvailableQty,
+        };
+        throw err;
+      }
+
       await stockService.createMovementInTx(tx, {
         opId: `ORDER:${orderId}:LINE:${line}:${Date.now()}`,
         type: "ISSUE",
@@ -12487,6 +12799,7 @@ app.post("/api/orders/:id/pick-confirm", auth, async (req, res) => {
     if (err.code === "BAD_STATUS") return res.status(400).json({ message: "Заказ не в статусе отбора." });
     if (err.code === "QTY_EXCEEDS_REMAINING") return res.status(400).json({ message: "Количество превышает остаток по строке." });
     if (err.code === "LINE_ITEM_NOT_LINKED") return res.status(400).json({ message: "Строка заказа не связана с товаром." });
+    if (err.code === "HOLD_QTY_BLOCKED") return res.status(409).json({ message: "\u041a\u043e\u043b\u0438\u0447\u0435\u0441\u0442\u0432\u043e \u0432 \u044f\u0447\u0435\u0439\u043a\u0435 \u0437\u0430\u0431\u043b\u043e\u043a\u0438\u0440\u043e\u0432\u0430\u043d\u043e (Hold).", detail: err.detail || null });
     if (err.code === "INSUFFICIENT_QTY") return res.status(400).json({ message: "Недостаточно остатка в ячейке." });
     console.error("orders pick confirm error:", err);
     res.status(500).json({ message: "Ошибка подтверждения отбора." });
