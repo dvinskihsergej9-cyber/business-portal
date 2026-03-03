@@ -5,7 +5,7 @@ import { useAuth } from "../context/AuthContext";
 const normalizeLoginInput = (value) =>
   String(value || "").replace(/\s+/g, "_");
 
-function LoginBackgroundAnimation() {
+function LoginHero() {
   const lottieRef = useRef(null);
 
   useEffect(() => {
@@ -36,8 +36,8 @@ function LoginBackgroundAnimation() {
   }, []);
 
   return (
-    <div className="login-page__bg" aria-hidden="true">
-      <div className="login-page__bg-lottie" ref={lottieRef} />
+    <div className="login-hero" aria-hidden="true">
+      <div className="login-hero__lottie" ref={lottieRef} />
     </div>
   );
 }
@@ -70,11 +70,9 @@ export default function Login() {
 
   return (
     <div className="login-page">
-      <LoginBackgroundAnimation />
-      <div className="login-page__veil" aria-hidden="true" />
-
       <div className="login-card">
         <div className="login-card__brand">СкладОнлайн</div>
+        <LoginHero />
         <h1 className="login-card__title">Вход</h1>
 
         {error && <div className="login-card__error">{error}</div>}
