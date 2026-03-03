@@ -2,7 +2,10 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { API_BASE } from "../apiConfig";
-import { openHtmlDocumentInNewTab } from "../utils/openInNewTab";
+import {
+  openHtmlDocumentInNewTab,
+  prepareDocumentTab,
+} from "../utils/openInNewTab";
 
 const API = API_BASE;
 
@@ -12,7 +15,7 @@ const API = API_BASE;
  * rows   – строки приёмки (orderedQty / receivedQty / name / unit / price)
  * orgInfo – реквизиты организации
  */
-function openDiscrepancyActWindow(order, rows, orgInfo) {
+function openDiscrepancyActWindow(order, rows, orgInfo, options = {}) {
   if (!order || !Array.isArray(rows) || rows.length === 0) return;
 
   const diffs = rows.filter(
@@ -194,7 +197,7 @@ function openDiscrepancyActWindow(order, rows, orgInfo) {
   `;
 
   openHtmlDocumentInNewTab(html, {
-    allowSameTabFallback: true,
+    targetWindow: options.targetWindow || null,
   });
 }
 
@@ -338,7 +341,17 @@ export default function PurchaseOrderReceiveModal({ onClose }) {
   // реквизиты организации / модалка
   const [orgInfo, setOrgInfo] = useState(null);
   const [showOrgModal, setShowOrgModal] = useState(false);
-  const [pendingAct, setPendingAct] = useState(null); // { order, rows }
+  const [pendingAct, setPendingAct] = useState(null); // { order, rows, targetWindow }
+
+  const closeTabSafe = (tab) => {
+    try {
+      if (tab && tab !== window && !tab.closed) {
+        tab.close();
+      }
+    } catch {
+      // ignore
+    }
+  };
 
   // ====== загрузка реквизитов организации из localStorage ======
   useEffect(() => {
@@ -475,33 +488,39 @@ export default function PurchaseOrderReceiveModal({ onClose }) {
     setShowOrgModal(false);
 
     if (pendingAct) {
-      openDiscrepancyActWindow(pendingAct.order, pendingAct.rows, info);
+      openDiscrepancyActWindow(pendingAct.order, pendingAct.rows, info, {
+        targetWindow: pendingAct.targetWindow || null,
+      });
       setPendingAct(null);
       onClose();
     }
   };
 
   const handleOrgCancel = () => {
+    closeTabSafe(pendingAct?.targetWindow);
     setShowOrgModal(false);
     setPendingAct(null);
     // заказ уже проведён, но акт не нужен — просто закрываем модалку
     onClose();
   };
 
-  const ensureOrgInfoAndOpenAct = (orderForAct, rowsForAct) => {
+  const ensureOrgInfoAndOpenAct = (orderForAct, rowsForAct, targetWindow = null) => {
     const hasRealDiff = rowsForAct.some(
       (r) => Number(r.receivedQty) !== Number(r.orderedQty)
     );
     if (!hasRealDiff) {
+      closeTabSafe(targetWindow);
       onClose();
       return;
     }
 
     if (orgInfo) {
-      openDiscrepancyActWindow(orderForAct, rowsForAct, orgInfo);
+      openDiscrepancyActWindow(orderForAct, rowsForAct, orgInfo, {
+        targetWindow,
+      });
       onClose();
     } else {
-      setPendingAct({ order: orderForAct, rows: rowsForAct });
+      setPendingAct({ order: orderForAct, rows: rowsForAct, targetWindow });
       setShowOrgModal(true);
     }
   };
@@ -510,6 +529,17 @@ export default function PurchaseOrderReceiveModal({ onClose }) {
   const handleSubmit = async (e) => {
     e.preventDefault();
     if (!selectedOrder) return;
+
+    const expectedDiff = rows.some(
+      (r) => Number(r.receivedQty) !== Number(r.orderedQty)
+    );
+    const actWindow = expectedDiff
+      ? prepareDocumentTab({ title: "Акт расхождений" })
+      : null;
+    if (expectedDiff && !actWindow) {
+      setError("Не удалось открыть документ. Разрешите всплывающие окна для портала.");
+      return;
+    }
 
     try {
       setSaving(true);
@@ -549,8 +579,9 @@ export default function PurchaseOrderReceiveModal({ onClose }) {
       const orderForAct = data?.order || selectedOrder;
 
       // Открываем акт (если есть реальные расхождения).
-      ensureOrgInfoAndOpenAct(orderForAct, rows);
+      ensureOrgInfoAndOpenAct(orderForAct, rows, actWindow);
     } catch (e) {
+      closeTabSafe(actWindow);
       console.error(e);
       setError(e.message);
       setSaving(false);
@@ -772,6 +803,3 @@ export default function PurchaseOrderReceiveModal({ onClose }) {
     </div>
   );
 }
-
-
-

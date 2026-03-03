@@ -4,7 +4,7 @@ import { jsPDF } from "jspdf";
 import autoTable from "jspdf-autotable";
 import QRCode from "qrcode";
 import { ARIAL_TTF_BASE64 } from "../../utils/arialFontBase64";
-import { openBlobInNewTab } from "../../utils/openInNewTab";
+import { openBlobInNewTab, prepareDocumentTab } from "../../utils/openInNewTab";
 import TsdHeader from "./TsdHeader";
 import Scanner from "./Scanner";
 import TsdErrorAlert from "./TsdErrorAlert";
@@ -840,14 +840,31 @@ export default function OrderFulfillmentFlow({ authHeaders, onBack }) {
       setError("Сначала завершите отбор товара.");
       return;
     }
+    const pdfWindow = prepareDocumentTab({ title: "Паспорт заказа" });
+    if (!pdfWindow) {
+      setError("Не удалось открыть документ. Разрешите всплывающие окна для портала.");
+      return;
+    }
     try {
       const pdf = await buildPassportPdf(selectedOrder);
       await markPassportPrinted(selectedOrder.id);
       const blob = pdf.output("blob");
       const shared = await trySharePdfFile(blob, selectedOrder);
-      if (shared) return;
-      openBlobInNewTab(blob);
+      if (shared) {
+        try {
+          if (!pdfWindow.closed) pdfWindow.close();
+        } catch {
+          // ignore
+        }
+        return;
+      }
+      openBlobInNewTab(blob, { targetWindow: pdfWindow });
     } catch (err) {
+      try {
+        if (!pdfWindow.closed) pdfWindow.close();
+      } catch {
+        // ignore
+      }
       setError(normalizeErrorMessage(err, "Ошибка формирования паспорта."));
     }
   };

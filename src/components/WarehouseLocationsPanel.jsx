@@ -1,6 +1,9 @@
 import { useEffect, useMemo, useState } from "react";
 import { API_BASE } from "../apiConfig";
-import { openHtmlDocumentInNewTab } from "../utils/openInNewTab";
+import {
+  openHtmlDocumentInNewTab,
+  prepareDocumentTab,
+} from "../utils/openInNewTab";
 
 const API = API_BASE;
 
@@ -151,8 +154,19 @@ export default function WarehouseLocationsPanel() {
   };
 
   const handlePrint = async () => {
+    const printWindow = prepareDocumentTab({ title: "Этикетки ячеек" });
+    if (!printWindow) {
+      setError("Не удалось открыть документ. Разрешите всплывающие окна для портала.");
+      return;
+    }
+
     if (!selectedId) {
       setError("Выберите ячейку.");
+      try {
+        if (!printWindow.closed) printWindow.close();
+      } catch {
+        // ignore
+      }
       return;
     }
 
@@ -181,8 +195,13 @@ export default function WarehouseLocationsPanel() {
         } catch {}
         throw new Error(messageText);
       }
-      openHtmlDocumentInNewTab(html);
+      openHtmlDocumentInNewTab(html, { targetWindow: printWindow });
     } catch (err) {
+      try {
+        if (!printWindow.closed) printWindow.close();
+      } catch {
+        // ignore
+      }
       setError(err.message || "Ошибка печати");
     } finally {
       setActionLoading(false);
@@ -313,8 +332,19 @@ export default function WarehouseLocationsPanel() {
   };
 
   const handlePrintItems = async () => {
+    const printWindow = prepareDocumentTab({ title: "Этикетки товаров" });
+    if (!printWindow) {
+      setError("Не удалось открыть документ. Разрешите всплывающие окна для портала.");
+      return;
+    }
+
     if (!selectedItems.length) {
       setError("Выберите товары.");
+      try {
+        if (!printWindow.closed) printWindow.close();
+      } catch {
+        // ignore
+      }
       return;
     }
 
@@ -341,8 +371,13 @@ export default function WarehouseLocationsPanel() {
         } catch {}
         throw new Error(messageText);
       }
-      openHtmlDocumentInNewTab(html);
+      openHtmlDocumentInNewTab(html, { targetWindow: printWindow });
     } catch (err) {
+      try {
+        if (!printWindow.closed) printWindow.close();
+      } catch {
+        // ignore
+      }
       setError(err.message || "Ошибка печати");
     } finally {
       setActionLoading(false);

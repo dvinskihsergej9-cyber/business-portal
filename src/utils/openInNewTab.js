@@ -6,18 +6,36 @@ function getPopupBlockedErrorMessage(customMessage) {
   return text || DEFAULT_POPUP_ERROR;
 }
 
+export function prepareDocumentTab(options = {}) {
+  if (typeof window === "undefined") return null;
+
+  const popup = window.open("", "_blank");
+  if (!popup) return null;
+
+  const title = String(options.title || "Документ");
+  try {
+    popup.document.open();
+    popup.document.write(
+      `<!doctype html><html lang="ru"><head><meta charset="utf-8" /><title>${title}</title></head><body style="font-family:Arial,sans-serif;padding:16px;">Формируем документ...</body></html>`
+    );
+    popup.document.close();
+  } catch {
+    // ignore
+  }
+  popup.focus();
+  return popup;
+}
+
 export function openHtmlDocumentInNewTab(html, options = {}) {
   if (typeof window === "undefined") return null;
 
   const normalizedHtml = String(html || "");
-  const allowSameTabFallback = Boolean(options.allowSameTabFallback);
-
-  let popup = window.open("", "_blank");
+  let popup = options.targetWindow || null;
   if (!popup) {
-    if (!allowSameTabFallback) {
-      throw new Error(getPopupBlockedErrorMessage(options.popupBlockedMessage));
-    }
-    popup = window;
+    popup = window.open("", "_blank");
+  }
+  if (!popup) {
+    throw new Error(getPopupBlockedErrorMessage(options.popupBlockedMessage));
   }
 
   try {
@@ -45,7 +63,7 @@ export function openBlobInNewTab(blob, options = {}) {
       : 60_000;
 
   const objectUrl = URL.createObjectURL(blob);
-  const popup = window.open("", "_blank");
+  const popup = options.targetWindow || window.open("", "_blank");
   if (!popup) {
     URL.revokeObjectURL(objectUrl);
     throw new Error(popupBlockedMessage);
