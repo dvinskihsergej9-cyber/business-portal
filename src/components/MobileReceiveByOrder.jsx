@@ -226,7 +226,9 @@ function openMobileDiscrepancyActWindow(order, rows, orgInfo) {
 </html>
   `;
 
-  openHtmlDocumentInNewTab(html);
+  openHtmlDocumentInNewTab(html, {
+    allowSameTabFallback: true,
+  });
 }
 
 /**

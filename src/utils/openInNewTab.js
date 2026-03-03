@@ -9,12 +9,17 @@ function getPopupBlockedErrorMessage(customMessage) {
 export function openHtmlDocumentInNewTab(html, options = {}) {
   if (typeof window === "undefined") return null;
 
-  const popup = window.open("", "_blank");
+  const normalizedHtml = String(html || "");
+  const allowSameTabFallback = Boolean(options.allowSameTabFallback);
+
+  let popup = window.open("", "_blank");
   if (!popup) {
-    throw new Error(getPopupBlockedErrorMessage(options.popupBlockedMessage));
+    if (!allowSameTabFallback) {
+      throw new Error(getPopupBlockedErrorMessage(options.popupBlockedMessage));
+    }
+    popup = window;
   }
 
-  const normalizedHtml = String(html || "");
   try {
     popup.document.open();
     popup.document.write(normalizedHtml);

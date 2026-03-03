@@ -396,7 +396,9 @@ export default function ReceivingByPo({ authHeaders, makeOpId, onBack }) {
       throw new Error(message);
     }
     const html = await printRes.text();
-    openHtmlDocumentInNewTab(html);
+    openHtmlDocumentInNewTab(html, {
+      allowSameTabFallback: true,
+    });
   };
 
   const openOrgProfileModalForAct = async (poId) => {
