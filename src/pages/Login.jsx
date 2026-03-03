@@ -5,7 +5,7 @@ import { useAuth } from "../context/AuthContext";
 const normalizeLoginInput = (value) =>
   String(value || "").replace(/\s+/g, "_");
 
-function LoginCartAnimation() {
+function LoginBackgroundAnimation() {
   const lottieRef = useRef(null);
 
   useEffect(() => {
@@ -15,7 +15,6 @@ function LoginCartAnimation() {
     let isUnmounted = false;
 
     const setupAnimation = async () => {
-      // Source animation: ModernWMS (Apache-2.0), adapted for login hero usage.
       const lottieModule = await import("lottie-web");
       if (isUnmounted || !lottieRef.current) return;
 
@@ -37,10 +36,8 @@ function LoginCartAnimation() {
   }, []);
 
   return (
-    <div className="login-hero" aria-hidden="true">
-      <div className="login-hero__brand">СкладОнлайн</div>
-      <div className="login-hero__subtitle">Современная система управления складом</div>
-      <div className="login-hero__lottie" ref={lottieRef} />
+    <div className="login-page__bg" aria-hidden="true">
+      <div className="login-page__bg-lottie" ref={lottieRef} />
     </div>
   );
 }
@@ -73,8 +70,11 @@ export default function Login() {
 
   return (
     <div className="login-page">
+      <LoginBackgroundAnimation />
+      <div className="login-page__veil" aria-hidden="true" />
+
       <div className="login-card">
-        <LoginCartAnimation />
+        <div className="login-card__brand">СкладОнлайн</div>
         <h1 className="login-card__title">Вход</h1>
 
         {error && <div className="login-card__error">{error}</div>}
