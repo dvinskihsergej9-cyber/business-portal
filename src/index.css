@@ -2779,6 +2779,10 @@ input[type="number"] {
   background: #f1f5f9;
 }
 
+.stock-holds-tabs .tabs__btn {
+  white-space: nowrap;
+}
+
 .stock-holds-form {
   margin-top: 12px;
   display: grid;
@@ -2789,5 +2793,89 @@ input[type="number"] {
 @media (max-width: 980px) {
   .stock-holds-form {
     grid-template-columns: minmax(0, 1fr);
+  }
+}
+
+@media (max-width: 680px) {
+  .stock-holds-header {
+    align-items: stretch;
+  }
+
+  .stock-holds-title {
+    font-size: 24px;
+  }
+
+  .stock-holds-tabs {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    width: 100%;
+    border-radius: 14px;
+    padding: 4px;
+    gap: 4px;
+  }
+
+  .stock-holds-tabs .tabs__btn {
+    width: 100%;
+    border-radius: 10px;
+    padding: 9px 10px;
+    font-size: 14px;
+    text-align: center;
+  }
+
+  .stock-holds-table {
+    border: none;
+    background: transparent;
+    overflow: visible;
+  }
+
+  .stock-holds-table table {
+    width: 100%;
+    min-width: 0;
+    border-spacing: 0;
+  }
+
+  .stock-holds-table thead {
+    display: none;
+  }
+
+  .stock-holds-table tbody {
+    display: grid;
+    gap: 10px;
+  }
+
+  .stock-holds-table tbody tr {
+    display: grid;
+    gap: 6px;
+    border: 1px solid rgba(15, 23, 42, 0.12);
+    border-radius: 14px;
+    padding: 12px 14px;
+    background: #ffffff;
+    box-shadow: 0 8px 18px rgba(15, 23, 42, 0.06);
+  }
+
+  .stock-holds-table tbody td {
+    display: grid;
+    grid-template-columns: 104px minmax(0, 1fr);
+    align-items: baseline;
+    gap: 8px;
+    padding: 0;
+    border: none !important;
+    background: transparent;
+    text-align: left !important;
+    font-weight: 600;
+  }
+
+  .stock-holds-table tbody td::before {
+    content: attr(data-label);
+    font-size: 12px;
+    letter-spacing: 0.04em;
+    text-transform: uppercase;
+    color: #64748b;
+    font-weight: 700;
+  }
+
+  .stock-holds-table tbody td[data-label="Действие"] {
+    grid-template-columns: 1fr;
+    justify-items: stretch;
   }
 }

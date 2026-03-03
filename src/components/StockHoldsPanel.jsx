@@ -70,7 +70,7 @@ export default function StockHoldsPanel() {
 
       await loadHolds(statusFilter);
     } catch (e) {
-      setError(e?.message || "Ошибка загрузки данных Hold/Freeze.");
+      setError(e?.message || "Ошибка загрузки данных блокировок.");
     } finally {
       setLoading(false);
     }
@@ -154,7 +154,7 @@ export default function StockHoldsPanel() {
   return (
     <div className="card" style={{ marginTop: 16 }}>
       <div className="stock-holds-header">
-        <h3 className="stock-holds-title">Hold/Freeze остатков</h3>
+        <h3 className="stock-holds-title">Блокировка остатков</h3>
         <div className="stock-holds-tabs">
           <button
             type="button"
@@ -227,16 +227,16 @@ export default function StockHoldsPanel() {
       {loading ? (
         <p>Загрузка...</p>
       ) : (
-        <div className="table-wrapper" style={{ marginTop: 12 }}>
+        <div className="table-wrapper stock-holds-table" style={{ marginTop: 12 }}>
           <table>
             <thead>
               <tr>
-                <th>ID</th>
+                <th>№</th>
                 <th>Товар</th>
                 <th>Ячейка</th>
-                <th>Кол-во</th>
+                <th>Количество</th>
                 <th>Причина</th>
-                <th>Когда</th>
+                <th>Дата</th>
                 <th>Статус</th>
                 <th>Действие</th>
               </tr>
@@ -251,14 +251,14 @@ export default function StockHoldsPanel() {
               ) : (
                 holds.map((hold) => (
                   <tr key={hold.id}>
-                    <td>{hold.id}</td>
-                    <td>{hold.item?.name || `#${hold.itemId}`}</td>
-                    <td>{hold.location?.code || hold.location?.name || `#${hold.locationId}`}</td>
-                    <td>{Number(hold.qty || 0)}</td>
-                    <td>{hold.reason}</td>
-                    <td>{formatDate(hold.createdAt)}</td>
-                    <td>{hold.status === "ACTIVE" ? "Активна" : "Снята"}</td>
-                    <td>
+                    <td data-label="№">{hold.id}</td>
+                    <td data-label="Товар">{hold.item?.name || `#${hold.itemId}`}</td>
+                    <td data-label="Ячейка">{hold.location?.code || hold.location?.name || `#${hold.locationId}`}</td>
+                    <td data-label="Количество">{Number(hold.qty || 0)}</td>
+                    <td data-label="Причина">{hold.reason}</td>
+                    <td data-label="Дата">{formatDate(hold.createdAt)}</td>
+                    <td data-label="Статус">{hold.status === "ACTIVE" ? "Активна" : "Снята"}</td>
+                    <td data-label="Действие">
                       {hold.status === "ACTIVE" ? (
                         <button
                           type="button"
