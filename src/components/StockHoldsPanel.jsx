@@ -1,0 +1,284 @@
+import { useEffect, useMemo, useState } from "react";
+import { API_BASE } from "../apiConfig";
+
+const API = API_BASE;
+
+function formatDate(value) {
+  if (!value) return "-";
+  const d = new Date(value);
+  if (Number.isNaN(d.getTime())) return "-";
+  return d.toLocaleString("ru-RU");
+}
+
+export default function StockHoldsPanel() {
+  const token = localStorage.getItem("token");
+  const authHeaders = useMemo(() => ({ Authorization: `Bearer ${token}` }), [token]);
+
+  const [items, setItems] = useState([]);
+  const [locations, setLocations] = useState([]);
+  const [holds, setHolds] = useState([]);
+
+  const [statusFilter, setStatusFilter] = useState("ACTIVE");
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState("");
+  const [saving, setSaving] = useState(false);
+  const [releasingId, setReleasingId] = useState(null);
+
+  const [itemId, setItemId] = useState("");
+  const [locationId, setLocationId] = useState("");
+  const [qty, setQty] = useState("");
+  const [reason, setReason] = useState("");
+  const [note, setNote] = useState("");
+
+  const loadHolds = async (status = statusFilter) => {
+    const query = new URLSearchParams({ status, limit: "200" });
+    const res = await fetch(`${API}/warehouse/holds?${query.toString()}`, {
+      headers: authHeaders,
+    });
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok) {
+      throw new Error(data?.message || "Ошибка загрузки блокировок.");
+    }
+    setHolds(Array.isArray(data?.items) ? data.items : []);
+  };
+
+  const loadInitial = async () => {
+    setLoading(true);
+    setError("");
+    try {
+      const [itemsRes, locationsRes] = await Promise.all([
+        fetch(`${API}/inventory/items`, { headers: authHeaders }),
+        fetch(`${API}/warehouse/locations`, { headers: authHeaders }),
+      ]);
+
+      const itemsData = await itemsRes.json().catch(() => []);
+      const locationsData = await locationsRes.json().catch(() => []);
+
+      if (!itemsRes.ok) {
+        throw new Error(itemsData?.message || "Не удалось загрузить товары.");
+      }
+      if (!locationsRes.ok) {
+        throw new Error(locationsData?.message || "Не удалось загрузить ячейки.");
+      }
+
+      const stockItems = (Array.isArray(itemsData) ? itemsData : []).filter(
+        (it) => String(it?.category || "STOCK").toUpperCase() === "STOCK"
+      );
+
+      setItems(stockItems);
+      setLocations(Array.isArray(locationsData) ? locationsData : []);
+
+      await loadHolds(statusFilter);
+    } catch (e) {
+      setError(e?.message || "Ошибка загрузки данных Hold/Freeze.");
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    loadInitial();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  useEffect(() => {
+    if (!loading) {
+      loadHolds(statusFilter).catch((e) => setError(e?.message || "Ошибка загрузки блокировок."));
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [statusFilter]);
+
+  const onCreateHold = async (e) => {
+    e.preventDefault();
+    setSaving(true);
+    setError("");
+    try {
+      const payload = {
+        itemId: Number(itemId),
+        locationId: Number(locationId),
+        qty: Number(qty),
+        reason: String(reason || "").trim(),
+        note: note ? String(note).trim() : null,
+      };
+
+      const res = await fetch(`${API}/warehouse/holds`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          ...authHeaders,
+        },
+        body: JSON.stringify(payload),
+      });
+
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        throw new Error(data?.message || "Не удалось создать блокировку.");
+      }
+
+      setQty("");
+      setReason("");
+      setNote("");
+      setStatusFilter("ACTIVE");
+      await loadHolds("ACTIVE");
+    } catch (e) {
+      setError(e?.message || "Ошибка создания блокировки.");
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const onReleaseHold = async (id) => {
+    setReleasingId(id);
+    setError("");
+    try {
+      const res = await fetch(`${API}/warehouse/holds/${id}/release`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          ...authHeaders,
+        },
+        body: JSON.stringify({}),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        throw new Error(data?.message || "Не удалось снять блокировку.");
+      }
+      await loadHolds(statusFilter);
+    } catch (e) {
+      setError(e?.message || "Ошибка снятия блокировки.");
+    } finally {
+      setReleasingId(null);
+    }
+  };
+
+  return (
+    <div className="card" style={{ marginTop: 16 }}>
+      <div className="stock-holds-header">
+        <h3 className="stock-holds-title">Hold/Freeze остатков</h3>
+        <div className="stock-holds-tabs">
+          <button
+            type="button"
+            className={"tabs__btn " + (statusFilter === "ACTIVE" ? "tabs__btn--active" : "")}
+            onClick={() => setStatusFilter("ACTIVE")}
+          >
+            Активные
+          </button>
+          <button
+            type="button"
+            className={"tabs__btn " + (statusFilter === "RELEASED" ? "tabs__btn--active" : "")}
+            onClick={() => setStatusFilter("RELEASED")}
+          >
+            Снятые
+          </button>
+        </div>
+      </div>
+
+      {error && <div className="alert alert--danger">{error}</div>}
+
+      <form className="stock-holds-form" onSubmit={onCreateHold}>
+        <select value={itemId} onChange={(e) => setItemId(e.target.value)} required>
+          <option value="">Выберите товар</option>
+          {items.map((it) => (
+            <option key={it.id} value={it.id}>
+              {it.name} {it.sku ? `(${it.sku})` : ""}
+            </option>
+          ))}
+        </select>
+
+        <select value={locationId} onChange={(e) => setLocationId(e.target.value)} required>
+          <option value="">Выберите ячейку</option>
+          {locations.map((loc) => (
+            <option key={loc.id} value={loc.id}>
+              {loc.code || loc.name}
+            </option>
+          ))}
+        </select>
+
+        <input
+          type="number"
+          min="0.0001"
+          step="0.0001"
+          placeholder="Количество"
+          value={qty}
+          onChange={(e) => setQty(e.target.value)}
+          required
+        />
+
+        <input
+          type="text"
+          placeholder="Причина"
+          value={reason}
+          onChange={(e) => setReason(e.target.value)}
+          required
+        />
+
+        <input
+          type="text"
+          placeholder="Комментарий (необязательно)"
+          value={note}
+          onChange={(e) => setNote(e.target.value)}
+        />
+
+        <button type="submit" disabled={saving || loading}>
+          {saving ? "Сохраняем..." : "Заблокировать"}
+        </button>
+      </form>
+
+      {loading ? (
+        <p>Загрузка...</p>
+      ) : (
+        <div className="table-wrapper" style={{ marginTop: 12 }}>
+          <table>
+            <thead>
+              <tr>
+                <th>ID</th>
+                <th>Товар</th>
+                <th>Ячейка</th>
+                <th>Кол-во</th>
+                <th>Причина</th>
+                <th>Когда</th>
+                <th>Статус</th>
+                <th>Действие</th>
+              </tr>
+            </thead>
+            <tbody>
+              {holds.length === 0 ? (
+                <tr>
+                  <td colSpan={8} style={{ textAlign: "center", color: "#64748b" }}>
+                    Нет записей.
+                  </td>
+                </tr>
+              ) : (
+                holds.map((hold) => (
+                  <tr key={hold.id}>
+                    <td>{hold.id}</td>
+                    <td>{hold.item?.name || `#${hold.itemId}`}</td>
+                    <td>{hold.location?.code || hold.location?.name || `#${hold.locationId}`}</td>
+                    <td>{Number(hold.qty || 0)}</td>
+                    <td>{hold.reason}</td>
+                    <td>{formatDate(hold.createdAt)}</td>
+                    <td>{hold.status === "ACTIVE" ? "Активна" : "Снята"}</td>
+                    <td>
+                      {hold.status === "ACTIVE" ? (
+                        <button
+                          type="button"
+                          className="btn btn--secondary btn--sm"
+                          onClick={() => onReleaseHold(hold.id)}
+                          disabled={releasingId === hold.id}
+                        >
+                          {releasingId === hold.id ? "Снимаем..." : "Снять"}
+                        </button>
+                      ) : (
+                        "-"
+                      )}
+                    </td>
+                  </tr>
+                ))
+              )}
+            </tbody>
+          </table>
+        </div>
+      )}
+    </div>
+  );
+}

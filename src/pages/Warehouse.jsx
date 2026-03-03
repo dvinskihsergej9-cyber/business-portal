@@ -14,6 +14,7 @@ import PurchaseOrderModal from "../components/PurchaseOrderModal";
 
 import PurchaseOrderReceiveModal from "../components/PurchaseOrderReceiveModal";
 import StockAuditTab from "../components/StockAuditTab";
+import StockHoldsPanel from "../components/StockHoldsPanel";
 import StockMovementsHistoryTab from "../components/StockMovementsHistoryTab";
 import StockTransactionsTab from "../components/StockTransactionsTab";
 import StockRevisionTab from "../components/StockRevisionTab";
@@ -3591,7 +3592,12 @@ export default function Warehouse({
 
 
 
-          {inventoryTab === "stock" && <StockAuditTab />}
+          {inventoryTab === "stock" && (
+            <>
+              <StockAuditTab />
+              {isWarehouseManager && <StockHoldsPanel />}
+            </>
+          )}
 
 
 

@@ -5,6 +5,49 @@ import { useAuth } from "../context/AuthContext";
 const normalizeLoginInput = (value) =>
   String(value || "").replace(/\s+/g, "_");
 
+function LoginCartAnimation() {
+  return (
+    <div className="login-hero" aria-hidden="true">
+      <div className="login-hero__track" />
+      <svg
+        className="login-hero__cart"
+        viewBox="0 0 340 140"
+        role="img"
+        aria-label="Warehouse worker with cart"
+      >
+        <g className="login-hero__cart-body">
+          <circle cx="62" cy="108" r="12" className="login-hero__wheel" />
+          <circle cx="178" cy="108" r="12" className="login-hero__wheel" />
+          <path
+            d="M72 96h116l22-46h-90l-8-14H84"
+            className="login-hero__trolley"
+          />
+          <rect
+            x="130"
+            y="24"
+            width="16"
+            height="24"
+            rx="8"
+            className="login-hero__person"
+          />
+          <path
+            d="M136 48v30m0 0l-16 18m16-18l20 16m-20-16l26-4"
+            className="login-hero__person-line"
+          />
+          <rect
+            x="160"
+            y="54"
+            width="40"
+            height="26"
+            rx="4"
+            className="login-hero__box"
+          />
+        </g>
+      </svg>
+    </div>
+  );
+}
+
 export default function Login() {
   const { login } = useAuth();
   const navigate = useNavigate();
@@ -32,83 +75,55 @@ export default function Login() {
   };
 
   return (
-    <div style={{ maxWidth: 400, margin: "60px auto", padding: "0 16px" }}>
-      <h1 style={{ marginBottom: 24 }}>Вход</h1>
+    <div className="login-page">
+      <div className="login-card">
+        <LoginCartAnimation />
+        <h1 className="login-card__title">Вход</h1>
 
-      {error && (
-        <div
-          style={{
-            background: "#ffe6e6",
-            color: "#b00020",
-            padding: 8,
-            marginBottom: 12,
-            borderRadius: 4,
-          }}
-        >
-          {error}
-        </div>
-      )}
+        {error && <div className="login-card__error">{error}</div>}
 
-      <form onSubmit={handleSubmit}>
-        <div style={{ marginBottom: 8 }}>
-          <input
-            type="text"
-            placeholder={"\u041b\u043e\u0433\u0438\u043d"}
-            value={loginValue}
-            onChange={(e) => setLoginValue(normalizeLoginInput(e.target.value))}
-            required
-            style={{ width: "100%", padding: 6, boxSizing: "border-box" }}
-          />
-        </div>
+        <form onSubmit={handleSubmit} className="login-form">
+          <div className="login-form__field">
+            <input
+              type="text"
+              placeholder="Логин"
+              value={loginValue}
+              onChange={(e) => setLoginValue(normalizeLoginInput(e.target.value))}
+              required
+            />
+          </div>
 
-        <div style={{ marginBottom: 12 }}>
-          <input
-            type="password"
-            placeholder="Пароль"
-            value={password}
-            onChange={(e) => setPassword(e.target.value)}
-            required
-            style={{ width: "100%", padding: 6, boxSizing: "border-box" }}
-          />
-        </div>
+          <div className="login-form__field">
+            <input
+              type="password"
+              placeholder="Пароль"
+              value={password}
+              onChange={(e) => setPassword(e.target.value)}
+              required
+            />
+          </div>
 
-        <button
-          type="submit"
-          disabled={loading}
-          style={{
-            width: "100%",
-            padding: 8,
-            background: "#1976d2",
-            color: "#fff",
-            border: "none",
-            cursor: "pointer",
-          }}
-        >
-          {loading ? "Вхожу..." : "Войти"}
-        </button>
-      </form>
+          <button type="submit" disabled={loading} className="login-form__submit">
+            {loading ? "Входим..." : "Войти"}
+          </button>
+        </form>
 
-      <p style={{ marginTop: 12 }}>
-        <Link to="/forgot-password">{"\u0417\u0430\u0431\u044b\u043b\u0438 \u043f\u0430\u0440\u043e\u043b\u044c?"}</Link>
-      </p>
-      <p style={{ marginTop: 8, color: "#6b7280", fontSize: 13 }}>{"\u0414\u043e\u0441\u0442\u0443\u043f \u0441\u043e\u0437\u0434\u0430\u0451\u0442 \u0430\u0434\u043c\u0438\u043d\u0438\u0441\u0442\u0440\u0430\u0442\u043e\u0440 \u0432 \u0440\u0430\u0437\u0434\u0435\u043b\u0435 \u00ab\u041f\u043e\u043b\u044c\u0437\u043e\u0432\u0430\u0442\u0435\u043b\u0438\u00bb."}</p>
+        <p className="login-card__help">
+          <Link to="/forgot-password">Забыли пароль?</Link>
+        </p>
+        <p className="login-card__hint">
+          Доступ создаёт администратор в разделе «Пользователи».
+        </p>
 
-      <div
-        style={{
-          marginTop: 20,
-          paddingTop: 12,
-          borderTop: "1px solid #e5e7eb",
-          fontSize: 13,
-          color: "#6b7280",
-        }}
-      >
-        <div style={{ marginBottom: 6 }}>{"\u0414\u043e\u043a\u0443\u043c\u0435\u043d\u0442\u044b \u0438 \u043a\u043e\u043d\u0442\u0430\u043a\u0442\u044b"}</div>
-        <div style={{ display: "flex", flexWrap: "wrap", gap: 10 }}>
-          <Link to="/about">{"\u041e \u0441\u0435\u0440\u0432\u0438\u0441\u0435"}</Link>
-          <Link to="/offer">{"\u041e\u0444\u0435\u0440\u0442\u0430"}</Link>
-          <Link to="/privacy">{"\u041f\u043e\u043b\u0438\u0442\u0438\u043a\u0430"}</Link>
-          <Link to="/contacts">{"\u041a\u043e\u043d\u0442\u0430\u043a\u0442\u044b"}</Link>
-          <Link to="/refund">{"\u0412\u043e\u0437\u0432\u0440\u0430\u0442"}</Link>
+        <div className="login-card__footer">
+          <div className="login-card__footer-title">Документы и контакты</div>
+          <div className="login-card__links">
+            <Link to="/about">О сервисе</Link>
+            <Link to="/offer">Оферта</Link>
+            <Link to="/privacy">Политика</Link>
+            <Link to="/contacts">Контакты</Link>
+            <Link to="/refund">Возврат</Link>
+          </div>
         </div>
       </div>
     </div>
