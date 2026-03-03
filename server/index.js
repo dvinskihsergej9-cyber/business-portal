@@ -1752,26 +1752,46 @@ async function getReceivingLineLocationBalances(itemId) {
 }
 
 async function getPlacementLocationBalances(itemId) {
+  // NOTE: legacy datasets may contain placement rows that reference deleted
+  // locations. Avoid relation include here, then map locations safely.
   const rows = await prisma.warehousePlacement.findMany({
     where: {
       itemId,
       qty: { gt: 0 },
     },
-    include: {
-      location: {
-        select: { id: true, name: true, code: true, zone: true, aisle: true, rack: true, level: true },
-      },
+    select: {
+      locationId: true,
+      qty: true,
     },
     orderBy: [{ locationId: "asc" }, { id: "asc" }],
   });
 
+  const locationIds = Array.from(
+    new Set(
+      (rows || [])
+        .map((row) => Number(row.locationId))
+        .filter((value) => Number.isFinite(value) && value > 0)
+    )
+  );
+
+  const locations = locationIds.length
+    ? await prisma.warehouseLocation.findMany({
+        where: { id: { in: locationIds } },
+        select: { id: true, name: true, code: true, zone: true, aisle: true, rack: true, level: true },
+      })
+    : [];
+  const locationById = new Map(locations.map((location) => [location.id, location]));
+
   return rows
-    .map((row) => ({
-      locationId: row.locationId,
-      location: row.location || null,
-      qty: Number(row.qty) || 0,
-    }))
-    .filter((row) => row.locationId && row.qty > 0)
+    .map((row) => {
+      const locationId = Number(row.locationId);
+      return {
+        locationId,
+        location: locationById.get(locationId) || null,
+        qty: Number(row.qty) || 0,
+      };
+    })
+    .filter((row) => row.locationId && row.qty > 0 && row.location)
     .sort((a, b) => {
       const codeA = String(a.location?.code || a.location?.name || "");
       const codeB = String(b.location?.code || b.location?.name || "");
@@ -1874,79 +1894,103 @@ async function buildOrderPickPlan(orderId) {
 
   const plan = [];
   for (const line of order.lines) {
-    const totalQty = Number(line.qty) || 0;
-    const pickedQty = Number(line.pickedQty) || 0;
-    const remaining = Math.max(0, totalQty - pickedQty);
-    if (remaining <= 0) continue;
+    try {
+      const totalQty = Number(line.qty) || 0;
+      const pickedQty = Number(line.pickedQty) || 0;
+      const remaining = Math.max(0, totalQty - pickedQty);
+      if (remaining <= 0) continue;
 
-    let resolvedItemId = line.itemId || null;
-    let resolvedItem = line.item || null;
-    if (!resolvedItemId) {
-      const linkedItem = await findStockItemForOrderLine(prisma, {
-        sku: line.requestedSku,
-        name: line.requestedName,
-      });
-      if (linkedItem) {
-        resolvedItemId = linkedItem.id;
-        resolvedItem = linkedItem;
-        await prisma.salesOrderLine.update({
-          where: { id: line.id },
-          data: { itemId: linkedItem.id },
+      let resolvedItemId = line.itemId || null;
+      let resolvedItem = line.item || null;
+      if (!resolvedItemId) {
+        const linkedItem = await findStockItemForOrderLine(prisma, {
+          sku: line.requestedSku,
+          name: line.requestedName,
         });
+        if (linkedItem) {
+          resolvedItemId = linkedItem.id;
+          resolvedItem = linkedItem;
+          await prisma.salesOrderLine.update({
+            where: { id: line.id },
+            data: { itemId: linkedItem.id },
+          });
+        }
       }
-    }
 
-    if (!resolvedItemId) {
+      if (!resolvedItemId) {
+        plan.push({
+          lineId: line.id,
+          itemId: null,
+          itemName: line.requestedName || "??????????? ?????",
+          sku: line.requestedSku || null,
+          totalQty,
+          pickedQty,
+          remainingQty: remaining,
+          steps: [],
+          shortageQty: remaining,
+        });
+        continue;
+      }
+
+      const movementBalances = await getItemLocationBalances(resolvedItemId);
+      const receivingBalances = await getReceivingLineLocationBalances(resolvedItemId);
+      const placementBalances = await getPlacementLocationBalances(resolvedItemId);
+      const balancesBase = mergeLocationBalances(
+        mergeLocationBalances(movementBalances, receivingBalances),
+        placementBalances
+      );
+      const balances = await applyActiveHoldsToBalances(prisma, resolvedItemId, balancesBase);
+      let need = remaining;
+      const steps = [];
+
+      for (const balance of balances) {
+        if (need <= 0) break;
+        const pickQty = Math.min(need, Math.floor(balance.qty));
+        if (pickQty <= 0) continue;
+        steps.push({
+          locationId: balance.locationId,
+          locationCode: balance.location?.code || null,
+          locationName: balance.location?.name || null,
+          qty: pickQty,
+        });
+        need -= pickQty;
+      }
+
       plan.push({
         lineId: line.id,
-        itemId: null,
-        itemName: line.requestedName || "??????????? ?????",
-        sku: line.requestedSku || null,
+        itemId: resolvedItemId,
+        itemName: resolvedItem?.name || line.requestedName || `????? #${resolvedItemId}`,
+        sku: resolvedItem?.sku || line.requestedSku || null,
+        barcode: resolvedItem?.barcode || null,
         totalQty,
         pickedQty,
         remainingQty: remaining,
+        steps,
+        shortageQty: Math.max(0, need),
+      });
+    } catch (lineErr) {
+      const totalQty = Number(line?.qty) || 0;
+      const pickedQty = Number(line?.pickedQty) || 0;
+      const remainingQty = Math.max(0, totalQty - pickedQty);
+      console.error("build order pick plan line error:", {
+        orderId,
+        lineId: line?.id || null,
+        itemId: line?.itemId || null,
+        error: String(lineErr?.message || lineErr || "unknown"),
+      });
+      plan.push({
+        lineId: line?.id || null,
+        itemId: line?.itemId || null,
+        itemName: line?.item?.name || line?.requestedName || "????????",
+        sku: line?.item?.sku || line?.requestedSku || null,
+        barcode: line?.item?.barcode || null,
+        totalQty,
+        pickedQty,
+        remainingQty,
         steps: [],
-        shortageQty: remaining,
+        shortageQty: remainingQty,
       });
-      continue;
     }
-
-    const movementBalances = await getItemLocationBalances(resolvedItemId);
-    const receivingBalances = await getReceivingLineLocationBalances(resolvedItemId);
-    const placementBalances = await getPlacementLocationBalances(resolvedItemId);
-    const balancesBase = mergeLocationBalances(
-      mergeLocationBalances(movementBalances, receivingBalances),
-      placementBalances
-    );
-    const balances = await applyActiveHoldsToBalances(prisma, resolvedItemId, balancesBase);
-    let need = remaining;
-    const steps = [];
-
-    for (const balance of balances) {
-      if (need <= 0) break;
-      const pickQty = Math.min(need, Math.floor(balance.qty));
-      if (pickQty <= 0) continue;
-      steps.push({
-        locationId: balance.locationId,
-        locationCode: balance.location?.code || null,
-        locationName: balance.location?.name || null,
-        qty: pickQty,
-      });
-      need -= pickQty;
-    }
-
-    plan.push({
-      lineId: line.id,
-      itemId: resolvedItemId,
-      itemName: resolvedItem?.name || line.requestedName || `????? #${resolvedItemId}`,
-      sku: resolvedItem?.sku || line.requestedSku || null,
-      barcode: resolvedItem?.barcode || null,
-      totalQty,
-      pickedQty,
-      remainingQty: remaining,
-      steps,
-      shortageQty: Math.max(0, need),
-    });
   }
 
   return plan;
@@ -13882,3 +13926,4 @@ async function bootstrapServer() {
 bootstrapServer().catch((err) =>
   console.error("Ошибка запуска bootstrapServer:", err)
 );
+
