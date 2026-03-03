@@ -696,7 +696,13 @@ export default function MobileTsd() {
           throw new Error("Ячейка занята другим товаром.");
         }
         if (data.message === "LOCATION_CONFLICT_CONFIRM") {
-          throw new Error("В ячейке есть товар с другой датой. Подтвердите размещение.");
+          setCountState((prev) => ({
+            ...prev,
+            allowDifferentDate: true,
+          }));
+          throw new Error(
+            "В ячейке есть такой же товар с другой датой. Нажмите «Разместить» ещё раз для подтверждения."
+          );
         }
         if (data.message === "BAD_QTY") {
           throw new Error("Некорректное количество.");
