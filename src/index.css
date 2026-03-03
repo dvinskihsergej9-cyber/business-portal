@@ -2662,257 +2662,46 @@ input[type="number"] {
 .login-hero {
   position: relative;
   overflow: hidden;
-  border-radius: 16px;
-  border: 1px solid rgba(59, 130, 246, 0.3);
+  border-radius: 18px;
+  border: 1px solid rgba(148, 163, 184, 0.35);
   background:
     radial-gradient(
-      circle at 88% 12%,
-      rgba(37, 99, 235, 0.2) 0%,
-      rgba(37, 99, 235, 0) 44%
+      circle at 50% -20%,
+      rgba(99, 102, 241, 0.1) 0%,
+      rgba(99, 102, 241, 0) 50%
     ),
-    linear-gradient(145deg, #eff6ff 0%, #f8fbff 100%);
-  padding: 4px 4px 2px;
-  margin-bottom: 12px;
+    linear-gradient(180deg, #f5f3ff 0%, #ffffff 78%);
+  padding: 12px 10px 8px;
+  margin-bottom: 14px;
 }
 
-.login-hero__scene {
-  display: block;
+.login-hero__brand {
+  text-align: center;
+  font-weight: 800;
+  font-size: 34px;
+  line-height: 1.1;
+  color: #1d4ed8;
+  letter-spacing: 0.01em;
+}
+
+.login-hero__subtitle {
+  text-align: center;
+  margin-top: 4px;
+  font-size: 13px;
+  color: #64748b;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.login-hero__lottie {
+  height: 226px;
   width: 100%;
-  height: 196px;
-  overflow: visible;
 }
 
-.login-hero__blob {
-  fill: #dbeafe;
-  filter: drop-shadow(0 8px 18px rgba(30, 64, 175, 0.12));
-}
-
-.login-hero__cloud {
-  fill: rgba(255, 255, 255, 0.72);
-  animation: login-cloud-drift 11s ease-in-out infinite;
-}
-
-.login-hero__cloud--one {
-  animation-delay: 0s;
-}
-
-.login-hero__cloud--two {
-  animation-delay: 1.6s;
-}
-
-.login-hero__cloud--three {
-  animation-delay: 0.8s;
-}
-
-.login-hero__ground {
-  fill: #c7d2fe;
-  opacity: 0.52;
-}
-
-.login-hero__ground-shadow {
-  fill: rgba(30, 64, 175, 0.17);
-}
-
-.login-hero__rack {
-  fill: none;
-  stroke: #93c5fd;
-  stroke-width: 3;
-}
-
-.login-hero__rack-boxes rect {
-  fill: #bfdbfe;
-}
-
-.login-hero__rack-boxes rect:nth-child(3n) {
-  fill: #93c5fd;
-}
-
-.login-hero__worker-group {
-  animation: login-worker-shift 7s ease-in-out infinite;
-  transform-origin: center;
-}
-
-.login-hero__cart-group {
-  filter: drop-shadow(0 6px 10px rgba(15, 23, 42, 0.14));
-}
-
-.login-hero__cart-base {
-  fill: #1d4ed8;
-}
-
-.login-hero__cart-frame {
-  stroke: #1e293b;
-  stroke-width: 6;
-  stroke-linecap: round;
-}
-
-.login-hero__cart-box {
-  fill: #60a5fa;
-}
-
-.login-hero__cart-box--dark {
-  fill: #3b82f6;
-}
-
-.login-hero__cart-box-line {
-  stroke: rgba(15, 23, 42, 0.22);
-  stroke-width: 2.5;
-}
-
-.login-hero__wheel-ring {
-  fill: #334155;
-}
-
-.login-hero__wheel-core {
-  fill: #94a3b8;
-}
-
-.login-hero__wheel-spoke {
-  fill: none;
-  stroke: #cbd5e1;
-  stroke-width: 3;
-  stroke-linecap: round;
-}
-
-.login-hero__wheel-group--left,
-.login-hero__wheel-group--right {
-  animation: login-wheel-spin 1.15s linear infinite;
-  transform-origin: center;
-}
-
-.login-hero__person-group {
-  filter: drop-shadow(0 4px 8px rgba(30, 64, 175, 0.2));
-}
-
-.login-hero__person-skin {
-  fill: #f8b4a0;
-}
-
-.login-hero__person-hair {
-  fill: #1e3a8a;
-}
-
-.login-hero__person-eye {
-  fill: #1e293b;
-}
-
-.login-hero__person-smile {
-  fill: none;
-  stroke: #7c2d12;
-  stroke-width: 1.6;
-  stroke-linecap: round;
-}
-
-.login-hero__person-body {
-  fill: #2563eb;
-}
-
-.login-hero__person-body-line {
-  fill: none;
-  stroke: #60a5fa;
-  stroke-width: 4;
-  stroke-linecap: round;
-}
-
-.login-hero__person-arm {
-  fill: none;
-  stroke: #2563eb;
-  stroke-width: 15;
-  stroke-linecap: round;
-  stroke-linejoin: round;
-}
-
-.login-hero__person-arm-group {
-  animation: login-arm-push 1.1s ease-in-out infinite alternate;
-  transform-origin: 565px 118px;
-}
-
-.login-hero__person-leg {
-  fill: #1d4ed8;
-}
-
-.login-hero__person-leg.person-leg-light {
-  fill: #3b82f6;
-}
-
-.login-hero__person-leg-group--front {
-  animation: login-leg-front 0.9s ease-in-out infinite alternate;
-  transform-origin: 550px 180px;
-}
-
-.login-hero__person-leg-group--back {
-  animation: login-leg-back 0.9s ease-in-out infinite alternate;
-  transform-origin: 586px 180px;
-}
-
-.login-hero__shoe {
-  fill: #1e293b;
-}
-
-@keyframes login-worker-shift {
-  0% {
-    transform: translateX(-10px) translateY(0);
-  }
-  25% {
-    transform: translateX(8px) translateY(-1px);
-  }
-  50% {
-    transform: translateX(24px) translateY(0);
-  }
-  75% {
-    transform: translateX(10px) translateY(-1px);
-  }
-  100% {
-    transform: translateX(-10px) translateY(0);
-  }
-}
-
-@keyframes login-cloud-drift {
-  0% {
-    transform: translateX(0);
-  }
-  50% {
-    transform: translateX(4px);
-  }
-  100% {
-    transform: translateX(0);
-  }
-}
-
-@keyframes login-arm-push {
-  from {
-    transform: rotate(-4deg);
-  }
-  to {
-    transform: rotate(2deg);
-  }
-}
-
-@keyframes login-leg-front {
-  from {
-    transform: rotate(-2deg);
-  }
-  to {
-    transform: rotate(6deg);
-  }
-}
-
-@keyframes login-leg-back {
-  from {
-    transform: rotate(2deg);
-  }
-  to {
-    transform: rotate(-4deg);
-  }
-}
-
-@keyframes login-wheel-spin {
-  from {
-    transform: rotate(0deg);
-  }
-  to {
-    transform: rotate(360deg);
-  }
+.login-hero__lottie svg {
+  width: 100% !important;
+  height: 100% !important;
+  display: block;
 }
 
 @media (max-width: 620px) {
@@ -2929,17 +2718,24 @@ input[type="number"] {
     font-size: 24px;
     margin-bottom: 14px;
   }
+
+  .login-hero__brand {
+    font-size: 28px;
+  }
+
+  .login-hero__subtitle {
+    font-size: 11px;
+    letter-spacing: 0.04em;
+  }
+
+  .login-hero__lottie {
+    height: 180px;
+  }
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .login-hero__cloud,
-  .login-hero__worker-group,
-  .login-hero__person-arm-group,
-  .login-hero__person-leg-group--front,
-  .login-hero__person-leg-group--back,
-  .login-hero__wheel-group--left,
-  .login-hero__wheel-group--right {
-    animation: none;
+  .login-hero__lottie {
+    display: none;
   }
 }
 
