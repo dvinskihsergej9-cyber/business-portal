@@ -470,6 +470,10 @@ export default function Warehouse({
 
   const [orderItemsForModal, setOrderItemsForModal] = useState([]);
 
+  const [viewPurchaseOrder, setViewPurchaseOrder] = useState(null);
+  const [viewPurchaseOrderLoading, setViewPurchaseOrderLoading] = useState(false);
+  const [viewPurchaseOrderError, setViewPurchaseOrderError] = useState("");
+
   const [showReceiveModal, setShowReceiveModal] = useState(false);
 
   useEffect(() => {
@@ -2161,6 +2165,38 @@ export default function Warehouse({
       console.error(e);
       setInventoryError(e.message || "Ошибка загрузки товаров");
     }
+  };
+
+  const handleViewPurchaseOrder = async (order) => {
+    if (!order?.id) return;
+    setViewPurchaseOrder(order);
+    setViewPurchaseOrderError("");
+    setViewPurchaseOrderLoading(true);
+    try {
+      const res = await fetch(`${API}/purchase-orders/${order.id}`, {
+        headers: { Authorization: authHeaders.Authorization },
+      });
+      const data = await readResponsePayload(res);
+      if (!res.ok) {
+        throw new Error(
+          (data && data.message) || "Ошибка загрузки заказа поставщику."
+        );
+      }
+      setViewPurchaseOrder(data || order);
+    } catch (e) {
+      console.error(e);
+      setViewPurchaseOrderError(
+        resolveErrorMessage(e, "Ошибка загрузки заказа поставщику.")
+      );
+    } finally {
+      setViewPurchaseOrderLoading(false);
+    }
+  };
+
+  const handleCloseViewPurchaseOrder = () => {
+    setViewPurchaseOrder(null);
+    setViewPurchaseOrderError("");
+    setViewPurchaseOrderLoading(false);
   };
 
 
@@ -4250,7 +4286,15 @@ export default function Warehouse({
 
                                   </td>
 
-                                  <td></td>
+                                  <td>
+                                    <button
+                                      type="button"
+                                      className="btn btn--secondary btn--sm"
+                                      onClick={() => handleViewPurchaseOrder(po)}
+                                    >
+                                      Просмотреть
+                                    </button>
+                                  </td>
 
                                 </tr>
 
@@ -4303,7 +4347,123 @@ export default function Warehouse({
 
       )}
 
+      {viewPurchaseOrder && (
+        <div className="modal-backdrop">
+          <div className="modal modal--wide">
+            <div className="modal__header">
+              <h2 className="modal__title">
+                Заказ поставщику №{viewPurchaseOrder.number || viewPurchaseOrder.id}
+              </h2>
+              <button
+                type="button"
+                className="modal__close"
+                onClick={handleCloseViewPurchaseOrder}
+              >
+                ×
+              </button>
+            </div>
 
+            <div className="modal__body">
+              {viewPurchaseOrderError && (
+                <div className="alert alert--danger" style={{ marginBottom: 12 }}>
+                  {viewPurchaseOrderError}
+                </div>
+              )}
+
+              <div className="grid-2" style={{ marginBottom: 12 }}>
+                <div className="card">
+                  <div className="card1c__body">
+                    <div><strong>Поставщик:</strong> {viewPurchaseOrder.supplier?.name || "-"}</div>
+                    <div>
+                      <strong>Статус:</strong>{" "}
+                      {PO_STATUS_LABELS[viewPurchaseOrder.status] || viewPurchaseOrder.status || "-"}
+                    </div>
+                    <div>
+                      <strong>Дата:</strong>{" "}
+                      {viewPurchaseOrder.date
+                        ? new Date(viewPurchaseOrder.date).toLocaleString("ru-RU")
+                        : "-"}
+                    </div>
+                    <div>
+                      <strong>План. приемка:</strong>{" "}
+                      {viewPurchaseOrder.plannedDate
+                        ? new Date(viewPurchaseOrder.plannedDate).toLocaleDateString("ru-RU")
+                        : "-"}
+                    </div>
+                    <div><strong>Комментарий:</strong> {viewPurchaseOrder.comment || "-"}</div>
+                  </div>
+                </div>
+              </div>
+
+              {viewPurchaseOrderLoading ? (
+                <p>Загрузка заказа...</p>
+              ) : (
+                <div className="table-wrapper">
+                  <table className="table">
+                    <thead>
+                      <tr>
+                        <th>№</th>
+                        <th>Товар</th>
+                        <th>SKU</th>
+                        <th>Ед.</th>
+                        <th>Заказано</th>
+                        <th>Получено</th>
+                        <th>Цена</th>
+                        <th>Сумма</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {(viewPurchaseOrder.items || []).map((row, index) => {
+                        const qty = Number(row.quantity) || 0;
+                        const price = Number(row.price) || 0;
+                        return (
+                          <tr key={row.id || `${row.itemId || "item"}-${index}`}>
+                            <td>{index + 1}</td>
+                            <td>{row.item?.name || "-"}</td>
+                            <td>{row.item?.sku || "-"}</td>
+                            <td>{row.item?.unit || "-"}</td>
+                            <td>{qty}</td>
+                            <td>{Number(row.receivedQty) || 0}</td>
+                            <td>
+                              {price.toLocaleString("ru-RU", {
+                                minimumFractionDigits: 2,
+                                maximumFractionDigits: 2,
+                              })}
+                            </td>
+                            <td>
+                              {(qty * price).toLocaleString("ru-RU", {
+                                minimumFractionDigits: 2,
+                                maximumFractionDigits: 2,
+                              })}
+                            </td>
+                          </tr>
+                        );
+                      })}
+                      {(viewPurchaseOrder.items || []).length === 0 && (
+                        <tr>
+                          <td colSpan={8} style={{ textAlign: "center", color: "#6b7280" }}>
+                            Позиции заказа отсутствуют.
+                          </td>
+                        </tr>
+                      )}
+                    </tbody>
+                  </table>
+                </div>
+              )}
+
+              <div className="modal__actions">
+                <button
+                  type="button"
+                  className="btn btn--ghost"
+                  onClick={handleCloseViewPurchaseOrder}
+                >
+                  Закрыть
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
 
       {showOrderModal && (
 
