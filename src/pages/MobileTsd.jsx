@@ -1016,32 +1016,6 @@ export default function MobileTsd() {
     }
   };
 
-  const handleBinFinishSession = async () => {
-    if (!binState.sessionId) {
-      setBinState((prev) => ({
-        ...prev,
-        error: "Нет активной сессии.",
-      }));
-      return;
-    }
-    try {
-      const res = await fetch(
-        `${API_BASE}/warehouse/bin-audit/session/${binState.sessionId}/finish`,
-        {
-          method: "POST",
-          headers: authHeaders,
-        }
-      );
-      const data = await res.json();
-      if (!res.ok) {
-        throw new Error(data.message || "Не удалось завершить сессию");
-      }
-      setBinState(emptyBinState);
-    } catch (err) {
-      setBinState((prev) => ({ ...prev, error: err.message }));
-    }
-  };
-
   const handlePutawayItemScan = async (code) => {
     if (!putawayState.selected?.item) {
       setPutawayState((prev) => ({
@@ -1892,17 +1866,6 @@ export default function MobileTsd() {
             done: false,
             discrepancySaved: false,
           }))
-        }
-        rightSlot={
-          binState.sessionId ? (
-            <button
-              type="button"
-              className="tsd-btn tsd-btn--ghost"
-              onClick={handleBinFinishSession}
-            >
-              Завершить
-            </button>
-          ) : null
         }
         onBack={() => setMode(null)}
       />
