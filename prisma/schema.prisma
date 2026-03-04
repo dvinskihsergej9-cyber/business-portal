@@ -399,8 +399,8 @@ model WarehouseLocation {
   aisle     String?
   rack      String?
   level     String?
-  code      String?  @unique
-  qrCode    String?  @unique
+  code      String?
+  qrCode    String?
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
@@ -411,6 +411,9 @@ model WarehouseLocation {
   receivingLines WarehouseReceivingLine[]
   pickSkips      SalesOrderPickSkip[]
   stockHolds     StockHold[]
+
+  @@unique([orgId, code])
+  @@unique([orgId, qrCode])
 }
 
 model WarehouseReceivingLine {
@@ -709,7 +712,7 @@ enum ItemCategory {
 model SalesOrder {
   id                  Int                  @id @default(autoincrement())
   orgId               Int?
-  externalOrderId     String?              @unique
+  externalOrderId     String?
   source              String               @default("MANUAL")
   status              SalesOrderStatus     @default(NEW)
   orderNumber         String
@@ -747,6 +750,7 @@ model SalesOrder {
   @@index([passportPrintedById])
   @@index([shippedByUserId])
   @@index([createdAt])
+  @@unique([orgId, externalOrderId])
 }
 
 model SalesOrderLine {
