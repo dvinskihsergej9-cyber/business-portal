@@ -1986,70 +1986,6 @@ export default function Warehouse({
 
 
 
-  const handleDownloadLowStockOrder = async () => {
-
-    try {
-
-      setInventoryError("");
-
-
-
-      const res = await fetch(`${API}/inventory/low-stock-order-file`, {
-
-        headers: { Authorization: authHeaders.Authorization },
-
-      });
-
-
-
-      if (!res.ok) {
-
-        let errorMessage = "Не удалось сформировать файл заказа";
-
-        try {
-
-          const data = await res.json();
-
-          if (data?.message) errorMessage = data.message;
-
-        } catch (e) {}
-
-        throw new Error(errorMessage);
-
-      }
-
-
-
-      const blob = await res.blob();
-
-      const url = window.URL.createObjectURL(blob);
-
-      const a = document.createElement("a");
-
-      a.href = url;
-
-      a.download = "order_low_stock.xlsx";
-
-      document.body.appendChild(a);
-
-      a.click();
-
-      a.remove();
-
-      window.URL.revokeObjectURL(url);
-
-    } catch (e) {
-
-      console.error(e);
-
-      setInventoryError(e.message);
-
-    }
-
-  };
-
-
-
   const handleQuickIncome = (item) => {
 
     setMovementForm({
@@ -4156,19 +4092,6 @@ export default function Warehouse({
                       Создать заказ поставщику
 
                     </button>
-
-                    <button
-
-                      className="btn btn--secondary"
-
-                      onClick={handleDownloadLowStockOrder}
-
-                    >
-
-                      Скачать заказ (Low Stock)
-
-                    </button>
-
                   </div>
 
 
