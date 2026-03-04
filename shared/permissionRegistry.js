@@ -158,6 +158,13 @@ const ENTRY_DEFINITIONS = Object.freeze([
     tsdMode: "pick",
   },
   {
+    id: "TSD_SHIP",
+    key: "tsd.ship",
+    label: "ТСД: Отгрузка",
+    groupId: "tsd",
+    tsdMode: "ship",
+  },
+  {
     id: "TSD_DISCREPANCIES",
     key: "tsd.discrepancies",
     label: "ТСД: Косяки",
@@ -207,6 +214,7 @@ const ROLE_DEFAULT_PERMISSION_IDS = Object.freeze({
     "TSD_BIN",
     "TSD_REPLENISH",
     "TSD_PICK",
+    "TSD_SHIP",
     "TSD_DISCREPANCIES",
   ],
   ADMIN: ENTRY_DEFINITIONS.map((entry) => entry.id),
@@ -221,7 +229,13 @@ const TEMPLATE_DEFINITIONS = Object.freeze([
   {
     id: "WAREHOUSE_PICKER",
     label: "Склад: Отбор",
-    permissionIds: ["APP_WAREHOUSE", "WAREHOUSE_TSD", "WAREHOUSE_ORDERS", "TSD_PICK"],
+    permissionIds: [
+      "APP_WAREHOUSE",
+      "WAREHOUSE_TSD",
+      "WAREHOUSE_ORDERS",
+      "TSD_PICK",
+      "TSD_SHIP",
+    ],
   },
   {
     id: "WAREHOUSE_TSD",
@@ -238,6 +252,7 @@ const TEMPLATE_DEFINITIONS = Object.freeze([
       "TSD_BIN",
       "TSD_REPLENISH",
       "TSD_PICK",
+      "TSD_SHIP",
       "TSD_DISCREPANCIES",
     ],
   },
@@ -265,6 +280,7 @@ const TEMPLATE_DEFINITIONS = Object.freeze([
       "TSD_BIN",
       "TSD_REPLENISH",
       "TSD_PICK",
+      "TSD_SHIP",
       "TSD_DISCREPANCIES",
     ],
   },

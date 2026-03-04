@@ -874,6 +874,7 @@ const WAREHOUSE_TSD_ANY = [
   PERMISSION_KEYS.TSD_BIN,
   PERMISSION_KEYS.TSD_REPLENISH,
   PERMISSION_KEYS.TSD_PICK,
+  PERMISSION_KEYS.TSD_SHIP,
   PERMISSION_KEYS.TSD_DISCREPANCIES,
 ];
 
@@ -881,8 +882,13 @@ const WAREHOUSE_ROUTE_RULES = [
   { prefix: "/requests", key: PERMISSION_KEYS.WAREHOUSE_REQUESTS },
   { prefix: "/tasks", key: PERMISSION_KEYS.WAREHOUSE_TASKS },
   { prefix: "/locations", key: PERMISSION_KEYS.WAREHOUSE_LOCATIONS },
+  { prefix: "/print", key: PERMISSION_KEYS.WAREHOUSE_LOCATIONS },
+  { prefix: "/qr/print", key: PERMISSION_KEYS.WAREHOUSE_LOCATIONS },
+  { prefix: "/labels", key: PERMISSION_KEYS.WAREHOUSE_LOCATIONS },
   { prefix: "/transactions", key: PERMISSION_KEYS.WAREHOUSE_TRANSACTIONS },
   { prefix: "/revisions", key: PERMISSION_KEYS.WAREHOUSE_REVISION },
+  { prefix: "/stock", key: PERMISSION_KEYS.WAREHOUSE_INVENTORY },
+  { prefix: "/placements", key: PERMISSION_KEYS.WAREHOUSE_ORDERS },
   { prefix: "/holds", key: PERMISSION_KEYS.WAREHOUSE_MANAGE },
   { prefix: "/discrepancies", key: PERMISSION_KEYS.TSD_DISCREPANCIES },
   { prefix: "/inventory/count", key: PERMISSION_KEYS.TSD_COUNT },
@@ -978,7 +984,21 @@ app.use("/api/purchase-orders", auth, enforceOperationalTenantScope, (req, res, 
   return denySectionAccess(res);
 });
 app.use("/api/supplier-trucks", auth, enforceOperationalTenantScope, requirePermission(PERMISSION_KEYS.WAREHOUSE_QUEUE));
-app.use("/api/orders", auth, enforceOperationalTenantScope, requirePermission(PERMISSION_KEYS.WAREHOUSE_ORDERS));
+app.use("/api/orders", auth, enforceOperationalTenantScope, (req, res, next) => {
+  if (hasPermission(req.user, PERMISSION_KEYS.WAREHOUSE_ORDERS)) {
+    return next();
+  }
+  const isStatusHistoryEndpoint =
+    isReadRequest(req) &&
+    (req.path === "/status-history" || /^\/\d+\/status-history$/.test(req.path));
+  if (
+    isStatusHistoryEndpoint &&
+    hasPermission(req.user, PERMISSION_KEYS.ADMIN_WAREHOUSE)
+  ) {
+    return next();
+  }
+  return denySectionAccess(res);
+});
 app.use("/api/warehouse", (req, res, next) => {
   if (req.path.startsWith("/qr/render")) {
     return next();

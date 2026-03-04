@@ -189,9 +189,7 @@ export default function MobileTsd() {
   }, []);
 
   const canUseMode = (modeId) => {
-    const modePermission =
-      TSD_MODE_PERMISSION_MAP[modeId] ||
-      (modeId === "ship" ? PERMISSION_KEYS.TSD_PICK : null);
+    const modePermission = TSD_MODE_PERMISSION_MAP[modeId];
     if (!modePermission) return false;
     if (!hasPermission(user, PERMISSION_KEYS.WAREHOUSE_TSD)) return false;
     if (!hasPermission(user, modePermission)) return false;
