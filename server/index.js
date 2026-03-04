@@ -290,6 +290,7 @@ const TENANT_SCOPED_MODELS = new Set([
   "WarehouseReceivingLine",
   "WarehousePlacement",
   "StockMovement",
+  "StockHold",
   "BinAuditSession",
   "BinAuditEvent",
   "StockDiscrepancy",
@@ -301,6 +302,7 @@ const TENANT_SCOPED_MODELS = new Set([
   "SupplierTruck",
   "SalesOrder",
   "SalesOrderLine",
+  "SalesOrderPickSkip",
   "OrderStatusHistory",
 ]);
 
@@ -601,27 +603,32 @@ const APP_URL = process.env.APP_URL || FRONTEND_URL;
 const YOOKASSA_SHOP_ID = process.env.YOOKASSA_SHOP_ID;
 const YOOKASSA_SECRET_KEY = process.env.YOOKASSA_SECRET_KEY;
 
-async function getReceivingLocationId(tx) {
-  const existing = await tx.warehouseLocation.findFirst({
-    where: {
-      OR: [
-        { code: "RECEIVING" },
-        { name: "RECEIVING" },
-        { name: "???????" },
-        { name: "??????" },
-      ],
-    },
-  });
+async function getReceivingLocationId(tx, orgIdInput = null) {
+  const normalizedOrgId = Number.isFinite(Number(orgIdInput))
+    ? Number(orgIdInput)
+    : null;
+  const where = {
+    orgId: normalizedOrgId,
+    OR: [
+      { code: "RECEIVING" },
+      { name: "RECEIVING" },
+      { name: "\u0417\u043e\u043d\u0430 \u043f\u0440\u0438\u0435\u043c\u043a\u0438" },
+      { name: "\u041f\u0440\u0438\u0435\u043c\u043a\u0430" },
+    ],
+  };
+
+  const existing = await tx.warehouseLocation.findFirst({ where });
   if (existing) return existing.id;
+
   const created = await tx.warehouseLocation.create({
     data: {
-      name: "???????",
+      orgId: normalizedOrgId,
+      name: "\u0417\u043e\u043d\u0430 \u043f\u0440\u0438\u0435\u043c\u043a\u0438",
       code: "RECEIVING",
     },
   });
   return created.id;
 }
-
 const PLANS = {
   "basic-30": {
     id: "basic-30",
@@ -1624,29 +1631,29 @@ async function findStockItemForOrderLine(db, raw = {}) {
   return null;
 }
 
-async function getOrCreateReceivingLocation() {
+async function getOrCreateReceivingLocation(orgIdInput = null) {
   const code = "RECEIVING";
-  const findByCode = () =>
-    runWithoutTenantScope(() =>
-      prismaBase.warehouseLocation.findFirst({
-        where: { code },
-      })
-    );
+  const normalizedOrgId = Number.isFinite(Number(orgIdInput))
+    ? Number(orgIdInput)
+    : null;
+  const where = {
+    orgId: normalizedOrgId,
+    OR: [{ code }, { name: "\u0417\u043e\u043d\u0430 \u043f\u0440\u0438\u0435\u043c\u043a\u0438" }, { name: "RECEIVING" }],
+  };
 
-  let location = await findByCode();
+  let location = await prisma.warehouseLocation.findFirst({ where });
   if (!location) {
     try {
-      location = await runWithoutTenantScope(() =>
-        prismaBase.warehouseLocation.create({
-          data: {
-            code,
-            name: "\u0417\u043e\u043d\u0430 \u043f\u0440\u0438\u0435\u043c\u043a\u0438",
-          },
-        })
-      );
+      location = await prisma.warehouseLocation.create({
+        data: {
+          orgId: normalizedOrgId,
+          code,
+          name: "\u0417\u043e\u043d\u0430 \u043f\u0440\u0438\u0435\u043c\u043a\u0438",
+        },
+      });
     } catch (err) {
       if (err?.code !== "P2002") throw err;
-      location = await findByCode();
+      location = await prisma.warehouseLocation.findFirst({ where });
     }
   }
   if (!location) {
@@ -1656,7 +1663,6 @@ async function getOrCreateReceivingLocation() {
   }
   return location;
 }
-
 function escapeHtml(value) {
   return String(value ?? "")
     .replaceAll("&", "&amp;")
@@ -7356,7 +7362,7 @@ app.post("/api/warehouse/receiving", auth, async (req, res) => {
     const linesToPost = hasLines ? lines : [{ itemId, qty, manufacturedAt, expiresAt }];
 
     await prisma.$transaction(async (tx) => {
-      const receivingLocationId = await getReceivingLocationId(tx);
+      const receivingLocationId = await getReceivingLocationId(tx, req.user?.orgId || null);
       const effectiveLocationId = locationId || receivingLocationId;
 
       const location = await tx.warehouseLocation.findUnique({
@@ -7649,7 +7655,7 @@ app.post("/api/warehouse/putaway/from-receiving", auth, async (req, res) => {
       }
 
       const receivingLocationId =
-        line.locationId || (await getReceivingLocationId(tx));
+        line.locationId || (await getReceivingLocationId(tx, req.user?.orgId || null));
       const moveQty =
         amount && Number.isFinite(amount)
           ? Math.trunc(amount)
@@ -10427,7 +10433,7 @@ app.post("/api/warehouse/receiving/:poId/confirm", auth, async (req, res) => {
     const effectiveOrgId = order.orgId || req.user?.orgId || null;
     const fullOrderItems = await runWithoutTenantScope(() =>
       prismaBase.purchaseOrderItem.findMany({
-        where: { orderId: poId },
+        where: { orderId: poId, orgId: effectiveOrgId },
         include: { item: true },
       })
     );
@@ -10457,7 +10463,7 @@ app.post("/api/warehouse/receiving/:poId/confirm", auth, async (req, res) => {
         return res.status(404).json({ message: "LOCATION_NOT_FOUND" });
       }
     } else {
-      location = await getOrCreateReceivingLocation();
+      location = await getOrCreateReceivingLocation(effectiveOrgId);
     }
 
     const orderItemsByItemId = new Map();
@@ -10477,8 +10483,11 @@ app.post("/api/warehouse/receiving/:poId/confirm", auth, async (req, res) => {
 
         const lineOpId = opId ? `${opId}:${itemId}` : null;
         if (lineOpId) {
-          const existing = await tx.stockMovement.findUnique({
-            where: { opId: lineOpId },
+          const existing = await tx.stockMovement.findFirst({
+            where: {
+              opId: lineOpId,
+              orgId: effectiveOrgId,
+            },
           });
           if (existing) {
             continue;
@@ -10531,7 +10540,7 @@ app.post("/api/warehouse/receiving/:poId/confirm", auth, async (req, res) => {
 
           await runWithoutTenantScope(() =>
             tx.purchaseOrderItem.updateMany({
-              where: { id: orderRow.id },
+              where: { id: orderRow.id, orgId: effectiveOrgId },
               data: { receivedQty: nextReceived, orgId: effectiveOrgId },
             })
           );
@@ -10584,6 +10593,7 @@ app.post("/api/warehouse/receiving/:poId/confirm", auth, async (req, res) => {
         tx.purchaseOrder.updateMany({
           where: {
             id: poId,
+            orgId: effectiveOrgId,
             receivingStage: { not: "FINALIZED" },
           },
           data: {
@@ -10601,8 +10611,8 @@ app.post("/api/warehouse/receiving/:poId/confirm", auth, async (req, res) => {
     let updatedOrder = null;
     try {
       updatedOrder = await runWithoutTenantScope(() =>
-        prismaBase.purchaseOrder.findUnique({
-          where: { id: poId },
+        prismaBase.purchaseOrder.findFirst({
+          where: { id: poId, orgId: effectiveOrgId },
           include: {
             supplier: true,
             items: { include: { item: true } },
@@ -10658,15 +10668,13 @@ app.post("/api/warehouse/receiving/:poId/finalize", auth, async (req, res) => {
       return res.status(400).json({ message: "BAD_PO_ID" });
     }
 
-    const order = await runWithoutTenantScope(() =>
-      prismaBase.purchaseOrder.findUnique({
-        where: { id: poId },
-        include: {
-          supplier: true,
-          items: { include: { item: true } },
-        },
-      })
-    );
+    const order = await prisma.purchaseOrder.findUnique({
+      where: { id: poId },
+      include: {
+        supplier: true,
+        items: { include: { item: true } },
+      },
+    });
 
     if (!order) {
       return res.status(404).json({ message: "PO_NOT_FOUND" });
@@ -10687,12 +10695,10 @@ app.post("/api/warehouse/receiving/:poId/finalize", auth, async (req, res) => {
     }
 
     await prisma.$transaction(async (tx) => {
-      const refreshed = await runWithoutTenantScope(() =>
-        tx.purchaseOrder.findUnique({
-          where: { id: poId },
-          include: { items: true },
-        })
-      );
+      const refreshed = await tx.purchaseOrder.findUnique({
+        where: { id: poId },
+        include: { items: true },
+      });
       if (!refreshed) return;
 
       for (const row of refreshed.items || []) {
@@ -10744,7 +10750,7 @@ app.post("/api/warehouse/receiving/:poId/finalize", auth, async (req, res) => {
       ) {
         await runWithoutTenantScope(() =>
           tx.purchaseOrder.updateMany({
-            where: { id: poId },
+            where: { id: poId, orgId: effectiveOrgId },
             data: {
               status: nextStatus,
               orgId: effectiveOrgId,
@@ -10760,7 +10766,7 @@ app.post("/api/warehouse/receiving/:poId/finalize", auth, async (req, res) => {
       try {
         await runWithoutTenantScope(() =>
           prismaBase.supplierTruck.updateMany({
-            where: { id: linkedTruck.id, status: { not: "DONE" } },
+            where: { id: linkedTruck.id, orgId: linkedTruck.orgId || effectiveOrgId, status: { not: "DONE" } },
             data: {
               status: "DONE",
               unloadEndAt: linkedTruck.unloadEndAt || now,
@@ -10773,15 +10779,13 @@ app.post("/api/warehouse/receiving/:poId/finalize", auth, async (req, res) => {
       }
     }
 
-    const updatedOrder = await runWithoutTenantScope(() =>
-      prismaBase.purchaseOrder.findUnique({
-        where: { id: poId },
-        include: {
-          supplier: true,
-          items: { include: { item: true } },
-        },
-      })
-    );
+    const updatedOrder = await prisma.purchaseOrder.findUnique({
+      where: { id: poId },
+      include: {
+        supplier: true,
+        items: { include: { item: true } },
+      },
+    });
 
     res.json({ ok: true, order: updatedOrder || { id: poId } });
   } catch (err) {
@@ -11142,7 +11146,7 @@ app.post("/api/orders/inbound", auth, async (req, res) => {
 
     const result = await prisma.$transaction(async (tx) => {
       if (externalOrderId) {
-        const existing = await tx.salesOrder.findUnique({
+        const existing = await tx.salesOrder.findFirst({
           where: { externalOrderId: String(externalOrderId) },
           include: { lines: true },
         });
@@ -11279,7 +11283,7 @@ app.post("/api/integrations/orders/inbound", async (req, res) => {
 
     const result = await prisma.$transaction(async (tx) => {
       if (externalOrderId) {
-        const existing = await tx.salesOrder.findUnique({
+        const existing = await tx.salesOrder.findFirst({
           where: { externalOrderId: String(externalOrderId) },
           include: { lines: true },
         });
@@ -11408,7 +11412,7 @@ app.post("/api/orders/import-batch", auth, requireAdmin, async (req, res) => {
       try {
         const result = await prisma.$transaction(async (tx) => {
           if (externalOrderId) {
-            const existing = await tx.salesOrder.findUnique({
+            const existing = await tx.salesOrder.findFirst({
               where: { externalOrderId: String(externalOrderId) },
               include: { lines: true },
             });
@@ -13807,7 +13811,7 @@ app.post("/api/warehouse/stock/adjustment", requireAdmin, async (req, res) => {
       let affectedLocations = 0;
 
       if (delta > 0) {
-        const receivingLocationId = await getReceivingLocationId(tx);
+        const receivingLocationId = await getReceivingLocationId(tx, req.user?.orgId || null);
         await stockService.createMovementInTx(tx, {
           opId: `ADMIN_ADJ:${itemId}:${Date.now()}:PLUS`,
           type: "ADJUSTMENT",
