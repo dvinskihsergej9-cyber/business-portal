@@ -22,6 +22,7 @@ import SupplierTrucksQueueTab from "../components/SupplierTrucksQueueTab";
 import MobileTsdTab from "../components/MobileTsdTab";
 import WarehouseLocationsPanel from "../components/WarehouseLocationsPanel";
 import TmcTab from "../components/TmcTab";
+import warehouseTasksIcon from "../assets/warehouse/tasks-tile.svg";
 
 
 const API = API_BASE;
@@ -68,6 +69,18 @@ const WAREHOUSE_ICON_FALLBACK = {
 };
 
 function WarehouseTileIcon({ name }) {
+  if (name === "tasks") {
+    return (
+      <img
+        className="warehouse-card__icon-image"
+        src={warehouseTasksIcon}
+        alt=""
+        aria-hidden="true"
+        loading="eager"
+      />
+    );
+  }
+
   const emoji = WAREHOUSE_EMOJI[name];
   const fallback = WAREHOUSE_ICON_FALLBACK[name] || "•";
 
