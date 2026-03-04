@@ -78,6 +78,18 @@ export const normalizeErrorMessage = (err, fallback = "Ошибка запрос
   if (message === "ITEM_UPDATE_ERROR") return "Ошибка обновления товара.";
   if (message === "ITEMS_LIST_ERROR") return "Ошибка загрузки товаров.";
   if (message === "LOCATION_NOT_FOUND") return "Ячейка не найдена.";
+  if (message === "LOCATION_OCCUPIED") {
+    return "В этой ячейке уже другой товар. Разместите в другую ячейку.";
+  }
+  if (message === "LOCATION_CONFLICT_CONFIRM") {
+    return "В ячейке есть такой же товар, но с другой датой. Подтвердите размещение повторно.";
+  }
+  if (message === "BAD_QTY") return "Некорректное количество.";
+  if (message === "RECEIVING_LINE_NOT_FOUND") {
+    return "Позиция приемки уже обработана. Обновите экран и выберите позицию заново.";
+  }
+  if (message === "CODE_REQUIRED") return "Скан не распознан. Повторите сканирование.";
+  if (message === "CODE_NOT_FOUND") return "Код не найден.";
   if (message === "LOCATION_UPDATE_ERROR") return "Ошибка обновления ячейки.";
   if (message === "LOCATIONS_LIST_ERROR") return "Ошибка загрузки ячеек.";
   if (message === "REQUESTS_LIST_ERROR") return "Ошибка загрузки заявок.";
