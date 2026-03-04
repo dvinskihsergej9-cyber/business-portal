@@ -941,11 +941,16 @@ export default function MobileTsd() {
       if (!res.ok) {
         throw new Error(data.message || "Не удалось подтвердить");
       }
+      // Ускоряем поток контроля: сразу возвращаемся к скану следующей ячейки.
       setBinState((prev) => ({
         ...prev,
+        step: 0,
+        location: null,
+        items: [],
+        counts: {},
         loading: false,
-        done: true,
-        step: 1,
+        done: false,
+        discrepancySaved: false,
       }));
     } catch (err) {
       setBinState((prev) => ({
@@ -1919,6 +1924,7 @@ export default function MobileTsd() {
             label="Сканируй ячейку"
             hint="Покажем остатки внутри"
             onScan={handleBinLocation}
+            autoStart
             disabled={binState.loading}
           />
         )}
@@ -2027,7 +2033,7 @@ export default function MobileTsd() {
         </div>
       )}
 
-      {(binState.done || binState.discrepancySaved) && (
+      {binState.discrepancySaved && (
         <div className="tsd-action-bar">
           <button
             type="button"

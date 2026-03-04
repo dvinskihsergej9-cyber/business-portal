@@ -8,6 +8,7 @@ export default function Scanner({
   onScan,
   manualPlaceholder = "Ввести код вручную",
   disabled = false,
+  autoStart = false,
   onUserAction,
 }) {
   const scannerId = useMemo(
@@ -18,6 +19,7 @@ export default function Scanner({
   const [manualValue, setManualValue] = useState("");
   const [cameraActive, setCameraActive] = useState(false);
   const [cameraError, setCameraError] = useState("");
+  const autoStartAttemptedRef = useRef(false);
 
   const getHtml5QrcodeClass = useCallback(() => {
     if (typeof window !== "undefined" && window?.Html5Qrcode) {
@@ -145,6 +147,17 @@ export default function Scanner({
       stopScanner();
     };
   }, [stopScanner]);
+
+  useEffect(() => {
+    if (!autoStart) {
+      autoStartAttemptedRef.current = false;
+      return;
+    }
+    if (disabled || cameraActive || scannerRef.current) return;
+    if (autoStartAttemptedRef.current) return;
+    autoStartAttemptedRef.current = true;
+    startScanner();
+  }, [autoStart, disabled, cameraActive, startScanner]);
 
   const handleManualSubmit = (event) => {
     event.preventDefault();
