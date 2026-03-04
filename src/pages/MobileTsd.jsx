@@ -140,6 +140,7 @@ const emptyPutawayState = {
   selected: null,
   selectedQty: "",
   itemVerified: false,
+  allowDifferentDate: false,
   to: null,
   loading: false,
   error: "",
@@ -214,6 +215,49 @@ export default function MobileTsd() {
       return `${prefix}-${globalThis.crypto.randomUUID()}`;
     }
     return `${prefix}-${Date.now()}-${Math.random().toString(16).slice(2)}`;
+  };
+
+  const parseJsonSafe = async (res) => {
+    try {
+      return await res.json();
+    } catch {
+      return null;
+    }
+  };
+
+  const mapPutawayErrorMessage = (res, data, fallback = "Размещение не выполнено.") => {
+    const code = String(data?.message || "").trim().toUpperCase();
+
+    if (code === "LOCATION_OCCUPIED") {
+      return "В этой ячейке уже другой товар. Разместите в другую ячейку.";
+    }
+    if (code === "LOCATION_CONFLICT_CONFIRM") {
+      return "В ячейке есть такой же товар, но с другой датой. Нажмите «Подтвердить» еще раз, чтобы разрешить размещение.";
+    }
+    if (code === "BAD_QTY") {
+      return "Некорректное количество.";
+    }
+    if (code === "LOCATION_NOT_FOUND") {
+      return "Ячейка не найдена.";
+    }
+    if (code === "RECEIVING_LINE_NOT_FOUND") {
+      return "Позиция приемки уже обработана. Обновите список и выберите позицию заново.";
+    }
+    if (
+      code === "TENANT_NOT_FOUND" ||
+      code === "RECORD_CHANGED" ||
+      code === "ALREADY_PROCESSED"
+    ) {
+      return "Данные уже изменились. Обновите экран и попробуйте снова.";
+    }
+
+    if ((res?.status || 0) === 409) {
+      return "Конфликт размещения. Проверьте ячейку и попробуйте снова.";
+    }
+    if ((res?.status || 0) >= 500) {
+      return "Ошибка сервера при размещении.";
+    }
+    return fallback;
   };
 
   useEffect(() => {
@@ -690,12 +734,9 @@ export default function MobileTsd() {
           allowMix: countState.allowDifferentDate,
         }),
       });
-      const data = await res.json();
+      const data = await parseJsonSafe(res);
       if (!res.ok) {
-        if (data.message === "LOCATION_OCCUPIED") {
-          throw new Error("Ячейка занята другим товаром.");
-        }
-        if (data.message === "LOCATION_CONFLICT_CONFIRM") {
+        if (String(data?.message || "").toUpperCase() === "LOCATION_CONFLICT_CONFIRM") {
           setCountState((prev) => ({
             ...prev,
             allowDifferentDate: true,
@@ -704,10 +745,7 @@ export default function MobileTsd() {
             "В ячейке есть такой же товар с другой датой. Нажмите «Разместить» ещё раз для подтверждения."
           );
         }
-        if (data.message === "BAD_QTY") {
-          throw new Error("Некорректное количество.");
-        }
-        throw new Error(data.message || "Не удалось разместить.");
+        throw new Error(mapPutawayErrorMessage(res, data, "Не удалось разместить."));
       }
       setCountState((prev) => ({
         ...prev,
@@ -1005,6 +1043,7 @@ export default function MobileTsd() {
       setPutawayState((prev) => ({
         ...prev,
         to: location,
+        allowDifferentDate: false,
         step: 3,
         loading: false,
       }));
@@ -1024,6 +1063,7 @@ export default function MobileTsd() {
       selectedQty:
         line.remainingQty?.toString?.() || line.qty?.toString?.() || "",
       itemVerified: false,
+      allowDifferentDate: false,
       to: null,
       done: false,
       error: "",
@@ -1031,8 +1071,8 @@ export default function MobileTsd() {
     }));
   };
 
-  const handlePutawaySubmit = async (forceMix = false) => {
-    const shouldMix = forceMix === true;
+  const handlePutawaySubmit = async () => {
+    const shouldMix = putawayState.allowDifferentDate === true;
     const qty = Number(putawayState.selectedQty);
     if (!putawayState.selected) {
       setPutawayState((prev) => ({ ...prev, error: "Выберите товар." }));
@@ -1067,36 +1107,28 @@ export default function MobileTsd() {
           allowMix: shouldMix,
         }),
       });
-      const data = await res.json();
+      const data = await parseJsonSafe(res);
       if (!res.ok) {
-        if (data?.message === "LOCATION_OCCUPIED") {
-          throw new Error(
-            "В ячейке уже есть другой товар. Выберите другую ячейку."
-          );
+        if (String(data?.message || "").toUpperCase() === "LOCATION_CONFLICT_CONFIRM") {
+          setPutawayState((prev) => ({
+            ...prev,
+            allowDifferentDate: true,
+            loading: false,
+            error:
+              "В ячейке есть такой же товар, но с другой датой. Нажмите «Подтвердить» еще раз, чтобы разрешить размещение.",
+          }));
+          return;
         }
-        if (data?.message === "LOCATION_CONFLICT_CONFIRM") {
-          if (globalThis.confirm) {
-            const ok = globalThis.confirm(
-              "В ячейке уже есть такой же товар, но с другой датой. Разместить сюда?"
-            );
-            if (ok) {
-              await handlePutawaySubmit(true);
-              return;
-            }
-          }
-          throw new Error(
-            "В ячейке уже есть такой же товар, но с другой датой."
-          );
-        }
-        throw new Error(data.message || "Размещение не выполнено");
+        throw new Error(mapPutawayErrorMessage(res, data));
       }
       const refreshed = await fetch(`${API_BASE}/warehouse/putaway/pending`, {
         headers: authHeaders,
       });
-      const refreshedData = await refreshed.json();
+      const refreshedData = await parseJsonSafe(refreshed);
       setPutawayState((prev) => ({
         ...prev,
         pending: refreshed.ok ? refreshedData.items || [] : prev.pending,
+        allowDifferentDate: false,
         loading: false,
         done: true,
         step: 3,
@@ -2146,6 +2178,7 @@ export default function MobileTsd() {
             selected: null,
             selectedQty: "",
             itemVerified: false,
+            allowDifferentDate: false,
             to: null,
             step: 0,
             done: false,
@@ -2252,6 +2285,7 @@ export default function MobileTsd() {
                     setPutawayState((prev) => ({
                       ...prev,
                       to: selected,
+                      allowDifferentDate: false,
                       step: 3,
                       error: "",
                     }));
@@ -2293,7 +2327,7 @@ export default function MobileTsd() {
             onClick={handlePutawaySubmit}
             disabled={putawayState.loading}
           >
-            Подтвердить
+            {putawayState.allowDifferentDate ? "Подтвердить ещё раз" : "Подтвердить"}
           </button>
         </div>
       )}
@@ -2309,6 +2343,7 @@ export default function MobileTsd() {
                 selected: null,
                 selectedQty: "",
                 itemVerified: false,
+                allowDifferentDate: false,
                 to: null,
                 step: 0,
                 done: false,
