@@ -83,11 +83,15 @@ export default function AdminWarehousePanel() {
   const [showItemsImport, setShowItemsImport] = useState(false);
   const [itemError, setItemError] = useState("");
   const [itemImageBusyId, setItemImageBusyId] = useState(null);
+  const [imagePreview, setImagePreview] = useState(null);
 
-  const openImagePreview = (url) => {
+  const openImagePreview = (url, title) => {
     const imageUrl = String(url || "").trim();
     if (!imageUrl) return;
-    window.open(imageUrl, "_blank", "noopener,noreferrer");
+    setImagePreview({
+      url: imageUrl,
+      title: String(title || "").trim() || "Фото товара",
+    });
   };
 
   const [itemForm, setItemForm] = useState({
@@ -751,7 +755,7 @@ export default function AdminWarehousePanel() {
                         <img
                           src={item.imageUrl}
                           alt={item.name || "Товар"}
-                          onClick={() => openImagePreview(item.imageUrl)}
+                          onClick={() => openImagePreview(item.imageUrl, item.name)}
                           style={{
                             width: 56,
                             height: 56,
@@ -1779,6 +1783,38 @@ export default function AdminWarehousePanel() {
             loadAll();
           }}
         />
+      )}
+
+      {imagePreview?.url && (
+        <div className="admin-modal" onClick={() => setImagePreview(null)}>
+          <div
+            className="admin-modal__panel admin-modal__panel--image"
+            onClick={(event) => event.stopPropagation()}
+          >
+            <div className="admin-modal__header">
+              <div>
+                <div className="admin-modal__title">{imagePreview.title}</div>
+                <div className="admin-modal__subtitle">Увеличенный просмотр</div>
+              </div>
+            </div>
+            <div className="admin-image-preview-wrap">
+              <img
+                src={imagePreview.url}
+                alt={imagePreview.title || "Фото товара"}
+                className="admin-image-preview"
+              />
+            </div>
+            <div className="admin-modal__actions">
+              <button
+                type="button"
+                className="admin-btn admin-btn--ghost"
+                onClick={() => setImagePreview(null)}
+              >
+                Закрыть
+              </button>
+            </div>
+          </div>
+        </div>
       )}
     </div>
   );

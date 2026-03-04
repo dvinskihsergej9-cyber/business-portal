@@ -346,6 +346,10 @@
   border-color: rgba(248, 113, 113, 0.5);
 }
 
+.admin-modal__panel--image {
+  width: min(980px, 96vw);
+}
+
 .admin-modal__header {
   display: flex;
   justify-content: space-between;
@@ -368,6 +372,24 @@
   display: flex;
   justify-content: flex-end;
   gap: 10px;
+}
+
+.admin-image-preview-wrap {
+  width: 100%;
+  max-height: 76vh;
+  overflow: auto;
+  border-radius: 12px;
+  border: 1px solid #e5e7eb;
+  background: #f8fafc;
+  padding: 8px;
+}
+
+.admin-image-preview {
+  width: 100%;
+  max-height: 72vh;
+  object-fit: contain;
+  display: block;
+  border-radius: 10px;
 }
 
 .admin-form {
