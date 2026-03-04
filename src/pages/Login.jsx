@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { useNavigate, Link } from "react-router-dom";
+import lottie from "lottie-web";
 import { useAuth } from "../context/AuthContext";
 import modernWmsWarehouseAnimation from "../assets/login/modernwms-warehouse.json";
 
@@ -10,43 +11,58 @@ function LoginHero() {
   const lottieRef = useRef(null);
 
   useEffect(() => {
-    if (!lottieRef.current) return undefined;
+    const container = lottieRef.current;
+    if (!container) return undefined;
 
-    let instance;
-    let isUnmounted = false;
-    let rafId = 0;
-    let resizeTimer = 0;
+    const instance = lottie.loadAnimation({
+      container,
+      renderer: "svg",
+      loop: true,
+      autoplay: true,
+      animationData: modernWmsWarehouseAnimation,
+      rendererSettings: {
+        preserveAspectRatio: "xMidYMid slice",
+      },
+    });
 
-    const setupAnimation = async () => {
-      const lottieModule = await import("lottie-web");
-      if (isUnmounted || !lottieRef.current) return;
-
-      instance = lottieModule.default.loadAnimation({
-        container: lottieRef.current,
-        renderer: "svg",
-        loop: true,
-        autoplay: true,
-        animationData: modernWmsWarehouseAnimation,
-        rendererSettings: {
-          preserveAspectRatio: "xMidYMid slice",
-        },
-      });
-
-      rafId = requestAnimationFrame(() => {
-        instance?.resize();
-      });
-      resizeTimer = window.setTimeout(() => {
-        instance?.resize();
-      }, 220);
+    const keepAlive = () => {
+      instance.resize();
+      instance.play();
     };
 
-    setupAnimation();
+    // Mobile browsers (especially iOS) can miss the first paint on initial tab open.
+    // These delayed resize/play calls make the first render reliable.
+    const raf1 = requestAnimationFrame(keepAlive);
+    const raf2 = requestAnimationFrame(() => requestAnimationFrame(keepAlive));
+    const t1 = window.setTimeout(keepAlive, 120);
+    const t2 = window.setTimeout(keepAlive, 360);
+
+    const onPageShow = () => keepAlive();
+    const onVisibilityChange = () => {
+      if (!document.hidden) keepAlive();
+    };
+    window.addEventListener("pageshow", onPageShow);
+    window.addEventListener("resize", onPageShow);
+    window.addEventListener("orientationchange", onPageShow);
+    document.addEventListener("visibilitychange", onVisibilityChange);
+
+    let observer;
+    if (typeof ResizeObserver !== "undefined") {
+      observer = new ResizeObserver(() => keepAlive());
+      observer.observe(container);
+    }
 
     return () => {
-      isUnmounted = true;
-      if (rafId) cancelAnimationFrame(rafId);
-      if (resizeTimer) clearTimeout(resizeTimer);
-      if (instance) instance.destroy();
+      cancelAnimationFrame(raf1);
+      cancelAnimationFrame(raf2);
+      clearTimeout(t1);
+      clearTimeout(t2);
+      window.removeEventListener("pageshow", onPageShow);
+      window.removeEventListener("resize", onPageShow);
+      window.removeEventListener("orientationchange", onPageShow);
+      document.removeEventListener("visibilitychange", onVisibilityChange);
+      observer?.disconnect();
+      instance.destroy();
     };
   }, []);
 
