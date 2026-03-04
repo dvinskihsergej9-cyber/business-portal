@@ -6,6 +6,32 @@ export function adminRoutes({ prisma, auth, requireAdmin }) {
   const router = express.Router();
 
   router.use(auth, requireAdmin);
+  const MAX_ITEM_IMAGE_BYTES = 3 * 1024 * 1024;
+
+  const normalizeItemImageDataUrl = (value) => {
+    const raw = String(value || "").trim();
+    if (!raw) return null;
+    const match = raw.match(/^data:(image\/(?:png|jpeg|jpg|webp));base64,([A-Za-z0-9+/=]+)$/i);
+    if (!match) {
+      const err = new Error("ITEM_IMAGE_BAD_FORMAT");
+      err.code = "ITEM_IMAGE_BAD_FORMAT";
+      throw err;
+    }
+    const mime = String(match[1] || "").toLowerCase().replace("image/jpg", "image/jpeg");
+    const base64 = String(match[2] || "");
+    const bytes = Buffer.from(base64, "base64");
+    if (!bytes.length) {
+      const err = new Error("ITEM_IMAGE_EMPTY");
+      err.code = "ITEM_IMAGE_EMPTY";
+      throw err;
+    }
+    if (bytes.length > MAX_ITEM_IMAGE_BYTES) {
+      const err = new Error("ITEM_IMAGE_TOO_LARGE");
+      err.code = "ITEM_IMAGE_TOO_LARGE";
+      throw err;
+    }
+    return `data:${mime};base64,${bytes.toString("base64")}`;
+  };
 
   const requirePermission = (permissionKey) => (req, res, next) => {
     if (hasPermission(req.user, permissionKey)) return next();
@@ -149,6 +175,52 @@ export function adminRoutes({ prisma, auth, requireAdmin }) {
         return res.status(400).json({ message: "ITEM_UNIQUE_CONFLICT" });
       }
       return res.status(500).json({ message: "ITEM_UPDATE_ERROR" });
+    }
+  });
+
+  router.put("/warehouse/items/:id/image", requireWarehouseAdmin, async (req, res) => {
+    try {
+      const id = Number(req.params.id);
+      if (!id || Number.isNaN(id)) {
+        return res.status(400).json({ message: "INVALID_ITEM_ID" });
+      }
+      const existing = await prisma.item.findUnique({ where: { id } });
+      if (!existing) {
+        return res.status(404).json({ message: "ITEM_NOT_FOUND" });
+      }
+
+      const hasField = Object.prototype.hasOwnProperty.call(req.body || {}, "imageDataUrl");
+      if (!hasField) {
+        return res.status(400).json({ message: "ITEM_IMAGE_REQUIRED" });
+      }
+
+      const normalized =
+        req.body?.imageDataUrl == null || String(req.body.imageDataUrl).trim() === ""
+          ? null
+          : normalizeItemImageDataUrl(req.body.imageDataUrl);
+
+      const updated = await prisma.item.update({
+        where: { id },
+        data: { imageUrl: normalized },
+        select: { id: true, imageUrl: true },
+      });
+      return res.json({ ok: true, item: updated });
+    } catch (err) {
+      if (err.code === "ITEM_IMAGE_BAD_FORMAT") {
+        return res
+          .status(400)
+          .json({ message: "Поддерживаются только изображения JPG, PNG или WEBP." });
+      }
+      if (err.code === "ITEM_IMAGE_EMPTY") {
+        return res.status(400).json({ message: "Файл изображения пустой." });
+      }
+      if (err.code === "ITEM_IMAGE_TOO_LARGE") {
+        return res
+          .status(413)
+          .json({ message: "Изображение слишком большое. Максимум 3 МБ." });
+      }
+      console.error("admin item image update error:", err);
+      return res.status(500).json({ message: "ITEM_IMAGE_UPDATE_ERROR" });
     }
   });
 

@@ -49,7 +49,7 @@ const requestContext = new AsyncLocalStorage();
 const upload = multer({ storage: multer.memoryStorage() });
 
 app.use(cors());
-app.use(express.json());
+app.use(express.json({ limit: "6mb" }));
 app.use((req, res, next) => {
   requestContext.run(
     { orgId: null, isSystemOwner: false, skipTenantScope: false },
@@ -5585,6 +5585,7 @@ app.get("/api/inventory/items/by-barcode/:barcode", auth, async (req, res) => {
       sku: item.sku,
       barcode: item.barcode,
       qrCode: item.qrCode,
+      imageUrl: item.imageUrl || null,
       unit: item.unit,
       minStock: item.minStock,
       maxStock: item.maxStock,
@@ -6022,6 +6023,7 @@ app.get("/api/warehouse/scan/resolve", auth, async (req, res) => {
           sku: item.sku,
           barcode: item.barcode,
           qrCode: item.qrCode,
+          imageUrl: item.imageUrl || null,
         },
       });
     }
@@ -6038,6 +6040,7 @@ app.get("/api/warehouse/scan/resolve", auth, async (req, res) => {
           sku: item.sku,
           barcode: item.barcode,
           qrCode: item.qrCode,
+          imageUrl: item.imageUrl || null,
         },
       });
     }

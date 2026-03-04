@@ -153,6 +153,16 @@ export default function OrderFulfillmentFlow({ authHeaders, onBack }) {
     [pickPlan, skippedStepKeys]
   );
   const currentStep = activePickPlan[currentIndex] || null;
+  const itemImageById = useMemo(() => {
+    const map = new Map();
+    for (const line of selectedOrder?.lines || []) {
+      const itemId = Number(line?.item?.id || line?.itemId);
+      if (!itemId) continue;
+      const url = String(line?.item?.imageUrl || "").trim();
+      if (url) map.set(itemId, url);
+    }
+    return map;
+  }, [selectedOrder]);
   const orderStatus = String(selectedOrder?.status || "");
   const allLinesPicked = useMemo(
     () =>
@@ -1045,6 +1055,15 @@ export default function OrderFulfillmentFlow({ authHeaders, onBack }) {
             {currentStep && (
               <div className="tsd-card">
               <div className="tsd-card__body">
+                  {itemImageById.get(Number(currentStep.itemId)) ? (
+                    <img
+                      src={itemImageById.get(Number(currentStep.itemId))}
+                      alt={currentStep.itemName || "Товар"}
+                      className="tsd-card__image"
+                      style={{ marginBottom: 8 }}
+                      loading="lazy"
+                    />
+                  ) : null}
                   <div className="tsd-card__title">Шаг {currentIndex + 1} из {activePickPlan.length}</div>
                   <div className="tsd-card__meta">
                     Ячейка: {currentStep.locationCode || currentStep.locationName || `#${currentStep.locationId}`}

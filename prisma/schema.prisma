@@ -353,6 +353,7 @@ model Item {
   id                         Int          @id @default(autoincrement())
   orgId                      Int?
   name                       String
+  imageUrl                   String?
   sku                        String?
   barcode                    String?
   qrCode                     String?

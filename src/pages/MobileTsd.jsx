@@ -1923,12 +1923,7 @@ export default function MobileTsd() {
             <div className="tsd-list">
               {binState.items.map((row) => (
                 <div key={row.item.id} className="tsd-card">
-                  <div className="tsd-card__body">
-                    <div className="tsd-card__title">{row.item.name}</div>
-                    <div className="tsd-card__meta">
-                      Было: {row.expectedQty} {row.item.unit || ""}
-                    </div>
-                  </div>
+                  <ItemCard item={row.item} qty={row.expectedQty} />
                   <input
                     className="tsd-input"
                     type="number"
@@ -2253,18 +2248,15 @@ export default function MobileTsd() {
             <div className="tsd-grid">
               {putawayState.pending.map((line) => (
                 <div key={line.id} className="tsd-card">
-                  <div className="tsd-card__body">
-                    <div className="tsd-card__title">{line.item?.name}</div>
-                    <div className="tsd-card__meta">
-                      Осталось: {line.remainingQty ?? line.qty}{" "}
-                      {line.item?.unit || ""}
-                    </div>
-                    <div className="tsd-card__meta">
-                      Дата: {formatDate(line.manufacturedAt)}
-                    </div>
-                    <div className="tsd-card__meta">
-                      Срок: {formatDate(line.expiresAt || line.manufacturedAt)}
-                    </div>
+                  <ItemCard
+                    item={line.item}
+                    qty={Number(line.remainingQty ?? line.qty) || 0}
+                  />
+                  <div className="tsd-card__meta">
+                    Дата: {formatDate(line.manufacturedAt)}
+                  </div>
+                  <div className="tsd-card__meta">
+                    Срок: {formatDate(line.expiresAt || line.manufacturedAt)}
                   </div>
                   <button
                     type="button"

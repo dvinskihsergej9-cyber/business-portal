@@ -19,6 +19,48 @@ function toDateInput(value) {
   return d.toISOString().slice(0, 10);
 }
 
+const ITEM_IMAGE_MAX_BYTES = 3 * 1024 * 1024;
+const ITEM_IMAGE_MAX_SIDE = 1200;
+
+async function fileToDataUrl(file) {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => resolve(String(reader.result || ""));
+    reader.onerror = () => reject(new Error("Не удалось прочитать файл."));
+    reader.readAsDataURL(file);
+  });
+}
+
+async function compressImageToDataUrl(file) {
+  const initialDataUrl = await fileToDataUrl(file);
+  const image = await new Promise((resolve, reject) => {
+    const img = new Image();
+    img.onload = () => resolve(img);
+    img.onerror = () => reject(new Error("Не удалось обработать изображение."));
+    img.src = initialDataUrl;
+  });
+
+  const srcW = Number(image.width) || 0;
+  const srcH = Number(image.height) || 0;
+  if (!srcW || !srcH) return initialDataUrl;
+
+  const scale = Math.min(1, ITEM_IMAGE_MAX_SIDE / Math.max(srcW, srcH));
+  const canvas = document.createElement("canvas");
+  canvas.width = Math.max(1, Math.round(srcW * scale));
+  canvas.height = Math.max(1, Math.round(srcH * scale));
+  const ctx = canvas.getContext("2d");
+  if (!ctx) return initialDataUrl;
+  ctx.drawImage(image, 0, 0, canvas.width, canvas.height);
+
+  const tryQualities = [0.9, 0.82, 0.74, 0.66, 0.58];
+  for (const quality of tryQualities) {
+    const result = canvas.toDataURL("image/jpeg", quality);
+    const bytes = Math.floor((result.length * 3) / 4);
+    if (bytes <= ITEM_IMAGE_MAX_BYTES) return result;
+  }
+  return canvas.toDataURL("image/jpeg", 0.5);
+}
+
 export default function AdminWarehousePanel() {
   const [activeTab, setActiveTab] = useState("items");
   const [items, setItems] = useState([]);
@@ -40,6 +82,7 @@ export default function AdminWarehousePanel() {
   const [showOrdersImport, setShowOrdersImport] = useState(false);
   const [showItemsImport, setShowItemsImport] = useState(false);
   const [itemError, setItemError] = useState("");
+  const [itemImageBusyId, setItemImageBusyId] = useState(null);
 
   const [itemForm, setItemForm] = useState({
     name: "",
@@ -413,6 +456,62 @@ export default function AdminWarehousePanel() {
     }
   };
 
+  const handleUploadItemImage = async (item, file) => {
+    if (!item?.id || !file) return;
+    try {
+      setItemImageBusyId(item.id);
+      setError("");
+
+      const allowedTypes = new Set(["image/jpeg", "image/jpg", "image/png", "image/webp"]);
+      if (!allowedTypes.has(String(file.type || "").toLowerCase())) {
+        throw new Error("Поддерживаются только JPG, PNG или WEBP.");
+      }
+
+      const preparedDataUrl = await compressImageToDataUrl(file);
+      const bytes = Math.floor((preparedDataUrl.length * 3) / 4);
+      if (bytes > ITEM_IMAGE_MAX_BYTES) {
+        throw new Error("Фото слишком большое. Максимум 3 МБ.");
+      }
+
+      const res = await fetch(`${API}/admin/warehouse/items/${item.id}/image`, {
+        method: "PUT",
+        headers: authHeaders,
+        body: JSON.stringify({ imageDataUrl: preparedDataUrl }),
+      });
+      const data = await res.json().catch(() => null);
+      if (!res.ok) {
+        throw new Error(data?.message || "Ошибка сохранения фото.");
+      }
+      await loadAll();
+    } catch (err) {
+      setError(normalizeErrorMessage(err, "Ошибка загрузки фото товара."));
+    } finally {
+      setItemImageBusyId(null);
+    }
+  };
+
+  const handleRemoveItemImage = async (item) => {
+    if (!item?.id) return;
+    try {
+      setItemImageBusyId(item.id);
+      setError("");
+      const res = await fetch(`${API}/admin/warehouse/items/${item.id}/image`, {
+        method: "PUT",
+        headers: authHeaders,
+        body: JSON.stringify({ imageDataUrl: null }),
+      });
+      const data = await res.json().catch(() => null);
+      if (!res.ok) {
+        throw new Error(data?.message || "Ошибка удаления фото.");
+      }
+      await loadAll();
+    } catch (err) {
+      setError(normalizeErrorMessage(err, "Ошибка удаления фото товара."));
+    } finally {
+      setItemImageBusyId(null);
+    }
+  };
+
 
   return (
     <div className="admin-console__card">
@@ -627,6 +726,7 @@ export default function AdminWarehousePanel() {
             <table className="admin-table">
               <thead>
                 <tr>
+                  <th>Фото</th>
                   <th>Товар</th>
                   <th>SKU</th>
                   <th>Штрихкод</th>
@@ -640,6 +740,25 @@ export default function AdminWarehousePanel() {
               <tbody>
                 {items.map((item) => (
                   <tr key={item.id}>
+                    <td data-label="Фото">
+                      {item.imageUrl ? (
+                        <img
+                          src={item.imageUrl}
+                          alt={item.name || "Товар"}
+                          style={{
+                            width: 56,
+                            height: 56,
+                            objectFit: "cover",
+                            borderRadius: 10,
+                            border: "1px solid #dbe3f3",
+                            background: "#f8fafc",
+                          }}
+                          loading="lazy"
+                        />
+                      ) : (
+                        <div className="admin-table__meta">Нет фото</div>
+                      )}
+                    </td>
                     <td data-label="Товар">
                       <div className="admin-table__title">{item.name}</div>
                       <div className="admin-table__meta">ID: {item.id}</div>
@@ -651,6 +770,32 @@ export default function AdminWarehousePanel() {
                     <td data-label="Макс">{item.maxStock ?? "-"}</td>
                     <td data-label="Цена">{item.defaultPrice ?? "-"}</td>
                     <td data-label="Действия" className="admin-table__actions">
+                      <label className="admin-btn admin-btn--secondary" style={{ cursor: "pointer" }}>
+                        {itemImageBusyId === item.id ? "Загрузка..." : item.imageUrl ? "Заменить фото" : "Добавить фото"}
+                        <input
+                          type="file"
+                          accept="image/png,image/jpeg,image/webp"
+                          style={{ display: "none" }}
+                          disabled={itemImageBusyId === item.id}
+                          onChange={(event) => {
+                            const file = event.target.files?.[0];
+                            if (file) {
+                              handleUploadItemImage(item, file);
+                            }
+                            event.target.value = "";
+                          }}
+                        />
+                      </label>
+                      {item.imageUrl ? (
+                        <button
+                          type="button"
+                          className="admin-btn admin-btn--ghost"
+                          onClick={() => handleRemoveItemImage(item)}
+                          disabled={itemImageBusyId === item.id}
+                        >
+                          Удалить фото
+                        </button>
+                      ) : null}
                       <button
                         type="button"
                         className="admin-btn admin-btn--secondary"
@@ -670,7 +815,7 @@ export default function AdminWarehousePanel() {
                 ))}
                 {!items.length && (
                   <tr>
-                    <td colSpan="8" className="admin-muted">
+                    <td colSpan="9" className="admin-muted">
                       Нет товаров.
                     </td>
                   </tr>
