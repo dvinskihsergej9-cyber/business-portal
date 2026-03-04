@@ -218,8 +218,43 @@ export default function MobileTsd() {
   };
 
   const parseJsonSafe = async (res) => {
+    const raw = await res.text().catch(() => "");
+    if (!raw) return null;
     try {
-      return await res.json();
+      return JSON.parse(raw);
+    } catch {
+      const normalized = String(raw).trim();
+      const codeMatch = normalized.match(
+        /(LOCATION_CONFLICT_CONFIRM|LOCATION_OCCUPIED|BAD_QTY|RECEIVING_LINE_NOT_FOUND|TENANT_NOT_FOUND|RECORD_CHANGED|ALREADY_PROCESSED)/i
+      );
+      if (codeMatch?.[1]) {
+        return { message: String(codeMatch[1]).toUpperCase() };
+      }
+      return { message: normalized };
+    }
+  };
+
+  const detectLocationConflictType = async (locationId, itemId) => {
+    const locId = Number(locationId);
+    const targetItemId = Number(itemId);
+    if (!locId || Number.isNaN(locId)) return null;
+    try {
+      const res = await fetch(`${API_BASE}/warehouse/locations/${locId}/stock`, {
+        headers: authHeaders,
+      });
+      const data = await parseJsonSafe(res);
+      if (!res.ok) return null;
+
+      const rows = Array.isArray(data?.items) ? data.items : [];
+      const hasTarget = rows.some((row) => Number(row?.item?.id) === targetItemId);
+      const hasForeign = rows.some((row) => {
+        const rowItemId = Number(row?.item?.id);
+        return rowItemId && rowItemId !== targetItemId;
+      });
+
+      if (hasForeign) return "FOREIGN_ITEM";
+      if (hasTarget) return "SAME_ITEM";
+      return null;
     } catch {
       return null;
     }
@@ -736,7 +771,8 @@ export default function MobileTsd() {
       });
       const data = await parseJsonSafe(res);
       if (!res.ok) {
-        if (String(data?.message || "").toUpperCase() === "LOCATION_CONFLICT_CONFIRM") {
+        const code = String(data?.message || "").toUpperCase();
+        if (code === "LOCATION_CONFLICT_CONFIRM") {
           setCountState((prev) => ({
             ...prev,
             allowDifferentDate: true,
@@ -744,6 +780,27 @@ export default function MobileTsd() {
           throw new Error(
             "В ячейке есть такой же товар с другой датой. Нажмите «Разместить» ещё раз для подтверждения."
           );
+        }
+        if (code === "LOCATION_OCCUPIED") {
+          throw new Error("В этой ячейке уже другой товар. Разместите в другую ячейку.");
+        }
+        if (res.status === 409) {
+          const conflictType = await detectLocationConflictType(
+            countState.location?.id,
+            countState.item?.id
+          );
+          if (conflictType === "FOREIGN_ITEM") {
+            throw new Error("В этой ячейке уже другой товар. Разместите в другую ячейку.");
+          }
+          if (conflictType === "SAME_ITEM") {
+            setCountState((prev) => ({
+              ...prev,
+              allowDifferentDate: true,
+            }));
+            throw new Error(
+              "В ячейке есть такой же товар с другой датой. Нажмите «Разместить» ещё раз для подтверждения."
+            );
+          }
         }
         throw new Error(mapPutawayErrorMessage(res, data, "Не удалось разместить."));
       }
@@ -1109,7 +1166,8 @@ export default function MobileTsd() {
       });
       const data = await parseJsonSafe(res);
       if (!res.ok) {
-        if (String(data?.message || "").toUpperCase() === "LOCATION_CONFLICT_CONFIRM") {
+        const code = String(data?.message || "").toUpperCase();
+        if (code === "LOCATION_CONFLICT_CONFIRM") {
           setPutawayState((prev) => ({
             ...prev,
             allowDifferentDate: true,
@@ -1118,6 +1176,28 @@ export default function MobileTsd() {
               "В ячейке есть такой же товар, но с другой датой. Нажмите «Подтвердить» еще раз, чтобы разрешить размещение.",
           }));
           return;
+        }
+        if (code === "LOCATION_OCCUPIED") {
+          throw new Error("В этой ячейке уже другой товар. Разместите в другую ячейку.");
+        }
+        if (res.status === 409) {
+          const conflictType = await detectLocationConflictType(
+            putawayState.to?.id,
+            putawayState.selected?.item?.id
+          );
+          if (conflictType === "FOREIGN_ITEM") {
+            throw new Error("В этой ячейке уже другой товар. Разместите в другую ячейку.");
+          }
+          if (conflictType === "SAME_ITEM") {
+            setPutawayState((prev) => ({
+              ...prev,
+              allowDifferentDate: true,
+              loading: false,
+              error:
+                "В ячейке есть такой же товар, но с другой датой. Нажмите «Подтвердить» еще раз, чтобы разрешить размещение.",
+            }));
+            return;
+          }
         }
         throw new Error(mapPutawayErrorMessage(res, data));
       }
