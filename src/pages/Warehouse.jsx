@@ -2255,25 +2255,41 @@ export default function Warehouse({
 
   };
 
-
-
-    const sortedPurchaseOrders = useMemo(() => {
-
+  const sortedPurchaseOrders = useMemo(() => {
     return [...purchaseOrders].sort((a, b) => {
-
       const da = a.createdAt ? new Date(a.createdAt).getTime() : 0;
-
       const db = b.createdAt ? new Date(b.createdAt).getTime() : 0;
-
-      return db - da; // новые сверху
-
+      return db - da;
     });
-
   }, [purchaseOrders]);
 
+  const groupedPurchaseOrders = useMemo(() => {
+    const groups = [];
+    for (const po of sortedPurchaseOrders) {
+      const dateObj = po.createdAt ? new Date(po.createdAt) : null;
+      const dateStr = dateObj
+        ? dateObj.toLocaleDateString("ru-RU", {
+            day: "2-digit",
+            month: "2-digit",
+            year: "numeric",
+          })
+        : "Без даты";
+      const timeStr = dateObj
+        ? dateObj.toLocaleTimeString("ru-RU", {
+            hour: "2-digit",
+            minute: "2-digit",
+          })
+        : "-";
 
-
-  let lastPurchaseOrderDate = "";
+      const lastGroup = groups[groups.length - 1];
+      if (!lastGroup || lastGroup.date !== dateStr) {
+        groups.push({ date: dateStr, items: [{ po, timeStr }] });
+      } else {
+        lastGroup.items.push({ po, timeStr });
+      }
+    }
+    return groups;
+  }, [sortedPurchaseOrders]);
 
 
 
@@ -4029,9 +4045,9 @@ export default function Warehouse({
 
                   ) : (
 
-                    <div className="table-wrapper purchase-orders-list-table">
+                    <div className="table-wrapper">
 
-                      <table className="table purchase-orders-list-table__grid">
+                      <table className="table">
 
                         <thead>
 
@@ -4159,157 +4175,96 @@ export default function Warehouse({
                     <p className="text-muted">Заказов пока нет.</p>
 
                   ) : (
-
-                    <div className="table-wrapper">
-
+                    <>
+                    <div className="table-wrapper purchase-orders-desktop">
                       <table className="table">
-
                         <thead>
-
                           <tr>
-
                             <th>ID</th>
-
                             <th>Время</th>
-
                             <th>Поставщик</th>
-
                             <th>Статус</th>
-
                             <th></th>
-
                           </tr>
-
                         </thead>
-
                         <tbody>
-
-                          {sortedPurchaseOrders.map((po) => {
-
-                            const dateObj = po.createdAt
-
-                              ? new Date(po.createdAt)
-
-                              : null;
-
-
-
-                            const dateStr = dateObj
-
-                              ? dateObj.toLocaleDateString("ru-RU", {
-
-                                  day: "2-digit",
-
-                                  month: "2-digit",
-
-                                  year: "numeric",
-
-                                })
-
-                              : "Без даты";
-
-
-
-                            const timeStr = dateObj
-
-                              ? dateObj.toLocaleTimeString("ru-RU", {
-
-                                  hour: "2-digit",
-
-                                  minute: "2-digit",
-
-                                })
-
-                              : "-";
-
-
-
-                            const showDateRow =
-
-                              dateStr !== lastPurchaseOrderDate;
-
-                            if (showDateRow) {
-
-                              lastPurchaseOrderDate = dateStr;
-
-                            }
-
-
-
-                            return (
-
-                              <Fragment key={po.id}>
-
-                                {showDateRow && (
-
-                                  <tr className="table-section-row">
-
-                                    <td
-
-                                      colSpan={5}
-
-                                      style={{
-
-                                        backgroundColor: "#f3f4f6",
-
-                                        fontWeight: 600,
-
-                                        paddingTop: 6,
-
-                                        paddingBottom: 6,
-
-                                      }}
-
-                                    >
-
-                                      {dateStr}
-
-                                    </td>
-
-                                  </tr>
-
-                                )}
-
-
-
-                                <tr className="purchase-orders-list-row">
-
-                                  <td data-label="id">{po.id}</td>
-
-                                  <td data-label="time">{timeStr}</td>
-
-                                  <td data-label="supplier">{po.supplier?.name || "-"}</td>
-
-                                  <td data-label="status">
-
-                                    {PO_STATUS_LABELS[po.status] || po.status}
-
-                                  </td>
-
-                                  <td data-label="action">
+                          {groupedPurchaseOrders.map((group) => (
+                            <Fragment key={`desktop-${group.date}`}>
+                              <tr className="table-section-row">
+                                <td
+                                  colSpan={5}
+                                  style={{
+                                    backgroundColor: "#f3f4f6",
+                                    fontWeight: 600,
+                                    paddingTop: 6,
+                                    paddingBottom: 6,
+                                  }}
+                                >
+                                  {group.date}
+                                </td>
+                              </tr>
+                              {group.items.map(({ po, timeStr }) => (
+                                <tr key={po.id}>
+                                  <td>{po.id}</td>
+                                  <td>{timeStr}</td>
+                                  <td>{po.supplier?.name || "-"}</td>
+                                  <td>{PO_STATUS_LABELS[po.status] || po.status}</td>
+                                  <td>
                                     <button
                                       type="button"
-                                      className="btn btn--secondary btn--sm purchase-orders-list__action"
+                                      className="btn btn--secondary btn--sm"
                                       onClick={() => handleViewPurchaseOrder(po)}
                                     >
                                       Просмотреть
                                     </button>
                                   </td>
-
                                 </tr>
-
-                              </Fragment>
-
-                            );
-
-                          })}
-
+                              ))}
+                            </Fragment>
+                          ))}
                         </tbody>
-
                       </table>
-
                     </div>
 
+                    <div className="purchase-orders-mobile">
+                      {groupedPurchaseOrders.map((group) => (
+                        <div key={`mobile-${group.date}`} className="purchase-orders-mobile__group">
+                          <div className="purchase-orders-mobile__date">{group.date}</div>
+                          {group.items.map(({ po, timeStr }) => (
+                            <div key={po.id} className="purchase-orders-mobile__card">
+                              <div className="purchase-orders-mobile__row">
+                                <span className="purchase-orders-mobile__label">ID</span>
+                                <span className="purchase-orders-mobile__value">{po.id}</span>
+                              </div>
+                              <div className="purchase-orders-mobile__row">
+                                <span className="purchase-orders-mobile__label">Время</span>
+                                <span className="purchase-orders-mobile__value">{timeStr}</span>
+                              </div>
+                              <div className="purchase-orders-mobile__row">
+                                <span className="purchase-orders-mobile__label">Поставщик</span>
+                                <span className="purchase-orders-mobile__value purchase-orders-mobile__value--supplier">
+                                  {po.supplier?.name || "-"}
+                                </span>
+                              </div>
+                              <div className="purchase-orders-mobile__row">
+                                <span className="purchase-orders-mobile__label">Статус</span>
+                                <span className="purchase-orders-mobile__value">
+                                  {PO_STATUS_LABELS[po.status] || po.status}
+                                </span>
+                              </div>
+                              <button
+                                type="button"
+                                className="btn btn--secondary btn--sm purchase-orders-mobile__action"
+                                onClick={() => handleViewPurchaseOrder(po)}
+                              >
+                                Просмотреть
+                              </button>
+                            </div>
+                          ))}
+                        </div>
+                      ))}
+                    </div>
+                    </>
                   )}
 
                 </div>

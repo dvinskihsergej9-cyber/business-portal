@@ -1273,6 +1273,14 @@ input[type="number"] {
   background: rgba(255, 255, 255, 0.8);
 }
 
+.purchase-orders-desktop {
+  display: block;
+}
+
+.purchase-orders-mobile {
+  display: none;
+}
+
 .portal-surface .warehouse-card {
   border-radius: 16px;
   border: 1px solid rgba(15, 23, 42, 0.12);
@@ -2170,45 +2178,31 @@ input[type="number"] {
   .transactions-table .transactions-row td[data-label="unit"]::before {
     content: "Ед.";
   }
-  .purchase-orders-list-table {
-    border: none;
-    background: transparent;
-    overflow: visible;
-  }
 
-  .purchase-orders-list-table__grid {
-    min-width: 0;
-    width: 100%;
-    border-spacing: 0;
-  }
-
-  .purchase-orders-list-table__grid thead {
+  .purchase-orders-desktop {
     display: none;
   }
 
-  .purchase-orders-list-table__grid tbody {
+  .purchase-orders-mobile {
     display: grid;
     gap: 10px;
   }
 
-  .purchase-orders-list-table__grid .table-section-row {
-    display: block;
+  .purchase-orders-mobile__group {
+    display: grid;
+    gap: 8px;
   }
 
-  .purchase-orders-list-table__grid .table-section-row td {
-    display: block;
-    padding: 4px 6px;
-    border: none;
-    border-radius: 0;
-    background: transparent !important;
-    color: #475569;
-    font-weight: 700;
+  .purchase-orders-mobile__date {
     font-size: 12px;
+    font-weight: 700;
     text-transform: uppercase;
     letter-spacing: 0.04em;
+    color: #475569;
+    padding: 2px 6px;
   }
 
-  .purchase-orders-list-table__grid .purchase-orders-list-row {
+  .purchase-orders-mobile__card {
     display: grid;
     gap: 6px;
     border: 1px solid rgba(15, 23, 42, 0.12);
@@ -2218,20 +2212,14 @@ input[type="number"] {
     box-shadow: 0 8px 18px rgba(15, 23, 42, 0.06);
   }
 
-  .purchase-orders-list-table__grid .purchase-orders-list-row td {
+  .purchase-orders-mobile__row {
     display: grid;
     grid-template-columns: 108px minmax(0, 1fr);
-    align-items: baseline;
     gap: 8px;
-    padding: 0;
-    border: none;
-    border-radius: 0;
-    background: transparent;
-    white-space: normal;
+    align-items: baseline;
   }
 
-  .purchase-orders-list-table__grid .purchase-orders-list-row td::before {
-    content: attr(data-label);
+  .purchase-orders-mobile__label {
     font-size: 12px;
     text-transform: uppercase;
     letter-spacing: 0.04em;
@@ -2239,41 +2227,20 @@ input[type="number"] {
     font-weight: 700;
   }
 
-  .purchase-orders-list-table__grid .purchase-orders-list-row td[data-label="id"]::before {
-    content: "ID";
+  .purchase-orders-mobile__value {
+    min-width: 0;
+    font-weight: 600;
   }
 
-  .purchase-orders-list-table__grid .purchase-orders-list-row td[data-label="time"]::before {
-    content: "Время";
-  }
-
-  .purchase-orders-list-table__grid .purchase-orders-list-row td[data-label="supplier"]::before {
-    content: "Поставщик";
-  }
-
-  .purchase-orders-list-table__grid .purchase-orders-list-row td[data-label="status"]::before {
-    content: "Статус";
-  }
-
-  .purchase-orders-list-table__grid .purchase-orders-list-row td[data-label="action"]::before {
-    content: "Действие";
-  }
-
-  .purchase-orders-list-table__grid .purchase-orders-list-row td[data-label="supplier"] {
+  .purchase-orders-mobile__value--supplier {
     overflow-wrap: anywhere;
   }
 
-  .purchase-orders-list-table__grid .purchase-orders-list-row td[data-label="action"] {
-    grid-template-columns: 1fr;
-  }
-
-  .purchase-orders-list-table__grid .purchase-orders-list-row td[data-label="action"]::before {
-    margin-bottom: 6px;
-  }
-
-  .purchase-orders-list-table__grid .purchase-orders-list__action {
+  .purchase-orders-mobile__action {
     width: 100%;
     justify-content: center;
+    white-space: nowrap;
+    margin-top: 6px;
   }
 }
 
@@ -2337,10 +2304,6 @@ input[type="number"] {
 .portal-surface .table--queue td:first-child,
 .portal-surface .table--queue th:first-child {
   white-space: normal;
-}
-
-.portal-surface .purchase-orders-list__action {
-  white-space: nowrap;
 }
 
 /* ===== Pricing (modern) ===== */
