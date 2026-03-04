@@ -523,7 +523,7 @@ export default function MobileReceiveByOrder({
         name: row.item?.name || "",
         unit: row.item?.unit || "шт",
         orderedQty: row.quantity,
-        receivedQty: 0,
+        receivedQty: "",
         price: row.price,
         barcode: row.item?.barcode || "",
       }));
@@ -577,7 +577,7 @@ export default function MobileReceiveByOrder({
   };
 
   const handleResetAll = () => {
-    setRows((prev) => prev.map((r) => ({ ...r, receivedQty: 0 })));
+    setRows((prev) => prev.map((r) => ({ ...r, receivedQty: "" })));
   };
 
   const totalAmount = useMemo(

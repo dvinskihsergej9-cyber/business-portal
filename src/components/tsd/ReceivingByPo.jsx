@@ -90,6 +90,13 @@ export default function ReceivingByPo({ authHeaders, makeOpId, onBack }) {
         };
       const orderedQty = Number(row.orderedQty ?? row.quantity) || 0;
       const receivedQty = Number(row.receivedQty) || 0;
+      const hasLocalAccepted = Object.prototype.hasOwnProperty.call(
+        localAccepted,
+        row.itemId
+      );
+      const localAcceptedInput = hasLocalAccepted
+        ? localAccepted[row.itemId]
+        : "";
       const localAcceptedQty = Number(localAccepted[row.itemId]) || 0;
       const expectedRemaining = Math.max(0, orderedQty - receivedQty);
       const acceptedTotal = receivedQty + localAcceptedQty;
@@ -106,6 +113,7 @@ export default function ReceivingByPo({ authHeaders, makeOpId, onBack }) {
         itemId: row.itemId,
         orderedQty,
         receivedQty,
+        localAcceptedInput,
         localAcceptedQty,
         acceptedTotal,
         expectedRemaining,
@@ -368,11 +376,23 @@ export default function ReceivingByPo({ authHeaders, makeOpId, onBack }) {
     }
   };
 
-  const handleQtyChange = (itemId, nextQty) => {
-    setLocalAccepted((prev) => ({
-      ...prev,
-      [itemId]: Number.isFinite(nextQty) && nextQty >= 0 ? nextQty : 0,
-    }));
+  const handleQtyChange = (itemId, rawValue) => {
+    const value = String(rawValue ?? "").trim();
+    setLocalAccepted((prev) => {
+      if (!value.length) {
+        const next = { ...prev };
+        delete next[itemId];
+        return next;
+      }
+      const parsed = Number(value);
+      if (!Number.isFinite(parsed) || parsed < 0) {
+        return prev;
+      }
+      return {
+        ...prev,
+        [itemId]: parsed,
+      };
+    });
   };
 
 
@@ -828,9 +848,9 @@ export default function ReceivingByPo({ authHeaders, makeOpId, onBack }) {
                     ref={(node) => {
                       if (node) qtyInputRefs.current[row.itemId] = node;
                     }}
-                    value={row.localAcceptedQty}
+                    value={row.localAcceptedInput}
                     onChange={(event) =>
-                      handleQtyChange(row.itemId, Number(event.target.value))
+                      handleQtyChange(row.itemId, event.target.value)
                     }
                   />
                 </div>
