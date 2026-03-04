@@ -84,6 +84,12 @@ export default function AdminWarehousePanel() {
   const [itemError, setItemError] = useState("");
   const [itemImageBusyId, setItemImageBusyId] = useState(null);
 
+  const openImagePreview = (url) => {
+    const imageUrl = String(url || "").trim();
+    if (!imageUrl) return;
+    window.open(imageUrl, "_blank", "noopener,noreferrer");
+  };
+
   const [itemForm, setItemForm] = useState({
     name: "",
     sku: "",
@@ -745,6 +751,7 @@ export default function AdminWarehousePanel() {
                         <img
                           src={item.imageUrl}
                           alt={item.name || "Товар"}
+                          onClick={() => openImagePreview(item.imageUrl)}
                           style={{
                             width: 56,
                             height: 56,
@@ -752,6 +759,7 @@ export default function AdminWarehousePanel() {
                             borderRadius: 10,
                             border: "1px solid #dbe3f3",
                             background: "#f8fafc",
+                            cursor: "zoom-in",
                           }}
                           loading="lazy"
                         />

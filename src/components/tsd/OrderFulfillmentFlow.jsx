@@ -139,6 +139,7 @@ export default function OrderFulfillmentFlow({ authHeaders, onBack }) {
   const [skipModalOpen, setSkipModalOpen] = useState(false);
   const [skipReason, setSkipReason] = useState(SKIP_REASON_OPTIONS[0]);
   const [skipComment, setSkipComment] = useState("");
+  const [previewImage, setPreviewImage] = useState(null);
   const [statusHistory, setStatusHistory] = useState([]);
   const [statusHistoryLoading, setStatusHistoryLoading] = useState(false);
   const [loading, setLoading] = useState(false);
@@ -1056,13 +1057,26 @@ export default function OrderFulfillmentFlow({ authHeaders, onBack }) {
               <div className="tsd-card">
               <div className="tsd-card__body">
                   {itemImageById.get(Number(currentStep.itemId)) ? (
-                    <img
-                      src={itemImageById.get(Number(currentStep.itemId))}
-                      alt={currentStep.itemName || "Товар"}
-                      className="tsd-card__image"
+                    <button
+                      type="button"
+                      className="tsd-card__image-btn"
+                      onClick={() =>
+                        setPreviewImage({
+                          url: itemImageById.get(Number(currentStep.itemId)),
+                          alt: currentStep.itemName || "Товар",
+                        })
+                      }
                       style={{ marginBottom: 8 }}
-                      loading="lazy"
-                    />
+                      title="Открыть фото"
+                      aria-label="Открыть фото товара"
+                    >
+                      <img
+                        src={itemImageById.get(Number(currentStep.itemId))}
+                        alt={currentStep.itemName || "Товар"}
+                        className="tsd-card__image"
+                        loading="lazy"
+                      />
+                    </button>
                   ) : null}
                   <div className="tsd-card__title">Шаг {currentIndex + 1} из {activePickPlan.length}</div>
                   <div className="tsd-card__meta">
@@ -1259,6 +1273,30 @@ export default function OrderFulfillmentFlow({ authHeaders, onBack }) {
                 Пропустить
               </button>
             </div>
+          </div>
+        </div>
+      )}
+
+      {previewImage?.url && (
+        <div
+          className="tsd-modal"
+          role="dialog"
+          aria-modal="true"
+          onClick={() => setPreviewImage(null)}
+        >
+          <div className="tsd-image-preview" onClick={(event) => event.stopPropagation()}>
+            <img
+              src={previewImage.url}
+              alt={previewImage.alt || "Товар"}
+              className="tsd-image-preview__img"
+            />
+            <button
+              type="button"
+              className="tsd-btn tsd-btn--ghost"
+              onClick={() => setPreviewImage(null)}
+            >
+              Закрыть
+            </button>
           </div>
         </div>
       )}
