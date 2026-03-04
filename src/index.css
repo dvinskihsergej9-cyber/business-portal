@@ -2170,7 +2170,111 @@ input[type="number"] {
   .transactions-table .transactions-row td[data-label="unit"]::before {
     content: "Ед.";
   }
+  .purchase-orders-list-table {
+    border: none;
+    background: transparent;
+    overflow: visible;
+  }
 
+  .purchase-orders-list-table__grid {
+    min-width: 0;
+    width: 100%;
+    border-spacing: 0;
+  }
+
+  .purchase-orders-list-table__grid thead {
+    display: none;
+  }
+
+  .purchase-orders-list-table__grid tbody {
+    display: grid;
+    gap: 10px;
+  }
+
+  .purchase-orders-list-table__grid .table-section-row {
+    display: block;
+  }
+
+  .purchase-orders-list-table__grid .table-section-row td {
+    display: block;
+    padding: 4px 6px;
+    border: none;
+    border-radius: 0;
+    background: transparent !important;
+    color: #475569;
+    font-weight: 700;
+    font-size: 12px;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+  }
+
+  .purchase-orders-list-table__grid .purchase-orders-list-row {
+    display: grid;
+    gap: 6px;
+    border: 1px solid rgba(15, 23, 42, 0.12);
+    border-radius: 14px;
+    padding: 12px 14px;
+    background: #ffffff;
+    box-shadow: 0 8px 18px rgba(15, 23, 42, 0.06);
+  }
+
+  .purchase-orders-list-table__grid .purchase-orders-list-row td {
+    display: grid;
+    grid-template-columns: 108px minmax(0, 1fr);
+    align-items: baseline;
+    gap: 8px;
+    padding: 0;
+    border: none;
+    border-radius: 0;
+    background: transparent;
+    white-space: normal;
+  }
+
+  .purchase-orders-list-table__grid .purchase-orders-list-row td::before {
+    content: attr(data-label);
+    font-size: 12px;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+    color: #64748b;
+    font-weight: 700;
+  }
+
+  .purchase-orders-list-table__grid .purchase-orders-list-row td[data-label="id"]::before {
+    content: "ID";
+  }
+
+  .purchase-orders-list-table__grid .purchase-orders-list-row td[data-label="time"]::before {
+    content: "Время";
+  }
+
+  .purchase-orders-list-table__grid .purchase-orders-list-row td[data-label="supplier"]::before {
+    content: "Поставщик";
+  }
+
+  .purchase-orders-list-table__grid .purchase-orders-list-row td[data-label="status"]::before {
+    content: "Статус";
+  }
+
+  .purchase-orders-list-table__grid .purchase-orders-list-row td[data-label="action"]::before {
+    content: "Действие";
+  }
+
+  .purchase-orders-list-table__grid .purchase-orders-list-row td[data-label="supplier"] {
+    overflow-wrap: anywhere;
+  }
+
+  .purchase-orders-list-table__grid .purchase-orders-list-row td[data-label="action"] {
+    grid-template-columns: 1fr;
+  }
+
+  .purchase-orders-list-table__grid .purchase-orders-list-row td[data-label="action"]::before {
+    margin-bottom: 6px;
+  }
+
+  .purchase-orders-list-table__grid .purchase-orders-list__action {
+    width: 100%;
+    justify-content: center;
+  }
 }
 
 @media (prefers-reduced-motion: reduce) {
@@ -2233,6 +2337,10 @@ input[type="number"] {
 .portal-surface .table--queue td:first-child,
 .portal-surface .table--queue th:first-child {
   white-space: normal;
+}
+
+.portal-surface .purchase-orders-list__action {
+  white-space: nowrap;
 }
 
 /* ===== Pricing (modern) ===== */

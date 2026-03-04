@@ -4029,9 +4029,9 @@ export default function Warehouse({
 
                   ) : (
 
-                    <div className="table-wrapper">
+                    <div className="table-wrapper purchase-orders-list-table">
 
-                      <table className="table">
+                      <table className="table purchase-orders-list-table__grid">
 
                         <thead>
 
@@ -4272,24 +4272,24 @@ export default function Warehouse({
 
 
 
-                                <tr>
+                                <tr className="purchase-orders-list-row">
 
-                                  <td>{po.id}</td>
+                                  <td data-label="id">{po.id}</td>
 
-                                  <td>{timeStr}</td>
+                                  <td data-label="time">{timeStr}</td>
 
-                                  <td>{po.supplier?.name || "-"}</td>
+                                  <td data-label="supplier">{po.supplier?.name || "-"}</td>
 
-                                  <td>
+                                  <td data-label="status">
 
                                     {PO_STATUS_LABELS[po.status] || po.status}
 
                                   </td>
 
-                                  <td>
+                                  <td data-label="action">
                                     <button
                                       type="button"
-                                      className="btn btn--secondary btn--sm"
+                                      className="btn btn--secondary btn--sm purchase-orders-list__action"
                                       onClick={() => handleViewPurchaseOrder(po)}
                                     >
                                       Просмотреть
