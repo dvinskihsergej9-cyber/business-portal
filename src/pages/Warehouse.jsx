@@ -22,24 +22,7 @@ import SupplierTrucksQueueTab from "../components/SupplierTrucksQueueTab";
 import MobileTsdTab from "../components/MobileTsdTab";
 import WarehouseLocationsPanel from "../components/WarehouseLocationsPanel";
 import TmcTab from "../components/TmcTab";
-import warehouseTasksIcon from "../assets/warehouse/tasks.webp";
-import warehouseTasksIconPng from "../assets/warehouse/tasks.png";
-import warehouseInventoryIcon from "../assets/warehouse/inventory.webp";
-import warehouseInventoryIconPng from "../assets/warehouse/inventory.png";
-import warehouseMovementIcon from "../assets/warehouse/movement.webp";
-import warehouseMovementIconPng from "../assets/warehouse/movement.png";
-import warehouseTransactionsIcon from "../assets/warehouse/transactions.webp";
-import warehouseTransactionsIconPng from "../assets/warehouse/transactions.png";
-import warehouseRevisionIcon from "../assets/warehouse/revision.webp";
-import warehouseRevisionIconPng from "../assets/warehouse/revision.png";
-import warehouseSuppliersIcon from "../assets/warehouse/suppliers.webp";
-import warehouseSuppliersIconPng from "../assets/warehouse/suppliers.png";
-import warehouseLocationsIcon from "../assets/warehouse/locations.webp";
-import warehouseLocationsIconPng from "../assets/warehouse/locations.png";
-import warehouseQueueIcon from "../assets/warehouse/queue.webp";
-import warehouseQueueIconPng from "../assets/warehouse/queue.png";
-import warehouseTsdIcon from "../assets/warehouse/tsd.webp";
-import warehouseTsdIconPng from "../assets/warehouse/tsd.png";
+import { WAREHOUSE_EMBEDDED_ICONS } from "../assets/warehouse/embeddedIcons";
 
 
 const API = API_BASE;
@@ -86,35 +69,30 @@ const WAREHOUSE_ICON_FALLBACK = {
 };
 
 const WAREHOUSE_IMAGE = {
-  tasks: { webp: warehouseTasksIcon, png: warehouseTasksIconPng },
-  inventory: { webp: warehouseInventoryIcon, png: warehouseInventoryIconPng },
-  movement: { webp: warehouseMovementIcon, png: warehouseMovementIconPng },
-  transactions: {
-    webp: warehouseTransactionsIcon,
-    png: warehouseTransactionsIconPng,
-  },
-  revision: { webp: warehouseRevisionIcon, png: warehouseRevisionIconPng },
-  suppliers: { webp: warehouseSuppliersIcon, png: warehouseSuppliersIconPng },
-  locations: { webp: warehouseLocationsIcon, png: warehouseLocationsIconPng },
-  queue: { webp: warehouseQueueIcon, png: warehouseQueueIconPng },
-  tsd: { webp: warehouseTsdIcon, png: warehouseTsdIconPng },
+  tasks: WAREHOUSE_EMBEDDED_ICONS.tasks,
+  inventory: WAREHOUSE_EMBEDDED_ICONS.inventory,
+  movement: WAREHOUSE_EMBEDDED_ICONS.movement,
+  transactions: WAREHOUSE_EMBEDDED_ICONS.transactions,
+  revision: WAREHOUSE_EMBEDDED_ICONS.revision,
+  suppliers: WAREHOUSE_EMBEDDED_ICONS.suppliers,
+  locations: WAREHOUSE_EMBEDDED_ICONS.locations,
+  queue: WAREHOUSE_EMBEDDED_ICONS.queue,
+  tsd: WAREHOUSE_EMBEDDED_ICONS.tsd,
 };
 
 function WarehouseTileIcon({ name }) {
   const image = WAREHOUSE_IMAGE[name] || null;
   if (image) {
     return (
-      <picture className="warehouse-card__icon-picture" aria-hidden="true">
-        <source srcSet={image.webp} type="image/webp" />
-        <img
-          className="warehouse-card__icon-image"
-          src={image.png}
-          alt=""
-          loading="eager"
-          decoding="sync"
-          fetchPriority="high"
-        />
-      </picture>
+      <img
+        className="warehouse-card__icon-image"
+        src={image}
+        alt=""
+        aria-hidden="true"
+        loading="eager"
+        decoding="sync"
+        fetchPriority="high"
+      />
     );
   }
 

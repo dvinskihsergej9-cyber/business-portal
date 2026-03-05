@@ -408,12 +408,6 @@ tr:last-child td {
   display: block;
 }
 
-.warehouse-card__icon-picture {
-  width: 56px;
-  height: 56px;
-  display: block;
-}
-
 @media (max-width: 900px) {
   .warehouse-card__icon {
     width: 56px;
@@ -425,11 +419,6 @@ tr:last-child td {
     width: 48px;
     height: 48px;
     border-radius: 10px;
-  }
-
-  .warehouse-card__icon-picture {
-    width: 48px;
-    height: 48px;
   }
 }
 
