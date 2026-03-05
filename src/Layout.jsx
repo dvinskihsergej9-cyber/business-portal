@@ -113,35 +113,47 @@ export default function Layout() {
           ))}
         </nav>
 
-        {/* Кнопка выхода */}
-        <button style={styles.logoutBtn} onClick={handleLogout}>
-          Выйти
-        </button>
       </aside>
 
       {/* Правая часть: шапка + контент */}
       <div style={styles.main}>
         <header style={headerStyle} className="portal-header">
           <div style={styles.headerRow}>
-            {isMobile && (
-              <button
-                type="button"
-                onClick={() => setDrawerOpen(true)}
-                style={styles.burgerBtn}
-                aria-label="Открыть меню"
-                aria-expanded={drawerOpen}
-              >
-                ☰
-              </button>
-            )}
-            <div>
-              <div style={styles.headerTitle}>{pageTitle}</div>
-              <div style={styles.headerSubtitle}>
-                {user
-                  ? `Пользователь: ${user.name} (${user.role})`
-                  : "Вы не авторизованы"}
+            <div style={styles.headerLeft}>
+              {isMobile && (
+                <button
+                  type="button"
+                  onClick={() => setDrawerOpen(true)}
+                  style={styles.burgerBtn}
+                  aria-label="Открыть меню"
+                  aria-expanded={drawerOpen}
+                >
+                  ☰
+                </button>
+              )}
+              <div>
+                <div style={styles.headerTitle}>{pageTitle}</div>
+                <div style={styles.headerSubtitle}>
+                  {user
+                    ? `Пользователь: ${user.name} (${user.role})`
+                    : "Вы не авторизованы"}
+                </div>
               </div>
             </div>
+            {!isMobile && (
+              <div style={styles.headerActions}>
+                <div style={styles.headerUserInfo}>
+                  {user?.name || "Пользователь"}
+                </div>
+                <button
+                  type="button"
+                  style={styles.headerLogoutBtn}
+                  onClick={handleLogout}
+                >
+                  Выйти
+                </button>
+              </div>
+            )}
           </div>
         </header>
 
@@ -336,7 +348,36 @@ const styles = {
   headerRow: {
     display: "flex",
     alignItems: "center",
+    justifyContent: "space-between",
+    gap: 12,
+  },
+  headerLeft: {
+    display: "flex",
+    alignItems: "center",
     gap: 10,
+    minWidth: 0,
+  },
+  headerActions: {
+    display: "inline-flex",
+    alignItems: "center",
+    gap: 12,
+    marginLeft: 12,
+    flexShrink: 0,
+  },
+  headerUserInfo: {
+    fontSize: 13,
+    color: "#4b5563",
+    whiteSpace: "nowrap",
+  },
+  headerLogoutBtn: {
+    padding: "8px 12px",
+    borderRadius: 8,
+    border: "1px solid #d1d5db",
+    background: "#ffffff",
+    color: "#111827",
+    fontSize: 14,
+    cursor: "pointer",
+    textAlign: "center",
   },
   burgerBtn: {
     width: 40,
