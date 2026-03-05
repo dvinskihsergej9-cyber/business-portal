@@ -201,16 +201,6 @@ export default function Layout() {
               ))}
             </nav>
 
-            <button
-              type="button"
-              style={styles.logoutBtn}
-              onClick={() => {
-                setDrawerOpen(false);
-                handleLogout();
-              }}
-            >
-              Выйти
-            </button>
           </aside>
         </div>
       )}
@@ -314,17 +304,6 @@ const styles = {
     borderColor: "#2563eb", // активный — синяя рамка
     boxShadow: "0 0 0 1px rgba(37, 99, 235, 0.12)",
     fontWeight: 600,
-  },
-  logoutBtn: {
-    marginTop: 16,
-    padding: "8px 12px",
-    borderRadius: 8,
-    border: "none",
-    background: "#4b5563",
-    color: "white",
-    fontSize: 14,
-    cursor: "pointer",
-    textAlign: "center",
   },
   main: {
     flex: 1,
