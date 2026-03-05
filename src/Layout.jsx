@@ -316,7 +316,7 @@ const styles = {
     borderRadius: 12,
     background: "#eff6ff",
     border: "1px solid #dbeafe",
-    gap: 10,
+    gap: 14,
   },
   logoMark: {
     width: 28,
@@ -326,19 +326,19 @@ const styles = {
       "linear-gradient(135deg, #2563eb 0%, #1e40af 40%, #93c5fd 100%)",
   },
   logoMarkImage: {
-    width: 32,
-    height: 32,
-    borderRadius: 8,
+    width: 52,
+    height: 52,
+    borderRadius: 12,
     objectFit: "contain",
     display: "block",
-    background: "#ffffff",
+    background: "transparent",
   },
   logoTitle: {
-    fontSize: 16,
+    fontSize: 18,
     fontWeight: 600,
   },
   logoSubtitle: {
-    fontSize: 11,
+    fontSize: 12,
     color: "#6b7280",
   },
   userCard: {
