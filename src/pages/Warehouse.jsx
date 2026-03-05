@@ -257,13 +257,14 @@ export default function Warehouse({
   const canTmc = sectionSet.has("tmc");
 
   const [section, setSection] = useState("");
-  const sectionChangedByUserRef = useRef(false);
 
   useEffect(() => {
-    if (!sections || sections.length == 0) return;
-    if (!section || !sections.includes(section)) {
-      sectionChangedByUserRef.current = false;
-      setSection(sections[0]);
+    if (!sections || sections.length === 0) {
+      if (section) setSection("");
+      return;
+    }
+    if (section && !sections.includes(section)) {
+      setSection("");
     }
   }, [section, sections]);
 
@@ -396,27 +397,6 @@ export default function Warehouse({
       setSuppliersTab((prev) => prev || "suppliers");
     }
   }, [section]);
-
-  useEffect(() => {
-    const refMap = {
-      requests: requestsRef,
-      tasks: tasksRef,
-      inventory: inventoryRef,movement: inventoryRef,
-      suppliers: inventoryRef,
-      locations: locationsRef,
-      queue: queueRef,
-      tsd: tsdRef,
-      transactions: transactionsRef,
-      revision: revisionRef,
-      tmc: tmcRef,
-    };
-    const target = refMap[section];
-    if (sectionChangedByUserRef.current && target?.current) {
-      target.current.scrollIntoView({ behavior: "smooth", block: "start" });
-      sectionChangedByUserRef.current = false;
-    }
-  }, [section]);
-
 
   const [itemForm, setItemForm] = useState({
 
@@ -2319,6 +2299,43 @@ export default function Warehouse({
     return groups;
   }, [sortedPurchaseOrders]);
 
+  const sectionCards = useMemo(
+    () => [
+      { key: "requests", title: "\u0417\u0430\u044f\u0432\u043a\u0438 \u043d\u0430 \u0441\u043a\u043b\u0430\u0434", subtitle: "\u0421\u043e\u0437\u0434\u0430\u043d\u0438\u0435 \u0437\u0430\u044f\u0432\u043e\u043a \u0438 \u043a\u043e\u043d\u0442\u0440\u043e\u043b\u044c \u0432\u044b\u0434\u0430\u0447\u0438 \u0440\u0430\u0441\u0445\u043e\u0434\u043d\u044b\u0445 \u043c\u0430\u0442\u0435\u0440\u0438\u0430\u043b\u043e\u0432." },
+      { key: "tasks", title: "\u0417\u0430\u0434\u0430\u0447\u0438 \u0441\u043a\u043b\u0430\u0434\u0430", subtitle: "\u041d\u0430\u0437\u043d\u0430\u0447\u0435\u043d\u0438\u0435 \u0437\u0430\u0434\u0430\u0447, \u0441\u0440\u043e\u043a\u0438 \u0438 \u043d\u0430\u043f\u043e\u043c\u0438\u043d\u0430\u043d\u0438\u044f \u0432 Telegram." },
+      { key: "inventory", title: "\u041e\u0441\u0442\u0430\u0442\u043a\u0438", subtitle: "\u0422\u0435\u043a\u0443\u0449\u0438\u0435 \u043e\u0441\u0442\u0430\u0442\u043a\u0438 \u043f\u043e \u0441\u043a\u043b\u0430\u0434\u0443." },
+      { key: "movement", title: "\u0418\u0441\u0442\u043e\u0440\u0438\u044f \u0434\u0432\u0438\u0436\u0435\u043d\u0438\u0439", subtitle: "\u0416\u0443\u0440\u043d\u0430\u043b \u043e\u043f\u0435\u0440\u0430\u0446\u0438\u0439 \u043f\u043e \u0441\u043a\u043b\u0430\u0434\u0443." },
+      { key: "transactions", title: "\u0422\u0440\u0430\u043d\u0437\u0430\u043a\u0446\u0438\u0438", subtitle: "\u0412\u0441\u0435 \u0434\u0435\u0439\u0441\u0442\u0432\u0438\u044f \u043f\u043e \u044f\u0447\u0435\u0439\u043a\u0430\u043c \u0438 \u0442\u043e\u0432\u0430\u0440\u0443." },
+      { key: "revision", title: "\u0420\u0435\u0432\u0438\u0437\u0438\u044f", subtitle: "\u0421\u043d\u0438\u043c\u043e\u043a \u0440\u0430\u0441\u0445\u043e\u0436\u0434\u0435\u043d\u0438\u0439 \u043f\u043e \u043a\u043e\u043d\u0442\u0440\u043e\u043b\u044e \u044f\u0447\u0435\u0435\u043a." },
+      { key: "tmc", title: "\u0422\u041c\u0426", subtitle: "\u0420\u0430\u0441\u0445\u043e\u0434\u043d\u044b\u0435 \u043c\u0430\u0442\u0435\u0440\u0438\u0430\u043b\u044b \u0434\u043b\u044f \u043e\u0442\u0434\u0435\u043b\u043e\u0432 \u0438 \u0441\u043e\u0442\u0440\u0434\u043d\u0438\u043a\u043e\u0432." },
+      { key: "suppliers", title: "\u041f\u043e\u0441\u0442\u0430\u0432\u0449\u0438\u043a\u0438", subtitle: "\u041f\u043e\u0441\u0442\u0430\u0432\u0449\u0438\u043a\u0438 \u0438 \u0437\u0430\u043a\u0430\u0437\u044b \u043f\u043e\u0441\u0442\u0430\u0432\u0449\u0438\u043a\u0443." },
+      { key: "locations", title: "\u0421\u043f\u0440\u0430\u0432\u043e\u0447\u043d\u0438\u043a \u044f\u0447\u0435\u0435\u043a", subtitle: "\u0421\u043e\u0437\u0434\u0430\u043d\u0438\u0435 \u044f\u0447\u0435\u0435\u043a \u0438 \u043f\u0435\u0447\u0430\u0442\u044c QR-\u044d\u0442\u0438\u043a\u0435\u0442\u043e\u043a." },
+      { key: "queue", title: "\u041c\u0430\u0448\u0438\u043d\u044b \u043f\u043e\u0441\u0442\u0430\u0432\u0449\u0438\u043a\u043e\u0432 \u0432 \u043e\u0447\u0435\u0440\u0435\u0434\u0438", subtitle: "\u041e\u0447\u0435\u0440\u0435\u0434\u044c \u043d\u0430 \u0440\u0430\u0437\u0433\u0440\u0443\u0437\u043a\u0443, \u0432\u043e\u0440\u043e\u0442\u0430 \u0438 \u0432\u0440\u0435\u043c\u044f." },
+      { key: "tsd", title: "\u041c\u043e\u0431\u0438\u043b\u044c\u043d\u044b\u0439 \u0422\u0421\u0414", subtitle: "\u0421\u043a\u0430\u043d\u0438\u0440\u043e\u0432\u0430\u043d\u0438\u0435 \u0448\u0442\u0440\u0438\u0445\u043a\u043e\u0434\u043e\u0432 \u0438 \u0431\u044b\u0441\u0442\u0440\u044b\u0435 \u043e\u043f\u0435\u0440\u0430\u0446\u0438\u0438." },
+    ],
+    []
+  );
+
+  const visibleSectionCards = useMemo(
+    () => sectionCards.filter((card) => sectionSet.has(card.key)),
+    [sectionCards, sectionSet]
+  );
+
+  const selectedSectionCard = useMemo(
+    () => sectionCards.find((card) => card.key === section) || null,
+    [sectionCards, section]
+  );
+
+  const openSection = (sectionKey) => {
+    setSection(sectionKey);
+    window.scrollTo({ top: 0, left: 0, behavior: "auto" });
+  };
+
+  const closeSection = () => {
+    setSection("");
+    window.scrollTo({ top: 0, left: 0, behavior: "auto" });
+  };
+
 
 
   return (
@@ -2339,50 +2356,60 @@ export default function Warehouse({
 
       {/* Верхние карточки-подразделы склада */}
 
-      <div className="warehouse-section">
-
-        <div className="warehouse-grid">
-          {[
-            { key: "requests", title: "\u0417\u0430\u044f\u0432\u043a\u0438 \u043d\u0430 \u0441\u043a\u043b\u0430\u0434", subtitle: "\u0421\u043e\u0437\u0434\u0430\u043d\u0438\u0435 \u0437\u0430\u044f\u0432\u043e\u043a \u0438 \u043a\u043e\u043d\u0442\u0440\u043e\u043b\u044c \u0432\u044b\u0434\u0430\u0447\u0438 \u0440\u0430\u0441\u0445\u043e\u0434\u043d\u044b\u0445 \u043c\u0430\u0442\u0435\u0440\u0438\u0430\u043b\u043e\u0432." },
-            { key: "tasks", title: "\u0417\u0430\u0434\u0430\u0447\u0438 \u0441\u043a\u043b\u0430\u0434\u0430", subtitle: "\u041d\u0430\u0437\u043d\u0430\u0447\u0435\u043d\u0438\u0435 \u0437\u0430\u0434\u0430\u0447, \u0441\u0440\u043e\u043a\u0438 \u0438 \u043d\u0430\u043f\u043e\u043c\u0438\u043d\u0430\u043d\u0438\u044f \u0432 Telegram." },
-            { key: "inventory", title: "\u041e\u0441\u0442\u0430\u0442\u043a\u0438", subtitle: "\u0422\u0435\u043a\u0443\u0449\u0438\u0435 \u043e\u0441\u0442\u0430\u0442\u043a\u0438 \u043f\u043e \u0441\u043a\u043b\u0430\u0434\u0443." },
-            { key: "movement", title: "\u0418\u0441\u0442\u043e\u0440\u0438\u044f \u0434\u0432\u0438\u0436\u0435\u043d\u0438\u0439", subtitle: "\u0416\u0443\u0440\u043d\u0430\u043b \u043e\u043f\u0435\u0440\u0430\u0446\u0438\u0439 \u043f\u043e \u0441\u043a\u043b\u0430\u0434\u0443." },
-            { key: "transactions", title: "\u0422\u0440\u0430\u043d\u0437\u0430\u043a\u0446\u0438\u0438", subtitle: "\u0412\u0441\u0435 \u0434\u0435\u0439\u0441\u0442\u0432\u0438\u044f \u043f\u043e \u044f\u0447\u0435\u0439\u043a\u0430\u043c \u0438 \u0442\u043e\u0432\u0430\u0440\u0443." },
-            { key: "revision", title: "\u0420\u0435\u0432\u0438\u0437\u0438\u044f", subtitle: "\u0421\u043d\u0438\u043c\u043e\u043a \u0440\u0430\u0441\u0445\u043e\u0436\u0434\u0435\u043d\u0438\u0439 \u043f\u043e \u043a\u043e\u043d\u0442\u0440\u043e\u043b\u044e \u044f\u0447\u0435\u0435\u043a." },
-            { key: "tmc", title: "\u0422\u041c\u0426", subtitle: "\u0420\u0430\u0441\u0445\u043e\u0434\u043d\u044b\u0435 \u043c\u0430\u0442\u0435\u0440\u0438\u0430\u043b\u044b \u0434\u043b\u044f \u043e\u0442\u0434\u0435\u043b\u043e\u0432 \u0438 \u0441\u043e\u0442\u0440\u0434\u043d\u0438\u043a\u043e\u0432." },
-            { key: "suppliers", title: "\u041f\u043e\u0441\u0442\u0430\u0432\u0449\u0438\u043a\u0438", subtitle: "\u041f\u043e\u0441\u0442\u0430\u0432\u0449\u0438\u043a\u0438 \u0438 \u0437\u0430\u043a\u0430\u0437\u044b \u043f\u043e\u0441\u0442\u0430\u0432\u0449\u0438\u043a\u0443." },
-            { key: "locations", title: "\u0421\u043f\u0440\u0430\u0432\u043e\u0447\u043d\u0438\u043a \u044f\u0447\u0435\u0435\u043a", subtitle: "\u0421\u043e\u0437\u0434\u0430\u043d\u0438\u0435 \u044f\u0447\u0435\u0435\u043a \u0438 \u043f\u0435\u0447\u0430\u0442\u044c QR-\u044d\u0442\u0438\u043a\u0435\u0442\u043e\u043a." },
-            { key: "queue", title: "\u041c\u0430\u0448\u0438\u043d\u044b \u043f\u043e\u0441\u0442\u0430\u0432\u0449\u0438\u043a\u043e\u0432 \u0432 \u043e\u0447\u0435\u0440\u0435\u0434\u0438", subtitle: "\u041e\u0447\u0435\u0440\u0435\u0434\u044c \u043d\u0430 \u0440\u0430\u0437\u0433\u0440\u0443\u0437\u043a\u0443, \u0432\u043e\u0440\u043e\u0442\u0430 \u0438 \u0432\u0440\u0435\u043c\u044f." },
-            { key: "tsd", title: "\u041c\u043e\u0431\u0438\u043b\u044c\u043d\u044b\u0439 \u0422\u0421\u0414", subtitle: "\u0421\u043a\u0430\u043d\u0438\u0440\u043e\u0432\u0430\u043d\u0438\u0435 \u0448\u0442\u0440\u0438\u0445\u043a\u043e\u0434\u043e\u0432 \u0438 \u0431\u044b\u0441\u0442\u0440\u044b\u0435 \u043e\u043f\u0435\u0440\u0430\u0446\u0438\u0438." },
-          ]
-            .filter((card) => sectionSet.has(card.key))
-            .map((card) => (
+      {!section && (
+        <div className="warehouse-section">
+          <div className="warehouse-grid">
+            {visibleSectionCards.map((card) => (
               <button
                 key={card.key}
                 type="button"
-                className={
-                  "warehouse-card" +
-                  (section === card.key ? " warehouse-card--active" : "")
-                }
-                onClick={() => {
-                  sectionChangedByUserRef.current = true;
-                  setSection(card.key);
-                }}
+                className="warehouse-card"
+                onClick={() => openSection(card.key)}
               >
                 <div className="warehouse-card__icon">
                   <WarehouseTileIcon name={card.key} />
                 </div>
                 <div className="warehouse-card__body">
                   <div className="warehouse-card__title">{card.title}</div>
-                  <div className="warehouse-card__subtitle">
-                    {card.subtitle}
-                  </div>
+                  <div className="warehouse-card__subtitle">{card.subtitle}</div>
                 </div>
               </button>
             ))}
+          </div>
         </div>
+      )}
 
-      </div>
+      {section && selectedSectionCard && (
+        <div className="card" style={{ marginBottom: 12 }}>
+          <div
+            className="card1c__body"
+            style={{
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "space-between",
+              gap: 12,
+              flexWrap: "wrap",
+            }}
+          >
+            <div style={{ minWidth: 0, display: "flex", alignItems: "center", gap: 10 }}>
+              <div className="warehouse-card__icon" style={{ width: 52, height: 52 }}>
+                <WarehouseTileIcon name={selectedSectionCard.key} />
+              </div>
+              <div style={{ minWidth: 0 }}>
+                <div style={{ fontSize: 20, fontWeight: 700, lineHeight: 1.2 }}>
+                  {selectedSectionCard.title}
+                </div>
+                <div style={{ marginTop: 4, fontSize: 13, color: "#64748b" }}>
+                  {selectedSectionCard.subtitle}
+                </div>
+              </div>
+            </div>
+            <button type="button" className="btn btn--secondary" onClick={closeSection}>
+              Назад к разделам
+            </button>
+          </div>
+        </div>
+      )}
 
         {/* ======    ЗАЯВКИ ====== */}
 
