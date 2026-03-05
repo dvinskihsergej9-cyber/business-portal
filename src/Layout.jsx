@@ -140,20 +140,20 @@ export default function Layout() {
                 </div>
               </div>
             </div>
-            {!isMobile && (
-              <div style={styles.headerActions}>
+            <div style={styles.headerActions}>
+              {!isMobile && (
                 <div style={styles.headerUserInfo}>
                   {user?.name || "Пользователь"}
                 </div>
-                <button
-                  type="button"
-                  style={styles.headerLogoutBtn}
-                  onClick={handleLogout}
-                >
-                  Выйти
-                </button>
-              </div>
-            )}
+              )}
+              <button
+                type="button"
+                style={styles.headerLogoutBtn}
+                onClick={handleLogout}
+              >
+                Выйти
+              </button>
+            </div>
           </div>
         </header>
 
@@ -360,7 +360,7 @@ const styles = {
   headerActions: {
     display: "inline-flex",
     alignItems: "center",
-    gap: 12,
+    gap: 10,
     marginLeft: 12,
     flexShrink: 0,
   },
@@ -370,14 +370,15 @@ const styles = {
     whiteSpace: "nowrap",
   },
   headerLogoutBtn: {
-    padding: "8px 12px",
+    padding: "7px 12px",
     borderRadius: 8,
     border: "1px solid #d1d5db",
     background: "#ffffff",
     color: "#111827",
-    fontSize: 14,
+    fontSize: 13,
     cursor: "pointer",
     textAlign: "center",
+    whiteSpace: "nowrap",
   },
   burgerBtn: {
     width: 40,
