@@ -5,7 +5,7 @@ import { hasPermission, PERMISSION_KEYS } from "./utils/permissions";
 
 const DATE_INPUT_SELECTOR =
   'input[type="date"], input[type="datetime-local"], input[type="month"]';
-const APP_LOGO_SRC = "/logo-source.png";
+const APP_LOGO_SRC = "/logo-mark.png";
 
 function openDatePicker(input) {
   if (!input) return;
@@ -326,10 +326,10 @@ const styles = {
       "linear-gradient(135deg, #2563eb 0%, #1e40af 40%, #93c5fd 100%)",
   },
   logoMarkImage: {
-    width: 52,
-    height: 52,
+    width: 68,
+    height: 68,
     borderRadius: 12,
-    objectFit: "contain",
+    objectFit: "cover",
     display: "block",
     background: "transparent",
   },
