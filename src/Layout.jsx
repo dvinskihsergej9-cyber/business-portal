@@ -2,10 +2,11 @@ import { useEffect, useMemo, useState } from "react";
 import { NavLink, Outlet, useLocation } from "react-router-dom";
 import { useAuth } from "./context/AuthContext";
 import { hasPermission, PERMISSION_KEYS } from "./utils/permissions";
+import { APP_LOGO_DATA_URL } from "./assets/appLogoDataUrl";
 
 const DATE_INPUT_SELECTOR =
   'input[type="date"], input[type="datetime-local"], input[type="month"]';
-const APP_LOGO_SRC = "/logo-mark.png";
+const APP_LOGO_SRC = APP_LOGO_DATA_URL;
 
 function openDatePicker(input) {
   if (!input) return;
