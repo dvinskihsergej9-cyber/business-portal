@@ -22,7 +22,15 @@ import SupplierTrucksQueueTab from "../components/SupplierTrucksQueueTab";
 import MobileTsdTab from "../components/MobileTsdTab";
 import WarehouseLocationsPanel from "../components/WarehouseLocationsPanel";
 import TmcTab from "../components/TmcTab";
-import warehouseTasksIcon from "../assets/warehouse/tasks-tile.png";
+import warehouseTasksIcon from "../assets/warehouse/tasks.png";
+import warehouseInventoryIcon from "../assets/warehouse/inventory.png";
+import warehouseMovementIcon from "../assets/warehouse/movement.png";
+import warehouseTransactionsIcon from "../assets/warehouse/transactions.png";
+import warehouseRevisionIcon from "../assets/warehouse/revision.png";
+import warehouseSuppliersIcon from "../assets/warehouse/suppliers.png";
+import warehouseLocationsIcon from "../assets/warehouse/locations.png";
+import warehouseQueueIcon from "../assets/warehouse/queue.png";
+import warehouseTsdIcon from "../assets/warehouse/tsd.png";
 
 
 const API = API_BASE;
@@ -68,15 +76,28 @@ const WAREHOUSE_ICON_FALLBACK = {
   revision: "REV",
 };
 
+const WAREHOUSE_IMAGE = {
+  tasks: warehouseTasksIcon,
+  inventory: warehouseInventoryIcon,
+  movement: warehouseMovementIcon,
+  transactions: warehouseTransactionsIcon,
+  revision: warehouseRevisionIcon,
+  suppliers: warehouseSuppliersIcon,
+  locations: warehouseLocationsIcon,
+  queue: warehouseQueueIcon,
+  tsd: warehouseTsdIcon,
+};
+
 function WarehouseTileIcon({ name }) {
-  if (name === "tasks") {
+  const image = WAREHOUSE_IMAGE[name];
+  if (image) {
     return (
       <img
-        className="warehouse-card__icon-image warehouse-card__icon-image--tasks"
-        src={warehouseTasksIcon}
+        className="warehouse-card__icon-image"
+        src={image}
         alt=""
         aria-hidden="true"
-        loading="eager"
+        loading="lazy"
       />
     );
   }

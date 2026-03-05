@@ -385,9 +385,9 @@ tr:last-child td {
 }
 
 .warehouse-card__icon {
-  width: 40px;
-  height: 40px;
-  border-radius: 999px;
+  width: 64px;
+  height: 64px;
+  border-radius: 16px;
   border: 1px solid #e5e7eb;
   background: #ffffff;
   display: inline-flex;
@@ -397,21 +397,29 @@ tr:last-child td {
 }
 
 .warehouse-card__icon-symbol {
-  font-size: 20px;
+  font-size: 30px;
 }
 
 .warehouse-card__icon-image {
-  width: 30px;
-  height: 30px;
-  object-fit: contain;
+  width: 56px;
+  height: 56px;
+  object-fit: cover;
+  border-radius: 12px;
   display: block;
 }
 
-.warehouse-card__icon-image--tasks {
-  width: 40px;
-  height: 40px;
-  object-fit: cover;
-  border-radius: 10px;
+@media (max-width: 900px) {
+  .warehouse-card__icon {
+    width: 56px;
+    height: 56px;
+    border-radius: 14px;
+  }
+
+  .warehouse-card__icon-image {
+    width: 48px;
+    height: 48px;
+    border-radius: 10px;
+  }
 }
 
 .warehouse-card__body {
