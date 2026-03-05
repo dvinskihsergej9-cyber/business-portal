@@ -76,14 +76,33 @@ function LoginHero() {
 export default function Login() {
   const { login } = useAuth();
   const navigate = useNavigate();
+  const welcomeTimerRef = useRef(null);
 
   const [loginValue, setLoginValue] = useState("");
   const [password, setPassword] = useState("");
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
+  const [showWelcome, setShowWelcome] = useState(false);
+
+  useEffect(() => {
+    return () => {
+      if (welcomeTimerRef.current) {
+        clearTimeout(welcomeTimerRef.current);
+      }
+    };
+  }, []);
+
+  const openDashboard = () => {
+    if (welcomeTimerRef.current) {
+      clearTimeout(welcomeTimerRef.current);
+    }
+    navigate("/dashboard");
+  };
 
   const handleSubmit = async (e) => {
     e.preventDefault();
+    if (loading || showWelcome) return;
+
     setError("");
     setLoading(true);
 
@@ -96,7 +115,8 @@ export default function Login() {
       return;
     }
 
-    navigate("/dashboard");
+    setShowWelcome(true);
+    welcomeTimerRef.current = setTimeout(openDashboard, 1700);
   };
 
   return (
@@ -153,6 +173,20 @@ export default function Login() {
           </div>
         </div>
       </div>
+
+      {showWelcome && (
+        <div className="login-welcome" role="status" aria-live="polite">
+          <div className="login-welcome__backdrop" />
+          <div className="login-welcome__card">
+            <div className="login-welcome__title">Добро пожаловать на платформу!</div>
+            <button type="button" className="login-welcome__logo" onClick={openDashboard}>
+              <img src="/logo-mark.png" alt="Логотип СкладОнлайн" />
+              <span>СкладОнлайн</span>
+            </button>
+            <div className="login-welcome__hint">Подготовка рабочего пространства...</div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

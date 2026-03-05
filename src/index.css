@@ -2691,6 +2691,89 @@ input[type="number"] {
   padding: 32px 16px;
 }
 
+.login-welcome {
+  position: fixed;
+  inset: 0;
+  z-index: 40;
+  display: grid;
+  place-items: center;
+  padding: 18px;
+}
+
+.login-welcome__backdrop {
+  position: absolute;
+  inset: 0;
+  background: rgba(15, 23, 42, 0.46);
+  backdrop-filter: blur(3px);
+}
+
+.login-welcome__card {
+  position: relative;
+  z-index: 1;
+  width: min(460px, 100%);
+  border-radius: 18px;
+  border: 1px solid rgba(148, 163, 184, 0.4);
+  background: #ffffff;
+  box-shadow: 0 28px 42px rgba(15, 23, 42, 0.3);
+  padding: 22px 18px 20px;
+  text-align: center;
+  animation: loginWelcomeIn 0.24s ease-out;
+}
+
+.login-welcome__title {
+  margin-bottom: 14px;
+  font-size: 22px;
+  font-weight: 800;
+  color: #0f172a;
+}
+
+.login-welcome__logo {
+  width: 100%;
+  border: 1px solid #dbeafe;
+  border-radius: 16px;
+  background: linear-gradient(180deg, #eff6ff 0%, #ffffff 100%);
+  color: #1d4ed8;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+  padding: 16px 14px;
+}
+
+.login-welcome__logo:hover:not(:disabled) {
+  background: linear-gradient(180deg, #dbeafe 0%, #eff6ff 100%);
+}
+
+.login-welcome__logo img {
+  width: 58px;
+  height: 58px;
+  object-fit: contain;
+  flex-shrink: 0;
+}
+
+.login-welcome__logo span {
+  font-size: 34px;
+  font-weight: 900;
+  line-height: 1;
+}
+
+.login-welcome__hint {
+  margin-top: 10px;
+  color: #475569;
+  font-size: 14px;
+}
+
+@keyframes loginWelcomeIn {
+  from {
+    opacity: 0;
+    transform: translateY(8px) scale(0.985);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+
 .login-card {
   position: relative;
   z-index: 2;
@@ -2874,6 +2957,35 @@ input[type="number"] {
 @media (max-width: 620px) {
   .login-page {
     padding: 16px 12px 22px;
+  }
+
+  .login-welcome__card {
+    border-radius: 14px;
+    padding: 16px 12px 14px;
+  }
+
+  .login-welcome__title {
+    font-size: 20px;
+    margin-bottom: 10px;
+  }
+
+  .login-welcome__logo {
+    border-radius: 12px;
+    gap: 10px;
+    padding: 12px 10px;
+  }
+
+  .login-welcome__logo img {
+    width: 46px;
+    height: 46px;
+  }
+
+  .login-welcome__logo span {
+    font-size: 26px;
+  }
+
+  .login-welcome__hint {
+    font-size: 13px;
   }
 
   .login-card {
