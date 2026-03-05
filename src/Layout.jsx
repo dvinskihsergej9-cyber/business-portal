@@ -3,6 +3,33 @@ import { NavLink, Outlet, useLocation } from "react-router-dom";
 import { useAuth } from "./context/AuthContext";
 import { hasPermission, PERMISSION_KEYS } from "./utils/permissions";
 
+const DATE_INPUT_SELECTOR =
+  'input[type="date"], input[type="datetime-local"], input[type="month"]';
+
+function openDatePicker(input) {
+  if (!input) return;
+  try {
+    input.focus({ preventScroll: true });
+  } catch {
+    input.focus();
+  }
+
+  try {
+    if (typeof input.showPicker === "function") {
+      input.showPicker();
+      return;
+    }
+  } catch {
+    // ignore browser restrictions and fallback to click
+  }
+
+  try {
+    input.click();
+  } catch {
+    // no-op
+  }
+}
+
 export default function Layout() {
   const { user, logout } = useAuth();
   const location = useLocation();
@@ -60,6 +87,45 @@ export default function Layout() {
     window.addEventListener("keydown", onKeyDown);
     return () => window.removeEventListener("keydown", onKeyDown);
   }, [drawerOpen]);
+
+  useEffect(() => {
+    const onDocumentClick = (event) => {
+      const target = event.target;
+      if (!(target instanceof Element)) return;
+
+      const directDateInput = target.closest(DATE_INPUT_SELECTOR);
+      if (directDateInput instanceof HTMLInputElement) {
+        openDatePicker(directDateInput);
+        return;
+      }
+
+      if (target.closest("button, a, [role='button']")) return;
+      if (target.closest("input, textarea, select")) return;
+
+      let node = target;
+      for (let depth = 0; node && depth < 8; depth += 1) {
+        const dateInputs = node.querySelectorAll(DATE_INPUT_SELECTOR);
+        if (dateInputs.length === 1 && dateInputs[0] instanceof HTMLInputElement) {
+          const dateInput = dateInputs[0];
+          const rowRect = node.getBoundingClientRect();
+          const inputRect = dateInput.getBoundingClientRect();
+
+          if (rowRect.height <= 140) {
+            const rowCenterY = (rowRect.top + rowRect.bottom) / 2;
+            const inputCenterY = (inputRect.top + inputRect.bottom) / 2;
+            if (Math.abs(rowCenterY - inputCenterY) <= 90) {
+              openDatePicker(dateInput);
+              return;
+            }
+          }
+        }
+        node = node.parentElement;
+      }
+    };
+
+    document.addEventListener("click", onDocumentClick, true);
+    return () => document.removeEventListener("click", onDocumentClick, true);
+  }, []);
 
   const handleLogout = () => {
     logout();
