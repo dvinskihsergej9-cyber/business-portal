@@ -5,6 +5,7 @@ import { hasPermission, PERMISSION_KEYS } from "./utils/permissions";
 
 const DATE_INPUT_SELECTOR =
   'input[type="date"], input[type="datetime-local"], input[type="month"]';
+const APP_LOGO_SRC = "/logo-source.png";
 
 function openDatePicker(input) {
   if (!input) return;
@@ -145,7 +146,13 @@ export default function Layout() {
       <aside style={sidebarStyle}>
         {/* Лого / название */}
         <div style={styles.logoBlock}>
-          <div style={styles.logoMark} />
+          <img
+            src={APP_LOGO_SRC}
+            alt="Логотип"
+            style={styles.logoMarkImage}
+            loading="eager"
+            decoding="sync"
+          />
           <div>
             <div style={styles.logoTitle}>СкладОнлайн</div>
             <div style={styles.logoSubtitle}>Внутренний сервис компании</div>
@@ -243,7 +250,13 @@ export default function Layout() {
             aria-label="Навигация"
           >
             <div style={styles.drawerHeader}>
-              <div style={styles.logoMark} />
+              <img
+                src={APP_LOGO_SRC}
+                alt="Логотип"
+                style={styles.logoMarkImage}
+                loading="eager"
+                decoding="sync"
+              />
               <div>
                 <div style={styles.logoTitle}>СкладОнлайн</div>
                 <div style={styles.logoSubtitle}>Меню</div>
@@ -311,6 +324,14 @@ const styles = {
     borderRadius: 8,
     background:
       "linear-gradient(135deg, #2563eb 0%, #1e40af 40%, #93c5fd 100%)",
+  },
+  logoMarkImage: {
+    width: 32,
+    height: 32,
+    borderRadius: 8,
+    objectFit: "contain",
+    display: "block",
+    background: "#ffffff",
   },
   logoTitle: {
     fontSize: 16,
