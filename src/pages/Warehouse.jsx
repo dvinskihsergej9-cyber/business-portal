@@ -22,7 +22,7 @@ import SupplierTrucksQueueTab from "../components/SupplierTrucksQueueTab";
 import MobileTsdTab from "../components/MobileTsdTab";
 import WarehouseLocationsPanel from "../components/WarehouseLocationsPanel";
 import TmcTab from "../components/TmcTab";
-import warehouseTasksIcon from "../assets/warehouse/tasks-tile.svg";
+import warehouseTasksIcon from "../assets/warehouse/tasks-tile.png";
 
 
 const API = API_BASE;
