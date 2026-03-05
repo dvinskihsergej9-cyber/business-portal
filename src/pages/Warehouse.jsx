@@ -22,15 +22,15 @@ import SupplierTrucksQueueTab from "../components/SupplierTrucksQueueTab";
 import MobileTsdTab from "../components/MobileTsdTab";
 import WarehouseLocationsPanel from "../components/WarehouseLocationsPanel";
 import TmcTab from "../components/TmcTab";
-import warehouseTasksIcon from "../assets/warehouse/tasks.png";
-import warehouseInventoryIcon from "../assets/warehouse/inventory.png";
-import warehouseMovementIcon from "../assets/warehouse/movement.png";
-import warehouseTransactionsIcon from "../assets/warehouse/transactions.png";
-import warehouseRevisionIcon from "../assets/warehouse/revision.png";
-import warehouseSuppliersIcon from "../assets/warehouse/suppliers.png";
-import warehouseLocationsIcon from "../assets/warehouse/locations.png";
-import warehouseQueueIcon from "../assets/warehouse/queue.png";
-import warehouseTsdIcon from "../assets/warehouse/tsd.png";
+import warehouseTasksIcon from "../assets/warehouse/tasks.webp";
+import warehouseInventoryIcon from "../assets/warehouse/inventory.webp";
+import warehouseMovementIcon from "../assets/warehouse/movement.webp";
+import warehouseTransactionsIcon from "../assets/warehouse/transactions.webp";
+import warehouseRevisionIcon from "../assets/warehouse/revision.webp";
+import warehouseSuppliersIcon from "../assets/warehouse/suppliers.webp";
+import warehouseLocationsIcon from "../assets/warehouse/locations.webp";
+import warehouseQueueIcon from "../assets/warehouse/queue.webp";
+import warehouseTsdIcon from "../assets/warehouse/tsd.webp";
 
 
 const API = API_BASE;
@@ -97,7 +97,8 @@ function WarehouseTileIcon({ name }) {
         src={image}
         alt=""
         aria-hidden="true"
-        loading="lazy"
+        loading="eager"
+        decoding="async"
       />
     );
   }
