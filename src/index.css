@@ -407,6 +407,13 @@ tr:last-child td {
   display: block;
 }
 
+.warehouse-card__icon-image--tasks {
+  width: 40px;
+  height: 40px;
+  object-fit: cover;
+  border-radius: 10px;
+}
+
 .warehouse-card__body {
   display: flex;
   flex-direction: column;

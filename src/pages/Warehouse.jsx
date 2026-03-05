@@ -72,7 +72,7 @@ function WarehouseTileIcon({ name }) {
   if (name === "tasks") {
     return (
       <img
-        className="warehouse-card__icon-image"
+        className="warehouse-card__icon-image warehouse-card__icon-image--tasks"
         src={warehouseTasksIcon}
         alt=""
         aria-hidden="true"
