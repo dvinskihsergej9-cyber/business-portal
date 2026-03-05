@@ -57,6 +57,27 @@
   box-shadow: 0 0 0 2px rgba(14, 165, 233, 0.2);
 }
 
+/* Override generic portal button skin for tab buttons */
+.portal-surface .admin-console__tab {
+  background: #ffffff;
+  color: #1f2937;
+  border: 1px solid #cbd5f5;
+  box-shadow: none;
+}
+
+.portal-surface .admin-console__tab:hover:not(:disabled) {
+  background: #f8fafc;
+  color: #1f2937;
+}
+
+.portal-surface .admin-console__tab.admin-console__tab--active,
+.portal-surface .admin-console__tab.admin-console__tab--active:hover:not(:disabled) {
+  background: #0ea5e9;
+  color: #ffffff;
+  border-color: transparent;
+  box-shadow: 0 0 0 2px rgba(14, 165, 233, 0.2);
+}
+
 .admin-console__body {
   display: grid;
   gap: 16px;
