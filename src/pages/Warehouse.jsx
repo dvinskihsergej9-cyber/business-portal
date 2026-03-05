@@ -104,19 +104,17 @@ function WarehouseTileIcon({ name }) {
   const image = WAREHOUSE_IMAGE[name] || null;
   if (image) {
     return (
-      <img
-        className="warehouse-card__icon-image"
-        src={image.webp}
-        alt=""
-        aria-hidden="true"
-        loading="eager"
-        decoding="async"
-        onError={(event) => {
-          if (event.currentTarget.dataset.fallbackApplied === "1") return;
-          event.currentTarget.dataset.fallbackApplied = "1";
-          event.currentTarget.src = image.png;
-        }}
-      />
+      <picture className="warehouse-card__icon-picture" aria-hidden="true">
+        <source srcSet={image.webp} type="image/webp" />
+        <img
+          className="warehouse-card__icon-image"
+          src={image.png}
+          alt=""
+          loading="eager"
+          decoding="sync"
+          fetchPriority="high"
+        />
+      </picture>
     );
   }
 
