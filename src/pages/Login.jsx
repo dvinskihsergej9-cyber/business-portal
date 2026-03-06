@@ -133,7 +133,13 @@ export default function Login() {
           <div className="login-intro__stars" />
           <div className="login-intro__planet" />
           <div className="login-intro__content">
-            <img className="login-intro__brand-image" src="/logo-source.png" alt="СкладОнлайн" />
+            <img
+              className="login-intro__logo"
+              src="/logo-mark.png"
+              alt="Логотип СкладОнлайн"
+            />
+            <div className="login-intro__brand">СкладОнлайн</div>
+            <div className="login-intro__subtitle">Операционный центр вашего склада</div>
           </div>
         </div>
       )}
