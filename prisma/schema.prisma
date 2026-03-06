@@ -63,8 +63,6 @@ model User {
   orderStatusHistoryEvents     OrderStatusHistory[]     @relation("OrderStatusHistoryActor")
   stockHoldsCreated            StockHold[]              @relation("StockHoldCreatedBy")
   stockHoldsReleased           StockHold[]              @relation("StockHoldReleasedBy")
-  crossdockOperationsCreated   CrossdockOperation[]     @relation("CrossdockOperationCreatedBy")
-  crossdockOperationsUpdated   CrossdockOperation[]     @relation("CrossdockOperationUpdatedBy")
 
   @@index([orgId])
 }
@@ -705,66 +703,6 @@ enum SupplierTruckStatus {
   IN_QUEUE
   UNLOADING
   DONE
-}
-
-model CrossdockDock {
-  id        Int      @id @default(autoincrement())
-  orgId     Int?
-  code      String
-  name      String?
-  isActive  Boolean  @default(true)
-  note      String?
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
-
-  operations CrossdockOperation[]
-
-  @@unique([orgId, code])
-  @@index([orgId, isActive])
-}
-
-model CrossdockOperation {
-  id              Int                @id @default(autoincrement())
-  orgId           Int?
-  direction       CrossdockDirection
-  status          CrossdockStatus    @default(PLANNED)
-  dockId          Int?
-  dock            CrossdockDock?     @relation(fields: [dockId], references: [id])
-  referenceNumber String?
-  partnerName     String?
-  truckNumber     String?
-  cargoSummary    String?
-  plannedAt       DateTime?
-  actualArrivalAt DateTime?
-  atDockAt        DateTime?
-  startedAt       DateTime?
-  completedAt     DateTime?
-  cancelledAt     DateTime?
-  note            String?
-  createdByUserId Int?
-  createdBy       User?              @relation("CrossdockOperationCreatedBy", fields: [createdByUserId], references: [id])
-  updatedByUserId Int?
-  updatedBy       User?              @relation("CrossdockOperationUpdatedBy", fields: [updatedByUserId], references: [id])
-  createdAt       DateTime           @default(now())
-  updatedAt       DateTime           @updatedAt
-
-  @@index([orgId, status, plannedAt])
-  @@index([orgId, direction, status])
-  @@index([dockId])
-}
-
-enum CrossdockDirection {
-  INBOUND
-  OUTBOUND
-}
-
-enum CrossdockStatus {
-  PLANNED
-  ARRIVED
-  AT_DOCK
-  IN_PROGRESS
-  DONE
-  CANCELLED
 }
 
 enum ItemCategory {

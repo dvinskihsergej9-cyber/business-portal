@@ -1,4 +1,4 @@
-:root {
+﻿:root {
   --bg: #ffffff;
   --bg-soft: #f3f4f6;
   --card-bg: #ffffff;
@@ -19,7 +19,7 @@
   --radius-md: 10px;
 }
 
-/* базовые сбросы */
+/* Р±Р°Р·РѕРІС‹Рµ СЃР±СЂРѕСЃС‹ */
 
 *,
 *::before,
@@ -41,7 +41,7 @@ body {
   background: #ffffff;
 }
 
-/* канвас с анимацией */
+/* РєР°РЅРІР°СЃ СЃ Р°РЅРёРјР°С†РёРµР№ */
 
 .bg-network {
   position: fixed;
@@ -50,14 +50,14 @@ body {
   pointer-events: none;
 }
 
-/* всё приложение поверх анимации */
+/* РІСЃС‘ РїСЂРёР»РѕР¶РµРЅРёРµ РїРѕРІРµСЂС… Р°РЅРёРјР°С†РёРё */
 
 .app-shell {
   position: relative;
   z-index: 1;
 }
 
-/* формы и кнопки */
+/* С„РѕСЂРјС‹ Рё РєРЅРѕРїРєРё */
 
 input,
 select,
@@ -106,7 +106,7 @@ button:disabled {
   transform: none;
 }
 
-/* ссылки */
+/* СЃСЃС‹Р»РєРё */
 
 a {
   color: var(--primary);
@@ -117,7 +117,7 @@ a:hover {
   text-decoration: underline;
 }
 
-/* карточки / контейнеры */
+/* РєР°СЂС‚РѕС‡РєРё / РєРѕРЅС‚РµР№РЅРµСЂС‹ */
 
 .page {
   max-width: 1200px;
@@ -152,7 +152,7 @@ a:hover {
   margin-top: 16px;
 }
 
-/* сетка */
+/* СЃРµС‚РєР° */
 
 .grid-2 {
   display: grid;
@@ -166,7 +166,7 @@ a:hover {
   }
 }
 
-/* табы */
+/* С‚Р°Р±С‹ */
 
 .tabs {
   display: inline-flex;
@@ -193,7 +193,7 @@ a:hover {
   box-shadow: 0 0 0 2px rgba(14, 165, 233, 0.2);
 }
 
-/* бейджи статусов */
+/* Р±РµР№РґР¶Рё СЃС‚Р°С‚СѓСЃРѕРІ */
 
 .badge {
   display: inline-flex;
@@ -223,7 +223,7 @@ a:hover {
   border-color: #ef4444;
 }
 
-/* таблицы */
+/* С‚Р°Р±Р»РёС†С‹ */
 
 table {
   width: 100%;
@@ -251,7 +251,7 @@ tr:last-child td {
   outline: none;
 }
 
-/* ====== Подразделы склада (карточки) ====== */
+/* ====== РџРѕРґСЂР°Р·РґРµР»С‹ СЃРєР»Р°РґР° (РєР°СЂС‚РѕС‡РєРё) ====== */
 
 .warehouse-subcards {
   display: grid;
@@ -317,7 +317,7 @@ tr:last-child td {
   color: #6b7280;
 }
 
-/* маленький вариант табов (которые внутри склада) */
+/* РјР°Р»РµРЅСЊРєРёР№ РІР°СЂРёР°РЅС‚ С‚Р°Р±РѕРІ (РєРѕС‚РѕСЂС‹Рµ РІРЅСѓС‚СЂРё СЃРєР»Р°РґР°) */
 
 .tabs--sm {
   font-size: 13px;
@@ -328,7 +328,7 @@ tr:last-child td {
   font-size: 13px;
 }
 
-/* ===== СКЛАД: КАРТОЧКИ-ПОДРАЗДЕЛЫ ===== */
+/* ===== РЎРљР›РђР”: РљРђР РўРћР§РљР-РџРћР”Р РђР—Р”Р•Р›Р« ===== */
 
 .warehouse-section {
   margin-bottom: 20px;
@@ -357,7 +357,7 @@ tr:last-child td {
   cursor: pointer;
   text-align: left;
 
-  /* переопределяем базовую кнопку */
+  /* РїРµСЂРµРѕРїСЂРµРґРµР»СЏРµРј Р±Р°Р·РѕРІСѓСЋ РєРЅРѕРїРєСѓ */
   color: var(--text);
   font-weight: 500;
 
@@ -625,7 +625,7 @@ tr:last-child td {
   }
 }
 
-/* ===== Склад: форма заявки в стиле 1С ===== */
+/* ===== РЎРєР»Р°Рґ: С„РѕСЂРјР° Р·Р°СЏРІРєРё РІ СЃС‚РёР»Рµ 1РЎ ===== */
 
 .card--1c {
   padding: 0;
@@ -636,7 +636,7 @@ tr:last-child td {
 }
 
 .card1c__header {
-  background: #fff7cc; /* мягкий "1С-жёлтый" */
+  background: #fff7cc; /* РјСЏРіРєРёР№ "1РЎ-Р¶С‘Р»С‚С‹Р№" */
   border-bottom: 1px solid #d4d4d4;
   padding: 8px 12px;
   font-size: 14px;
@@ -647,7 +647,7 @@ tr:last-child td {
   padding: 12px 12px 14px;
 }
 
-/* Внутри формы — подписи слева, поля справа */
+/* Р’РЅСѓС‚СЂРё С„РѕСЂРјС‹ вЂ” РїРѕРґРїРёСЃРё СЃР»РµРІР°, РїРѕР»СЏ СЃРїСЂР°РІР° */
 .request-form-1c .form__group {
   display: flex;
   align-items: center;
@@ -683,33 +683,33 @@ tr:last-child td {
   min-width: 170px;
 }
 
-/* ====== Форма "Новая заявка" в стиле 1С ====== */
+/* ====== Р¤РѕСЂРјР° "РќРѕРІР°СЏ Р·Р°СЏРІРєР°" РІ СЃС‚РёР»Рµ 1РЎ ====== */
 
-/* сама карточка слева */
+/* СЃР°РјР° РєР°СЂС‚РѕС‡РєР° СЃР»РµРІР° */
 .card--1c {
-  padding: 0;                      /* убираем внутренние отступы card */
-  border-radius: 0;                /* прямые углы */
-  box-shadow: none;                /* без тени */
-  border-color: #d4d4d4;           /* более серая рамка */
+  padding: 0;                      /* СѓР±РёСЂР°РµРј РІРЅСѓС‚СЂРµРЅРЅРёРµ РѕС‚СЃС‚СѓРїС‹ card */
+  border-radius: 0;                /* РїСЂСЏРјС‹Рµ СѓРіР»С‹ */
+  box-shadow: none;                /* Р±РµР· С‚РµРЅРё */
+  border-color: #d4d4d4;           /* Р±РѕР»РµРµ СЃРµСЂР°СЏ СЂР°РјРєР° */
   background: #fdfdfd;
 }
 
-/* жёлтая шапка как в 1С */
+/* Р¶С‘Р»С‚Р°СЏ С€Р°РїРєР° РєР°Рє РІ 1РЎ */
 .card1c__header {
-  background: #fff3bf;             /* мягкий жёлтый */
+  background: #fff3bf;             /* РјСЏРіРєРёР№ Р¶С‘Р»С‚С‹Р№ */
   border-bottom: 1px solid #e0e0e0;
   padding: 6px 10px;
   font-size: 13px;
   font-weight: 600;
 }
 
-/* тело формы */
+/* С‚РµР»Рѕ С„РѕСЂРјС‹ */
 .card1c__body {
   padding: 8px 10px 10px;
   font-size: 13px;
 }
 
-/* делаем подпись слева, поле справа (как в 1С) */
+/* РґРµР»Р°РµРј РїРѕРґРїРёСЃСЊ СЃР»РµРІР°, РїРѕР»Рµ СЃРїСЂР°РІР° (РєР°Рє РІ 1РЎ) */
 .request-form-1c .form__group {
   display: flex;
   align-items: flex-start;
@@ -717,7 +717,7 @@ tr:last-child td {
 }
 
 .request-form-1c .form__label {
-  width: 170px;                    /* ширина колонки с подписями */
+  width: 170px;                    /* С€РёСЂРёРЅР° РєРѕР»РѕРЅРєРё СЃ РїРѕРґРїРёСЃСЏРјРё */
   padding: 4px 8px 0 0;
   white-space: nowrap;
   color: #333;
@@ -739,7 +739,7 @@ tr:last-child td {
   resize: vertical;
 }
 
-/* при фокусе — лёгкое подсветивание, как в десктоп-формах */
+/* РїСЂРё С„РѕРєСѓСЃРµ вЂ” Р»С‘РіРєРѕРµ РїРѕРґСЃРІРµС‚РёРІР°РЅРёРµ, РєР°Рє РІ РґРµСЃРєС‚РѕРї-С„РѕСЂРјР°С… */
 .request-form-1c .form__input:focus,
 .request-form-1c .form__textarea:focus {
   outline: none;
@@ -747,7 +747,7 @@ tr:last-child td {
   box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.05);
 }
 
-/* низ формы с кнопкой */
+/* РЅРёР· С„РѕСЂРјС‹ СЃ РєРЅРѕРїРєРѕР№ */
 .request-form-1c__actions {
   margin-top: 8px;
   padding-top: 6px;
@@ -756,7 +756,7 @@ tr:last-child td {
   justify-content: flex-start;
 }
 
-/* кнопка в стиле 1С — только внутри этой формы */
+/* РєРЅРѕРїРєР° РІ СЃС‚РёР»Рµ 1РЎ вЂ” С‚РѕР»СЊРєРѕ РІРЅСѓС‚СЂРё СЌС‚РѕР№ С„РѕСЂРјС‹ */
 .request-form-1c__actions .btn {
   background: #ffd552;
   border: 1px solid #c29b26;
@@ -776,7 +776,7 @@ tr:last-child td {
   cursor: default;
 }
 
-/* Убираем стрелки у всех number-полей по всему порталу */
+/* РЈР±РёСЂР°РµРј СЃС‚СЂРµР»РєРё Сѓ РІСЃРµС… number-РїРѕР»РµР№ РїРѕ РІСЃРµРјСѓ РїРѕСЂС‚Р°Р»Сѓ */
 input[type="number"]::-webkit-inner-spin-button,
 input[type="number"]::-webkit-outer-spin-button {
   -webkit-appearance: none;
@@ -787,13 +787,13 @@ input[type="number"] {
   -moz-appearance: textfield; /* Firefox */
 }
 
-/* Широкая модалка под заказ поставщику */
+/* РЁРёСЂРѕРєР°СЏ РјРѕРґР°Р»РєР° РїРѕРґ Р·Р°РєР°Р· РїРѕСЃС‚Р°РІС‰РёРєСѓ */
 .modal--wide {
   max-width: 1100px;
   width: 100%;
 }
 
-/* Верхний блок (шапка заказа) */
+/* Р’РµСЂС…РЅРёР№ Р±Р»РѕРє (С€Р°РїРєР° Р·Р°РєР°Р·Р°) */
 .po-header-grid {
   display: grid;
   grid-template-columns: minmax(0, 2fr) minmax(260px, 1fr);
@@ -854,7 +854,7 @@ input[type="number"] {
   color: #0369a1;
 }
 
-/* Таблица строк заказа */
+/* РўР°Р±Р»РёС†Р° СЃС‚СЂРѕРє Р·Р°РєР°Р·Р° */
 .po-lines-table input,
 .po-lines-table select {
   width: 100%;
@@ -877,7 +877,7 @@ input[type="number"] {
   min-width: 860px;
 }
 
-/* Подвал формы (итого + кнопки) */
+/* РџРѕРґРІР°Р» С„РѕСЂРјС‹ (РёС‚РѕРіРѕ + РєРЅРѕРїРєРё) */
 .po-footer {
   display: flex;
   align-items: center;
@@ -893,13 +893,13 @@ input[type="number"] {
   margin-left: auto;
 }
 
-/* Кнопка-иконка удаления строки */
+/* РљРЅРѕРїРєР°-РёРєРѕРЅРєР° СѓРґР°Р»РµРЅРёСЏ СЃС‚СЂРѕРєРё */
 .btn.btn--icon {
   padding: 0 6px;
   line-height: 1;
 }
 
-/* ===== МОДАЛЬНЫЕ ОКНА (оверлей) ===== */
+/* ===== РњРћР”РђР›Р¬РќР«Р• РћРљРќРђ (РѕРІРµСЂР»РµР№) ===== */
 
 .modal-backdrop {
   position: fixed;
@@ -920,13 +920,13 @@ input[type="number"] {
   overflow: auto;
 }
 
-/* широкие модалки (как заказ поставщику / закуп по заказу) */
+/* С€РёСЂРѕРєРёРµ РјРѕРґР°Р»РєРё (РєР°Рє Р·Р°РєР°Р· РїРѕСЃС‚Р°РІС‰РёРєСѓ / Р·Р°РєСѓРї РїРѕ Р·Р°РєР°Р·Сѓ) */
 .modal--wide {
   max-width: 1100px;
   width: 100%;
 }
 
-/* необязательно, но чтобы внутри было красиво */
+/* РЅРµРѕР±СЏР·Р°С‚РµР»СЊРЅРѕ, РЅРѕ С‡С‚РѕР±С‹ РІРЅСѓС‚СЂРё Р±С‹Р»Рѕ РєСЂР°СЃРёРІРѕ */
 .modal__header {
   display: flex;
   align-items: center;
@@ -1063,7 +1063,7 @@ input[type="number"] {
   }
 }
 
-/* Блок "Были ли расхождения?" — строгий 1С-стиль */
+/* Р‘Р»РѕРє "Р‘С‹Р»Рё Р»Рё СЂР°СЃС…РѕР¶РґРµРЅРёСЏ?" вЂ” СЃС‚СЂРѕРіРёР№ 1РЎ-СЃС‚РёР»СЊ */
 
 .po-receive-row {
   display: flex;
@@ -1073,7 +1073,7 @@ input[type="number"] {
 }
 
 .po-receive-label {
-  width: 200px;              /* колонка как в 1С */
+  width: 200px;              /* РєРѕР»РѕРЅРєР° РєР°Рє РІ 1РЎ */
   padding: 4px 8px 0 0;
   white-space: nowrap;
   color: #333;
@@ -1081,7 +1081,7 @@ input[type="number"] {
 
 .po-receive-field {
   display: flex;
-  gap: 16px;                 /* расстояние между "Нет" и "Да..." */
+  gap: 16px;                 /* СЂР°СЃСЃС‚РѕСЏРЅРёРµ РјРµР¶РґСѓ "РќРµС‚" Рё "Р”Р°..." */
   align-items: center;
 }
 
@@ -1494,31 +1494,31 @@ input[type="number"] {
   }
 
   .requests-journal-table .requests-journal-row td[data-label="index"]::before {
-    content: "№";
+    content: "в„–";
   }
 
   .requests-journal-table .requests-journal-row td[data-label="date"]::before {
-    content: "Дата";
+    content: "Р”Р°С‚Р°";
   }
 
   .requests-journal-table .requests-journal-row td[data-label="status"]::before {
-    content: "Статус";
+    content: "РЎС‚Р°С‚СѓСЃ";
   }
 
   .requests-journal-table .requests-journal-row td[data-label="author"]::before {
-    content: "Автор";
+    content: "РђРІС‚РѕСЂ";
   }
 
   .requests-journal-table .requests-journal-row td[data-label="title"]::before {
-    content: "Товар / заявка";
+    content: "РўРѕРІР°СЂ / Р·Р°СЏРІРєР°";
   }
 
   .requests-journal-table .requests-journal-row td[data-label="qty"]::before {
-    content: "Кол-во";
+    content: "РљРѕР»-РІРѕ";
   }
 
   .requests-journal-table .requests-journal-row td[data-label="comment"]::before {
-    content: "Комментарий";
+    content: "РљРѕРјРјРµРЅС‚Р°СЂРёР№";
   }
 
   .requests-journal-table .requests-journal-row td[data-label="qty"] {
@@ -1578,39 +1578,39 @@ input[type="number"] {
   }
 
   .tasks-journal-table .tasks-journal-row td[data-label="index"]::before {
-    content: "№";
+    content: "в„–";
   }
 
   .tasks-journal-table .tasks-journal-row td[data-label="date"]::before {
-    content: "Дата";
+    content: "Р”Р°С‚Р°";
   }
 
   .tasks-journal-table .tasks-journal-row td[data-label="status"]::before {
-    content: "Статус";
+    content: "РЎС‚Р°С‚СѓСЃ";
   }
 
   .tasks-journal-table .tasks-journal-row td[data-label="due"]::before {
-    content: "Срок";
+    content: "РЎСЂРѕРє";
   }
 
   .tasks-journal-table .tasks-journal-row td[data-label="title"]::before {
-    content: "Задача";
+    content: "Р—Р°РґР°С‡Р°";
   }
 
   .tasks-journal-table .tasks-journal-row td[data-label="executor"]::before {
-    content: "Исполнитель";
+    content: "РСЃРїРѕР»РЅРёС‚РµР»СЊ";
   }
 
   .tasks-journal-table .tasks-journal-row td[data-label="author"]::before {
-    content: "Автор";
+    content: "РђРІС‚РѕСЂ";
   }
 
   .tasks-journal-table .tasks-journal-row td[data-label="desc"]::before {
-    content: "Описание";
+    content: "РћРїРёСЃР°РЅРёРµ";
   }
 
   .tasks-journal-table .tasks-journal-row td[data-label="actions"]::before {
-    content: "Действия";
+    content: "Р”РµР№СЃС‚РІРёСЏ";
   }
 
   .tasks-journal-table .tasks-journal-row td[data-label="actions"] {
@@ -1720,11 +1720,11 @@ input[type="number"] {
   }
 
   .stock-audit-table .stock-audit-row td[data-label="index"]::before {
-    content: "№";
+    content: "в„–";
   }
 
   .stock-audit-table .stock-audit-row td[data-label="name"]::before {
-    content: "Наименование";
+    content: "РќР°РёРјРµРЅРѕРІР°РЅРёРµ";
   }
 
   .stock-audit-table .stock-audit-row td[data-label="sku"]::before {
@@ -1732,19 +1732,19 @@ input[type="number"] {
   }
 
   .stock-audit-table .stock-audit-row td[data-label="unit"]::before {
-    content: "Ед.";
+    content: "Р•Рґ.";
   }
 
   .stock-audit-table .stock-audit-row td[data-label="stock"]::before {
-    content: "Остаток";
+    content: "РћСЃС‚Р°С‚РѕРє";
   }
 
   .stock-audit-table .stock-audit-row td[data-label="min"]::before {
-    content: "Мин.";
+    content: "РњРёРЅ.";
   }
 
   .stock-audit-table .stock-audit-row td[data-label="max"]::before {
-    content: "Макс.";
+    content: "РњР°РєСЃ.";
   }
 
   .queue-filters {
@@ -1848,59 +1848,59 @@ input[type="number"] {
   }
 
   .queue-table .queue-row td[data-label="status"]::before {
-    content: "Статус";
+    content: "РЎС‚Р°С‚СѓСЃ";
   }
 
   .queue-table .queue-row td[data-label="arrival"]::before {
-    content: "Прибытие";
+    content: "РџСЂРёР±С‹С‚РёРµ";
   }
 
   .queue-table .queue-row td[data-label="unloadStart"]::before {
-    content: "Заезд";
+    content: "Р—Р°РµР·Рґ";
   }
 
   .queue-table .queue-row td[data-label="unloadEnd"]::before {
-    content: "Выезд";
+    content: "Р’С‹РµР·Рґ";
   }
 
   .queue-table .queue-row td[data-label="supplier"]::before {
-    content: "Поставщик";
+    content: "РџРѕСЃС‚Р°РІС‰РёРє";
   }
 
   .queue-table .queue-row td[data-label="order"]::before {
-    content: "№ заказа";
+    content: "в„– Р·Р°РєР°Р·Р°";
   }
 
   .queue-table .queue-row td[data-label="delivery"]::before {
-    content: "Дата дост.";
+    content: "Р”Р°С‚Р° РґРѕСЃС‚.";
   }
 
   .queue-table .queue-row td[data-label="gate"]::before {
-    content: "Ворота";
+    content: "Р’РѕСЂРѕС‚Р°";
   }
 
   .queue-table .queue-row td[data-label="brand"]::before {
-    content: "Марка";
+    content: "РњР°СЂРєР°";
   }
 
   .queue-table .queue-row td[data-label="truck"]::before {
-    content: "Номер авто";
+    content: "РќРѕРјРµСЂ Р°РІС‚Рѕ";
   }
 
   .queue-table .queue-row td[data-label="driver"]::before {
-    content: "Водитель";
+    content: "Р’РѕРґРёС‚РµР»СЊ";
   }
 
   .queue-table .queue-row td[data-label="phone"]::before {
-    content: "Телефон";
+    content: "РўРµР»РµС„РѕРЅ";
   }
 
   .queue-table .queue-row td[data-label="cargo"]::before {
-    content: "Товар";
+    content: "РўРѕРІР°СЂ";
   }
 
   .queue-table .queue-row td[data-label="note"]::before {
-    content: "Примечание";
+    content: "РџСЂРёРјРµС‡Р°РЅРёРµ";
   }
 
   .discrepancies-header {
@@ -1977,31 +1977,31 @@ input[type="number"] {
   }
 
   .discrepancies-table .discrepancies-row td[data-label="date"]::before {
-    content: "Дата";
+    content: "Р”Р°С‚Р°";
   }
 
   .discrepancies-table .discrepancies-row td[data-label="location"]::before {
-    content: "Ячейка";
+    content: "РЇС‡РµР№РєР°";
   }
 
   .discrepancies-table .discrepancies-row td[data-label="item"]::before {
-    content: "Товар";
+    content: "РўРѕРІР°СЂ";
   }
 
   .discrepancies-table .discrepancies-row td[data-label="expected"]::before {
-    content: "Было";
+    content: "Р‘С‹Р»Рѕ";
   }
 
   .discrepancies-table .discrepancies-row td[data-label="counted"]::before {
-    content: "Факт";
+    content: "Р¤Р°РєС‚";
   }
 
   .discrepancies-table .discrepancies-row td[data-label="delta"]::before {
-    content: "Δ";
+    content: "О”";
   }
 
   .discrepancies-table .discrepancies-row td[data-label="session"]::before {
-    content: "Сессия";
+    content: "РЎРµСЃСЃРёСЏ";
   }
 
   .discrepancies-table .discrepancies-row td[data-label="user"]::before {
@@ -2009,7 +2009,7 @@ input[type="number"] {
   }
 
   .discrepancies-table .discrepancies-row td[data-label="actions"]::before {
-    content: "Действия";
+    content: "Р”РµР№СЃС‚РІРёСЏ";
   }
 
   .discrepancies-table .discrepancies-row td[data-label="actions"] {
@@ -2089,39 +2089,39 @@ input[type="number"] {
   }
 
   .movements-history-table .movements-history-row td[data-label="index"]::before {
-    content: "№";
+    content: "в„–";
   }
 
   .movements-history-table .movements-history-row td[data-label="date"]::before {
-    content: "Дата";
+    content: "Р”Р°С‚Р°";
   }
 
   .movements-history-table .movements-history-row td[data-label="type"]::before {
-    content: "Тип";
+    content: "РўРёРї";
   }
 
   .movements-history-table .movements-history-row td[data-label="item"]::before {
-    content: "Товар";
+    content: "РўРѕРІР°СЂ";
   }
 
   .movements-history-table .movements-history-row td[data-label="qty"]::before {
-    content: "Кол-во";
+    content: "РљРѕР»-РІРѕ";
   }
 
   .movements-history-table .movements-history-row td[data-label="unit"]::before {
-    content: "Ед.";
+    content: "Р•Рґ.";
   }
 
   .movements-history-table .movements-history-row td[data-label="price"]::before {
-    content: "Цена";
+    content: "Р¦РµРЅР°";
   }
 
   .movements-history-table .movements-history-row td[data-label="author"]::before {
-    content: "Автор";
+    content: "РђРІС‚РѕСЂ";
   }
 
   .movements-history-table .movements-history-row td[data-label="comment"]::before {
-    content: "Комментарий";
+    content: "РљРѕРјРјРµРЅС‚Р°СЂРёР№";
   }
 
   .transactions-table {
@@ -2177,35 +2177,35 @@ input[type="number"] {
   }
 
   .transactions-table .transactions-row td[data-label="date"]::before {
-    content: "Дата";
+    content: "Р”Р°С‚Р°";
   }
 
   .transactions-table .transactions-row td[data-label="type"]::before {
-    content: "Тип";
+    content: "РўРёРї";
   }
 
   .transactions-table .transactions-row td[data-label="item"]::before {
-    content: "Товар";
+    content: "РўРѕРІР°СЂ";
   }
 
   .transactions-table .transactions-row td[data-label="location"]::before {
-    content: "Ячейка";
+    content: "РЇС‡РµР№РєР°";
   }
 
   .transactions-table .transactions-row td[data-label="qty"]::before {
-    content: "Кол-во";
+    content: "РљРѕР»-РІРѕ";
   }
 
   .transactions-table .transactions-row td[data-label="user"]::before {
-    content: "Кто";
+    content: "РљС‚Рѕ";
   }
 
   .transactions-table .transactions-row td[data-label="comment"]::before {
-    content: "Комментарий";
+    content: "РљРѕРјРјРµРЅС‚Р°СЂРёР№";
   }
 
   .transactions-table .transactions-row td[data-label="unit"]::before {
-    content: "Ед.";
+    content: "Р•Рґ.";
   }
 
   .purchase-orders-desktop {
@@ -3333,165 +3333,9 @@ input[type="number"] {
     font-weight: 700;
   }
 
-  .stock-holds-table tbody td[data-label="Действие"] {
+  .stock-holds-table tbody td[data-label="Р”РµР№СЃС‚РІРёРµ"] {
     grid-template-columns: 1fr;
     justify-items: stretch;
   }
 }
 
-.crossdock-page .card {
-  margin-bottom: 14px;
-}
-
-.crossdock-grid {
-  display: grid;
-  grid-template-columns: minmax(280px, 360px) minmax(0, 1fr);
-  gap: 14px;
-  align-items: start;
-}
-
-.crossdock-stack {
-  display: grid;
-  gap: 14px;
-}
-
-.crossdock-card {
-  border: 1px solid rgba(15, 23, 42, 0.08);
-}
-
-.crossdock-card__header {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 10px;
-  margin-bottom: 10px;
-}
-
-.crossdock-card__title {
-  font-size: 16px;
-  font-weight: 700;
-  margin-bottom: 10px;
-}
-
-.crossdock-form,
-.crossdock-filters {
-  display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
-  gap: 10px;
-}
-
-.crossdock-form label,
-.crossdock-filters label {
-  display: grid;
-  gap: 6px;
-  font-size: 13px;
-  color: #475569;
-}
-
-.crossdock-span-2 {
-  grid-column: span 2;
-}
-
-.crossdock-actions {
-  margin-top: 10px;
-  display: flex;
-  gap: 8px;
-  flex-wrap: wrap;
-}
-
-.crossdock-alert {
-  margin-bottom: 12px;
-  border-radius: 12px;
-  padding: 10px 12px;
-  border: 1px solid transparent;
-  font-weight: 600;
-}
-
-.crossdock-alert--error {
-  background: #fef2f2;
-  border-color: #fecaca;
-  color: #b91c1c;
-}
-
-.crossdock-status {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  padding: 2px 8px;
-  border-radius: 999px;
-  font-size: 12px;
-  font-weight: 700;
-  border: 1px solid transparent;
-  white-space: nowrap;
-}
-
-.crossdock-status--active,
-.crossdock-status--done {
-  background: #dcfce7;
-  color: #166534;
-  border-color: #86efac;
-}
-
-.crossdock-status--inactive,
-.crossdock-status--cancelled {
-  background: #fee2e2;
-  color: #b91c1c;
-  border-color: #fca5a5;
-}
-
-.crossdock-status--planned {
-  background: #dbeafe;
-  color: #1e3a8a;
-  border-color: #93c5fd;
-}
-
-.crossdock-status--arrived {
-  background: #e0f2fe;
-  color: #0c4a6e;
-  border-color: #7dd3fc;
-}
-
-.crossdock-status--at_dock {
-  background: #ede9fe;
-  color: #4c1d95;
-  border-color: #c4b5fd;
-}
-
-.crossdock-status--in_progress {
-  background: #fef3c7;
-  color: #92400e;
-  border-color: #fcd34d;
-}
-
-.crossdock-row-actions {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 6px;
-}
-
-.crossdock-row-actions .btn {
-  padding: 7px 10px;
-  font-size: 12px;
-}
-
-@media (max-width: 1024px) {
-  .crossdock-grid {
-    grid-template-columns: minmax(0, 1fr);
-  }
-
-  .crossdock-form,
-  .crossdock-filters {
-    grid-template-columns: repeat(2, minmax(0, 1fr));
-  }
-}
-
-@media (max-width: 640px) {
-  .crossdock-form,
-  .crossdock-filters {
-    grid-template-columns: minmax(0, 1fr);
-  }
-
-  .crossdock-span-2 {
-    grid-column: auto;
-  }
-}

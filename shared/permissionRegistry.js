@@ -26,12 +26,6 @@ const ENTRY_DEFINITIONS = Object.freeze([
     groupId: "apps",
   },
   {
-    id: "APP_CROSSDOCK",
-    key: "app.crossdock",
-    label: "Кросс-докинг",
-    groupId: "apps",
-  },
-  {
     id: "WAREHOUSE_REQUESTS",
     key: "warehouse.requests",
     label: "Заявки",
@@ -202,7 +196,6 @@ const ROLE_DEFAULT_PERMISSION_IDS = Object.freeze({
   EMPLOYEE: [
     "APP_WAREHOUSE",
     "APP_TMC",
-    "APP_CROSSDOCK",
     "WAREHOUSE_REQUESTS",
     "WAREHOUSE_TASKS",
     "WAREHOUSE_INVENTORY",
@@ -268,7 +261,6 @@ const TEMPLATE_DEFINITIONS = Object.freeze([
     label: "Склад: Полный",
     permissionIds: [
       "APP_WAREHOUSE",
-      "APP_CROSSDOCK",
       "WAREHOUSE_REQUESTS",
       "WAREHOUSE_TASKS",
       "WAREHOUSE_INVENTORY",
@@ -298,7 +290,6 @@ const TEMPLATE_DEFINITIONS = Object.freeze([
     permissionIds: [
       "APP_WAREHOUSE",
       "APP_TMC",
-      "APP_CROSSDOCK",
       "WAREHOUSE_REQUESTS",
       "WAREHOUSE_TASKS",
       "WAREHOUSE_INVENTORY",
