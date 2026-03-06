@@ -3338,3 +3338,160 @@ input[type="number"] {
     justify-items: stretch;
   }
 }
+
+.crossdock-page .card {
+  margin-bottom: 14px;
+}
+
+.crossdock-grid {
+  display: grid;
+  grid-template-columns: minmax(280px, 360px) minmax(0, 1fr);
+  gap: 14px;
+  align-items: start;
+}
+
+.crossdock-stack {
+  display: grid;
+  gap: 14px;
+}
+
+.crossdock-card {
+  border: 1px solid rgba(15, 23, 42, 0.08);
+}
+
+.crossdock-card__header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  margin-bottom: 10px;
+}
+
+.crossdock-card__title {
+  font-size: 16px;
+  font-weight: 700;
+  margin-bottom: 10px;
+}
+
+.crossdock-form,
+.crossdock-filters {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.crossdock-form label,
+.crossdock-filters label {
+  display: grid;
+  gap: 6px;
+  font-size: 13px;
+  color: #475569;
+}
+
+.crossdock-span-2 {
+  grid-column: span 2;
+}
+
+.crossdock-actions {
+  margin-top: 10px;
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.crossdock-alert {
+  margin-bottom: 12px;
+  border-radius: 12px;
+  padding: 10px 12px;
+  border: 1px solid transparent;
+  font-weight: 600;
+}
+
+.crossdock-alert--error {
+  background: #fef2f2;
+  border-color: #fecaca;
+  color: #b91c1c;
+}
+
+.crossdock-status {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 2px 8px;
+  border-radius: 999px;
+  font-size: 12px;
+  font-weight: 700;
+  border: 1px solid transparent;
+  white-space: nowrap;
+}
+
+.crossdock-status--active,
+.crossdock-status--done {
+  background: #dcfce7;
+  color: #166534;
+  border-color: #86efac;
+}
+
+.crossdock-status--inactive,
+.crossdock-status--cancelled {
+  background: #fee2e2;
+  color: #b91c1c;
+  border-color: #fca5a5;
+}
+
+.crossdock-status--planned {
+  background: #dbeafe;
+  color: #1e3a8a;
+  border-color: #93c5fd;
+}
+
+.crossdock-status--arrived {
+  background: #e0f2fe;
+  color: #0c4a6e;
+  border-color: #7dd3fc;
+}
+
+.crossdock-status--at_dock {
+  background: #ede9fe;
+  color: #4c1d95;
+  border-color: #c4b5fd;
+}
+
+.crossdock-status--in_progress {
+  background: #fef3c7;
+  color: #92400e;
+  border-color: #fcd34d;
+}
+
+.crossdock-row-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.crossdock-row-actions .btn {
+  padding: 7px 10px;
+  font-size: 12px;
+}
+
+@media (max-width: 1024px) {
+  .crossdock-grid {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .crossdock-form,
+  .crossdock-filters {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+@media (max-width: 640px) {
+  .crossdock-form,
+  .crossdock-filters {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .crossdock-span-2 {
+    grid-column: auto;
+  }
+}

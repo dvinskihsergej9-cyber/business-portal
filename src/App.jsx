@@ -29,6 +29,7 @@ import Page403 from "./pages/Page403";
 import AdminConsole from "./pages/AdminConsole";
 
 import Warehouse from "./pages/Warehouse";
+import Crossdock from "./pages/Crossdock";
 import TmcRm from "./pages/TmcRm";
 import MobileTsd from "./pages/MobileTsd";
 import {
@@ -77,6 +78,7 @@ function AppRoutesWithBackground() {
   const defaultPrivateRoute = useMemo(() => {
     if (hasPermission(user, PERMISSION_KEYS.APP_WAREHOUSE)) return "/warehouse";
     if (hasPermission(user, PERMISSION_KEYS.APP_TMC)) return "/tmc";
+    if (hasPermission(user, PERMISSION_KEYS.APP_CROSSDOCK)) return "/crossdock";
     if (hasPermission(user, PERMISSION_KEYS.APP_ADMIN)) return "/admin";
     return "/403";
   }, [user]);
@@ -171,6 +173,14 @@ function AppRoutesWithBackground() {
               element={
                 <ProtectedRoute permissionsAny={[PERMISSION_KEYS.APP_TMC]}>
                   <TmcRm />
+                </ProtectedRoute>
+              }
+            />
+            <Route
+              path="crossdock"
+              element={
+                <ProtectedRoute permissionsAny={[PERMISSION_KEYS.APP_CROSSDOCK]}>
+                  <Crossdock />
                 </ProtectedRoute>
               }
             />

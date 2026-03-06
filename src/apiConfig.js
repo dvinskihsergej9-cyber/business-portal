@@ -118,6 +118,66 @@ export const normalizeErrorMessage = (err, fallback = "Ошибка запрос
   if (message === "ORG_PROFILE_REQUIRED") {
     return "Для печати акта заполните реквизиты организации.";
   }
+  if (message === "CROSSDOCK_DOCKS_LIST_ERROR") {
+    return "Ошибка загрузки доков кросс-докинга.";
+  }
+  if (message === "CROSSDOCK_DOCK_FORBIDDEN") {
+    return "Недостаточно прав для изменения доков.";
+  }
+  if (message === "CROSSDOCK_DOCK_CODE_REQUIRED") {
+    return "Укажите код дока.";
+  }
+  if (message === "CROSSDOCK_DOCK_CODE_EXISTS") {
+    return "Док с таким кодом уже существует.";
+  }
+  if (message === "CROSSDOCK_DOCK_BAD_ID") {
+    return "Некорректный ID дока.";
+  }
+  if (message === "CROSSDOCK_DOCK_NOT_FOUND") {
+    return "Док не найден.";
+  }
+  if (message === "CROSSDOCK_DOCK_CREATE_ERROR") {
+    return "Ошибка создания дока.";
+  }
+  if (message === "CROSSDOCK_DOCK_UPDATE_ERROR") {
+    return "Ошибка изменения дока.";
+  }
+  if (message === "CROSSDOCK_OPERATIONS_LIST_ERROR") {
+    return "Ошибка загрузки операций кросс-докинга.";
+  }
+  if (message === "CROSSDOCK_OPERATION_FORBIDDEN") {
+    return "Недостаточно прав для изменения операции.";
+  }
+  if (message === "CROSSDOCK_DIRECTION_REQUIRED") {
+    return "Укажите направление операции.";
+  }
+  if (message === "CROSSDOCK_DIRECTION_INVALID") {
+    return "Некорректное направление операции.";
+  }
+  if (message === "CROSSDOCK_STATUS_INVALID") {
+    return "Некорректный статус операции.";
+  }
+  if (message === "CROSSDOCK_STATUS_TRANSITION_DENIED") {
+    return "Недопустимый переход статуса операции.";
+  }
+  if (message === "CROSSDOCK_OPERATION_BAD_ID") {
+    return "Некорректный ID операции.";
+  }
+  if (message === "CROSSDOCK_OPERATION_NOT_FOUND") {
+    return "Операция не найдена.";
+  }
+  if (message === "CROSSDOCK_OPERATION_GET_ERROR") {
+    return "Ошибка загрузки операции.";
+  }
+  if (message === "CROSSDOCK_OPERATION_CREATE_ERROR") {
+    return "Ошибка создания операции.";
+  }
+  if (message === "CROSSDOCK_OPERATION_UPDATE_ERROR") {
+    return "Ошибка изменения операции.";
+  }
+  if (message === "CROSSDOCK_OPERATION_STATUS_ERROR") {
+    return "Ошибка смены статуса операции.";
+  }
   if (message === "PRINT_RECEIVE_ACT_ERROR" || message === "PRINT_ACT_ERROR") {
     return "Не удалось сформировать акт расхождений.";
   }
