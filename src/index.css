@@ -2347,11 +2347,11 @@ input[type="number"] {
   overflow: hidden;
   border-radius: 22px;
   padding: 26px;
-  border: 1px solid rgba(14, 116, 144, 0.24);
+  border: 1px solid rgba(37, 99, 235, 0.24);
   background:
-    radial-gradient(circle at 92% 14%, rgba(14, 165, 233, 0.28) 0%, rgba(14, 165, 233, 0) 45%),
-    radial-gradient(circle at 8% 80%, rgba(34, 197, 94, 0.18) 0%, rgba(34, 197, 94, 0) 50%),
-    linear-gradient(140deg, #f8fbff 0%, #eef7ff 45%, #f6fffa 100%);
+    radial-gradient(circle at 92% 14%, rgba(59, 130, 246, 0.26) 0%, rgba(59, 130, 246, 0) 46%),
+    radial-gradient(circle at 8% 80%, rgba(96, 165, 250, 0.2) 0%, rgba(96, 165, 250, 0) 50%),
+    linear-gradient(140deg, #f7faff 0%, #edf4ff 48%, #e8f1ff 100%);
   box-shadow: 0 16px 34px rgba(15, 23, 42, 0.08);
   animation: pricing-hero-in 0.45s ease both;
 }
@@ -2361,8 +2361,8 @@ input[type="number"] {
   align-items: center;
   padding: 5px 10px;
   border-radius: 999px;
-  background: rgba(14, 116, 144, 0.1);
-  color: #0e7490;
+  background: rgba(37, 99, 235, 0.12);
+  color: #1d4ed8;
   font-weight: 700;
   font-size: 12px;
   letter-spacing: 0.04em;
@@ -2419,14 +2419,14 @@ input[type="number"] {
 }
 
 .pricing-modern__notice {
-  border: 1px solid rgba(245, 158, 11, 0.35);
-  background: #fff8e8;
-  color: #92400e;
+  border: 1px solid rgba(59, 130, 246, 0.35);
+  background: #eff6ff;
+  color: #1e3a8a;
 }
 
 .pricing-modern__active {
-  border: 1px solid rgba(16, 185, 129, 0.35);
-  background: #ecfdf5;
+  border: 1px solid rgba(59, 130, 246, 0.35);
+  background: #e8f1ff;
   display: flex;
   align-items: center;
   justify-content: space-between;
@@ -2436,12 +2436,12 @@ input[type="number"] {
 .pricing-modern__active-title {
   font-size: 17px;
   font-weight: 800;
-  color: #065f46;
+  color: #1e3a8a;
 }
 
 .pricing-modern__active-subtitle {
   margin-top: 2px;
-  color: #047857;
+  color: #1d4ed8;
 }
 
 .pricing-modern__grid {
@@ -2469,7 +2469,7 @@ input[type="number"] {
 }
 
 .pricing-modern__card--plan {
-  border-color: rgba(14, 116, 144, 0.28);
+  border-color: rgba(37, 99, 235, 0.28);
 }
 
 .pricing-modern__card--featured {
@@ -2509,8 +2509,8 @@ input[type="number"] {
 }
 
 .pricing-modern__badge--accent {
-  background: #cffafe;
-  color: #155e75;
+  background: #dbeafe;
+  color: #1e40af;
 }
 
 .pricing-modern__price-row {
@@ -2540,7 +2540,7 @@ input[type="number"] {
 }
 
 .pricing-modern__list li::marker {
-  color: #0ea5e9;
+  color: #2563eb;
 }
 
 .pricing-modern__actions {
