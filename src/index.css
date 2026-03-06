@@ -2785,51 +2785,24 @@ input[type="number"] {
 .login-intro__content {
   position: absolute;
   left: 50%;
-  top: 47%;
+  top: 44%;
   transform: translate(-50%, -50%);
   z-index: 2;
   text-align: center;
-  width: min(420px, calc(100% - 32px));
+  width: min(900px, calc(100% - 34px));
   animation: loginIntroContent 0.8s ease-out both;
   animation-delay: 0.2s;
 }
 
-.login-intro__logo {
-  width: 84px;
-  height: 84px;
+.login-intro__brand-image {
+  width: min(820px, 100%);
+  max-height: min(42vh, 290px);
   object-fit: contain;
   display: block;
-  margin: 0 auto 10px;
-  filter: drop-shadow(0 6px 18px rgba(0, 0, 0, 0.28));
-}
-
-.login-intro__brand {
-  color: #ffffff;
-  font-size: clamp(36px, 7vw, 62px);
-  font-weight: 900;
-  letter-spacing: 0.01em;
-  line-height: 1;
-  text-shadow: 0 6px 20px rgba(5, 12, 55, 0.62);
-}
-
-.login-intro__subtitle {
-  margin-top: 12px;
-  color: rgba(230, 242, 255, 0.9);
-  font-size: clamp(14px, 2.4vw, 22px);
-  font-weight: 500;
-  text-shadow: 0 3px 12px rgba(3, 9, 44, 0.65);
-}
-
-.login-intro__footer {
-  position: absolute;
-  left: 50%;
-  bottom: max(26px, env(safe-area-inset-bottom));
-  transform: translateX(-50%);
-  color: rgba(235, 246, 255, 0.92);
-  font-size: clamp(18px, 3vw, 30px);
-  font-weight: 500;
-  text-shadow: 0 4px 14px rgba(3, 9, 44, 0.65);
-  z-index: 2;
+  margin: 0 auto;
+  filter:
+    drop-shadow(0 12px 40px rgba(2, 12, 56, 0.55))
+    drop-shadow(0 2px 8px rgba(255, 255, 255, 0.18));
 }
 
 @keyframes loginIntroPlanet {
@@ -3142,18 +3115,13 @@ input[type="number"] {
     padding: 16px 12px 22px;
   }
 
-  .login-intro__logo {
-    width: 72px;
-    height: 72px;
-    margin-bottom: 8px;
+  .login-intro__content {
+    top: 41%;
+    width: min(640px, calc(100% - 24px));
   }
 
-  .login-intro__subtitle {
-    margin-top: 10px;
-  }
-
-  .login-intro__footer {
-    bottom: calc(max(22px, env(safe-area-inset-bottom)) + 4px);
+  .login-intro__brand-image {
+    max-height: min(34vh, 210px);
   }
 
   .login-welcome__card {
