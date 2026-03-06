@@ -2712,7 +2712,7 @@ input[type="number"] {
 .login-intro__stars {
   position: absolute;
   inset: 0;
-  opacity: 0.82;
+  opacity: 0.95;
   background:
     radial-gradient(circle at 13% 17%, rgba(255, 255, 255, 0.95) 0 1.2px, transparent 1.3px),
     radial-gradient(circle at 24% 34%, rgba(255, 255, 255, 0.85) 0 1px, transparent 1.2px),
@@ -2721,8 +2721,47 @@ input[type="number"] {
     radial-gradient(circle at 62% 43%, rgba(255, 255, 255, 0.8) 0 1px, transparent 1.2px),
     radial-gradient(circle at 8% 61%, rgba(255, 255, 255, 0.85) 0 1px, transparent 1.2px),
     radial-gradient(circle at 90% 57%, rgba(255, 255, 255, 0.85) 0 1.2px, transparent 1.3px),
-    radial-gradient(circle at 18% 78%, rgba(255, 255, 255, 0.82) 0 1px, transparent 1.2px);
+    radial-gradient(circle at 18% 78%, rgba(255, 255, 255, 0.82) 0 1px, transparent 1.2px),
+    radial-gradient(circle at 38% 14%, rgba(255, 255, 255, 0.9) 0 1.1px, transparent 1.3px),
+    radial-gradient(circle at 58% 23%, rgba(255, 255, 255, 0.78) 0 1px, transparent 1.2px),
+    radial-gradient(circle at 43% 36%, rgba(255, 255, 255, 0.86) 0 1.1px, transparent 1.3px),
+    radial-gradient(circle at 28% 56%, rgba(255, 255, 255, 0.8) 0 1px, transparent 1.2px),
+    radial-gradient(circle at 72% 70%, rgba(255, 255, 255, 0.88) 0 1.1px, transparent 1.3px),
+    radial-gradient(circle at 55% 83%, rgba(255, 255, 255, 0.8) 0 1px, transparent 1.2px);
   animation: loginIntroStars 2.2s linear both;
+}
+
+.login-intro__stars::before,
+.login-intro__stars::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+}
+
+.login-intro__stars::before {
+  opacity: 0.58;
+  background:
+    radial-gradient(circle, rgba(255, 255, 255, 0.95) 0 0.8px, transparent 1.1px) 0 0 / 120px 120px repeat,
+    radial-gradient(circle, rgba(203, 235, 255, 0.9) 0 0.8px, transparent 1.1px) 37px 18px / 160px 160px repeat,
+    radial-gradient(circle, rgba(255, 255, 255, 0.88) 0 0.9px, transparent 1.2px) 64px 44px / 190px 190px repeat,
+    radial-gradient(circle, rgba(166, 214, 255, 0.88) 0 0.8px, transparent 1.2px) 26px 72px / 220px 220px repeat;
+  animation: loginIntroTwinkle 2.6s ease-in-out infinite alternate;
+}
+
+.login-intro__stars::after {
+  opacity: 0.48;
+  filter: blur(0.3px);
+  background:
+    radial-gradient(circle at 10% 22%, rgba(255, 255, 255, 0.9) 0 1.8px, transparent 2.8px),
+    radial-gradient(circle at 22% 44%, rgba(198, 230, 255, 0.86) 0 1.6px, transparent 2.6px),
+    radial-gradient(circle at 41% 16%, rgba(255, 255, 255, 0.84) 0 1.8px, transparent 2.8px),
+    radial-gradient(circle at 66% 26%, rgba(217, 239, 255, 0.9) 0 1.9px, transparent 3px),
+    radial-gradient(circle at 84% 38%, rgba(255, 255, 255, 0.86) 0 1.8px, transparent 2.8px),
+    radial-gradient(circle at 76% 64%, rgba(214, 236, 255, 0.82) 0 1.7px, transparent 2.8px),
+    radial-gradient(circle at 33% 74%, rgba(255, 255, 255, 0.84) 0 1.7px, transparent 2.8px),
+    radial-gradient(circle at 54% 86%, rgba(201, 229, 255, 0.82) 0 1.7px, transparent 2.8px);
+  animation: loginIntroTwinkle 3.3s ease-in-out infinite alternate-reverse;
 }
 
 .login-intro__planet {
@@ -2812,6 +2851,15 @@ input[type="number"] {
   to {
     transform: translate3d(0, 0, 0) scale(1.02);
     opacity: 0.9;
+  }
+}
+
+@keyframes loginIntroTwinkle {
+  from {
+    opacity: 0.36;
+  }
+  to {
+    opacity: 0.72;
   }
 }
 
