@@ -2694,7 +2694,7 @@ input[type="number"] {
 .login-intro {
   position: fixed;
   inset: 0;
-  z-index: 30;
+  z-index: 3000;
   overflow: hidden;
   background: #030f45;
   isolation: isolate;

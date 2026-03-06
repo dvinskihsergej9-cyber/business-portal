@@ -77,21 +77,15 @@ export default function Login() {
   const { login } = useAuth();
   const navigate = useNavigate();
   const welcomeTimerRef = useRef(null);
-  const introTimerRef = useRef(null);
 
   const [loginValue, setLoginValue] = useState("");
   const [password, setPassword] = useState("");
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
   const [showWelcome, setShowWelcome] = useState(false);
-  const [showIntro, setShowIntro] = useState(true);
 
   useEffect(() => {
-    introTimerRef.current = setTimeout(() => setShowIntro(false), 2100);
     return () => {
-      if (introTimerRef.current) {
-        clearTimeout(introTimerRef.current);
-      }
       if (welcomeTimerRef.current) {
         clearTimeout(welcomeTimerRef.current);
       }
@@ -127,23 +121,6 @@ export default function Login() {
 
   return (
     <div className="login-page">
-      {showIntro && (
-        <div className="login-intro" role="status" aria-live="polite">
-          <div className="login-intro__space" />
-          <div className="login-intro__stars" />
-          <div className="login-intro__planet" />
-          <div className="login-intro__content">
-            <img
-              className="login-intro__logo"
-              src="/logo-mark.png"
-              alt="Логотип СкладОнлайн"
-            />
-            <div className="login-intro__brand">СкладОнлайн</div>
-            <div className="login-intro__subtitle">Операционный центр вашего склада</div>
-          </div>
-        </div>
-      )}
-
       <div className="login-card">
         <div className="login-card__brand">СкладОнлайн</div>
         <div className="login-card__tagline">Операционный центр вашего склада</div>
