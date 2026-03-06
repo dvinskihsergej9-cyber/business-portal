@@ -1,7 +1,13 @@
-﻿import { useEffect, useState } from "react";
+﻿import { useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { apiFetch, normalizeErrorMessage } from "../apiConfig";
 import { useAuth } from "../context/AuthContext";
+
+const PERIOD_OPTIONS = [
+  { id: "1m", label: "1 месяц", discountPct: 0 },
+  { id: "6m", label: "6 месяцев", discountPct: 10 },
+  { id: "12m", label: "1 год", discountPct: 30 },
+];
 
 const PLAN_CARDS = [
   {
@@ -9,7 +15,6 @@ const PLAN_CARDS = [
     title: "Старт",
     amount: 1990,
     currency: "RUB",
-    period: "30 дней",
     description:
       "Базовый тариф для запуска склада: приемка, размещение, отбор, мобильный ТСД и роли сотрудников.",
     highlight: "Рекомендуем",
@@ -26,7 +31,6 @@ const PLAN_CARDS = [
     title: "Рост",
     amount: 0,
     currency: "RUB",
-    period: "в разработке",
     description:
       "Для расширенных процессов: больше автоматизации, расширенная аналитика и пакет дополнительных функций.",
     highlight: "Скоро",
@@ -42,7 +46,6 @@ const PLAN_CARDS = [
     title: "Корпоративный",
     amount: 0,
     currency: "RUB",
-    period: "по запросу",
     description:
       "Для сетей складов и сложных интеграций с индивидуальными условиями внедрения и сопровождения.",
     highlight: "Индивидуально",
@@ -67,23 +70,50 @@ function formatPrice(amount, currency) {
   }
 }
 
+function getPeriodAmount(baseAmount, periodId) {
+  const monthly = Number(baseAmount || 0);
+  if (periodId === "6m") return Math.round(monthly * 6 * 0.9);
+  if (periodId === "12m") return Math.round(monthly * 12 * 0.7);
+  return monthly;
+}
+
+function getPeriodLabel(periodId) {
+  if (periodId === "6m") return "6 месяцев";
+  if (periodId === "12m") return "1 год";
+  return "30 дней";
+}
+
 export default function Pricing() {
   const { user, refreshUser } = useAuth();
   const navigate = useNavigate();
+
   const [loading, setLoading] = useState(false);
   const [loadingMethod, setLoadingMethod] = useState("");
   const [error, setError] = useState("");
   const [billingReady, setBillingReady] = useState(false);
   const [billingLoading, setBillingLoading] = useState(true);
+  const [periodId, setPeriodId] = useState("1m");
 
   const canManageBilling =
     user?.isSystemOwner === true ||
     (Array.isArray(user?.roles) && user.roles.includes("ADMIN")) ||
     user?.role === "ADMIN";
 
+  const extendedPeriodSelected = periodId !== "1m";
+
+  const periodMeta = useMemo(
+    () => PERIOD_OPTIONS.find((option) => option.id === periodId) || PERIOD_OPTIONS[0],
+    [periodId]
+  );
+
   const handlePay = async (planId, paymentMethod = "sbp") => {
     if (!planId) {
       setError("Этот тариф пока недоступен для онлайн-оплаты.");
+      return;
+    }
+
+    if (extendedPeriodSelected) {
+      setError("Онлайн-оплата пока доступна только для периода 1 месяц.");
       return;
     }
 
@@ -96,6 +126,7 @@ export default function Pricing() {
       setLoading(true);
       setLoadingMethod(paymentMethod);
       setError("");
+
       const token = localStorage.getItem("token");
       const res = await apiFetch("/billing/yookassa/create-payment", {
         method: "POST",
@@ -138,6 +169,7 @@ export default function Pricing() {
     try {
       setLoading(true);
       setError("");
+
       const res = await apiFetch("/billing/start-trial", {
         method: "POST",
         headers: {
@@ -145,6 +177,7 @@ export default function Pricing() {
           Authorization: `Bearer ${localStorage.getItem("token")}`,
         },
       });
+
       const data = await res.json();
       if (!res.ok) {
         setError(
@@ -155,6 +188,7 @@ export default function Pricing() {
         );
         return;
       }
+
       await refreshUser();
       navigate("/warehouse");
     } catch (err) {
@@ -198,31 +232,33 @@ export default function Pricing() {
     <div className="page pricing-modern">
       <section className="pricing-modern__hero">
         <span className="pricing-modern__pill">SaaS-подписка</span>
-        <h1 className="pricing-modern__title">Тарифы для вашей компании</h1>
-        <p className="pricing-modern__subtitle">
+        <h1 className="pricing-modern__title pricing-modern__title--center">Цены</h1>
+
+        <div className="pricing-modern__periods" role="tablist" aria-label="Период оплаты">
+          {PERIOD_OPTIONS.map((option) => (
+            <button
+              key={option.id}
+              type="button"
+              className={`pricing-modern__period-btn ${option.id === periodId ? "is-active" : ""}`}
+              onClick={() => setPeriodId(option.id)}
+            >
+              <span>{option.label}</span>
+              {option.discountPct > 0 && (
+                <span className="pricing-modern__period-discount">-{option.discountPct}%</span>
+              )}
+            </button>
+          ))}
+        </div>
+
+        <p className="pricing-modern__subtitle pricing-modern__subtitle--center">
           Один платеж на организацию. Все сотрудники работают в единой системе
           по назначенным правам.
         </p>
-        <div className="pricing-modern__stats">
-          <div className="pricing-modern__stat">
-            <div className="pricing-modern__stat-value">30 дней</div>
-            <div className="pricing-modern__stat-label">пробный период</div>
-          </div>
-          <div className="pricing-modern__stat">
-            <div className="pricing-modern__stat-value">Прозрачно</div>
-            <div className="pricing-modern__stat-label">без скрытых платежей</div>
-          </div>
-          <div className="pricing-modern__stat">
-            <div className="pricing-modern__stat-value">24/7</div>
-            <div className="pricing-modern__stat-label">доступ к системе</div>
-          </div>
-        </div>
       </section>
 
       {!canManageBilling && (
         <div className="pricing-modern__notice">
-          Оплату и запуск пробного периода выполняет администратор вашей
-          компании.
+          Оплату и запуск пробного периода выполняет администратор вашей компании.
         </div>
       )}
 
@@ -232,7 +268,7 @@ export default function Pricing() {
             <div className="pricing-modern__active-title">Подписка активна</div>
             <div className="pricing-modern__active-subtitle">Оплачено до: {paidUntilDate}</div>
           </div>
-          <button className="btn" onClick={handleRefresh}>
+          <button className="btn pricing-modern__status-btn" onClick={handleRefresh}>
             Обновить статус
           </button>
         </section>
@@ -253,13 +289,15 @@ export default function Pricing() {
               <li>Права сотрудников</li>
               <li>Заказы, приемка, отбор, размещение</li>
             </ul>
-            <button
-              className="btn primary pricing-modern__cta"
-              onClick={handleStartTrial}
-              disabled={loading || !canManageBilling || !trialAvailable}
-            >
-              {loading ? "Активируем..." : "Начать 30 дней бесплатно"}
-            </button>
+            <div className="pricing-modern__actions pricing-modern__actions--single">
+              <button
+                className="btn pricing-modern__cta pricing-modern__cta--dark"
+                onClick={handleStartTrial}
+                disabled={loading || !canManageBilling || !trialAvailable}
+              >
+                {loading ? "Активируем..." : "Начать 30 дней бесплатно"}
+              </button>
+            </div>
             {!trialAvailable && (
               <div className="pricing-modern__hint">
                 Пробный период уже использован. Выберите оплату тарифа ниже.
@@ -268,79 +306,105 @@ export default function Pricing() {
           </article>
         )}
 
-        {PLAN_CARDS.map((plan) => (
-          <article
-            key={plan.title}
-            className={`pricing-modern__card pricing-modern__card--plan ${
-              plan.available ? "pricing-modern__card--featured" : ""
-            }`}
-          >
-            <div className="pricing-modern__card-head">
-              <h2>{plan.title}</h2>
-              <span className="pricing-modern__badge pricing-modern__badge--accent">
-                {plan.highlight}
-              </span>
-            </div>
-            <p>{plan.description}</p>
-            <div className="pricing-modern__price-row">
-              <span className="pricing-modern__price">
-                {plan.available ? formatPrice(plan.amount, plan.currency) : "—"}
-              </span>
-              <span className="pricing-modern__period">/ {plan.period}</span>
-            </div>
-            <ul className="pricing-modern__list">
-              {plan.features.map((feature) => (
-                <li key={feature}>{feature}</li>
-              ))}
-            </ul>
-            <div className="pricing-modern__actions">
-              <button
-                className="btn primary pricing-modern__cta"
-                onClick={() => handlePay(plan.id, "sbp")}
-                disabled={
-                  !plan.available ||
-                  loading ||
-                  billingLoading ||
-                  !billingReady ||
-                  !canManageBilling
-                }
-              >
-                {plan.available
-                  ? loading && loadingMethod === "sbp"
-                    ? "Переход к оплате..."
-                    : "Оплатить по СБП"
-                  : "Скоро"}
-              </button>
-              <button
-                className="btn pricing-modern__cta pricing-modern__cta--ghost"
-                onClick={() => handlePay(plan.id, "default")}
-                disabled={
-                  !plan.available ||
-                  loading ||
-                  billingLoading ||
-                  !billingReady ||
-                  !canManageBilling
-                }
-              >
-                {plan.available
-                  ? loading && loadingMethod === "default"
-                    ? "Переход к оплате..."
-                    : "Оплатить картой"
-                  : "Недоступно"}
-              </button>
-            </div>
-            {!billingReady && plan.available && (
-              <div className="pricing-modern__hint">
-                Платежи будут доступны после подключения YooKassa.
+        {PLAN_CARDS.map((plan) => {
+          const displayAmount = plan.available
+            ? getPeriodAmount(plan.amount, periodId)
+            : 0;
+          const canPayCurrentPlan =
+            plan.available && !extendedPeriodSelected && billingReady && canManageBilling;
+
+          return (
+            <article
+              key={plan.title}
+              className={`pricing-modern__card pricing-modern__card--plan ${
+                plan.available ? "pricing-modern__card--featured" : ""
+              }`}
+            >
+              <div className="pricing-modern__card-head">
+                <h2>{plan.title}</h2>
+                <span className="pricing-modern__badge pricing-modern__badge--accent">
+                  {plan.highlight}
+                </span>
               </div>
-            )}
-            {!plan.available && (
-              <div className="pricing-modern__hint">
-                Этот пакет можно подключить на следующем этапе развития биллинга.
+
+              <p>{plan.description}</p>
+
+              <div className="pricing-modern__price-row">
+                <span className="pricing-modern__price">
+                  {plan.available ? formatPrice(displayAmount, plan.currency) : "—"}
+                </span>
+                <span className="pricing-modern__period">/ {getPeriodLabel(periodId)}</span>
               </div>
-            )}
-          </article>
-        ))}
+
+              <ul className="pricing-modern__list">
+                {plan.features.map((feature) => (
+                  <li key={feature}>{feature}</li>
+                ))}
+              </ul>
+
+              <div className="pricing-modern__actions">
+                <button
+                  className="btn pricing-modern__cta pricing-modern__cta--dark"
+                  onClick={() => handlePay(plan.id, "sbp")}
+                  disabled={
+                    !plan.available ||
+                    extendedPeriodSelected ||
+                    loading ||
+                    billingLoading ||
+                    !billingReady ||
+                    !canManageBilling
+                  }
+                >
+                  {plan.available
+                    ? loading && loadingMethod === "sbp"
+                      ? "Переход к оплате..."
+                      : "Оплатить по СБП"
+                    : "Скоро"}
+                </button>
+                <button
+                  className="btn pricing-modern__cta pricing-modern__cta--light"
+                  onClick={() => handlePay(plan.id, "default")}
+                  disabled={
+                    !plan.available ||
+                    extendedPeriodSelected ||
+                    loading ||
+                    billingLoading ||
+                    !billingReady ||
+                    !canManageBilling
+                  }
+                >
+                  {plan.available
+                    ? loading && loadingMethod === "default"
+                      ? "Переход к оплате..."
+                      : "Оплатить картой"
+                    : "Недоступно"}
+                </button>
+              </div>
+
+              {plan.available && !billingReady && (
+                <div className="pricing-modern__hint">
+                  Платежи будут доступны после подключения YooKassa.
+                </div>
+              )}
+
+              {plan.available && extendedPeriodSelected && (
+                <div className="pricing-modern__hint">
+                  Оплата за 6 месяцев и 1 год будет подключена следующим этапом.
+                </div>
+              )}
+
+              {!plan.available && (
+                <div className="pricing-modern__hint">
+                  Этот пакет можно подключить на следующем этапе развития биллинга.
+                </div>
+              )}
+
+              {plan.available && canPayCurrentPlan && (
+                <div className="pricing-modern__hint">Платеж пройдет через YooKassa.</div>
+              )}
+            </article>
+          );
+        })}
       </section>
 
       <section className="pricing-modern__trust">
