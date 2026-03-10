@@ -175,6 +175,9 @@ export const normalizeErrorMessage = (err, fallback = "Ошибка запрос
   if (message === "EMAIL_ALREADY_EXISTS") {
     return "Пользователь с таким email уже существует.";
   }
+  if (message === "TRIAL_ALREADY_USED") {
+    return "Пробный период уже использован.";
+  }
   if (!hasCyrillic && isAsciiOnly) {
     return fallback;
   }

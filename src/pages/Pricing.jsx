@@ -107,7 +107,7 @@ export default function Pricing() {
       return;
     }
 
-    if (extendedPeriodSelected) {
+    if (extendedPeriodSelected && planId !== "trial-1") {
       setError("Онлайн-оплата пока доступна только для периода 1 месяц.");
       return;
     }
@@ -148,45 +148,6 @@ export default function Pricing() {
     } catch (err) {
       console.error("create payment error:", err);
       setError("Не удалось инициировать оплату.");
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  const handleStartTrial = async () => {
-    if (!canManageBilling) {
-      setError("Тестовый период активирует администратор вашей компании.");
-      return;
-    }
-
-    try {
-      setLoading(true);
-      setError("");
-
-      const res = await apiFetch("/billing/start-trial", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          Authorization: `Bearer ${localStorage.getItem("token")}`,
-        },
-      });
-
-      const data = await res.json();
-      if (!res.ok) {
-        setError(
-          normalizeErrorMessage(
-            data?.message || "",
-            "Не удалось активировать пробный период."
-          )
-        );
-        return;
-      }
-
-      await refreshUser();
-      navigate("/warehouse");
-    } catch (err) {
-      console.error("start trial error:", err);
-      setError("Не удалось активировать пробный период.");
     } finally {
       setLoading(false);
     }
@@ -286,9 +247,9 @@ export default function Pricing() {
           <article className="pricing-modern__card pricing-modern__card--trial">
             <div className="pricing-modern__card-head">
               <h2>Пробный период</h2>
-              <span className="pricing-modern__badge">Бесплатно</span>
+              <span className="pricing-modern__badge">1 ₽</span>
             </div>
-            <p>Один раз на 30 дней. Полный функционал без ограничений.</p>
+            <p>Один раз на 30 дней за 1 ₽. Полный функционал без ограничений.</p>
             <ul className="pricing-modern__list">
               <li>Склад и мобильный ТСД</li>
               <li>Права сотрудников</li>
@@ -297,7 +258,7 @@ export default function Pricing() {
             <div className="pricing-modern__actions pricing-modern__actions--single">
               <button
                 className="btn pricing-modern__cta pricing-modern__cta--dark"
-                onClick={handleStartTrial}
+                onClick={() => handlePay("trial-1")}
                 disabled={loading || !canManageBilling || !trialAvailable}
               >
                 {loading ? "Оплатить" : "Оплатить"}

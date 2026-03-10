@@ -630,6 +630,13 @@ async function getReceivingLocationId(tx, orgIdInput = null) {
   return created.id;
 }
 const PLANS = {
+  "trial-1": {
+    id: "trial-1",
+    title: "Trial 30 days",
+    amount: 1,
+    currency: "RUB",
+    days: 30,
+  },
   "basic-30": {
     id: "basic-30",
     title: "Basic 30 days",
@@ -758,18 +765,24 @@ async function applyPaymentSuccess({ paymentRecord, providerPayment, plan }) {
     ? Array.from(new Set([...processedProviderPaymentIds, providerPaymentId]))
     : processedProviderPaymentIds;
 
+  const isTrialPlan = plan.id === "trial-1";
+
   await prisma.subscription.upsert({
     where: { userId },
     update: {
       plan: plan.id,
-      status: "active",
+      status: isTrialPlan ? "trialing" : "active",
       paidUntil: nextPaidUntil,
+      trialStartedAt: isTrialPlan ? current?.trialStartedAt || now : current?.trialStartedAt || null,
+      trialUsed: isTrialPlan ? true : Boolean(current?.trialUsed),
     },
     create: {
       userId,
       plan: plan.id,
-      status: "active",
+      status: isTrialPlan ? "trialing" : "active",
       paidUntil: nextPaidUntil,
+      trialStartedAt: isTrialPlan ? now : null,
+      trialUsed: isTrialPlan,
     },
   });
 
@@ -3235,6 +3248,19 @@ app.get("/api/profile", auth, async (req, res) => {
       const plan = getPlan(planId);
       if (!plan) {
         return res.status(400).json({ message: "PLAN_NOT_FOUND" });
+      }
+      if (plan.id === "trial-1") {
+        const existing = req.user.isSystemOwner
+          ? await prisma.subscription.findFirst({
+              where: { userId: billingUserId },
+            })
+          : await prisma.subscription.findFirst({
+              where: { user: { orgId: targetOrgId } },
+              orderBy: [{ paidUntil: "desc" }, { id: "desc" }],
+            });
+        if (existing?.trialUsed || existing?.trialStartedAt) {
+          return res.status(400).json({ message: "TRIAL_ALREADY_USED" });
+        }
       }
       if (paymentMethod && paymentMethod !== "sbp" && paymentMethod !== "default") {
         return res.status(400).json({ message: "PAYMENT_METHOD_INVALID" });
