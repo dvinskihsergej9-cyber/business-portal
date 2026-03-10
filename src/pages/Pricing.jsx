@@ -176,6 +176,9 @@ export default function Pricing() {
   const paidUntilDate = subscription?.paidUntil
     ? new Date(subscription.paidUntil).toLocaleDateString("ru-RU")
     : "—";
+  const visiblePlanCards = PLAN_CARDS.filter(
+    (plan) => periodId === "1m" || plan.id !== "start-30"
+  );
 
   const handleRefresh = async () => {
     await refreshUser();
@@ -242,8 +245,14 @@ export default function Pricing() {
 
       {error && <div className="alert alert--error pricing-modern__alert">{error}</div>}
 
+      {extendedPeriodSelected && (
+        <div className="pricing-modern__notice">
+          Тариф «Старт» доступен только на период 1 месяц.
+        </div>
+      )}
+
       <section className="pricing-modern__grid pricing-modern__grid--plans">
-        {PLAN_CARDS.map((plan) => {
+        {visiblePlanCards.map((plan) => {
           const displayAmount = plan.available
             ? getPeriodAmount(plan.amount, periodId)
             : 0;
