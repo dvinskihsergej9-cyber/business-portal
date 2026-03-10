@@ -3269,11 +3269,27 @@ app.get("/api/profile", auth, async (req, res) => {
           return res.status(400).json({ message: "TRIAL_ALREADY_USED" });
         }
       }
+      if (plan.id === "start-30") {
+        const payments = await prisma.payment.findMany({
+          where: {
+            userId: billingUserId,
+            status: "succeeded",
+          },
+          select: {
+            metadata: true,
+          },
+        });
+        const alreadyUsedStartPlan = payments.some(
+          (entry) => entry?.metadata?.planId === "start-30"
+        );
+        if (alreadyUsedStartPlan) {
+          return res.status(400).json({ message: "START_PLAN_ALREADY_USED" });
+        }
+      }
       if (paymentMethod && paymentMethod !== "sbp" && paymentMethod !== "default") {
         return res.status(400).json({ message: "PAYMENT_METHOD_INVALID" });
       }
       const resolvedPaymentMethod = paymentMethod === "default" ? "default" : "sbp";
-
       const tempProviderId = `pending_${crypto.randomUUID()}`;
       const localPayment = await prisma.payment.create({
         data: {

@@ -178,6 +178,9 @@ export const normalizeErrorMessage = (err, fallback = "Ошибка запрос
   if (message === "TRIAL_ALREADY_USED") {
     return "Пробный период уже использован.";
   }
+  if (message === "START_PLAN_ALREADY_USED") {
+    return "Тариф «Старт» можно оплатить только один раз.";
+  }
   if (message === "PAYMENT_CREATE_ERROR") {
     return "Не удалось создать платеж. Проверьте настройки ЮKassa.";
   }
