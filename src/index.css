@@ -2444,6 +2444,8 @@ input[type="number"] {
 }
 
 .pricing-rs__period-btn {
+  appearance: none;
+  -webkit-appearance: none;
   border: 1px solid transparent;
   border-radius: 10px;
   background: transparent;
@@ -2454,12 +2456,24 @@ input[type="number"] {
   gap: 8px;
   font-size: 22px;
   font-weight: 700;
-  color: #334155;
+  color: #1e40af;
   cursor: pointer;
+  box-shadow: none;
 }
 
 .pricing-rs__period-btn:hover {
-  background: #eff6ff;
+  background: #edf4ff;
+  color: #1d4ed8;
+}
+
+.pricing-rs__period-btn:active {
+  background: #e8f1ff;
+  color: #1d4ed8;
+}
+
+.pricing-rs__period-btn:focus-visible {
+  outline: 2px solid #60a5fa;
+  outline-offset: 1px;
 }
 
 .pricing-rs__period-btn.is-active {
@@ -2518,14 +2532,35 @@ input[type="number"] {
 }
 
 .pricing-rs__plan {
-  border: 1px solid #d1d5db;
+  appearance: none;
+  -webkit-appearance: none;
+  border: 1px solid #bfdbfe;
   border-radius: 14px;
-  background: #ffffff;
+  background: #f8fbff;
   padding: 14px 16px;
   display: grid;
   gap: 8px;
   text-align: left;
   cursor: pointer;
+  color: #1e40af;
+  box-shadow: none;
+  -webkit-tap-highlight-color: transparent;
+}
+
+.pricing-rs__plan:hover {
+  border-color: #93c5fd;
+  background: #eff6ff;
+}
+
+.pricing-rs__plan:active {
+  border-color: #60a5fa;
+  background: #e8f1ff;
+  color: #1d4ed8;
+}
+
+.pricing-rs__plan:focus-visible {
+  outline: 2px solid #60a5fa;
+  outline-offset: 1px;
 }
 
 .pricing-rs__plan.is-active {
@@ -2565,13 +2600,13 @@ input[type="number"] {
 .pricing-rs__plan-title {
   font-size: 34px;
   font-weight: 800;
-  color: #0f172a;
+  color: #1e40af;
 }
 
 .pricing-rs__plan-tools {
   margin-top: 2px;
   font-size: 20px;
-  color: #64748b;
+  color: #3b82f6;
 }
 
 .pricing-rs__plan-price-row {
