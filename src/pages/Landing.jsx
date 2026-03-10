@@ -13,10 +13,10 @@ export default function Landing() {
       <div className="card" style={{ display: "grid", gap: 12 }}>
         <div style={{ fontSize: 18, fontWeight: 600 }}>Доступ по подписке</div>
         <div>
-          Стоимость: <strong>1990 ₽ / 30 дней</strong>
+          Стоимость: <strong>от 1 ₽ до 2600 ₽ / 30 дней</strong>
         </div>
         <div>
-          Доступ предоставляется сразу после активации trial или оплаты. Автопродление будет добавлено позже.
+          Доступ предоставляется сразу после оплаты выбранного тарифа. Автопродление будет добавлено позже.
         </div>
         <div style={{ display: "flex", gap: 12, flexWrap: "wrap" }}>
           <Link className="btn primary" to="/login">

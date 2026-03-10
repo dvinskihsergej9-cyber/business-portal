@@ -11,49 +11,49 @@ const PERIOD_OPTIONS = [
 
 const PLAN_CARDS = [
   {
-    id: "basic-30",
+    id: "start-30",
     title: "Старт",
-    amount: 1990,
+    amount: 1,
     currency: "RUB",
     description:
-      "Базовый тариф для запуска склада: приемка, размещение, отбор, мобильный ТСД и роли сотрудников.",
+      "Льготный стартовый тариф для первого запуска склада и базовой работы команды.",
     highlight: "Рекомендуем",
     available: true,
     features: [
-      "Все складские сценарии",
+      "Базовые складские сценарии",
       "Доступ для сотрудников по ролям",
       "Мобильный режим ТСД",
       "Поддержка SaaS-изоляции",
     ],
   },
   {
-    id: null,
-    title: "Рост",
-    amount: 0,
+    id: "basic-30",
+    title: "Базовый",
+    amount: 1000,
     currency: "RUB",
     description:
-      "Для расширенных процессов: больше автоматизации, расширенная аналитика и пакет дополнительных функций.",
-    highlight: "Скоро",
-    available: false,
+      "Основной рабочий тариф для стабильной ежедневной работы склада.",
+    highlight: "Популярный",
+    available: true,
     features: [
-      "Расширенная аналитика",
-      "Дополнительные модули склада",
-      "Приоритетная поддержка",
+      "Все ключевые операции склада",
+      "Управление сотрудниками и правами",
+      "История операций и контроль процессов",
     ],
   },
   {
-    id: null,
-    title: "Корпоративный",
-    amount: 0,
+    id: "pro-30",
+    title: "Проф",
+    amount: 2600,
     currency: "RUB",
     description:
-      "Для сетей складов и сложных интеграций с индивидуальными условиями внедрения и сопровождения.",
-    highlight: "Индивидуально",
-    available: false,
+      "Расширенный тариф для активных команд с повышенной нагрузкой и приоритетной поддержкой.",
+    highlight: "Расширенный",
+    available: true,
     features: [
-      "Индивидуальные условия",
-      "Кастомные интеграции",
-      "Выделенный SLA",
+      "Максимальный набор складских функций",
+      "Приоритетная поддержка",
+      "Расширенный контроль и аналитика",
     ],
   },
 ];
@@ -107,7 +107,7 @@ export default function Pricing() {
       return;
     }
 
-    if (extendedPeriodSelected && planId !== "trial-1") {
+    if (extendedPeriodSelected) {
       setError("Онлайн-оплата пока доступна только для периода 1 месяц.");
       return;
     }
@@ -171,8 +171,6 @@ export default function Pricing() {
   }, []);
 
   const subscription = user?.subscription;
-  const trialAvailable = !subscription?.isActive && !subscription?.trialUsed;
-  const showTrialCard = !subscription?.isActive;
   const paidUntilDate = subscription?.paidUntil
     ? new Date(subscription.paidUntil).toLocaleDateString("ru-RU")
     : "—";
@@ -224,7 +222,7 @@ export default function Pricing() {
 
       {!canManageBilling && (
         <div className="pricing-modern__notice">
-          Оплату и запуск пробного периода выполняет администратор вашей компании.
+          Оплату выполняет администратор вашей компании.
         </div>
       )}
 
@@ -243,35 +241,6 @@ export default function Pricing() {
       {error && <div className="alert alert--error pricing-modern__alert">{error}</div>}
 
       <section className="pricing-modern__grid pricing-modern__grid--plans">
-        {showTrialCard && (
-          <article className="pricing-modern__card pricing-modern__card--trial">
-            <div className="pricing-modern__card-head">
-              <h2>Пробный период</h2>
-              <span className="pricing-modern__badge">1 ₽</span>
-            </div>
-            <p>Один раз на 30 дней за 1 ₽. Полный функционал без ограничений.</p>
-            <ul className="pricing-modern__list">
-              <li>Склад и мобильный ТСД</li>
-              <li>Права сотрудников</li>
-              <li>Заказы, приемка, отбор, размещение</li>
-            </ul>
-            <div className="pricing-modern__actions pricing-modern__actions--single">
-              <button
-                className="btn pricing-modern__cta pricing-modern__cta--dark"
-                onClick={() => handlePay("trial-1")}
-                disabled={loading || !canManageBilling || !trialAvailable}
-              >
-                {loading ? "Оплатить" : "Оплатить"}
-              </button>
-            </div>
-            {!trialAvailable && (
-              <div className="pricing-modern__hint">
-                Пробный период уже использован. Выберите оплату тарифа ниже.
-              </div>
-            )}
-          </article>
-        )}
-
         {PLAN_CARDS.map((plan) => {
           const displayAmount = plan.available
             ? getPeriodAmount(plan.amount, periodId)
@@ -313,7 +282,6 @@ export default function Pricing() {
                   className="btn pricing-modern__cta pricing-modern__cta--dark"
                   onClick={() => handlePay(plan.id)}
                   disabled={
-                    !plan.available ||
                     extendedPeriodSelected ||
                     loading ||
                     billingLoading ||
@@ -334,12 +302,6 @@ export default function Pricing() {
               {plan.available && extendedPeriodSelected && (
                 <div className="pricing-modern__hint">
                   Оплата за 6 месяцев и 1 год будет подключена следующим этапом.
-                </div>
-              )}
-
-              {!plan.available && (
-                <div className="pricing-modern__hint">
-                  Этот пакет можно подключить на следующем этапе развития биллинга.
                 </div>
               )}
 
@@ -368,7 +330,7 @@ export default function Pricing() {
         </details>
         <details>
           <summary>Сотрудник может сам оплатить тариф?</summary>
-          <p>Нет, оплату и запуск trial делает только администратор компании.</p>
+          <p>Нет, оплату делает только администратор компании.</p>
         </details>
         <details>
           <summary>Что будет после окончания подписки?</summary>
