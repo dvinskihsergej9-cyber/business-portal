@@ -17,26 +17,28 @@ const PLAN_CARDS = [
     subtitle: "Для малого и среднего склада",
     amount: 1990,
     currency: "RUB",
-    available: true,
     spotlight: true,
+    available: true,
     bullets: [
       "Приемка, размещение, отбор, отгрузка",
       "Мобильный ТСД и сканирование",
-      "Права сотрудников и SaaS-изоляция",
+      "Журнал статусов и контроль действий",
+      "Роли сотрудников и SaaS-изоляция",
     ],
   },
   {
-    key: "growth",
+    key: "business",
     id: null,
     title: "Бизнес",
-    subtitle: "Для расширенной автоматизации",
-    amount: 0,
+    subtitle: "Для расширенных процессов",
+    amount: 3990,
     currency: "RUB",
-    available: false,
     spotlight: false,
+    available: false,
     bullets: [
-      "Расширенная аналитика склада",
-      "Дополнительные бизнес-процессы",
+      "Расширенная аналитика и KPI",
+      "Автоматизация складских сценариев",
+      "Дополнительные интеграции",
       "Приоритетная поддержка",
     ],
   },
@@ -45,26 +47,27 @@ const PLAN_CARDS = [
     id: null,
     title: "Корпоративный",
     subtitle: "Для сетей и сложных интеграций",
-    amount: 0,
+    amount: null,
     currency: "RUB",
-    available: false,
     spotlight: false,
+    available: false,
     bullets: [
-      "Индивидуальные условия",
+      "Индивидуальные условия внедрения",
       "Кастомные интеграции",
       "Выделенный SLA",
+      "Персональный технический менеджер",
     ],
   },
 ];
 
 const FEATURE_MATRIX = [
-  { label: "Приемка и размещение", starter: true, growth: true, corp: true },
-  { label: "Отбор и отгрузка", starter: true, growth: true, corp: true },
-  { label: "Мобильный ТСД", starter: true, growth: true, corp: true },
-  { label: "Журнал статусов заказов", starter: true, growth: true, corp: true },
-  { label: "Расширенная аналитика", starter: false, growth: true, corp: true },
-  { label: "Кастомные интеграции", starter: false, growth: false, corp: true },
-  { label: "Выделенный SLA", starter: false, growth: false, corp: true },
+  { label: "Приемка и размещение", starter: true, business: true, corp: true },
+  { label: "Отбор и отгрузка", starter: true, business: true, corp: true },
+  { label: "Мобильный ТСД", starter: true, business: true, corp: true },
+  { label: "Журнал статусов заказов", starter: true, business: true, corp: true },
+  { label: "Расширенная аналитика", starter: false, business: true, corp: true },
+  { label: "Интеграции с внешними системами", starter: false, business: true, corp: true },
+  { label: "Выделенный SLA", starter: false, business: false, corp: true },
 ];
 
 function formatPrice(amount, currency) {
@@ -86,6 +89,7 @@ function getPeriodMonths(periodId) {
 }
 
 function getPeriodAmount(baseAmount, periodId) {
+  if (baseAmount === null || baseAmount === undefined) return null;
   const monthly = Number(baseAmount || 0);
   const months = getPeriodMonths(periodId);
   if (months === 6) return Math.round(monthly * months * 0.9);
@@ -248,20 +252,20 @@ export default function Pricing() {
   }, []);
 
   return (
-    <div className="page pricing-pf">
+    <div className="page pricing-planfix">
       {!canManageBilling && (
-        <div className="pricing-pf__notice">
+        <div className="pricing-planfix__notice">
           Оплату и запуск пробного периода выполняет администратор вашей компании.
         </div>
       )}
 
       {subscription?.isActive && (
-        <section className="pricing-pf__active">
+        <section className="pricing-planfix__active">
           <div>
-            <div className="pricing-pf__active-title">Подписка активна</div>
-            <div className="pricing-pf__active-subtitle">Оплачено до: {paidUntilDate}</div>
+            <div className="pricing-planfix__active-title">Подписка активна</div>
+            <div className="pricing-planfix__active-subtitle">Оплачено до: {paidUntilDate}</div>
           </div>
-          <button className="btn pricing-pf__mini-btn" onClick={handleRefresh}>
+          <button className="btn pricing-planfix__mini-btn" onClick={handleRefresh}>
             Обновить статус
           </button>
         </section>
@@ -269,47 +273,49 @@ export default function Pricing() {
 
       {error && <div className="alert alert--error">{error}</div>}
 
-      <section className="pricing-pf__hero">
-        <div className="pricing-pf__brand">
+      <section className="pricing-planfix__hero">
+        <div className="pricing-planfix__brand">
           <img src="/logo-mark.png" alt="Логотип СкладОнлайн" />
           <div>
             <strong>СкладОнлайн</strong>
-            <span>Подписка для вашей команды</span>
+            <span>Платформа управления складом</span>
           </div>
         </div>
 
-        <h1 className="pricing-pf__title">Тарифы</h1>
+        <h1 className="pricing-planfix__title">Тарифы</h1>
 
-        <div className="pricing-pf__periods" role="tablist" aria-label="Период оплаты">
+        <div className="pricing-planfix__periods" role="tablist" aria-label="Период оплаты">
           {PERIOD_OPTIONS.map((option) => (
             <button
               key={option.id}
               type="button"
-              className={`pricing-pf__period-btn ${option.id === periodId ? "is-active" : ""}`}
+              className={`pricing-planfix__period-btn ${option.id === periodId ? "is-active" : ""}`}
               onClick={() => setPeriodId(option.id)}
             >
               <span>{option.label}</span>
               {option.discountPct > 0 && (
-                <span className="pricing-pf__period-discount">-{option.discountPct}%</span>
+                <span className="pricing-planfix__period-discount">-{option.discountPct}%</span>
               )}
             </button>
           ))}
         </div>
 
-        <p className="pricing-pf__subtitle">
-          Период: <b>{selectedPeriod.label}</b>. Один платеж на организацию, все сотрудники работают
-          в единой системе по вашим правам.
+        <p className="pricing-planfix__subtitle">
+          Период оплаты: <b>{selectedPeriod.label}</b>. Один платеж на организацию и полный
+          доступ для всех сотрудников по назначенным правам.
         </p>
       </section>
 
       {showTrialCard && (
-        <section className="pricing-pf__trial">
+        <section className="pricing-planfix__trial">
           <div>
-            <div className="pricing-pf__trial-title">Пробный период 30 дней</div>
-            <div className="pricing-pf__trial-text">Полный функционал без ограничений, один раз на компанию.</div>
+            <div className="pricing-planfix__trial-title">Пробный период 30 дней</div>
+            <div className="pricing-planfix__trial-text">
+              Полный функционал без ограничений. Один запуск на организацию.
+            </div>
           </div>
           <button
-            className="btn pricing-pf__trial-btn"
+            className="btn pricing-planfix__trial-btn"
             onClick={handleStartTrial}
             disabled={loading || !canManageBilling || !trialAvailable}
           >
@@ -318,37 +324,39 @@ export default function Pricing() {
         </section>
       )}
 
-      <section className="pricing-pf__cards">
+      <section className="pricing-planfix__cards">
         {PLAN_CARDS.map((plan) => {
-          const displayAmount = plan.available ? getPeriodAmount(plan.amount, periodId) : 0;
+          const displayAmount = getPeriodAmount(plan.amount, periodId);
+
           return (
             <article
               key={plan.key}
-              className={`pricing-pf__card ${plan.spotlight ? "pricing-pf__card--spotlight" : ""}`}
+              className={`pricing-planfix__card ${plan.spotlight ? "pricing-planfix__card--spotlight" : ""}`}
             >
-              <div className="pricing-pf__card-head">
-                <h2>{plan.title}</h2>
-                {plan.spotlight ? <span className="pricing-pf__tag">Популярный</span> : null}
-              </div>
-
-              <div className="pricing-pf__card-subtitle">{plan.subtitle}</div>
-
-              <div className="pricing-pf__price-row">
-                <div className="pricing-pf__price">
-                  {plan.available ? formatPrice(displayAmount, plan.currency) : "—"}
+              <div className="pricing-planfix__card-top">
+                <div>
+                  <h2>{plan.title}</h2>
+                  <div className="pricing-planfix__card-subtitle">{plan.subtitle}</div>
                 </div>
-                <div className="pricing-pf__period">/ {getPeriodLabel(periodId)}</div>
+                {plan.spotlight ? <span className="pricing-planfix__tag">Рекомендуем</span> : null}
               </div>
 
-              <ul className="pricing-pf__bullets">
+              <div className="pricing-planfix__price-row">
+                <div className="pricing-planfix__price">
+                  {displayAmount === null ? "По запросу" : formatPrice(displayAmount, plan.currency)}
+                </div>
+                <div className="pricing-planfix__period">/ {getPeriodLabel(periodId)}</div>
+              </div>
+
+              <ul className="pricing-planfix__bullets">
                 {plan.bullets.map((item) => (
                   <li key={item}>{item}</li>
                 ))}
               </ul>
 
-              <div className="pricing-pf__actions">
+              <div className="pricing-planfix__actions">
                 <button
-                  className="btn pricing-pf__btn pricing-pf__btn--dark"
+                  className="btn pricing-planfix__btn pricing-planfix__btn--dark"
                   onClick={() => handlePay(plan.id, "sbp")}
                   disabled={
                     !plan.available ||
@@ -367,7 +375,7 @@ export default function Pricing() {
                 </button>
 
                 <button
-                  className="btn pricing-pf__btn pricing-pf__btn--light"
+                  className="btn pricing-planfix__btn pricing-planfix__btn--light"
                   onClick={() => handlePay(plan.id, "default")}
                   disabled={
                     !plan.available ||
@@ -387,23 +395,23 @@ export default function Pricing() {
               </div>
 
               {!plan.available && (
-                <div className="pricing-pf__hint">Тариф будет подключен на следующем этапе.</div>
+                <div className="pricing-planfix__hint">Подключение этого тарифа будет добавлено следующим этапом.</div>
               )}
               {plan.available && !billingReady && (
-                <div className="pricing-pf__hint">Платежи появятся после подключения YooKassa.</div>
+                <div className="pricing-planfix__hint">Платежи появятся после подключения YooKassa.</div>
               )}
               {plan.available && extendedPeriodSelected && (
-                <div className="pricing-pf__hint">Оплата за 6/12 месяцев будет добавлена отдельным этапом.</div>
+                <div className="pricing-planfix__hint">Оплата за 6/12 месяцев будет добавлена отдельно.</div>
               )}
             </article>
           );
         })}
       </section>
 
-      <section className="pricing-pf__matrix">
-        <h3>Сравнение тарифов</h3>
-        <div className="pricing-pf__table-wrap">
-          <table className="pricing-pf__table">
+      <section className="pricing-planfix__matrix">
+        <h3>Сравнение возможностей</h3>
+        <div className="pricing-planfix__table-wrap">
+          <table className="pricing-planfix__table">
             <thead>
               <tr>
                 <th>Функция</th>
@@ -417,7 +425,7 @@ export default function Pricing() {
                 <tr key={row.label}>
                   <td>{row.label}</td>
                   <td>{mark(row.starter)}</td>
-                  <td>{mark(row.growth)}</td>
+                  <td>{mark(row.business)}</td>
                   <td>{mark(row.corp)}</td>
                 </tr>
               ))}
