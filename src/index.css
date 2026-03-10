@@ -2394,6 +2394,34 @@ input[type="number"] {
   background: #f8fbff;
 }
 
+.pricing-rs__brand {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 10px;
+}
+
+.pricing-rs__brand img {
+  width: 42px;
+  height: 42px;
+  border-radius: 10px;
+}
+
+.pricing-rs__brand-text {
+  display: grid;
+  line-height: 1.1;
+}
+
+.pricing-rs__brand-text strong {
+  font-size: 17px;
+  color: #1e3a8a;
+}
+
+.pricing-rs__brand-text span {
+  font-size: 12px;
+  color: #64748b;
+}
+
 .pricing-rs__title {
   margin: 0;
   text-align: center;
@@ -2604,6 +2632,13 @@ input[type="number"] {
   color: #1f2a52;
 }
 
+.pricing-rs__details-desc {
+  margin: 0;
+  color: #475569;
+  font-size: 19px;
+  line-height: 1.35;
+}
+
 .pricing-rs__features {
   margin: 0;
   padding-left: 22px;
@@ -2685,6 +2720,15 @@ input[type="number"] {
     border-radius: 14px;
   }
 
+  .pricing-rs__brand {
+    margin-bottom: 8px;
+  }
+
+  .pricing-rs__brand img {
+    width: 34px;
+    height: 34px;
+  }
+
   .pricing-rs__title {
     font-size: 34px;
   }
@@ -2724,6 +2768,10 @@ input[type="number"] {
 
   .pricing-rs__details-title {
     font-size: 24px;
+  }
+
+  .pricing-rs__details-desc {
+    font-size: 14px;
   }
 
   .pricing-rs__features {

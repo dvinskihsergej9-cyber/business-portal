@@ -14,6 +14,8 @@ const PLAN_CARDS = [
     key: "starter",
     id: "basic-30",
     title: "Стартовый",
+    description:
+      "Для малого и среднего склада. Закрывает ежедневные операции без лишней сложности.",
     toolsCount: 4,
     amount: 1990,
     currency: "RUB",
@@ -30,6 +32,8 @@ const PLAN_CARDS = [
     key: "growth",
     id: null,
     title: "Базовый",
+    description:
+      "Для растущих команд с повышенной нагрузкой и потребностью в расширенной аналитике.",
     toolsCount: 7,
     amount: 0,
     currency: "RUB",
@@ -45,6 +49,8 @@ const PLAN_CARDS = [
     key: "corp",
     id: null,
     title: "Корпоративный",
+    description:
+      "Для сетей складов, сложных процессов и интеграций под индивидуальные требования.",
     toolsCount: 10,
     amount: 0,
     currency: "RUB",
@@ -267,6 +273,14 @@ export default function Pricing() {
       {error && <div className="alert alert--error">{error}</div>}
 
       <section className="pricing-rs__panel">
+        <div className="pricing-rs__brand">
+          <img src="/logo-mark.png" alt="Логотип СкладОнлайн" />
+          <div className="pricing-rs__brand-text">
+            <strong>СкладОнлайн</strong>
+            <span>Подписка и тарифы</span>
+          </div>
+        </div>
+
         <h1 className="pricing-rs__title">Цены</h1>
 
         <div className="pricing-rs__periods" role="tablist" aria-label="Период оплаты">
@@ -345,6 +359,7 @@ export default function Pricing() {
             <h2 className="pricing-rs__details-title">
               Инструменты, включенные в тариф «{selectedPlan.title}»
             </h2>
+            <p className="pricing-rs__details-desc">{selectedPlan.description}</p>
 
             <ul className="pricing-rs__features">
               {selectedPlan.features.map((feature) => (
