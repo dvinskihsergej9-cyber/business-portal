@@ -22,9 +22,7 @@ export default function SubscribeReturn() {
       try {
         const token = localStorage.getItem("token");
         const res = await apiFetch(
-          `/billing/yookassa/payment-status?paymentId=${encodeURIComponent(
-            paymentId
-          )}`,
+          `/billing/yookassa/payment-status?paymentId=${encodeURIComponent(paymentId)}`,
           {
             headers: {
               Authorization: `Bearer ${token}`,

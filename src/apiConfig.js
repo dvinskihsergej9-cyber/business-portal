@@ -178,6 +178,30 @@ export const normalizeErrorMessage = (err, fallback = "Ошибка запрос
   if (message === "TRIAL_ALREADY_USED") {
     return "Пробный период уже использован.";
   }
+  if (message === "PAYMENT_CREATE_ERROR") {
+    return "Не удалось создать платеж. Проверьте настройки ЮKassa.";
+  }
+  if (message === "PAYMENT_STATUS_ERROR") {
+    return "Не удалось проверить статус оплаты.";
+  }
+  if (message === "PAYMENT_ID_REQUIRED") {
+    return "Не указан идентификатор платежа.";
+  }
+  if (message === "PAYMENT_NOT_FOUND") {
+    return "Платеж не найден.";
+  }
+  if (message === "PAYMENT_FORBIDDEN") {
+    return "Нет доступа к этому платежу.";
+  }
+  if (message === "PLAN_NOT_FOUND") {
+    return "Выбранный тариф не найден.";
+  }
+  if (message === "BILLING_USER_REQUIRED") {
+    return "Не найден плательщик для этой организации.";
+  }
+  if (message === "PAYMENT_METHOD_INVALID") {
+    return "Некорректный способ оплаты.";
+  }
   if (!hasCyrillic && isAsciiOnly) {
     return fallback;
   }
