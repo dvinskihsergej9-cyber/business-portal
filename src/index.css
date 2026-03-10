@@ -2637,21 +2637,21 @@ input[type="number"] {
 }
 
 .pricing-modern__cta--dark {
-  background: #596272;
+  background: #16a34a;
   color: #ffffff;
 }
 
 .pricing-modern__cta--dark:hover:not(:disabled) {
-  background: #4b5563;
+  background: #15803d;
 }
 
 .pricing-modern__cta--light {
-  background: #e9edf2;
-  color: #6b7280;
+  background: #475569;
+  color: #ffffff;
 }
 
 .pricing-modern__cta--light:hover:not(:disabled) {
-  background: #dde3ea;
+  background: #334155;
 }
 
 .pricing-modern__cta:disabled {
