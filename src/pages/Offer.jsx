@@ -1,4 +1,4 @@
-import { Link } from "react-router-dom";
+﻿import { Link } from "react-router-dom";
 
 export default function Offer() {
   return (
@@ -15,7 +15,7 @@ export default function Offer() {
           Исполнитель: ИП Двинских Сергей Сергеевич, ИНН 743402272974, ОГРНИП 326745600045736.
         </div>
         <div>
-          Адрес регистрации: г. Куса, ул. Розы Люксембуогр, д. 34, кв. 1.
+          Адрес регистрации: г. Куса, ул. Розы Люксембург, д. 34, кв. 1.
         </div>
         <div>
           Предмет договора: предоставление доступа к цифровой услуге «СкладОнлайн» -
@@ -38,3 +38,4 @@ export default function Offer() {
     </div>
   );
 }
+

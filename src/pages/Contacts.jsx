@@ -1,4 +1,4 @@
-export default function Contacts() {
+﻿export default function Contacts() {
   return (
     <div className="page">
       <div className="page-header">
@@ -12,9 +12,10 @@ export default function Contacts() {
         <div>ОГРНИП: 326745600045736</div>
         <div>Email: sergeydvin0998@mail.ru</div>
         <div>Телефон: +7-909-084-03-43</div>
-        <div>Адрес: г. Куса, ул. Розы Люксембуогр, д. 34, кв. 1</div>
+        <div>Адрес: г. Куса, ул. Розы Люксембург, д. 34, кв. 1</div>
         <div>Сайт: https://business-portal-7ag3j7zbr-sergeys-projects-dba39f06.vercel.app</div>
       </div>
     </div>
   );
 }
+
