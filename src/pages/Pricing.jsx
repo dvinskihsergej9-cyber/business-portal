@@ -11,28 +11,28 @@ const PERIOD_OPTIONS = [
 
 const PLAN_CARDS = [
   {
+    key: "starter",
     id: "basic-30",
-    title: "Старт",
+    title: "Стартовый",
+    toolsCount: 4,
     amount: 1990,
     currency: "RUB",
-    description:
-      "Базовый тариф для запуска склада: приемка, размещение, отбор, мобильный ТСД и роли сотрудников.",
     highlight: "Рекомендуем",
     available: true,
     features: [
-      "Все складские сценарии",
-      "Доступ для сотрудников по ролям",
+      "Приемка и размещение",
+      "Отбор и отгрузка",
       "Мобильный режим ТСД",
-      "Поддержка SaaS-изоляции",
+      "Роли сотрудников",
     ],
   },
   {
+    key: "growth",
     id: null,
-    title: "Рост",
+    title: "Базовый",
+    toolsCount: 7,
     amount: 0,
     currency: "RUB",
-    description:
-      "Для расширенных процессов: больше автоматизации, расширенная аналитика и пакет дополнительных функций.",
     highlight: "Скоро",
     available: false,
     features: [
@@ -42,12 +42,12 @@ const PLAN_CARDS = [
     ],
   },
   {
+    key: "corp",
     id: null,
     title: "Корпоративный",
+    toolsCount: 10,
     amount: 0,
     currency: "RUB",
-    description:
-      "Для сетей складов и сложных интеграций с индивидуальными условиями внедрения и сопровождения.",
     highlight: "Индивидуально",
     available: false,
     features: [
@@ -70,10 +70,17 @@ function formatPrice(amount, currency) {
   }
 }
 
+function getPeriodMonths(periodId) {
+  if (periodId === "6m") return 6;
+  if (periodId === "12m") return 12;
+  return 1;
+}
+
 function getPeriodAmount(baseAmount, periodId) {
   const monthly = Number(baseAmount || 0);
-  if (periodId === "6m") return Math.round(monthly * 6 * 0.9);
-  if (periodId === "12m") return Math.round(monthly * 12 * 0.7);
+  const months = getPeriodMonths(periodId);
+  if (months === 6) return Math.round(monthly * months * 0.9);
+  if (months === 12) return Math.round(monthly * months * 0.7);
   return monthly;
 }
 
@@ -81,6 +88,10 @@ function getPeriodLabel(periodId) {
   if (periodId === "6m") return "6 месяцев";
   if (periodId === "12m") return "1 год";
   return "30 дней";
+}
+
+function getFirstAvailablePlanKey() {
+  return PLAN_CARDS.find((plan) => plan.available)?.key || PLAN_CARDS[0].key;
 }
 
 export default function Pricing() {
@@ -93,18 +104,31 @@ export default function Pricing() {
   const [billingReady, setBillingReady] = useState(false);
   const [billingLoading, setBillingLoading] = useState(true);
   const [periodId, setPeriodId] = useState("1m");
+  const [selectedPlanKey, setSelectedPlanKey] = useState(getFirstAvailablePlanKey());
 
   const canManageBilling =
     user?.isSystemOwner === true ||
     (Array.isArray(user?.roles) && user.roles.includes("ADMIN")) ||
     user?.role === "ADMIN";
 
-  const extendedPeriodSelected = periodId !== "1m";
+  const selectedPlan = useMemo(
+    () => PLAN_CARDS.find((plan) => plan.key === selectedPlanKey) || PLAN_CARDS[0],
+    [selectedPlanKey]
+  );
 
-  const periodMeta = useMemo(
+  const selectedPeriod = useMemo(
     () => PERIOD_OPTIONS.find((option) => option.id === periodId) || PERIOD_OPTIONS[0],
     [periodId]
   );
+
+  const subscription = user?.subscription;
+  const trialAvailable = !subscription?.isActive && !subscription?.trialUsed;
+  const showTrialCard = !subscription?.isActive;
+  const paidUntilDate = subscription?.paidUntil
+    ? new Date(subscription.paidUntil).toLocaleDateString("ru-RU")
+    : "—";
+
+  const extendedPeriodSelected = periodId !== "1m";
 
   const handlePay = async (planId, paymentMethod = "sbp") => {
     if (!planId) {
@@ -113,7 +137,7 @@ export default function Pricing() {
     }
 
     if (extendedPeriodSelected) {
-      setError("Онлайн-оплата пока доступна только для периода 1 месяц.");
+      setError("Оплата за 6 месяцев и 1 год будет подключена следующим этапом.");
       return;
     }
 
@@ -126,8 +150,8 @@ export default function Pricing() {
       setLoading(true);
       setLoadingMethod(paymentMethod);
       setError("");
-
       const token = localStorage.getItem("token");
+
       const res = await apiFetch("/billing/yookassa/create-payment", {
         method: "POST",
         headers: {
@@ -169,7 +193,6 @@ export default function Pricing() {
     try {
       setLoading(true);
       setError("");
-
       const res = await apiFetch("/billing/start-trial", {
         method: "POST",
         headers: {
@@ -199,6 +222,11 @@ export default function Pricing() {
     }
   };
 
+  const handleRefresh = async () => {
+    await refreshUser();
+    navigate("/warehouse");
+  };
+
   const loadBillingConfig = async () => {
     try {
       const res = await apiFetch("/billing/config");
@@ -216,226 +244,180 @@ export default function Pricing() {
     loadBillingConfig();
   }, []);
 
-  const subscription = user?.subscription;
-  const trialAvailable = !subscription?.isActive && !subscription?.trialUsed;
-  const showTrialCard = !subscription?.isActive;
-  const paidUntilDate = subscription?.paidUntil
-    ? new Date(subscription.paidUntil).toLocaleDateString("ru-RU")
-    : "—";
-
-  const handleRefresh = async () => {
-    await refreshUser();
-    navigate("/warehouse");
-  };
-
   return (
-    <div className="page pricing-modern">
-      <section className="pricing-modern__hero">
-        <span className="pricing-modern__pill">SaaS-подписка</span>
-        <h1 className="pricing-modern__title pricing-modern__title--center">Цены</h1>
-
-        <div className="pricing-modern__periods" role="tablist" aria-label="Период оплаты">
-          {PERIOD_OPTIONS.map((option) => (
-            <button
-              key={option.id}
-              type="button"
-              className={`pricing-modern__period-btn ${option.id === periodId ? "is-active" : ""}`}
-              onClick={() => setPeriodId(option.id)}
-            >
-              <span>{option.label}</span>
-              {option.discountPct > 0 && (
-                <span className="pricing-modern__period-discount">-{option.discountPct}%</span>
-              )}
-            </button>
-          ))}
-        </div>
-
-        <p className="pricing-modern__subtitle pricing-modern__subtitle--center">
-          Один платеж на организацию. Все сотрудники работают в единой системе
-          по назначенным правам.
-        </p>
-      </section>
-
+    <div className="page pricing-rs">
       {!canManageBilling && (
-        <div className="pricing-modern__notice">
+        <div className="pricing-rs__notice">
           Оплату и запуск пробного периода выполняет администратор вашей компании.
         </div>
       )}
 
       {subscription?.isActive && (
-        <section className="pricing-modern__active">
+        <section className="pricing-rs__active">
           <div>
-            <div className="pricing-modern__active-title">Подписка активна</div>
-            <div className="pricing-modern__active-subtitle">Оплачено до: {paidUntilDate}</div>
+            <div className="pricing-rs__active-title">Подписка активна</div>
+            <div className="pricing-rs__active-subtitle">Оплачено до: {paidUntilDate}</div>
           </div>
-          <button className="btn pricing-modern__status-btn" onClick={handleRefresh}>
+          <button className="btn pricing-rs__mini-btn" onClick={handleRefresh}>
             Обновить статус
           </button>
         </section>
       )}
 
-      {error && <div className="alert alert--error pricing-modern__alert">{error}</div>}
+      {error && <div className="alert alert--error">{error}</div>}
 
-      <section className="pricing-modern__grid pricing-modern__grid--plans">
-        {showTrialCard && (
-          <article className="pricing-modern__card pricing-modern__card--trial">
-            <div className="pricing-modern__card-head">
-              <h2>Пробный период</h2>
-              <span className="pricing-modern__badge">Бесплатно</span>
-            </div>
-            <p>Один раз на 30 дней. Полный функционал без ограничений.</p>
-            <ul className="pricing-modern__list">
-              <li>Склад и мобильный ТСД</li>
-              <li>Права сотрудников</li>
-              <li>Заказы, приемка, отбор, размещение</li>
+      <section className="pricing-rs__panel">
+        <h1 className="pricing-rs__title">Цены</h1>
+
+        <div className="pricing-rs__periods" role="tablist" aria-label="Период оплаты">
+          {PERIOD_OPTIONS.map((option) => (
+            <button
+              key={option.id}
+              type="button"
+              className={`pricing-rs__period-btn ${option.id === periodId ? "is-active" : ""}`}
+              onClick={() => setPeriodId(option.id)}
+            >
+              <span>{option.label}</span>
+              {option.discountPct > 0 && (
+                <span className="pricing-rs__period-discount">-{option.discountPct}%</span>
+              )}
+            </button>
+          ))}
+        </div>
+
+        <div className="pricing-rs__range">
+          <div className="pricing-rs__range-label">20 000 операций</div>
+          <div className="pricing-rs__range-track" aria-hidden="true">
+            <span className="pricing-rs__range-thumb" />
+          </div>
+        </div>
+
+        <div className="pricing-rs__layout">
+          <div className="pricing-rs__plans" role="listbox" aria-label="Список тарифов">
+            {PLAN_CARDS.map((plan) => {
+              const displayAmount = plan.available
+                ? getPeriodAmount(plan.amount, periodId)
+                : 0;
+              const regularAmount = plan.available
+                ? Number(plan.amount) * getPeriodMonths(periodId)
+                : 0;
+              const showOldPrice = plan.available && selectedPeriod.discountPct > 0;
+
+              return (
+                <button
+                  key={plan.key}
+                  type="button"
+                  className={`pricing-rs__plan ${plan.key === selectedPlan.key ? "is-active" : ""}`}
+                  onClick={() => setSelectedPlanKey(plan.key)}
+                >
+                  <div className="pricing-rs__plan-head">
+                    <span className="pricing-rs__radio" aria-hidden="true" />
+                    <div>
+                      <div className="pricing-rs__plan-title">{plan.title}</div>
+                      <div className="pricing-rs__plan-tools">{plan.toolsCount} инструментов</div>
+                    </div>
+                  </div>
+
+                  <div className="pricing-rs__plan-price-row">
+                    <div className="pricing-rs__plan-price">
+                      {plan.available ? formatPrice(displayAmount, plan.currency) : "—"}
+                    </div>
+                    {showOldPrice ? (
+                      <div className="pricing-rs__plan-old">
+                        {formatPrice(regularAmount, plan.currency)}
+                      </div>
+                    ) : null}
+                  </div>
+
+                  {showOldPrice ? (
+                    <div className="pricing-rs__plan-discount">
+                      Скидка {selectedPeriod.discountPct}% при оплате за {getPeriodLabel(periodId).toLowerCase()}
+                    </div>
+                  ) : (
+                    <div className="pricing-rs__plan-discount pricing-rs__plan-discount--empty">&nbsp;</div>
+                  )}
+                </button>
+              );
+            })}
+          </div>
+
+          <aside className="pricing-rs__details">
+            <h2 className="pricing-rs__details-title">
+              Инструменты, включенные в тариф «{selectedPlan.title}»
+            </h2>
+
+            <ul className="pricing-rs__features">
+              {selectedPlan.features.map((feature) => (
+                <li key={feature}>{feature}</li>
+              ))}
             </ul>
-            <div className="pricing-modern__actions pricing-modern__actions--single">
+
+            <div className="pricing-rs__actions">
               <button
-                className="btn pricing-modern__cta pricing-modern__cta--dark"
-                onClick={handleStartTrial}
-                disabled={loading || !canManageBilling || !trialAvailable}
+                className="btn pricing-rs__btn pricing-rs__btn--dark"
+                onClick={() => handlePay(selectedPlan.id, "sbp")}
+                disabled={
+                  !selectedPlan.available ||
+                  extendedPeriodSelected ||
+                  loading ||
+                  billingLoading ||
+                  !billingReady ||
+                  !canManageBilling
+                }
               >
-                {loading ? "Активируем..." : "Начать 30 дней бесплатно"}
+                {selectedPlan.available
+                  ? loading && loadingMethod === "sbp"
+                    ? "Переход к оплате..."
+                    : "Оплатить по СБП"
+                  : "Скоро"}
+              </button>
+
+              <button
+                className="btn pricing-rs__btn pricing-rs__btn--light"
+                onClick={() => handlePay(selectedPlan.id, "default")}
+                disabled={
+                  !selectedPlan.available ||
+                  extendedPeriodSelected ||
+                  loading ||
+                  billingLoading ||
+                  !billingReady ||
+                  !canManageBilling
+                }
+              >
+                {selectedPlan.available
+                  ? loading && loadingMethod === "default"
+                    ? "Переход к оплате..."
+                    : "Оплатить картой"
+                  : "Недоступно"}
               </button>
             </div>
-            {!trialAvailable && (
-              <div className="pricing-modern__hint">
-                Пробный период уже использован. Выберите оплату тарифа ниже.
+
+            {showTrialCard && (
+              <div className="pricing-rs__trial">
+                <button
+                  className="btn pricing-rs__btn pricing-rs__btn--dark"
+                  onClick={handleStartTrial}
+                  disabled={loading || !canManageBilling || !trialAvailable}
+                >
+                  {loading ? "Активируем..." : "Начать 30 дней бесплатно"}
+                </button>
               </div>
             )}
-          </article>
-        )}
 
-        {PLAN_CARDS.map((plan) => {
-          const displayAmount = plan.available
-            ? getPeriodAmount(plan.amount, periodId)
-            : 0;
-          const canPayCurrentPlan =
-            plan.available && !extendedPeriodSelected && billingReady && canManageBilling;
-
-          return (
-            <article
-              key={plan.title}
-              className={`pricing-modern__card pricing-modern__card--plan ${
-                plan.available ? "pricing-modern__card--featured" : ""
-              }`}
-            >
-              <div className="pricing-modern__card-head">
-                <h2>{plan.title}</h2>
-                <span className="pricing-modern__badge pricing-modern__badge--accent">
-                  {plan.highlight}
-                </span>
+            {!billingReady && selectedPlan.available && (
+              <div className="pricing-rs__hint">
+                Платежи будут доступны после подключения YooKassa.
               </div>
+            )}
 
-              <p>{plan.description}</p>
-
-              <div className="pricing-modern__price-row">
-                <span className="pricing-modern__price">
-                  {plan.available ? formatPrice(displayAmount, plan.currency) : "—"}
-                </span>
-                <span className="pricing-modern__period">/ {getPeriodLabel(periodId)}</span>
+            {extendedPeriodSelected && selectedPlan.available && (
+              <div className="pricing-rs__hint">
+                Оплата за 6 месяцев и 1 год будет подключена следующим этапом.
               </div>
-
-              <ul className="pricing-modern__list">
-                {plan.features.map((feature) => (
-                  <li key={feature}>{feature}</li>
-                ))}
-              </ul>
-
-              <div className="pricing-modern__actions">
-                <button
-                  className="btn pricing-modern__cta pricing-modern__cta--dark"
-                  onClick={() => handlePay(plan.id, "sbp")}
-                  disabled={
-                    !plan.available ||
-                    extendedPeriodSelected ||
-                    loading ||
-                    billingLoading ||
-                    !billingReady ||
-                    !canManageBilling
-                  }
-                >
-                  {plan.available
-                    ? loading && loadingMethod === "sbp"
-                      ? "Переход к оплате..."
-                      : "Оплатить по СБП"
-                    : "Скоро"}
-                </button>
-                <button
-                  className="btn pricing-modern__cta pricing-modern__cta--light"
-                  onClick={() => handlePay(plan.id, "default")}
-                  disabled={
-                    !plan.available ||
-                    extendedPeriodSelected ||
-                    loading ||
-                    billingLoading ||
-                    !billingReady ||
-                    !canManageBilling
-                  }
-                >
-                  {plan.available
-                    ? loading && loadingMethod === "default"
-                      ? "Переход к оплате..."
-                      : "Оплатить картой"
-                    : "Недоступно"}
-                </button>
-              </div>
-
-              {plan.available && !billingReady && (
-                <div className="pricing-modern__hint">
-                  Платежи будут доступны после подключения YooKassa.
-                </div>
-              )}
-
-              {plan.available && extendedPeriodSelected && (
-                <div className="pricing-modern__hint">
-                  Оплата за 6 месяцев и 1 год будет подключена следующим этапом.
-                </div>
-              )}
-
-              {!plan.available && (
-                <div className="pricing-modern__hint">
-                  Этот пакет можно подключить на следующем этапе развития биллинга.
-                </div>
-              )}
-
-              {plan.available && canPayCurrentPlan && (
-                <div className="pricing-modern__hint">Платеж пройдет через YooKassa.</div>
-              )}
-            </article>
-          );
-        })}
+            )}
+          </aside>
+        </div>
       </section>
-
-      <section className="pricing-modern__trust">
-        <div>Безопасная оплата через YooKassa</div>
-        <div>Доступ управляется на уровне компании</div>
-        <div>Оплату запускает только администратор</div>
-      </section>
-
-      <section className="pricing-modern__faq">
-        <h3>Частые вопросы</h3>
-        <details>
-          <summary>Кто должен оплачивать доступ?</summary>
-          <p>
-            Оплату выполняет администратор клиента. После оплаты доступ получают
-            сотрудники его компании.
-          </p>
-        </details>
-        <details>
-          <summary>Сотрудник может сам оплатить тариф?</summary>
-          <p>Нет, оплату и запуск trial делает только администратор компании.</p>
-        </details>
-        <details>
-          <summary>Что будет после окончания подписки?</summary>
-          <p>Доступ к рабочим разделам будет ограничен до продления подписки.</p>
-        </details>
-      </section>
-
-      <div className="pricing-modern__footnote">
-        Нажимая кнопку оплаты, вы подтверждаете согласие с условиями оферты и
-        политикой конфиденциальности.
-      </div>
     </div>
   );
 }
