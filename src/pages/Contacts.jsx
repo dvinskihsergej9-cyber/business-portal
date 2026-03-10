@@ -7,13 +7,15 @@
       </div>
 
       <div className="card" style={{ display: "grid", gap: 10 }}>
-        <div>Самозанятый (НПД) Двинских Сергей Сергеевич</div>
+        <div>ИП Двинских Сергей Сергеевич</div>
         <div>ИНН: 743402272974</div>
+        <div>ОГРНИП: 326745600045736</div>
         <div>Email: sergeydvin0998@mail.ru</div>
-        <div>Телефон: 8-909-084-03-43</div>
-        <div>Адрес: г. Челябинск</div>
-        <div>Сайт: https://business-portal-0zeo9bgbg-sergeys-projects-9cd5c7b6.vercel.app</div>
+        <div>Телефон: +7-909-084-03-43</div>
+        <div>Адрес: г. Куса, ул. Розы Люксембург, д. 34, кв. 1</div>
+        <div>Сайт: https://business-portal-7ag3j7zbr-sergeys-projects-dba39f06.vercel.app</div>
       </div>
     </div>
   );
 }
+

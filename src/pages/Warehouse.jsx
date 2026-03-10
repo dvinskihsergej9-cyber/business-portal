@@ -14,6 +14,7 @@ import PurchaseOrderModal from "../components/PurchaseOrderModal";
 
 import PurchaseOrderReceiveModal from "../components/PurchaseOrderReceiveModal";
 import StockAuditTab from "../components/StockAuditTab";
+import StockHoldsPanel from "../components/StockHoldsPanel";
 import StockMovementsHistoryTab from "../components/StockMovementsHistoryTab";
 import StockTransactionsTab from "../components/StockTransactionsTab";
 import StockRevisionTab from "../components/StockRevisionTab";
@@ -21,6 +22,7 @@ import SupplierTrucksQueueTab from "../components/SupplierTrucksQueueTab";
 import MobileTsdTab from "../components/MobileTsdTab";
 import WarehouseLocationsPanel from "../components/WarehouseLocationsPanel";
 import TmcTab from "../components/TmcTab";
+import { WAREHOUSE_EMBEDDED_ICONS } from "../assets/warehouse/embeddedIcons";
 
 
 const API = API_BASE;
@@ -66,7 +68,34 @@ const WAREHOUSE_ICON_FALLBACK = {
   revision: "REV",
 };
 
+const WAREHOUSE_IMAGE = {
+  tasks: WAREHOUSE_EMBEDDED_ICONS.tasks,
+  inventory: WAREHOUSE_EMBEDDED_ICONS.inventory,
+  movement: WAREHOUSE_EMBEDDED_ICONS.movement,
+  transactions: WAREHOUSE_EMBEDDED_ICONS.transactions,
+  revision: WAREHOUSE_EMBEDDED_ICONS.revision,
+  suppliers: WAREHOUSE_EMBEDDED_ICONS.suppliers,
+  locations: WAREHOUSE_EMBEDDED_ICONS.locations,
+  queue: WAREHOUSE_EMBEDDED_ICONS.queue,
+  tsd: WAREHOUSE_EMBEDDED_ICONS.tsd,
+};
+
 function WarehouseTileIcon({ name }) {
+  const image = WAREHOUSE_IMAGE[name] || null;
+  if (image) {
+    return (
+      <img
+        className="warehouse-card__icon-image"
+        src={image}
+        alt=""
+        aria-hidden="true"
+        loading="eager"
+        decoding="sync"
+        fetchPriority="high"
+      />
+    );
+  }
+
   const emoji = WAREHOUSE_EMOJI[name];
   const fallback = WAREHOUSE_ICON_FALLBACK[name] || "•";
 
@@ -228,13 +257,14 @@ export default function Warehouse({
   const canTmc = sectionSet.has("tmc");
 
   const [section, setSection] = useState("");
-  const sectionChangedByUserRef = useRef(false);
 
   useEffect(() => {
-    if (!sections || sections.length == 0) return;
-    if (!section || !sections.includes(section)) {
-      sectionChangedByUserRef.current = false;
-      setSection(sections[0]);
+    if (!sections || sections.length === 0) {
+      if (section) setSection("");
+      return;
+    }
+    if (section && !sections.includes(section)) {
+      setSection("");
     }
   }, [section, sections]);
 
@@ -368,27 +398,6 @@ export default function Warehouse({
     }
   }, [section]);
 
-  useEffect(() => {
-    const refMap = {
-      requests: requestsRef,
-      tasks: tasksRef,
-      inventory: inventoryRef,movement: inventoryRef,
-      suppliers: inventoryRef,
-      locations: locationsRef,
-      queue: queueRef,
-      tsd: tsdRef,
-      transactions: transactionsRef,
-      revision: revisionRef,
-      tmc: tmcRef,
-    };
-    const target = refMap[section];
-    if (sectionChangedByUserRef.current && target?.current) {
-      target.current.scrollIntoView({ behavior: "smooth", block: "start" });
-      sectionChangedByUserRef.current = false;
-    }
-  }, [section]);
-
-
   const [itemForm, setItemForm] = useState({
 
     name: "",
@@ -468,6 +477,10 @@ export default function Warehouse({
   const [showOrderModal, setShowOrderModal] = useState(false);
 
   const [orderItemsForModal, setOrderItemsForModal] = useState([]);
+
+  const [viewPurchaseOrder, setViewPurchaseOrder] = useState(null);
+  const [viewPurchaseOrderLoading, setViewPurchaseOrderLoading] = useState(false);
+  const [viewPurchaseOrderError, setViewPurchaseOrderError] = useState("");
 
   const [showReceiveModal, setShowReceiveModal] = useState(false);
 
@@ -1985,70 +1998,6 @@ export default function Warehouse({
 
 
 
-  const handleDownloadLowStockOrder = async () => {
-
-    try {
-
-      setInventoryError("");
-
-
-
-      const res = await fetch(`${API}/inventory/low-stock-order-file`, {
-
-        headers: { Authorization: authHeaders.Authorization },
-
-      });
-
-
-
-      if (!res.ok) {
-
-        let errorMessage = "Не удалось сформировать файл заказа";
-
-        try {
-
-          const data = await res.json();
-
-          if (data?.message) errorMessage = data.message;
-
-        } catch (e) {}
-
-        throw new Error(errorMessage);
-
-      }
-
-
-
-      const blob = await res.blob();
-
-      const url = window.URL.createObjectURL(blob);
-
-      const a = document.createElement("a");
-
-      a.href = url;
-
-      a.download = "order_low_stock.xlsx";
-
-      document.body.appendChild(a);
-
-      a.click();
-
-      a.remove();
-
-      window.URL.revokeObjectURL(url);
-
-    } catch (e) {
-
-      console.error(e);
-
-      setInventoryError(e.message);
-
-    }
-
-  };
-
-
-
   const handleQuickIncome = (item) => {
 
     setMovementForm({
@@ -2226,6 +2175,38 @@ export default function Warehouse({
     }
   };
 
+  const handleViewPurchaseOrder = async (order) => {
+    if (!order?.id) return;
+    setViewPurchaseOrder(order);
+    setViewPurchaseOrderError("");
+    setViewPurchaseOrderLoading(true);
+    try {
+      const res = await fetch(`${API}/purchase-orders/${order.id}`, {
+        headers: { Authorization: authHeaders.Authorization },
+      });
+      const data = await readResponsePayload(res);
+      if (!res.ok) {
+        throw new Error(
+          (data && data.message) || "Ошибка загрузки заказа поставщику."
+        );
+      }
+      setViewPurchaseOrder(data || order);
+    } catch (e) {
+      console.error(e);
+      setViewPurchaseOrderError(
+        resolveErrorMessage(e, "Ошибка загрузки заказа поставщику.")
+      );
+    } finally {
+      setViewPurchaseOrderLoading(false);
+    }
+  };
+
+  const handleCloseViewPurchaseOrder = () => {
+    setViewPurchaseOrder(null);
+    setViewPurchaseOrderError("");
+    setViewPurchaseOrderLoading(false);
+  };
+
 
 
   const handlePurchaseOrderStatusReceived = async (orderId) => {
@@ -2282,25 +2263,78 @@ export default function Warehouse({
 
   };
 
-
-
-    const sortedPurchaseOrders = useMemo(() => {
-
+  const sortedPurchaseOrders = useMemo(() => {
     return [...purchaseOrders].sort((a, b) => {
-
       const da = a.createdAt ? new Date(a.createdAt).getTime() : 0;
-
       const db = b.createdAt ? new Date(b.createdAt).getTime() : 0;
-
-      return db - da; // новые сверху
-
+      return db - da;
     });
-
   }, [purchaseOrders]);
 
+  const groupedPurchaseOrders = useMemo(() => {
+    const groups = [];
+    for (const po of sortedPurchaseOrders) {
+      const dateObj = po.createdAt ? new Date(po.createdAt) : null;
+      const dateStr = dateObj
+        ? dateObj.toLocaleDateString("ru-RU", {
+            day: "2-digit",
+            month: "2-digit",
+            year: "numeric",
+          })
+        : "Без даты";
+      const timeStr = dateObj
+        ? dateObj.toLocaleTimeString("ru-RU", {
+            hour: "2-digit",
+            minute: "2-digit",
+          })
+        : "-";
 
+      const lastGroup = groups[groups.length - 1];
+      if (!lastGroup || lastGroup.date !== dateStr) {
+        groups.push({ date: dateStr, items: [{ po, timeStr }] });
+      } else {
+        lastGroup.items.push({ po, timeStr });
+      }
+    }
+    return groups;
+  }, [sortedPurchaseOrders]);
 
-  let lastPurchaseOrderDate = "";
+  const sectionCards = useMemo(
+    () => [
+      { key: "requests", title: "\u0417\u0430\u044f\u0432\u043a\u0438 \u043d\u0430 \u0441\u043a\u043b\u0430\u0434", subtitle: "\u0421\u043e\u0437\u0434\u0430\u043d\u0438\u0435 \u0437\u0430\u044f\u0432\u043e\u043a \u0438 \u043a\u043e\u043d\u0442\u0440\u043e\u043b\u044c \u0432\u044b\u0434\u0430\u0447\u0438 \u0440\u0430\u0441\u0445\u043e\u0434\u043d\u044b\u0445 \u043c\u0430\u0442\u0435\u0440\u0438\u0430\u043b\u043e\u0432." },
+      { key: "tasks", title: "\u0417\u0430\u0434\u0430\u0447\u0438 \u0441\u043a\u043b\u0430\u0434\u0430", subtitle: "\u041d\u0430\u0437\u043d\u0430\u0447\u0435\u043d\u0438\u0435 \u0437\u0430\u0434\u0430\u0447, \u0441\u0440\u043e\u043a\u0438 \u0438 \u043d\u0430\u043f\u043e\u043c\u0438\u043d\u0430\u043d\u0438\u044f \u0432 Telegram." },
+      { key: "inventory", title: "\u041e\u0441\u0442\u0430\u0442\u043a\u0438", subtitle: "\u0422\u0435\u043a\u0443\u0449\u0438\u0435 \u043e\u0441\u0442\u0430\u0442\u043a\u0438 \u043f\u043e \u0441\u043a\u043b\u0430\u0434\u0443." },
+      { key: "movement", title: "\u0418\u0441\u0442\u043e\u0440\u0438\u044f \u0434\u0432\u0438\u0436\u0435\u043d\u0438\u0439", subtitle: "\u0416\u0443\u0440\u043d\u0430\u043b \u043e\u043f\u0435\u0440\u0430\u0446\u0438\u0439 \u043f\u043e \u0441\u043a\u043b\u0430\u0434\u0443." },
+      { key: "transactions", title: "\u0422\u0440\u0430\u043d\u0437\u0430\u043a\u0446\u0438\u0438", subtitle: "\u0412\u0441\u0435 \u0434\u0435\u0439\u0441\u0442\u0432\u0438\u044f \u043f\u043e \u044f\u0447\u0435\u0439\u043a\u0430\u043c \u0438 \u0442\u043e\u0432\u0430\u0440\u0443." },
+      { key: "revision", title: "\u0420\u0435\u0432\u0438\u0437\u0438\u044f", subtitle: "\u0421\u043d\u0438\u043c\u043e\u043a \u0440\u0430\u0441\u0445\u043e\u0436\u0434\u0435\u043d\u0438\u0439 \u043f\u043e \u043a\u043e\u043d\u0442\u0440\u043e\u043b\u044e \u044f\u0447\u0435\u0435\u043a." },
+      { key: "tmc", title: "\u0422\u041c\u0426", subtitle: "\u0420\u0430\u0441\u0445\u043e\u0434\u043d\u044b\u0435 \u043c\u0430\u0442\u0435\u0440\u0438\u0430\u043b\u044b \u0434\u043b\u044f \u043e\u0442\u0434\u0435\u043b\u043e\u0432 \u0438 \u0441\u043e\u0442\u0440\u0434\u043d\u0438\u043a\u043e\u0432." },
+      { key: "suppliers", title: "\u041f\u043e\u0441\u0442\u0430\u0432\u0449\u0438\u043a\u0438", subtitle: "\u041f\u043e\u0441\u0442\u0430\u0432\u0449\u0438\u043a\u0438 \u0438 \u0437\u0430\u043a\u0430\u0437\u044b \u043f\u043e\u0441\u0442\u0430\u0432\u0449\u0438\u043a\u0443." },
+      { key: "locations", title: "\u0421\u043f\u0440\u0430\u0432\u043e\u0447\u043d\u0438\u043a \u044f\u0447\u0435\u0435\u043a", subtitle: "\u0421\u043e\u0437\u0434\u0430\u043d\u0438\u0435 \u044f\u0447\u0435\u0435\u043a \u0438 \u043f\u0435\u0447\u0430\u0442\u044c QR-\u044d\u0442\u0438\u043a\u0435\u0442\u043e\u043a." },
+      { key: "queue", title: "\u041c\u0430\u0448\u0438\u043d\u044b \u043f\u043e\u0441\u0442\u0430\u0432\u0449\u0438\u043a\u043e\u0432 \u0432 \u043e\u0447\u0435\u0440\u0435\u0434\u0438", subtitle: "\u041e\u0447\u0435\u0440\u0435\u0434\u044c \u043d\u0430 \u0440\u0430\u0437\u0433\u0440\u0443\u0437\u043a\u0443, \u0432\u043e\u0440\u043e\u0442\u0430 \u0438 \u0432\u0440\u0435\u043c\u044f." },
+      { key: "tsd", title: "\u041c\u043e\u0431\u0438\u043b\u044c\u043d\u044b\u0439 \u0422\u0421\u0414", subtitle: "\u0421\u043a\u0430\u043d\u0438\u0440\u043e\u0432\u0430\u043d\u0438\u0435 \u0448\u0442\u0440\u0438\u0445\u043a\u043e\u0434\u043e\u0432 \u0438 \u0431\u044b\u0441\u0442\u0440\u044b\u0435 \u043e\u043f\u0435\u0440\u0430\u0446\u0438\u0438." },
+    ],
+    []
+  );
+
+  const visibleSectionCards = useMemo(
+    () => sectionCards.filter((card) => sectionSet.has(card.key)),
+    [sectionCards, sectionSet]
+  );
+
+  const selectedSectionCard = useMemo(
+    () => sectionCards.find((card) => card.key === section) || null,
+    [sectionCards, section]
+  );
+
+  const openSection = (sectionKey) => {
+    setSection(sectionKey);
+    window.scrollTo({ top: 0, left: 0, behavior: "auto" });
+  };
+
+  const closeSection = () => {
+    setSection("");
+    window.scrollTo({ top: 0, left: 0, behavior: "auto" });
+  };
 
 
 
@@ -2322,50 +2356,60 @@ export default function Warehouse({
 
       {/* Верхние карточки-подразделы склада */}
 
-      <div className="warehouse-section">
-
-        <div className="warehouse-grid">
-          {[
-            { key: "requests", title: "\u0417\u0430\u044f\u0432\u043a\u0438 \u043d\u0430 \u0441\u043a\u043b\u0430\u0434", subtitle: "\u0421\u043e\u0437\u0434\u0430\u043d\u0438\u0435 \u0437\u0430\u044f\u0432\u043e\u043a \u0438 \u043a\u043e\u043d\u0442\u0440\u043e\u043b\u044c \u0432\u044b\u0434\u0430\u0447\u0438 \u0440\u0430\u0441\u0445\u043e\u0434\u043d\u044b\u0445 \u043c\u0430\u0442\u0435\u0440\u0438\u0430\u043b\u043e\u0432." },
-            { key: "tasks", title: "\u0417\u0430\u0434\u0430\u0447\u0438 \u0441\u043a\u043b\u0430\u0434\u0430", subtitle: "\u041d\u0430\u0437\u043d\u0430\u0447\u0435\u043d\u0438\u0435 \u0437\u0430\u0434\u0430\u0447, \u0441\u0440\u043e\u043a\u0438 \u0438 \u043d\u0430\u043f\u043e\u043c\u0438\u043d\u0430\u043d\u0438\u044f \u0432 Telegram." },
-            { key: "inventory", title: "\u041e\u0441\u0442\u0430\u0442\u043a\u0438", subtitle: "\u0422\u0435\u043a\u0443\u0449\u0438\u0435 \u043e\u0441\u0442\u0430\u0442\u043a\u0438 \u043f\u043e \u0441\u043a\u043b\u0430\u0434\u0443." },
-            { key: "movement", title: "\u0418\u0441\u0442\u043e\u0440\u0438\u044f \u0434\u0432\u0438\u0436\u0435\u043d\u0438\u0439", subtitle: "\u0416\u0443\u0440\u043d\u0430\u043b \u043e\u043f\u0435\u0440\u0430\u0446\u0438\u0439 \u043f\u043e \u0441\u043a\u043b\u0430\u0434\u0443." },
-            { key: "transactions", title: "\u0422\u0440\u0430\u043d\u0437\u0430\u043a\u0446\u0438\u0438", subtitle: "\u0412\u0441\u0435 \u0434\u0435\u0439\u0441\u0442\u0432\u0438\u044f \u043f\u043e \u044f\u0447\u0435\u0439\u043a\u0430\u043c \u0438 \u0442\u043e\u0432\u0430\u0440\u0443." },
-            { key: "revision", title: "\u0420\u0435\u0432\u0438\u0437\u0438\u044f", subtitle: "\u0421\u043d\u0438\u043c\u043e\u043a \u0440\u0430\u0441\u0445\u043e\u0436\u0434\u0435\u043d\u0438\u0439 \u043f\u043e \u043a\u043e\u043d\u0442\u0440\u043e\u043b\u044e \u044f\u0447\u0435\u0435\u043a." },
-            { key: "tmc", title: "\u0422\u041c\u0426", subtitle: "\u0420\u0430\u0441\u0445\u043e\u0434\u043d\u044b\u0435 \u043c\u0430\u0442\u0435\u0440\u0438\u0430\u043b\u044b \u0434\u043b\u044f \u043e\u0442\u0434\u0435\u043b\u043e\u0432 \u0438 \u0441\u043e\u0442\u0440\u0434\u043d\u0438\u043a\u043e\u0432." },
-            { key: "suppliers", title: "\u041f\u043e\u0441\u0442\u0430\u0432\u0449\u0438\u043a\u0438", subtitle: "\u041f\u043e\u0441\u0442\u0430\u0432\u0449\u0438\u043a\u0438 \u0438 \u0437\u0430\u043a\u0430\u0437\u044b \u043f\u043e\u0441\u0442\u0430\u0432\u0449\u0438\u043a\u0443." },
-            { key: "locations", title: "\u0421\u043f\u0440\u0430\u0432\u043e\u0447\u043d\u0438\u043a \u044f\u0447\u0435\u0435\u043a", subtitle: "\u0421\u043e\u0437\u0434\u0430\u043d\u0438\u0435 \u044f\u0447\u0435\u0435\u043a \u0438 \u043f\u0435\u0447\u0430\u0442\u044c QR-\u044d\u0442\u0438\u043a\u0435\u0442\u043e\u043a." },
-            { key: "queue", title: "\u041c\u0430\u0448\u0438\u043d\u044b \u043f\u043e\u0441\u0442\u0430\u0432\u0449\u0438\u043a\u043e\u0432 \u0432 \u043e\u0447\u0435\u0440\u0435\u0434\u0438", subtitle: "\u041e\u0447\u0435\u0440\u0435\u0434\u044c \u043d\u0430 \u0440\u0430\u0437\u0433\u0440\u0443\u0437\u043a\u0443, \u0432\u043e\u0440\u043e\u0442\u0430 \u0438 \u0432\u0440\u0435\u043c\u044f." },
-            { key: "tsd", title: "\u041c\u043e\u0431\u0438\u043b\u044c\u043d\u044b\u0439 \u0422\u0421\u0414", subtitle: "\u0421\u043a\u0430\u043d\u0438\u0440\u043e\u0432\u0430\u043d\u0438\u0435 \u0448\u0442\u0440\u0438\u0445\u043a\u043e\u0434\u043e\u0432 \u0438 \u0431\u044b\u0441\u0442\u0440\u044b\u0435 \u043e\u043f\u0435\u0440\u0430\u0446\u0438\u0438." },
-          ]
-            .filter((card) => sectionSet.has(card.key))
-            .map((card) => (
+      {!section && (
+        <div className="warehouse-section">
+          <div className="warehouse-grid">
+            {visibleSectionCards.map((card) => (
               <button
                 key={card.key}
                 type="button"
-                className={
-                  "warehouse-card" +
-                  (section === card.key ? " warehouse-card--active" : "")
-                }
-                onClick={() => {
-                  sectionChangedByUserRef.current = true;
-                  setSection(card.key);
-                }}
+                className="warehouse-card"
+                onClick={() => openSection(card.key)}
               >
                 <div className="warehouse-card__icon">
                   <WarehouseTileIcon name={card.key} />
                 </div>
                 <div className="warehouse-card__body">
                   <div className="warehouse-card__title">{card.title}</div>
-                  <div className="warehouse-card__subtitle">
-                    {card.subtitle}
-                  </div>
+                  <div className="warehouse-card__subtitle">{card.subtitle}</div>
                 </div>
               </button>
             ))}
+          </div>
         </div>
+      )}
 
-      </div>
+      {section && selectedSectionCard && (
+        <div className="card" style={{ marginBottom: 12 }}>
+          <div
+            className="card1c__body"
+            style={{
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "space-between",
+              gap: 12,
+              flexWrap: "wrap",
+            }}
+          >
+            <div style={{ minWidth: 0, display: "flex", alignItems: "center", gap: 10 }}>
+              <div className="warehouse-card__icon" style={{ width: 52, height: 52 }}>
+                <WarehouseTileIcon name={selectedSectionCard.key} />
+              </div>
+              <div style={{ minWidth: 0 }}>
+                <div style={{ fontSize: 20, fontWeight: 700, lineHeight: 1.2 }}>
+                  {selectedSectionCard.title}
+                </div>
+                <div style={{ marginTop: 4, fontSize: 13, color: "#64748b" }}>
+                  {selectedSectionCard.subtitle}
+                </div>
+              </div>
+            </div>
+            <button type="button" className="btn btn--secondary" onClick={closeSection}>
+              Назад к разделам
+            </button>
+          </div>
+        </div>
+      )}
 
         {/* ======    ЗАЯВКИ ====== */}
 
@@ -3591,7 +3635,12 @@ export default function Warehouse({
 
 
 
-          {inventoryTab === "stock" && <StockAuditTab />}
+          {inventoryTab === "stock" && (
+            <>
+              <StockAuditTab />
+              {isWarehouseManager && <StockHoldsPanel />}
+            </>
+          )}
 
 
 
@@ -4150,19 +4199,6 @@ export default function Warehouse({
                       Создать заказ поставщику
 
                     </button>
-
-                    <button
-
-                      className="btn btn--secondary"
-
-                      onClick={handleDownloadLowStockOrder}
-
-                    >
-
-                      Скачать заказ (Low Stock)
-
-                    </button>
-
                   </div>
 
 
@@ -4194,149 +4230,96 @@ export default function Warehouse({
                     <p className="text-muted">Заказов пока нет.</p>
 
                   ) : (
-
-                    <div className="table-wrapper">
-
+                    <>
+                    <div className="table-wrapper purchase-orders-desktop">
                       <table className="table">
-
                         <thead>
-
                           <tr>
-
                             <th>ID</th>
-
                             <th>Время</th>
-
                             <th>Поставщик</th>
-
                             <th>Статус</th>
-
                             <th></th>
-
                           </tr>
-
                         </thead>
-
                         <tbody>
-
-                          {sortedPurchaseOrders.map((po) => {
-
-                            const dateObj = po.createdAt
-
-                              ? new Date(po.createdAt)
-
-                              : null;
-
-
-
-                            const dateStr = dateObj
-
-                              ? dateObj.toLocaleDateString("ru-RU", {
-
-                                  day: "2-digit",
-
-                                  month: "2-digit",
-
-                                  year: "numeric",
-
-                                })
-
-                              : "Без даты";
-
-
-
-                            const timeStr = dateObj
-
-                              ? dateObj.toLocaleTimeString("ru-RU", {
-
-                                  hour: "2-digit",
-
-                                  minute: "2-digit",
-
-                                })
-
-                              : "-";
-
-
-
-                            const showDateRow =
-
-                              dateStr !== lastPurchaseOrderDate;
-
-                            if (showDateRow) {
-
-                              lastPurchaseOrderDate = dateStr;
-
-                            }
-
-
-
-                            return (
-
-                              <Fragment key={po.id}>
-
-                                {showDateRow && (
-
-                                  <tr className="table-section-row">
-
-                                    <td
-
-                                      colSpan={5}
-
-                                      style={{
-
-                                        backgroundColor: "#f3f4f6",
-
-                                        fontWeight: 600,
-
-                                        paddingTop: 6,
-
-                                        paddingBottom: 6,
-
-                                      }}
-
-                                    >
-
-                                      {dateStr}
-
-                                    </td>
-
-                                  </tr>
-
-                                )}
-
-
-
-                                <tr>
-
+                          {groupedPurchaseOrders.map((group) => (
+                            <Fragment key={`desktop-${group.date}`}>
+                              <tr className="table-section-row">
+                                <td
+                                  colSpan={5}
+                                  style={{
+                                    backgroundColor: "#f3f4f6",
+                                    fontWeight: 600,
+                                    paddingTop: 6,
+                                    paddingBottom: 6,
+                                  }}
+                                >
+                                  {group.date}
+                                </td>
+                              </tr>
+                              {group.items.map(({ po, timeStr }) => (
+                                <tr key={po.id}>
                                   <td>{po.id}</td>
-
                                   <td>{timeStr}</td>
-
                                   <td>{po.supplier?.name || "-"}</td>
-
+                                  <td>{PO_STATUS_LABELS[po.status] || po.status}</td>
                                   <td>
-
-                                    {PO_STATUS_LABELS[po.status] || po.status}
-
+                                    <button
+                                      type="button"
+                                      className="btn btn--secondary btn--sm"
+                                      onClick={() => handleViewPurchaseOrder(po)}
+                                    >
+                                      Просмотреть
+                                    </button>
                                   </td>
-
-                                  <td></td>
-
                                 </tr>
-
-                              </Fragment>
-
-                            );
-
-                          })}
-
+                              ))}
+                            </Fragment>
+                          ))}
                         </tbody>
-
                       </table>
-
                     </div>
 
+                    <div className="purchase-orders-mobile">
+                      {groupedPurchaseOrders.map((group) => (
+                        <div key={`mobile-${group.date}`} className="purchase-orders-mobile__group">
+                          <div className="purchase-orders-mobile__date">{group.date}</div>
+                          {group.items.map(({ po, timeStr }) => (
+                            <div key={po.id} className="purchase-orders-mobile__card">
+                              <div className="purchase-orders-mobile__row">
+                                <span className="purchase-orders-mobile__label">ID</span>
+                                <span className="purchase-orders-mobile__value">{po.id}</span>
+                              </div>
+                              <div className="purchase-orders-mobile__row">
+                                <span className="purchase-orders-mobile__label">Время</span>
+                                <span className="purchase-orders-mobile__value">{timeStr}</span>
+                              </div>
+                              <div className="purchase-orders-mobile__row">
+                                <span className="purchase-orders-mobile__label">Поставщик</span>
+                                <span className="purchase-orders-mobile__value purchase-orders-mobile__value--supplier">
+                                  {po.supplier?.name || "-"}
+                                </span>
+                              </div>
+                              <div className="purchase-orders-mobile__row">
+                                <span className="purchase-orders-mobile__label">Статус</span>
+                                <span className="purchase-orders-mobile__value">
+                                  {PO_STATUS_LABELS[po.status] || po.status}
+                                </span>
+                              </div>
+                              <button
+                                type="button"
+                                className="btn btn--secondary btn--sm purchase-orders-mobile__action"
+                                onClick={() => handleViewPurchaseOrder(po)}
+                              >
+                                Просмотреть
+                              </button>
+                            </div>
+                          ))}
+                        </div>
+                      ))}
+                    </div>
+                    </>
                   )}
 
                 </div>
@@ -4374,7 +4357,123 @@ export default function Warehouse({
 
       )}
 
+      {viewPurchaseOrder && (
+        <div className="modal-backdrop">
+          <div className="modal modal--wide">
+            <div className="modal__header">
+              <h2 className="modal__title">
+                Заказ поставщику №{viewPurchaseOrder.number || viewPurchaseOrder.id}
+              </h2>
+              <button
+                type="button"
+                className="modal__close"
+                onClick={handleCloseViewPurchaseOrder}
+              >
+                ×
+              </button>
+            </div>
 
+            <div className="modal__body">
+              {viewPurchaseOrderError && (
+                <div className="alert alert--danger" style={{ marginBottom: 12 }}>
+                  {viewPurchaseOrderError}
+                </div>
+              )}
+
+              <div className="grid-2" style={{ marginBottom: 12 }}>
+                <div className="card">
+                  <div className="card1c__body">
+                    <div><strong>Поставщик:</strong> {viewPurchaseOrder.supplier?.name || "-"}</div>
+                    <div>
+                      <strong>Статус:</strong>{" "}
+                      {PO_STATUS_LABELS[viewPurchaseOrder.status] || viewPurchaseOrder.status || "-"}
+                    </div>
+                    <div>
+                      <strong>Дата:</strong>{" "}
+                      {viewPurchaseOrder.date
+                        ? new Date(viewPurchaseOrder.date).toLocaleString("ru-RU")
+                        : "-"}
+                    </div>
+                    <div>
+                      <strong>План. приемка:</strong>{" "}
+                      {viewPurchaseOrder.plannedDate
+                        ? new Date(viewPurchaseOrder.plannedDate).toLocaleDateString("ru-RU")
+                        : "-"}
+                    </div>
+                    <div><strong>Комментарий:</strong> {viewPurchaseOrder.comment || "-"}</div>
+                  </div>
+                </div>
+              </div>
+
+              {viewPurchaseOrderLoading ? (
+                <p>Загрузка заказа...</p>
+              ) : (
+                <div className="table-wrapper">
+                  <table className="table">
+                    <thead>
+                      <tr>
+                        <th>№</th>
+                        <th>Товар</th>
+                        <th>SKU</th>
+                        <th>Ед.</th>
+                        <th>Заказано</th>
+                        <th>Получено</th>
+                        <th>Цена</th>
+                        <th>Сумма</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {(viewPurchaseOrder.items || []).map((row, index) => {
+                        const qty = Number(row.quantity) || 0;
+                        const price = Number(row.price) || 0;
+                        return (
+                          <tr key={row.id || `${row.itemId || "item"}-${index}`}>
+                            <td>{index + 1}</td>
+                            <td>{row.item?.name || "-"}</td>
+                            <td>{row.item?.sku || "-"}</td>
+                            <td>{row.item?.unit || "-"}</td>
+                            <td>{qty}</td>
+                            <td>{Number(row.receivedQty) || 0}</td>
+                            <td>
+                              {price.toLocaleString("ru-RU", {
+                                minimumFractionDigits: 2,
+                                maximumFractionDigits: 2,
+                              })}
+                            </td>
+                            <td>
+                              {(qty * price).toLocaleString("ru-RU", {
+                                minimumFractionDigits: 2,
+                                maximumFractionDigits: 2,
+                              })}
+                            </td>
+                          </tr>
+                        );
+                      })}
+                      {(viewPurchaseOrder.items || []).length === 0 && (
+                        <tr>
+                          <td colSpan={8} style={{ textAlign: "center", color: "#6b7280" }}>
+                            Позиции заказа отсутствуют.
+                          </td>
+                        </tr>
+                      )}
+                    </tbody>
+                  </table>
+                </div>
+              )}
+
+              <div className="modal__actions">
+                <button
+                  type="button"
+                  className="btn btn--ghost"
+                  onClick={handleCloseViewPurchaseOrder}
+                >
+                  Закрыть
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
 
       {showOrderModal && (
 

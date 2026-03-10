@@ -2,7 +2,9 @@
 import { API_BASE, normalizeErrorMessage } from "../../apiConfig";
 import { jsPDF } from "jspdf";
 import autoTable from "jspdf-autotable";
+import QRCode from "qrcode";
 import { ARIAL_TTF_BASE64 } from "../../utils/arialFontBase64";
+import { openBlobInNewTab, prepareDocumentTab } from "../../utils/openInNewTab";
 import TsdHeader from "./TsdHeader";
 import Scanner from "./Scanner";
 import TsdErrorAlert from "./TsdErrorAlert";
@@ -41,8 +43,15 @@ const ORDER_STATUS_LABELS = {
   CANCELLED: "Отменен",
 };
 
+const ORDER_EVENT_LABELS = {
+  COMPLETE: "Завершение отбора",
+  SHIP: "Отгрузка",
+};
+
 const getOrderStatusLabel = (status) =>
   ORDER_STATUS_LABELS[String(status || "").trim()] || String(status || "-");
+const getOrderEventLabel = (eventType) =>
+  ORDER_EVENT_LABELS[String(eventType || "").trim()] || String(eventType || "-");
 
 const makePassportFileName = (order) => {
   const safeOrderNumber = String(order?.orderNumber || "без-номера")
@@ -130,6 +139,9 @@ export default function OrderFulfillmentFlow({ authHeaders, onBack }) {
   const [skipModalOpen, setSkipModalOpen] = useState(false);
   const [skipReason, setSkipReason] = useState(SKIP_REASON_OPTIONS[0]);
   const [skipComment, setSkipComment] = useState("");
+  const [previewImage, setPreviewImage] = useState(null);
+  const [statusHistory, setStatusHistory] = useState([]);
+  const [statusHistoryLoading, setStatusHistoryLoading] = useState(false);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
 
@@ -142,6 +154,16 @@ export default function OrderFulfillmentFlow({ authHeaders, onBack }) {
     [pickPlan, skippedStepKeys]
   );
   const currentStep = activePickPlan[currentIndex] || null;
+  const itemImageById = useMemo(() => {
+    const map = new Map();
+    for (const line of selectedOrder?.lines || []) {
+      const itemId = Number(line?.item?.id || line?.itemId);
+      if (!itemId) continue;
+      const url = String(line?.item?.imageUrl || "").trim();
+      if (url) map.set(itemId, url);
+    }
+    return map;
+  }, [selectedOrder]);
   const orderStatus = String(selectedOrder?.status || "");
   const allLinesPicked = useMemo(
     () =>
@@ -197,6 +219,26 @@ export default function OrderFulfillmentFlow({ authHeaders, onBack }) {
       setError(normalizeErrorMessage(err, "Ошибка загрузки очереди заказов."));
     } finally {
       setLoading(false);
+    }
+  };
+
+  const loadStatusHistory = async (orderId) => {
+    if (!orderId) return;
+    setStatusHistoryLoading(true);
+    try {
+      const res = await fetch(`${API_BASE}/orders/${orderId}/status-history`, {
+        headers: authHeaders,
+      });
+      const data = await readJsonSafe(res);
+      if (!res.ok) {
+        throw new Error(data?.message || "Не удалось загрузить историю статусов.");
+      }
+      setStatusHistory(Array.isArray(data?.items) ? data.items : []);
+    } catch (err) {
+      setStatusHistory([]);
+      setError(normalizeErrorMessage(err, "Ошибка загрузки истории статусов."));
+    } finally {
+      setStatusHistoryLoading(false);
     }
   };
 
@@ -287,6 +329,15 @@ export default function OrderFulfillmentFlow({ authHeaders, onBack }) {
   }, [mineOnly]);
 
   useEffect(() => {
+    if (!selectedOrder?.id) {
+      setStatusHistory([]);
+      return;
+    }
+    loadStatusHistory(selectedOrder.id);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selectedOrder?.id]);
+
+  useEffect(() => {
     if (activePickPlan.length === 0) {
       if (currentIndex !== 0) setCurrentIndex(0);
       setLocationScanned(false);
@@ -350,6 +401,7 @@ export default function OrderFulfillmentFlow({ authHeaders, onBack }) {
     setSkipModalOpen(false);
     setSkipReason(SKIP_REASON_OPTIONS[0]);
     setSkipComment("");
+    setStatusHistory([]);
   };
 
   const leaveSelectedOrder = async (navigateBack = false) => {
@@ -517,6 +569,28 @@ export default function OrderFulfillmentFlow({ authHeaders, onBack }) {
     pdf.setFontSize(13);
     pdf.text(`Дата: ${formatDateTime(order.createdAt)}`, margin + 20, margin + 68);
     pdf.text(`Статус: ${getOrderStatusLabel(order.status)}`, margin + 20, margin + 88);
+    pdf.text(`ID заказа: ${order.id || "-"}`, margin + 20, margin + 108);
+
+    const passportPayload = `bp:order:${order.id || ""}`;
+    if (order?.id) {
+      try {
+        const qrDataUrl = await QRCode.toDataURL(passportPayload, {
+          errorCorrectionLevel: "M",
+          margin: 1,
+          width: 220,
+        });
+        const qrSize = 88;
+        const qrX = margin + contentWidth - qrSize - 22;
+        const qrY = margin + 14;
+        pdf.addImage(qrDataUrl, "PNG", qrX, qrY, qrSize, qrSize);
+        pdf.setFontSize(9);
+        pdf.text("QR паспорта", qrX, qrY + qrSize + 11);
+        const payloadLines = pdf.splitTextToSize(passportPayload, qrSize + 20);
+        pdf.text(payloadLines, qrX, qrY + qrSize + 23);
+      } catch {
+        // If QR generation fails, keep printable text payload in the document.
+      }
+    }
 
     let y = margin + 132;
     pdf.setFontSize(15);
@@ -740,10 +814,6 @@ export default function OrderFulfillmentFlow({ authHeaders, onBack }) {
     }
   };
 
-  const openPdfInCurrentTab = (url) => {
-    window.location.assign(url);
-  };
-
   const trySharePdfFile = async (blob, order) => {
     if (typeof navigator === "undefined" || typeof navigator.share !== "function") {
       return false;
@@ -781,16 +851,31 @@ export default function OrderFulfillmentFlow({ authHeaders, onBack }) {
       setError("Сначала завершите отбор товара.");
       return;
     }
+    const pdfWindow = prepareDocumentTab({ title: "Паспорт заказа" });
+    if (!pdfWindow) {
+      setError("Не удалось открыть документ. Разрешите всплывающие окна для портала.");
+      return;
+    }
     try {
       const pdf = await buildPassportPdf(selectedOrder);
       await markPassportPrinted(selectedOrder.id);
       const blob = pdf.output("blob");
       const shared = await trySharePdfFile(blob, selectedOrder);
-      if (shared) return;
-      const url = URL.createObjectURL(blob);
-      openPdfInCurrentTab(url);
-      setTimeout(() => URL.revokeObjectURL(url), 60_000);
+      if (shared) {
+        try {
+          if (!pdfWindow.closed) pdfWindow.close();
+        } catch {
+          // ignore
+        }
+        return;
+      }
+      openBlobInNewTab(blob, { targetWindow: pdfWindow });
     } catch (err) {
+      try {
+        if (!pdfWindow.closed) pdfWindow.close();
+      } catch {
+        // ignore
+      }
       setError(normalizeErrorMessage(err, "Ошибка формирования паспорта."));
     }
   };
@@ -813,7 +898,16 @@ export default function OrderFulfillmentFlow({ authHeaders, onBack }) {
       resetSelection();
       await loadQueue();
     } catch (err) {
-      setError(normalizeErrorMessage(err, "Ошибка завершения заказа."));
+      const raw = String(err?.message || "").trim();
+      if (raw === "ORDER_NOT_FOUND") {
+        setError("Заказ не найден.");
+      } else if (raw === "NOT_ASSIGNED_TO_YOU") {
+        setError("Заказ закреплен за другим сотрудником.");
+      } else if (raw === "ORDER_BAD_STATUS") {
+        setError("Сначала завершите отбор.");
+      } else {
+        setError(normalizeErrorMessage(err, "Ошибка завершения заказа."));
+      }
     } finally {
       setLoading(false);
     }
@@ -919,9 +1013,71 @@ export default function OrderFulfillmentFlow({ authHeaders, onBack }) {
                 </div>
             </div>
 
+            <div className="tsd-card">
+              <div className="tsd-card__body">
+                <div className="tsd-card__title">История статусов</div>
+                {statusHistoryLoading ? (
+                  <div className="tsd-card__meta">Загрузка...</div>
+                ) : null}
+                {!statusHistoryLoading && statusHistory.length === 0 ? (
+                  <div className="tsd-card__meta">Событий пока нет.</div>
+                ) : null}
+                {!statusHistoryLoading && statusHistory.length > 0 ? (
+                  <div className="tsd-list">
+                    {statusHistory.map((event) => {
+                      const actor =
+                        event?.actorUser?.name ||
+                        event?.actorUser?.email ||
+                        (event?.actorUserId ? `#${event.actorUserId}` : "Система");
+                      const meta = event?.metaJson && typeof event.metaJson === "object"
+                        ? Object.entries(event.metaJson)
+                            .filter(([, value]) => value != null && String(value).trim())
+                            .map(([key, value]) => `${key}: ${value}`)
+                            .join(" • ")
+                        : "";
+                      return (
+                        <div key={event.id} className="tsd-card">
+                          <div className="tsd-card__meta">
+                            {formatDateTime(event.createdAt)} • {getOrderEventLabel(event.eventType)}
+                          </div>
+                          <div className="tsd-card__meta">
+                            {getOrderStatusLabel(event.fromStatus)} {"->"} {getOrderStatusLabel(event.toStatus)}
+                          </div>
+                          <div className="tsd-card__meta">Кто: {actor}</div>
+                          {meta ? <div className="tsd-card__meta">Данные: {meta}</div> : null}
+                        </div>
+                      );
+                    })}
+                  </div>
+                ) : null}
+              </div>
+            </div>
+
             {currentStep && (
               <div className="tsd-card">
               <div className="tsd-card__body">
+                  {itemImageById.get(Number(currentStep.itemId)) ? (
+                    <button
+                      type="button"
+                      className="tsd-card__image-btn"
+                      onClick={() =>
+                        setPreviewImage({
+                          url: itemImageById.get(Number(currentStep.itemId)),
+                          alt: currentStep.itemName || "Товар",
+                        })
+                      }
+                      style={{ marginBottom: 8 }}
+                      title="Открыть фото"
+                      aria-label="Открыть фото товара"
+                    >
+                      <img
+                        src={itemImageById.get(Number(currentStep.itemId))}
+                        alt={currentStep.itemName || "Товар"}
+                        className="tsd-card__image"
+                        loading="lazy"
+                      />
+                    </button>
+                  ) : null}
                   <div className="tsd-card__title">Шаг {currentIndex + 1} из {activePickPlan.length}</div>
                   <div className="tsd-card__meta">
                     Ячейка: {currentStep.locationCode || currentStep.locationName || `#${currentStep.locationId}`}
@@ -1117,6 +1273,30 @@ export default function OrderFulfillmentFlow({ authHeaders, onBack }) {
                 Пропустить
               </button>
             </div>
+          </div>
+        </div>
+      )}
+
+      {previewImage?.url && (
+        <div
+          className="tsd-modal"
+          role="dialog"
+          aria-modal="true"
+          onClick={() => setPreviewImage(null)}
+        >
+          <div className="tsd-image-preview" onClick={(event) => event.stopPropagation()}>
+            <img
+              src={previewImage.url}
+              alt={previewImage.alt || "Товар"}
+              className="tsd-image-preview__img"
+            />
+            <button
+              type="button"
+              className="tsd-btn tsd-btn--ghost"
+              onClick={() => setPreviewImage(null)}
+            >
+              Закрыть
+            </button>
           </div>
         </div>
       )}

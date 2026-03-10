@@ -1,21 +1,108 @@
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useNavigate, Link } from "react-router-dom";
+import lottie from "lottie-web";
 import { useAuth } from "../context/AuthContext";
+import modernWmsWarehouseAnimation from "../assets/login/modernwms-warehouse.json";
 
 const normalizeLoginInput = (value) =>
   String(value || "").replace(/\s+/g, "_");
 
+function LoginHero() {
+  const lottieRef = useRef(null);
+
+  useEffect(() => {
+    const container = lottieRef.current;
+    if (!container) return undefined;
+
+    const instance = lottie.loadAnimation({
+      container,
+      renderer: "svg",
+      loop: true,
+      autoplay: true,
+      animationData: modernWmsWarehouseAnimation,
+      rendererSettings: {
+        preserveAspectRatio: "xMidYMid slice",
+      },
+    });
+
+    const keepAlive = () => {
+      instance.resize();
+      instance.play();
+    };
+
+    // Mobile browsers (especially iOS) can miss the first paint on initial tab open.
+    // These delayed resize/play calls make the first render reliable.
+    const raf1 = requestAnimationFrame(keepAlive);
+    const raf2 = requestAnimationFrame(() => requestAnimationFrame(keepAlive));
+    const t1 = window.setTimeout(keepAlive, 120);
+    const t2 = window.setTimeout(keepAlive, 360);
+
+    const onPageShow = () => keepAlive();
+    const onVisibilityChange = () => {
+      if (!document.hidden) keepAlive();
+    };
+    window.addEventListener("pageshow", onPageShow);
+    window.addEventListener("resize", onPageShow);
+    window.addEventListener("orientationchange", onPageShow);
+    document.addEventListener("visibilitychange", onVisibilityChange);
+
+    let observer;
+    if (typeof ResizeObserver !== "undefined") {
+      observer = new ResizeObserver(() => keepAlive());
+      observer.observe(container);
+    }
+
+    return () => {
+      cancelAnimationFrame(raf1);
+      cancelAnimationFrame(raf2);
+      clearTimeout(t1);
+      clearTimeout(t2);
+      window.removeEventListener("pageshow", onPageShow);
+      window.removeEventListener("resize", onPageShow);
+      window.removeEventListener("orientationchange", onPageShow);
+      document.removeEventListener("visibilitychange", onVisibilityChange);
+      observer?.disconnect();
+      instance.destroy();
+    };
+  }, []);
+
+  return (
+    <div className="login-hero" aria-hidden="true">
+      <div className="login-hero__lottie" ref={lottieRef} />
+    </div>
+  );
+}
+
 export default function Login() {
   const { login } = useAuth();
   const navigate = useNavigate();
+  const welcomeTimerRef = useRef(null);
 
   const [loginValue, setLoginValue] = useState("");
   const [password, setPassword] = useState("");
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
+  const [showWelcome, setShowWelcome] = useState(false);
+
+  useEffect(() => {
+    return () => {
+      if (welcomeTimerRef.current) {
+        clearTimeout(welcomeTimerRef.current);
+      }
+    };
+  }, []);
+
+  const openDashboard = () => {
+    if (welcomeTimerRef.current) {
+      clearTimeout(welcomeTimerRef.current);
+    }
+    navigate("/dashboard");
+  };
 
   const handleSubmit = async (e) => {
     e.preventDefault();
+    if (loading || showWelcome) return;
+
     setError("");
     setLoading(true);
 
@@ -28,89 +115,78 @@ export default function Login() {
       return;
     }
 
-    navigate("/dashboard");
+    setShowWelcome(true);
+    welcomeTimerRef.current = setTimeout(openDashboard, 1700);
   };
 
   return (
-    <div style={{ maxWidth: 400, margin: "60px auto", padding: "0 16px" }}>
-      <h1 style={{ marginBottom: 24 }}>Вход</h1>
+    <div className="login-page">
+      <div className="login-card">
+        <div className="login-card__brand">СкладОнлайн</div>
+        <div className="login-card__tagline">Операционный центр вашего склада</div>
+        <LoginHero />
+        <h1 className="login-card__title">Вход</h1>
 
-      {error && (
-        <div
-          style={{
-            background: "#ffe6e6",
-            color: "#b00020",
-            padding: 8,
-            marginBottom: 12,
-            borderRadius: 4,
-          }}
-        >
-          {error}
-        </div>
-      )}
+        {error && <div className="login-card__error">{error}</div>}
 
-      <form onSubmit={handleSubmit}>
-        <div style={{ marginBottom: 8 }}>
-          <input
-            type="text"
-            placeholder={"\u041b\u043e\u0433\u0438\u043d"}
-            value={loginValue}
-            onChange={(e) => setLoginValue(normalizeLoginInput(e.target.value))}
-            required
-            style={{ width: "100%", padding: 6, boxSizing: "border-box" }}
-          />
-        </div>
+        <form onSubmit={handleSubmit} className="login-form">
+          <div className="login-form__field">
+            <input
+              type="text"
+              placeholder="Логин"
+              value={loginValue}
+              onChange={(e) => setLoginValue(normalizeLoginInput(e.target.value))}
+              required
+            />
+          </div>
 
-        <div style={{ marginBottom: 12 }}>
-          <input
-            type="password"
-            placeholder="Пароль"
-            value={password}
-            onChange={(e) => setPassword(e.target.value)}
-            required
-            style={{ width: "100%", padding: 6, boxSizing: "border-box" }}
-          />
-        </div>
+          <div className="login-form__field">
+            <input
+              type="password"
+              placeholder="Пароль"
+              value={password}
+              onChange={(e) => setPassword(e.target.value)}
+              required
+            />
+          </div>
 
-        <button
-          type="submit"
-          disabled={loading}
-          style={{
-            width: "100%",
-            padding: 8,
-            background: "#1976d2",
-            color: "#fff",
-            border: "none",
-            cursor: "pointer",
-          }}
-        >
-          {loading ? "Вхожу..." : "Войти"}
-        </button>
-      </form>
+          <button type="submit" disabled={loading} className="login-form__submit">
+            {loading ? "Входим..." : "Войти"}
+          </button>
+        </form>
 
-      <p style={{ marginTop: 12 }}>
-        <Link to="/forgot-password">{"\u0417\u0430\u0431\u044b\u043b\u0438 \u043f\u0430\u0440\u043e\u043b\u044c?"}</Link>
-      </p>
-      <p style={{ marginTop: 8, color: "#6b7280", fontSize: 13 }}>{"\u0414\u043e\u0441\u0442\u0443\u043f \u0441\u043e\u0437\u0434\u0430\u0451\u0442 \u0430\u0434\u043c\u0438\u043d\u0438\u0441\u0442\u0440\u0430\u0442\u043e\u0440 \u0432 \u0440\u0430\u0437\u0434\u0435\u043b\u0435 \u00ab\u041f\u043e\u043b\u044c\u0437\u043e\u0432\u0430\u0442\u0435\u043b\u0438\u00bb."}</p>
+        <p className="login-card__help">
+          <Link to="/forgot-password">Забыли пароль?</Link>
+        </p>
+        <p className="login-card__hint">
+          Доступ создаёт администратор в разделе «Пользователи».
+        </p>
 
-      <div
-        style={{
-          marginTop: 20,
-          paddingTop: 12,
-          borderTop: "1px solid #e5e7eb",
-          fontSize: 13,
-          color: "#6b7280",
-        }}
-      >
-        <div style={{ marginBottom: 6 }}>{"\u0414\u043e\u043a\u0443\u043c\u0435\u043d\u0442\u044b \u0438 \u043a\u043e\u043d\u0442\u0430\u043a\u0442\u044b"}</div>
-        <div style={{ display: "flex", flexWrap: "wrap", gap: 10 }}>
-          <Link to="/about">{"\u041e \u0441\u0435\u0440\u0432\u0438\u0441\u0435"}</Link>
-          <Link to="/offer">{"\u041e\u0444\u0435\u0440\u0442\u0430"}</Link>
-          <Link to="/privacy">{"\u041f\u043e\u043b\u0438\u0442\u0438\u043a\u0430"}</Link>
-          <Link to="/contacts">{"\u041a\u043e\u043d\u0442\u0430\u043a\u0442\u044b"}</Link>
-          <Link to="/refund">{"\u0412\u043e\u0437\u0432\u0440\u0430\u0442"}</Link>
+        <div className="login-card__footer">
+          <div className="login-card__footer-title">Документы и контакты</div>
+          <div className="login-card__links">
+            <Link to="/about">О сервисе</Link>
+            <Link to="/offer">Оферта</Link>
+            <Link to="/privacy">Политика</Link>
+            <Link to="/contacts">Контакты</Link>
+            <Link to="/refund">Возврат</Link>
+          </div>
         </div>
       </div>
+
+      {showWelcome && (
+        <div className="login-welcome" role="status" aria-live="polite">
+          <div className="login-welcome__backdrop" />
+          <div className="login-welcome__card">
+            <div className="login-welcome__title">Добро пожаловать на платформу!</div>
+            <button type="button" className="login-welcome__logo" onClick={openDashboard}>
+              <img src="/logo-mark.png" alt="Логотип СкладОнлайн" />
+              <span>СкладОнлайн</span>
+            </button>
+            <div className="login-welcome__hint">Подготовка рабочего пространства...</div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

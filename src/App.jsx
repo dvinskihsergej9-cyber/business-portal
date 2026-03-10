@@ -5,7 +5,7 @@ import {
   Navigate,
   useLocation,
 } from "react-router-dom";
-import { useMemo } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 
 import { AuthProvider, useAuth } from "./context/AuthContext";
 import ProtectedRoute from "./components/ProtectedRoute";
@@ -41,6 +41,17 @@ function AppRoutesWithBackground() {
   const { user } = useAuth();
   const location = useLocation();
   const path = location.pathname || "/";
+  const startupTimerRef = useRef(null);
+  const [showStartup, setShowStartup] = useState(true);
+
+  useEffect(() => {
+    startupTimerRef.current = setTimeout(() => setShowStartup(false), 2100);
+    return () => {
+      if (startupTimerRef.current) {
+        clearTimeout(startupTimerRef.current);
+      }
+    };
+  }, []);
 
   const disablePublicRegister =
     String(import.meta.env.VITE_DISABLE_PUBLIC_REGISTER || "true") === "true";
@@ -73,6 +84,22 @@ function AppRoutesWithBackground() {
   return (
     <>
       {showBackground && <BackgroundNetwork />}
+      {showStartup && (
+        <div className="login-intro" role="status" aria-live="polite">
+          <div className="login-intro__space" />
+          <div className="login-intro__stars" />
+          <div className="login-intro__planet" />
+          <div className="login-intro__content">
+            <img
+              className="login-intro__logo"
+              src="/logo-mark.png"
+              alt="Логотип СкладОнлайн"
+            />
+            <div className="login-intro__brand">СкладОнлайн</div>
+            <div className="login-intro__subtitle">Операционный центр вашего склада</div>
+          </div>
+        </div>
+      )}
 
       <div className="app-shell">
         <Routes>

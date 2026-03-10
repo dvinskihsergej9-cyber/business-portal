@@ -57,6 +57,27 @@
   box-shadow: 0 0 0 2px rgba(14, 165, 233, 0.2);
 }
 
+/* Override generic portal button skin for tab buttons */
+.portal-surface .admin-console__tab {
+  background: #ffffff;
+  color: #1f2937;
+  border: 1px solid #cbd5f5;
+  box-shadow: none;
+}
+
+.portal-surface .admin-console__tab:hover:not(:disabled) {
+  background: #f8fafc;
+  color: #1f2937;
+}
+
+.portal-surface .admin-console__tab.admin-console__tab--active,
+.portal-surface .admin-console__tab.admin-console__tab--active:hover:not(:disabled) {
+  background: #0ea5e9;
+  color: #ffffff;
+  border-color: transparent;
+  box-shadow: 0 0 0 2px rgba(14, 165, 233, 0.2);
+}
+
 .admin-console__body {
   display: grid;
   gap: 16px;
@@ -346,6 +367,10 @@
   border-color: rgba(248, 113, 113, 0.5);
 }
 
+.admin-modal__panel--image {
+  width: min(980px, 96vw);
+}
+
 .admin-modal__header {
   display: flex;
   justify-content: space-between;
@@ -368,6 +393,24 @@
   display: flex;
   justify-content: flex-end;
   gap: 10px;
+}
+
+.admin-image-preview-wrap {
+  width: 100%;
+  max-height: 76vh;
+  overflow: auto;
+  border-radius: 12px;
+  border: 1px solid #e5e7eb;
+  background: #f8fafc;
+  padding: 8px;
+}
+
+.admin-image-preview {
+  width: 100%;
+  max-height: 72vh;
+  object-fit: contain;
+  display: block;
+  border-radius: 10px;
 }
 
 .admin-form {

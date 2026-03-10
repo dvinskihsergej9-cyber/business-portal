@@ -1,5 +1,9 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { API_BASE, normalizeErrorMessage } from "../../apiConfig";
+import {
+  openHtmlDocumentInNewTab,
+  prepareDocumentTab,
+} from "../../utils/openInNewTab";
 import Scanner from "./Scanner";
 import Stepper from "./Stepper";
 import TsdHeader from "./TsdHeader";
@@ -40,6 +44,7 @@ export default function ReceivingByPo({ authHeaders, makeOpId, onBack }) {
   const [orgFormError, setOrgFormError] = useState("");
   const [orgSaving, setOrgSaving] = useState(false);
   const [pendingPrintPoId, setPendingPrintPoId] = useState(null);
+  const pendingPrintWindowRef = useRef(null);
   const [signalsEnabled, setSignalsEnabled] = useState(() => {
     const saved = localStorage.getItem("tsdSignalsEnabled");
     return saved === null ? true : saved === "true";
@@ -85,6 +90,13 @@ export default function ReceivingByPo({ authHeaders, makeOpId, onBack }) {
         };
       const orderedQty = Number(row.orderedQty ?? row.quantity) || 0;
       const receivedQty = Number(row.receivedQty) || 0;
+      const hasLocalAccepted = Object.prototype.hasOwnProperty.call(
+        localAccepted,
+        row.itemId
+      );
+      const localAcceptedInput = hasLocalAccepted
+        ? localAccepted[row.itemId]
+        : "";
       const localAcceptedQty = Number(localAccepted[row.itemId]) || 0;
       const expectedRemaining = Math.max(0, orderedQty - receivedQty);
       const acceptedTotal = receivedQty + localAcceptedQty;
@@ -101,6 +113,7 @@ export default function ReceivingByPo({ authHeaders, makeOpId, onBack }) {
         itemId: row.itemId,
         orderedQty,
         receivedQty,
+        localAcceptedInput,
         localAcceptedQty,
         acceptedTotal,
         expectedRemaining,
@@ -363,20 +376,46 @@ export default function ReceivingByPo({ authHeaders, makeOpId, onBack }) {
     }
   };
 
-  const handleQtyChange = (itemId, nextQty) => {
-    setLocalAccepted((prev) => ({
-      ...prev,
-      [itemId]: Number.isFinite(nextQty) && nextQty >= 0 ? nextQty : 0,
-    }));
+  const handleQtyChange = (itemId, rawValue) => {
+    const value = String(rawValue ?? "").trim();
+    setLocalAccepted((prev) => {
+      if (!value.length) {
+        const next = { ...prev };
+        delete next[itemId];
+        return next;
+      }
+      const parsed = Number(value);
+      if (!Number.isFinite(parsed) || parsed < 0) {
+        return prev;
+      }
+      return {
+        ...prev,
+        [itemId]: parsed,
+      };
+    });
   };
 
 
-  const openPrintAct = async (poId, { required = false } = {}) => {
+  const closeTabSafe = (tab) => {
+    try {
+      if (tab && tab !== window && !tab.closed) {
+        tab.close();
+      }
+    } catch {
+      // ignore
+    }
+  };
+
+  const openPrintAct = async (
+    poId,
+    { required = false, targetWindow = null } = {}
+  ) => {
     const printRes = await fetch(
       `${API_BASE}/purchase-orders/${poId}/print-receive-act`,
       { headers: authHeaders }
     );
     if (printRes.status === 204) {
+      closeTabSafe(targetWindow);
       if (required) {
         throw new Error(
           "Недостача зафиксирована, но акт не сформирован. Обновите экран и повторите печать."
@@ -395,14 +434,12 @@ export default function ReceivingByPo({ authHeaders, makeOpId, onBack }) {
       throw new Error(message);
     }
     const html = await printRes.text();
-    const win = window;
-    if (win) {
-      win.document.write(html);
-      win.document.close();
-    }
+    openHtmlDocumentInNewTab(html, {
+      targetWindow,
+    });
   };
 
-  const openOrgProfileModalForAct = async (poId) => {
+  const openOrgProfileModalForAct = async (poId, targetWindow = null) => {
     const emptyProfile = {
       orgName: "",
       legalAddress: "",
@@ -412,6 +449,7 @@ export default function ReceivingByPo({ authHeaders, makeOpId, onBack }) {
       phone: "",
     };
     setPendingPrintPoId(poId);
+    pendingPrintWindowRef.current = targetWindow;
     setOrgFormError("");
     setOrgForm(emptyProfile);
 
@@ -447,6 +485,8 @@ export default function ReceivingByPo({ authHeaders, makeOpId, onBack }) {
       setOrgModalOpen(true);
     } catch (err) {
       setPendingPrintPoId(null);
+      pendingPrintWindowRef.current = null;
+      closeTabSafe(targetWindow);
       throw err;
     }
   };
@@ -458,7 +498,7 @@ export default function ReceivingByPo({ authHeaders, makeOpId, onBack }) {
     } catch (err) {
       const code = String(err?.message || "");
       if (code === "ORG_PROFILE_REQUIRED") {
-        await openOrgProfileModalForAct(poId);
+        await openOrgProfileModalForAct(poId, options?.targetWindow || null);
         return false;
       }
       throw err;
@@ -488,7 +528,9 @@ export default function ReceivingByPo({ authHeaders, makeOpId, onBack }) {
       }));
       return;
     }
+    let actWindow = null;
     try {
+      actWindow = prepareDocumentTab({ title: "Акт расхождений" });
       setState((prev) => ({ ...prev, loading: true, error: "" }));
       const flow = confirmFlowRef.current || {};
       const opId =
@@ -569,11 +611,13 @@ export default function ReceivingByPo({ authHeaders, makeOpId, onBack }) {
         try {
           const printedNow = await ensureOrgProfileAndPrint(selectedPo.id, {
             required: true,
+            targetWindow: actWindow,
           });
           if (!printedNow) {
             shouldLeaveScreen = false;
           }
         } catch (actErr) {
+          closeTabSafe(actWindow);
           shouldLeaveScreen = false;
           setToast({
             type: "error",
@@ -584,6 +628,8 @@ export default function ReceivingByPo({ authHeaders, makeOpId, onBack }) {
             error: toUiError(actErr, "Акт не удалось открыть."),
           }));
         }
+      } else {
+        closeTabSafe(actWindow);
       }
 
       confirmFlowRef.current = { poId: null, opId: null, saved: false };
@@ -598,6 +644,7 @@ export default function ReceivingByPo({ authHeaders, makeOpId, onBack }) {
       }
 
     } catch (err) {
+      closeTabSafe(actWindow);
       setState((prev) => ({
         ...prev,
         loading: false,
@@ -801,9 +848,9 @@ export default function ReceivingByPo({ authHeaders, makeOpId, onBack }) {
                     ref={(node) => {
                       if (node) qtyInputRefs.current[row.itemId] = node;
                     }}
-                    value={row.localAcceptedQty}
+                    value={row.localAcceptedInput}
                     onChange={(event) =>
-                      handleQtyChange(row.itemId, Number(event.target.value))
+                      handleQtyChange(row.itemId, event.target.value)
                     }
                   />
                 </div>
@@ -927,8 +974,10 @@ export default function ReceivingByPo({ authHeaders, makeOpId, onBack }) {
                 type="button"
                 className="tsd-btn tsd-btn--secondary"
                 onClick={() => {
+                  closeTabSafe(pendingPrintWindowRef.current);
                   setOrgModalOpen(false);
                   setPendingPrintPoId(null);
+                  pendingPrintWindowRef.current = null;
                 }}
                 disabled={orgSaving}
               >
@@ -949,6 +998,17 @@ export default function ReceivingByPo({ authHeaders, makeOpId, onBack }) {
                     return;
                   }
                   try {
+                    const printWindow = pendingPrintPoId
+                      ? pendingPrintWindowRef.current && !pendingPrintWindowRef.current.closed
+                        ? pendingPrintWindowRef.current
+                        : prepareDocumentTab({ title: "Акт расхождений" })
+                      : null;
+                    if (pendingPrintPoId && !printWindow) {
+                      setOrgFormError("Не удалось открыть документ. Разрешите всплывающие окна для портала.");
+                      return;
+                    }
+                    pendingPrintWindowRef.current = printWindow;
+
                     setOrgSaving(true);
                     setOrgFormError("");
                     const res = await fetch(`${API_BASE}/settings/org-profile`, {
@@ -961,9 +1021,12 @@ export default function ReceivingByPo({ authHeaders, makeOpId, onBack }) {
                       throw new Error(data.message || "ORG_PROFILE_SAVE_ERROR");
                     }
                     if (pendingPrintPoId) {
-                      await openPrintAct(pendingPrintPoId);
+                      await openPrintAct(pendingPrintPoId, {
+                        targetWindow: pendingPrintWindowRef.current || null,
+                      });
                     }
                     setPendingPrintPoId(null);
+                    pendingPrintWindowRef.current = null;
                     setOrgSaving(false);
                     setOrgModalOpen(false);
                   } catch (saveErr) {

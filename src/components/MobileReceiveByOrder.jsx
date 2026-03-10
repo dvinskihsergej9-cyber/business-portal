@@ -3,13 +3,17 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { BrowserMultiFormatReader } from "@zxing/browser";
 import { API_BASE } from "../apiConfig";
+import {
+  openHtmlDocumentInNewTab,
+  prepareDocumentTab,
+} from "../utils/openInNewTab";
 
 const API = API_BASE;
 
 /**
  * Окно акта возврата/расхождений (мобильная версия с кнопкой "Отправить")
  */
-function openMobileDiscrepancyActWindow(order, rows, orgInfo) {
+function openMobileDiscrepancyActWindow(order, rows, orgInfo, options = {}) {
   if (!order || !Array.isArray(rows) || rows.length === 0) return;
 
   const diffs = rows.filter(
@@ -225,10 +229,9 @@ function openMobileDiscrepancyActWindow(order, rows, orgInfo) {
 </html>
   `;
 
-  const win = window;
-
-  win.document.write(html);
-  win.document.close();
+  openHtmlDocumentInNewTab(html, {
+    targetWindow: options.targetWindow || null,
+  });
 }
 
 /**
@@ -380,7 +383,17 @@ export default function MobileReceiveByOrder({
   // реквизиты / акт
   const [orgInfo, setOrgInfo] = useState(null);
   const [showOrgModal, setShowOrgModal] = useState(false);
-  const [pendingAct, setPendingAct] = useState(null); // { order, rows }
+  const [pendingAct, setPendingAct] = useState(null); // { order, rows, targetWindow }
+
+  const closeTabSafe = (tab) => {
+    try {
+      if (tab && tab !== window && !tab.closed) {
+        tab.close();
+      }
+    } catch {
+      // ignore
+    }
+  };
 
   // --- загрузка реквизитов из localStorage ---
   useEffect(() => {
@@ -510,7 +523,7 @@ export default function MobileReceiveByOrder({
         name: row.item?.name || "",
         unit: row.item?.unit || "шт",
         orderedQty: row.quantity,
-        receivedQty: 0,
+        receivedQty: "",
         price: row.price,
         barcode: row.item?.barcode || "",
       }));
@@ -564,7 +577,7 @@ export default function MobileReceiveByOrder({
   };
 
   const handleResetAll = () => {
-    setRows((prev) => prev.map((r) => ({ ...r, receivedQty: 0 })));
+    setRows((prev) => prev.map((r) => ({ ...r, receivedQty: "" })));
   };
 
   const totalAmount = useMemo(
@@ -588,32 +601,51 @@ export default function MobileReceiveByOrder({
     setShowOrgModal(false);
 
     if (pendingAct) {
-      openMobileDiscrepancyActWindow(pendingAct.order, pendingAct.rows, info);
+      openMobileDiscrepancyActWindow(pendingAct.order, pendingAct.rows, info, {
+        targetWindow: pendingAct.targetWindow || null,
+      });
       setPendingAct(null);
     }
   };
 
   const handleOrgCancel = () => {
+    closeTabSafe(pendingAct?.targetWindow);
     setShowOrgModal(false);
     setPendingAct(null);
   };
 
-  const ensureOrgInfoAndOpenAct = (orderForAct, rowsForAct) => {
+  const ensureOrgInfoAndOpenAct = (orderForAct, rowsForAct, targetWindow = null) => {
     const hasRealDiff = rowsForAct.some(
       (r) => Number(r.receivedQty) !== Number(r.orderedQty)
     );
-    if (!hasRealDiff) return;
+    if (!hasRealDiff) {
+      closeTabSafe(targetWindow);
+      return;
+    }
 
     if (orgInfo) {
-      openMobileDiscrepancyActWindow(orderForAct, rowsForAct, orgInfo);
+      openMobileDiscrepancyActWindow(orderForAct, rowsForAct, orgInfo, {
+        targetWindow,
+      });
     } else {
-      setPendingAct({ order: orderForAct, rows: rowsForAct });
+      setPendingAct({ order: orderForAct, rows: rowsForAct, targetWindow });
       setShowOrgModal(true);
     }
   };
 
   const handleFinish = async () => {
     if (!selectedOrder) return;
+
+    const expectedDiff = rows.some(
+      (r) => Number(r.receivedQty) !== Number(r.orderedQty)
+    );
+    const actWindow = expectedDiff
+      ? prepareDocumentTab({ title: "Акт расхождений" })
+      : null;
+    if (expectedDiff && !actWindow) {
+      setError("Не удалось открыть документ. Разрешите всплывающие окна для портала.");
+      return;
+    }
 
     try {
       setSaving(true);
@@ -651,13 +683,14 @@ export default function MobileReceiveByOrder({
       }
 
       const orderForAct = data?.order || selectedOrder;
-      ensureOrgInfoAndOpenAct(orderForAct, rows);
+      ensureOrgInfoAndOpenAct(orderForAct, rows, actWindow);
 
       // Сбрасываем состояние
       setSelectedOrder(null);
       setRows([]);
       setBarcode("");
     } catch (e) {
+      closeTabSafe(actWindow);
       console.error(e);
       setError(e.message);
     } finally {
@@ -882,6 +915,3 @@ export default function MobileReceiveByOrder({
     </div>
   );
 }
-
-
-

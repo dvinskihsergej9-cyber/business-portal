@@ -9,6 +9,7 @@ import ItemCard from "../components/tsd/ItemCard";
 import LocationCard from "../components/tsd/LocationCard";
 import OrderFulfillmentFlow from "../components/tsd/OrderFulfillmentFlow";
 import ReceivingByPo from "../components/tsd/ReceivingByPo";
+import ShipmentByPassport from "../components/tsd/ShipmentByPassport";
 import TsdErrorAlert from "../components/tsd/TsdErrorAlert";
 import StockDiscrepanciesTab from "../components/StockDiscrepanciesTab";
 import "../components/tsd/tsd.css";
@@ -60,6 +61,12 @@ const MODES = [
     title: "Отбор",
     subtitle: "Сборка, упаковка, этикетка",
     icon: "PCK",
+  },
+  {
+    id: "ship",
+    title: "Отгрузка",
+    subtitle: "Скан паспорта и отгрузка",
+    icon: "SHP",
   },
   {
     id: "discrepancies",
@@ -133,6 +140,7 @@ const emptyPutawayState = {
   selected: null,
   selectedQty: "",
   itemVerified: false,
+  allowDifferentDate: false,
   to: null,
   loading: false,
   error: "",
@@ -185,7 +193,10 @@ export default function MobileTsd() {
     if (!modePermission) return false;
     if (!hasPermission(user, PERMISSION_KEYS.WAREHOUSE_TSD)) return false;
     if (!hasPermission(user, modePermission)) return false;
-    if (modeId === "pick" && !hasPermission(user, PERMISSION_KEYS.WAREHOUSE_ORDERS)) {
+    if (
+      ["pick", "ship"].includes(modeId) &&
+      !hasPermission(user, PERMISSION_KEYS.WAREHOUSE_ORDERS)
+    ) {
       return false;
     }
     return true;
@@ -202,6 +213,84 @@ export default function MobileTsd() {
       return `${prefix}-${globalThis.crypto.randomUUID()}`;
     }
     return `${prefix}-${Date.now()}-${Math.random().toString(16).slice(2)}`;
+  };
+
+  const parseJsonSafe = async (res) => {
+    const raw = await res.text().catch(() => "");
+    if (!raw) return null;
+    try {
+      return JSON.parse(raw);
+    } catch {
+      const normalized = String(raw).trim();
+      const codeMatch = normalized.match(
+        /(LOCATION_CONFLICT_CONFIRM|LOCATION_OCCUPIED|BAD_QTY|RECEIVING_LINE_NOT_FOUND|TENANT_NOT_FOUND|RECORD_CHANGED|ALREADY_PROCESSED)/i
+      );
+      if (codeMatch?.[1]) {
+        return { message: String(codeMatch[1]).toUpperCase() };
+      }
+      return { message: normalized };
+    }
+  };
+
+  const detectLocationConflictType = async (locationId, itemId) => {
+    const locId = Number(locationId);
+    const targetItemId = Number(itemId);
+    if (!locId || Number.isNaN(locId)) return null;
+    try {
+      const res = await fetch(`${API_BASE}/warehouse/locations/${locId}/stock`, {
+        headers: authHeaders,
+      });
+      const data = await parseJsonSafe(res);
+      if (!res.ok) return null;
+
+      const rows = Array.isArray(data?.items) ? data.items : [];
+      const hasTarget = rows.some((row) => Number(row?.item?.id) === targetItemId);
+      const hasForeign = rows.some((row) => {
+        const rowItemId = Number(row?.item?.id);
+        return rowItemId && rowItemId !== targetItemId;
+      });
+
+      if (hasForeign) return "FOREIGN_ITEM";
+      if (hasTarget) return "SAME_ITEM";
+      return null;
+    } catch {
+      return null;
+    }
+  };
+
+  const mapPutawayErrorMessage = (res, data, fallback = "Размещение не выполнено.") => {
+    const code = String(data?.message || "").trim().toUpperCase();
+
+    if (code === "LOCATION_OCCUPIED") {
+      return "В этой ячейке уже другой товар. Разместите в другую ячейку.";
+    }
+    if (code === "LOCATION_CONFLICT_CONFIRM") {
+      return "В ячейке есть такой же товар, но с другой датой. Нажмите «Подтвердить» еще раз, чтобы разрешить размещение.";
+    }
+    if (code === "BAD_QTY") {
+      return "Некорректное количество.";
+    }
+    if (code === "LOCATION_NOT_FOUND") {
+      return "Ячейка не найдена.";
+    }
+    if (code === "RECEIVING_LINE_NOT_FOUND") {
+      return "Позиция приемки уже обработана. Обновите список и выберите позицию заново.";
+    }
+    if (
+      code === "TENANT_NOT_FOUND" ||
+      code === "RECORD_CHANGED" ||
+      code === "ALREADY_PROCESSED"
+    ) {
+      return "Данные уже изменились. Обновите экран и попробуйте снова.";
+    }
+
+    if ((res?.status || 0) === 409) {
+      return "Конфликт размещения. Проверьте ячейку и попробуйте снова.";
+    }
+    if ((res?.status || 0) >= 500) {
+      return "Ошибка сервера при размещении.";
+    }
+    return fallback;
   };
 
   useEffect(() => {
@@ -678,18 +767,40 @@ export default function MobileTsd() {
           allowMix: countState.allowDifferentDate,
         }),
       });
-      const data = await res.json();
+      const data = await parseJsonSafe(res);
       if (!res.ok) {
-        if (data.message === "LOCATION_OCCUPIED") {
-          throw new Error("Ячейка занята другим товаром.");
+        const code = String(data?.message || "").toUpperCase();
+        if (code === "LOCATION_CONFLICT_CONFIRM") {
+          setCountState((prev) => ({
+            ...prev,
+            allowDifferentDate: true,
+          }));
+          throw new Error(
+            "В ячейке есть такой же товар с другой датой. Нажмите «Разместить» ещё раз для подтверждения."
+          );
         }
-        if (data.message === "LOCATION_CONFLICT_CONFIRM") {
-          throw new Error("В ячейке есть товар с другой датой. Подтвердите размещение.");
+        if (code === "LOCATION_OCCUPIED") {
+          throw new Error("В этой ячейке уже другой товар. Разместите в другую ячейку.");
         }
-        if (data.message === "BAD_QTY") {
-          throw new Error("Некорректное количество.");
+        if (res.status === 409) {
+          const conflictType = await detectLocationConflictType(
+            countState.location?.id,
+            countState.item?.id
+          );
+          if (conflictType === "FOREIGN_ITEM") {
+            throw new Error("В этой ячейке уже другой товар. Разместите в другую ячейку.");
+          }
+          if (conflictType === "SAME_ITEM") {
+            setCountState((prev) => ({
+              ...prev,
+              allowDifferentDate: true,
+            }));
+            throw new Error(
+              "В ячейке есть такой же товар с другой датой. Нажмите «Разместить» ещё раз для подтверждения."
+            );
+          }
         }
-        throw new Error(data.message || "Не удалось разместить.");
+        throw new Error(mapPutawayErrorMessage(res, data, "Не удалось разместить."));
       }
       setCountState((prev) => ({
         ...prev,
@@ -828,11 +939,16 @@ export default function MobileTsd() {
       if (!res.ok) {
         throw new Error(data.message || "Не удалось подтвердить");
       }
+      // Ускоряем поток контроля: сразу возвращаемся к скану следующей ячейки.
       setBinState((prev) => ({
         ...prev,
+        step: 0,
+        location: null,
+        items: [],
+        counts: {},
         loading: false,
-        done: true,
-        step: 1,
+        done: false,
+        discrepancySaved: false,
       }));
     } catch (err) {
       setBinState((prev) => ({
@@ -895,32 +1011,6 @@ export default function MobileTsd() {
         error: err.message,
         loading: false,
       }));
-    }
-  };
-
-  const handleBinFinishSession = async () => {
-    if (!binState.sessionId) {
-      setBinState((prev) => ({
-        ...prev,
-        error: "Нет активной сессии.",
-      }));
-      return;
-    }
-    try {
-      const res = await fetch(
-        `${API_BASE}/warehouse/bin-audit/session/${binState.sessionId}/finish`,
-        {
-          method: "POST",
-          headers: authHeaders,
-        }
-      );
-      const data = await res.json();
-      if (!res.ok) {
-        throw new Error(data.message || "Не удалось завершить сессию");
-      }
-      setBinState(emptyBinState);
-    } catch (err) {
-      setBinState((prev) => ({ ...prev, error: err.message }));
     }
   };
 
@@ -987,6 +1077,7 @@ export default function MobileTsd() {
       setPutawayState((prev) => ({
         ...prev,
         to: location,
+        allowDifferentDate: false,
         step: 3,
         loading: false,
       }));
@@ -1006,6 +1097,7 @@ export default function MobileTsd() {
       selectedQty:
         line.remainingQty?.toString?.() || line.qty?.toString?.() || "",
       itemVerified: false,
+      allowDifferentDate: false,
       to: null,
       done: false,
       error: "",
@@ -1013,8 +1105,8 @@ export default function MobileTsd() {
     }));
   };
 
-  const handlePutawaySubmit = async (forceMix = false) => {
-    const shouldMix = forceMix === true;
+  const handlePutawaySubmit = async () => {
+    const shouldMix = putawayState.allowDifferentDate === true;
     const qty = Number(putawayState.selectedQty);
     if (!putawayState.selected) {
       setPutawayState((prev) => ({ ...prev, error: "Выберите товар." }));
@@ -1049,36 +1141,51 @@ export default function MobileTsd() {
           allowMix: shouldMix,
         }),
       });
-      const data = await res.json();
+      const data = await parseJsonSafe(res);
       if (!res.ok) {
-        if (data?.message === "LOCATION_OCCUPIED") {
-          throw new Error(
-            "В ячейке уже есть другой товар. Выберите другую ячейку."
-          );
+        const code = String(data?.message || "").toUpperCase();
+        if (code === "LOCATION_CONFLICT_CONFIRM") {
+          setPutawayState((prev) => ({
+            ...prev,
+            allowDifferentDate: true,
+            loading: false,
+            error:
+              "В ячейке есть такой же товар, но с другой датой. Нажмите «Подтвердить» еще раз, чтобы разрешить размещение.",
+          }));
+          return;
         }
-        if (data?.message === "LOCATION_CONFLICT_CONFIRM") {
-          if (globalThis.confirm) {
-            const ok = globalThis.confirm(
-              "В ячейке уже есть такой же товар, но с другой датой. Разместить сюда?"
-            );
-            if (ok) {
-              await handlePutawaySubmit(true);
-              return;
-            }
+        if (code === "LOCATION_OCCUPIED") {
+          throw new Error("В этой ячейке уже другой товар. Разместите в другую ячейку.");
+        }
+        if (res.status === 409) {
+          const conflictType = await detectLocationConflictType(
+            putawayState.to?.id,
+            putawayState.selected?.item?.id
+          );
+          if (conflictType === "FOREIGN_ITEM") {
+            throw new Error("В этой ячейке уже другой товар. Разместите в другую ячейку.");
           }
-          throw new Error(
-            "В ячейке уже есть такой же товар, но с другой датой."
-          );
+          if (conflictType === "SAME_ITEM") {
+            setPutawayState((prev) => ({
+              ...prev,
+              allowDifferentDate: true,
+              loading: false,
+              error:
+                "В ячейке есть такой же товар, но с другой датой. Нажмите «Подтвердить» еще раз, чтобы разрешить размещение.",
+            }));
+            return;
+          }
         }
-        throw new Error(data.message || "Размещение не выполнено");
+        throw new Error(mapPutawayErrorMessage(res, data));
       }
       const refreshed = await fetch(`${API_BASE}/warehouse/putaway/pending`, {
         headers: authHeaders,
       });
-      const refreshedData = await refreshed.json();
+      const refreshedData = await parseJsonSafe(refreshed);
       setPutawayState((prev) => ({
         ...prev,
         pending: refreshed.ok ? refreshedData.items || [] : prev.pending,
+        allowDifferentDate: false,
         loading: false,
         done: true,
         step: 3,
@@ -1758,17 +1865,6 @@ export default function MobileTsd() {
             discrepancySaved: false,
           }))
         }
-        rightSlot={
-          binState.sessionId ? (
-            <button
-              type="button"
-              className="tsd-btn tsd-btn--ghost"
-              onClick={handleBinFinishSession}
-            >
-              Завершить
-            </button>
-          ) : null
-        }
         onBack={() => setMode(null)}
       />
       <Stepper steps={BIN_STEPS} activeIndex={binState.step} />
@@ -1789,6 +1885,7 @@ export default function MobileTsd() {
             label="Сканируй ячейку"
             hint="Покажем остатки внутри"
             onScan={handleBinLocation}
+            autoStart
             disabled={binState.loading}
           />
         )}
@@ -1824,12 +1921,7 @@ export default function MobileTsd() {
             <div className="tsd-list">
               {binState.items.map((row) => (
                 <div key={row.item.id} className="tsd-card">
-                  <div className="tsd-card__body">
-                    <div className="tsd-card__title">{row.item.name}</div>
-                    <div className="tsd-card__meta">
-                      Было: {row.expectedQty} {row.item.unit || ""}
-                    </div>
-                  </div>
+                  <ItemCard item={row.item} qty={row.expectedQty} />
                   <input
                     className="tsd-input"
                     type="number"
@@ -1897,7 +1989,7 @@ export default function MobileTsd() {
         </div>
       )}
 
-      {(binState.done || binState.discrepancySaved) && (
+      {binState.discrepancySaved && (
         <div className="tsd-action-bar">
           <button
             type="button"
@@ -2128,6 +2220,7 @@ export default function MobileTsd() {
             selected: null,
             selectedQty: "",
             itemVerified: false,
+            allowDifferentDate: false,
             to: null,
             step: 0,
             done: false,
@@ -2153,18 +2246,15 @@ export default function MobileTsd() {
             <div className="tsd-grid">
               {putawayState.pending.map((line) => (
                 <div key={line.id} className="tsd-card">
-                  <div className="tsd-card__body">
-                    <div className="tsd-card__title">{line.item?.name}</div>
-                    <div className="tsd-card__meta">
-                      Осталось: {line.remainingQty ?? line.qty}{" "}
-                      {line.item?.unit || ""}
-                    </div>
-                    <div className="tsd-card__meta">
-                      Дата: {formatDate(line.manufacturedAt)}
-                    </div>
-                    <div className="tsd-card__meta">
-                      Срок: {formatDate(line.expiresAt || line.manufacturedAt)}
-                    </div>
+                  <ItemCard
+                    item={line.item}
+                    qty={Number(line.remainingQty ?? line.qty) || 0}
+                  />
+                  <div className="tsd-card__meta">
+                    Дата: {formatDate(line.manufacturedAt)}
+                  </div>
+                  <div className="tsd-card__meta">
+                    Срок: {formatDate(line.expiresAt || line.manufacturedAt)}
                   </div>
                   <button
                     type="button"
@@ -2234,6 +2324,7 @@ export default function MobileTsd() {
                     setPutawayState((prev) => ({
                       ...prev,
                       to: selected,
+                      allowDifferentDate: false,
                       step: 3,
                       error: "",
                     }));
@@ -2275,7 +2366,7 @@ export default function MobileTsd() {
             onClick={handlePutawaySubmit}
             disabled={putawayState.loading}
           >
-            Подтвердить
+            {putawayState.allowDifferentDate ? "Подтвердить ещё раз" : "Подтвердить"}
           </button>
         </div>
       )}
@@ -2291,6 +2382,7 @@ export default function MobileTsd() {
                 selected: null,
                 selectedQty: "",
                 itemVerified: false,
+                allowDifferentDate: false,
                 to: null,
                 step: 0,
                 done: false,
@@ -2502,6 +2594,10 @@ export default function MobileTsd() {
     <OrderFulfillmentFlow authHeaders={authHeaders} onBack={() => setMode(null)} />
   );
 
+  const renderShip = () => (
+    <ShipmentByPassport authHeaders={authHeaders} onBack={() => setMode(null)} />
+  );
+
   const renderDiscrepancies = () => (
     <>
       <TsdHeader
@@ -2553,6 +2649,7 @@ export default function MobileTsd() {
     if (mode === "putaway") return renderPutaway();
     if (mode === "replenish") return renderReplenish();
     if (mode === "pick") return renderPick();
+    if (mode === "ship") return renderShip();
     if (mode === "discrepancies") return renderDiscrepancies();
     return null;
   };

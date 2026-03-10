@@ -49,7 +49,7 @@ const requestContext = new AsyncLocalStorage();
 const upload = multer({ storage: multer.memoryStorage() });
 
 app.use(cors());
-app.use(express.json());
+app.use(express.json({ limit: "6mb" }));
 app.use((req, res, next) => {
   requestContext.run(
     { orgId: null, isSystemOwner: false, skipTenantScope: false },
@@ -290,6 +290,7 @@ const TENANT_SCOPED_MODELS = new Set([
   "WarehouseReceivingLine",
   "WarehousePlacement",
   "StockMovement",
+  "StockHold",
   "BinAuditSession",
   "BinAuditEvent",
   "StockDiscrepancy",
@@ -301,6 +302,8 @@ const TENANT_SCOPED_MODELS = new Set([
   "SupplierTruck",
   "SalesOrder",
   "SalesOrderLine",
+  "SalesOrderPickSkip",
+  "OrderStatusHistory",
 ]);
 
 function withTenantWhere(where, orgId) {
@@ -600,28 +603,40 @@ const APP_URL = process.env.APP_URL || FRONTEND_URL;
 const YOOKASSA_SHOP_ID = process.env.YOOKASSA_SHOP_ID;
 const YOOKASSA_SECRET_KEY = process.env.YOOKASSA_SECRET_KEY;
 
-async function getReceivingLocationId(tx) {
-  const existing = await tx.warehouseLocation.findFirst({
-    where: {
-      OR: [
-        { code: "RECEIVING" },
-        { name: "RECEIVING" },
-        { name: "???????" },
-        { name: "??????" },
-      ],
-    },
-  });
+async function getReceivingLocationId(tx, orgIdInput = null) {
+  const normalizedOrgId = Number.isFinite(Number(orgIdInput))
+    ? Number(orgIdInput)
+    : null;
+  const where = {
+    orgId: normalizedOrgId,
+    OR: [
+      { code: "RECEIVING" },
+      { name: "RECEIVING" },
+      { name: "\u0417\u043e\u043d\u0430 \u043f\u0440\u0438\u0435\u043c\u043a\u0438" },
+      { name: "\u041f\u0440\u0438\u0435\u043c\u043a\u0430" },
+    ],
+  };
+
+  const existing = await tx.warehouseLocation.findFirst({ where });
   if (existing) return existing.id;
+
   const created = await tx.warehouseLocation.create({
     data: {
-      name: "???????",
+      orgId: normalizedOrgId,
+      name: "\u0417\u043e\u043d\u0430 \u043f\u0440\u0438\u0435\u043c\u043a\u0438",
       code: "RECEIVING",
     },
   });
   return created.id;
 }
-
 const PLANS = {
+  "trial-1": {
+    id: "trial-1",
+    title: "Trial 30 days",
+    amount: 1,
+    currency: "RUB",
+    days: 30,
+  },
   "basic-30": {
     id: "basic-30",
     title: "Basic 30 days",
@@ -750,18 +765,24 @@ async function applyPaymentSuccess({ paymentRecord, providerPayment, plan }) {
     ? Array.from(new Set([...processedProviderPaymentIds, providerPaymentId]))
     : processedProviderPaymentIds;
 
+  const isTrialPlan = plan.id === "trial-1";
+
   await prisma.subscription.upsert({
     where: { userId },
     update: {
       plan: plan.id,
-      status: "active",
+      status: isTrialPlan ? "trialing" : "active",
       paidUntil: nextPaidUntil,
+      trialStartedAt: isTrialPlan ? current?.trialStartedAt || now : current?.trialStartedAt || null,
+      trialUsed: isTrialPlan ? true : Boolean(current?.trialUsed),
     },
     create: {
       userId,
       plan: plan.id,
-      status: "active",
+      status: isTrialPlan ? "trialing" : "active",
       paidUntil: nextPaidUntil,
+      trialStartedAt: isTrialPlan ? now : null,
+      trialUsed: isTrialPlan,
     },
   });
 
@@ -866,6 +887,7 @@ const WAREHOUSE_TSD_ANY = [
   PERMISSION_KEYS.TSD_BIN,
   PERMISSION_KEYS.TSD_REPLENISH,
   PERMISSION_KEYS.TSD_PICK,
+  PERMISSION_KEYS.TSD_SHIP,
   PERMISSION_KEYS.TSD_DISCREPANCIES,
 ];
 
@@ -873,8 +895,14 @@ const WAREHOUSE_ROUTE_RULES = [
   { prefix: "/requests", key: PERMISSION_KEYS.WAREHOUSE_REQUESTS },
   { prefix: "/tasks", key: PERMISSION_KEYS.WAREHOUSE_TASKS },
   { prefix: "/locations", key: PERMISSION_KEYS.WAREHOUSE_LOCATIONS },
+  { prefix: "/print", key: PERMISSION_KEYS.WAREHOUSE_LOCATIONS },
+  { prefix: "/qr/print", key: PERMISSION_KEYS.WAREHOUSE_LOCATIONS },
+  { prefix: "/labels", key: PERMISSION_KEYS.WAREHOUSE_LOCATIONS },
   { prefix: "/transactions", key: PERMISSION_KEYS.WAREHOUSE_TRANSACTIONS },
   { prefix: "/revisions", key: PERMISSION_KEYS.WAREHOUSE_REVISION },
+  { prefix: "/stock", key: PERMISSION_KEYS.WAREHOUSE_INVENTORY },
+  { prefix: "/placements", key: PERMISSION_KEYS.WAREHOUSE_ORDERS },
+  { prefix: "/holds", key: PERMISSION_KEYS.WAREHOUSE_MANAGE },
   { prefix: "/discrepancies", key: PERMISSION_KEYS.TSD_DISCREPANCIES },
   { prefix: "/inventory/count", key: PERMISSION_KEYS.TSD_COUNT },
   { prefix: "/bin-audit", key: PERMISSION_KEYS.TSD_BIN },
@@ -969,7 +997,21 @@ app.use("/api/purchase-orders", auth, enforceOperationalTenantScope, (req, res, 
   return denySectionAccess(res);
 });
 app.use("/api/supplier-trucks", auth, enforceOperationalTenantScope, requirePermission(PERMISSION_KEYS.WAREHOUSE_QUEUE));
-app.use("/api/orders", auth, enforceOperationalTenantScope, requirePermission(PERMISSION_KEYS.WAREHOUSE_ORDERS));
+app.use("/api/orders", auth, enforceOperationalTenantScope, (req, res, next) => {
+  if (hasPermission(req.user, PERMISSION_KEYS.WAREHOUSE_ORDERS)) {
+    return next();
+  }
+  const isStatusHistoryEndpoint =
+    isReadRequest(req) &&
+    (req.path === "/status-history" || /^\/\d+\/status-history$/.test(req.path));
+  if (
+    isStatusHistoryEndpoint &&
+    hasPermission(req.user, PERMISSION_KEYS.ADMIN_WAREHOUSE)
+  ) {
+    return next();
+  }
+  return denySectionAccess(res);
+});
 app.use("/api/warehouse", (req, res, next) => {
   if (req.path.startsWith("/qr/render")) {
     return next();
@@ -1622,29 +1664,29 @@ async function findStockItemForOrderLine(db, raw = {}) {
   return null;
 }
 
-async function getOrCreateReceivingLocation() {
+async function getOrCreateReceivingLocation(orgIdInput = null) {
   const code = "RECEIVING";
-  const findByCode = () =>
-    runWithoutTenantScope(() =>
-      prismaBase.warehouseLocation.findFirst({
-        where: { code },
-      })
-    );
+  const normalizedOrgId = Number.isFinite(Number(orgIdInput))
+    ? Number(orgIdInput)
+    : null;
+  const where = {
+    orgId: normalizedOrgId,
+    OR: [{ code }, { name: "\u0417\u043e\u043d\u0430 \u043f\u0440\u0438\u0435\u043c\u043a\u0438" }, { name: "RECEIVING" }],
+  };
 
-  let location = await findByCode();
+  let location = await prisma.warehouseLocation.findFirst({ where });
   if (!location) {
     try {
-      location = await runWithoutTenantScope(() =>
-        prismaBase.warehouseLocation.create({
-          data: {
-            code,
-            name: "\u0417\u043e\u043d\u0430 \u043f\u0440\u0438\u0435\u043c\u043a\u0438",
-          },
-        })
-      );
+      location = await prisma.warehouseLocation.create({
+        data: {
+          orgId: normalizedOrgId,
+          code,
+          name: "\u0417\u043e\u043d\u0430 \u043f\u0440\u0438\u0435\u043c\u043a\u0438",
+        },
+      });
     } catch (err) {
       if (err?.code !== "P2002") throw err;
-      location = await findByCode();
+      location = await prisma.warehouseLocation.findFirst({ where });
     }
   }
   if (!location) {
@@ -1654,7 +1696,6 @@ async function getOrCreateReceivingLocation() {
   }
   return location;
 }
-
 function escapeHtml(value) {
   return String(value ?? "")
     .replaceAll("&", "&amp;")
@@ -1750,26 +1791,46 @@ async function getReceivingLineLocationBalances(itemId) {
 }
 
 async function getPlacementLocationBalances(itemId) {
+  // NOTE: legacy datasets may contain placement rows that reference deleted
+  // locations. Avoid relation include here, then map locations safely.
   const rows = await prisma.warehousePlacement.findMany({
     where: {
       itemId,
       qty: { gt: 0 },
     },
-    include: {
-      location: {
-        select: { id: true, name: true, code: true, zone: true, aisle: true, rack: true, level: true },
-      },
+    select: {
+      locationId: true,
+      qty: true,
     },
     orderBy: [{ locationId: "asc" }, { id: "asc" }],
   });
 
+  const locationIds = Array.from(
+    new Set(
+      (rows || [])
+        .map((row) => Number(row.locationId))
+        .filter((value) => Number.isFinite(value) && value > 0)
+    )
+  );
+
+  const locations = locationIds.length
+    ? await prisma.warehouseLocation.findMany({
+        where: { id: { in: locationIds } },
+        select: { id: true, name: true, code: true, zone: true, aisle: true, rack: true, level: true },
+      })
+    : [];
+  const locationById = new Map(locations.map((location) => [location.id, location]));
+
   return rows
-    .map((row) => ({
-      locationId: row.locationId,
-      location: row.location || null,
-      qty: Number(row.qty) || 0,
-    }))
-    .filter((row) => row.locationId && row.qty > 0)
+    .map((row) => {
+      const locationId = Number(row.locationId);
+      return {
+        locationId,
+        location: locationById.get(locationId) || null,
+        qty: Number(row.qty) || 0,
+      };
+    })
+    .filter((row) => row.locationId && row.qty > 0 && row.location)
     .sort((a, b) => {
       const codeA = String(a.location?.code || a.location?.name || "");
       const codeB = String(b.location?.code || b.location?.name || "");
@@ -1802,6 +1863,62 @@ function mergeLocationBalances(movementBalances = [], receivingBalances = []) {
   });
 }
 
+async function getActiveHoldQtyForLocation(tx, itemId, locationId) {
+  const item = Number(itemId);
+  const location = Number(locationId);
+  if (!item || !location) return 0;
+  const result = await tx.stockHold.aggregate({
+    where: {
+      itemId: item,
+      locationId: location,
+      status: "ACTIVE",
+    },
+    _sum: { qty: true },
+  });
+  return Math.max(0, Number(result?._sum?.qty) || 0);
+}
+
+async function getActiveHoldQtyByLocation(tx, itemId) {
+  const item = Number(itemId);
+  if (!item) return new Map();
+  const rows = await tx.stockHold.groupBy({
+    by: ["locationId"],
+    where: {
+      itemId: item,
+      status: "ACTIVE",
+      locationId: { not: null },
+    },
+    _sum: { qty: true },
+  });
+
+  const map = new Map();
+  for (const row of rows || []) {
+    const locationId = Number(row.locationId);
+    const qty = Math.max(0, Number(row?._sum?.qty) || 0);
+    if (locationId && qty > 0) {
+      map.set(locationId, qty);
+    }
+  }
+  return map;
+}
+
+async function applyActiveHoldsToBalances(tx, itemId, balances = []) {
+  if (!Array.isArray(balances) || balances.length === 0) {
+    return [];
+  }
+  const holdByLocation = await getActiveHoldQtyByLocation(tx, itemId);
+  return balances
+    .map((row) => {
+      const heldQty = Math.max(0, Number(holdByLocation.get(row.locationId)) || 0);
+      const qty = Math.max(0, (Number(row.qty) || 0) - heldQty);
+      return {
+        ...row,
+        qty,
+        heldQty,
+      };
+    })
+    .filter((row) => row.qty > 0);
+}
 async function buildOrderPickPlan(orderId) {
   const order = await prisma.salesOrder.findUnique({
     where: { id: orderId },
@@ -1816,78 +1933,103 @@ async function buildOrderPickPlan(orderId) {
 
   const plan = [];
   for (const line of order.lines) {
-    const totalQty = Number(line.qty) || 0;
-    const pickedQty = Number(line.pickedQty) || 0;
-    const remaining = Math.max(0, totalQty - pickedQty);
-    if (remaining <= 0) continue;
+    try {
+      const totalQty = Number(line.qty) || 0;
+      const pickedQty = Number(line.pickedQty) || 0;
+      const remaining = Math.max(0, totalQty - pickedQty);
+      if (remaining <= 0) continue;
 
-    let resolvedItemId = line.itemId || null;
-    let resolvedItem = line.item || null;
-    if (!resolvedItemId) {
-      const linkedItem = await findStockItemForOrderLine(prisma, {
-        sku: line.requestedSku,
-        name: line.requestedName,
-      });
-      if (linkedItem) {
-        resolvedItemId = linkedItem.id;
-        resolvedItem = linkedItem;
-        await prisma.salesOrderLine.update({
-          where: { id: line.id },
-          data: { itemId: linkedItem.id },
+      let resolvedItemId = line.itemId || null;
+      let resolvedItem = line.item || null;
+      if (!resolvedItemId) {
+        const linkedItem = await findStockItemForOrderLine(prisma, {
+          sku: line.requestedSku,
+          name: line.requestedName,
         });
+        if (linkedItem) {
+          resolvedItemId = linkedItem.id;
+          resolvedItem = linkedItem;
+          await prisma.salesOrderLine.update({
+            where: { id: line.id },
+            data: { itemId: linkedItem.id },
+          });
+        }
       }
-    }
 
-    if (!resolvedItemId) {
+      if (!resolvedItemId) {
+        plan.push({
+          lineId: line.id,
+          itemId: null,
+          itemName: line.requestedName || "??????????? ?????",
+          sku: line.requestedSku || null,
+          totalQty,
+          pickedQty,
+          remainingQty: remaining,
+          steps: [],
+          shortageQty: remaining,
+        });
+        continue;
+      }
+
+      const movementBalances = await getItemLocationBalances(resolvedItemId);
+      const receivingBalances = await getReceivingLineLocationBalances(resolvedItemId);
+      const placementBalances = await getPlacementLocationBalances(resolvedItemId);
+      const balancesBase = mergeLocationBalances(
+        mergeLocationBalances(movementBalances, receivingBalances),
+        placementBalances
+      );
+      const balances = await applyActiveHoldsToBalances(prisma, resolvedItemId, balancesBase);
+      let need = remaining;
+      const steps = [];
+
+      for (const balance of balances) {
+        if (need <= 0) break;
+        const pickQty = Math.min(need, Math.floor(balance.qty));
+        if (pickQty <= 0) continue;
+        steps.push({
+          locationId: balance.locationId,
+          locationCode: balance.location?.code || null,
+          locationName: balance.location?.name || null,
+          qty: pickQty,
+        });
+        need -= pickQty;
+      }
+
       plan.push({
         lineId: line.id,
-        itemId: null,
-        itemName: line.requestedName || "??????????? ?????",
-        sku: line.requestedSku || null,
+        itemId: resolvedItemId,
+        itemName: resolvedItem?.name || line.requestedName || `????? #${resolvedItemId}`,
+        sku: resolvedItem?.sku || line.requestedSku || null,
+        barcode: resolvedItem?.barcode || null,
         totalQty,
         pickedQty,
         remainingQty: remaining,
+        steps,
+        shortageQty: Math.max(0, need),
+      });
+    } catch (lineErr) {
+      const totalQty = Number(line?.qty) || 0;
+      const pickedQty = Number(line?.pickedQty) || 0;
+      const remainingQty = Math.max(0, totalQty - pickedQty);
+      console.error("build order pick plan line error:", {
+        orderId,
+        lineId: line?.id || null,
+        itemId: line?.itemId || null,
+        error: String(lineErr?.message || lineErr || "unknown"),
+      });
+      plan.push({
+        lineId: line?.id || null,
+        itemId: line?.itemId || null,
+        itemName: line?.item?.name || line?.requestedName || "????????",
+        sku: line?.item?.sku || line?.requestedSku || null,
+        barcode: line?.item?.barcode || null,
+        totalQty,
+        pickedQty,
+        remainingQty,
         steps: [],
-        shortageQty: remaining,
+        shortageQty: remainingQty,
       });
-      continue;
     }
-
-    const movementBalances = await getItemLocationBalances(resolvedItemId);
-    const receivingBalances = await getReceivingLineLocationBalances(resolvedItemId);
-    const placementBalances = await getPlacementLocationBalances(resolvedItemId);
-    const balances = mergeLocationBalances(
-      mergeLocationBalances(movementBalances, receivingBalances),
-      placementBalances
-    );
-    let need = remaining;
-    const steps = [];
-
-    for (const balance of balances) {
-      if (need <= 0) break;
-      const pickQty = Math.min(need, Math.floor(balance.qty));
-      if (pickQty <= 0) continue;
-      steps.push({
-        locationId: balance.locationId,
-        locationCode: balance.location?.code || null,
-        locationName: balance.location?.name || null,
-        qty: pickQty,
-      });
-      need -= pickQty;
-    }
-
-    plan.push({
-      lineId: line.id,
-      itemId: resolvedItemId,
-      itemName: resolvedItem?.name || line.requestedName || `????? #${resolvedItemId}`,
-      sku: resolvedItem?.sku || line.requestedSku || null,
-      barcode: resolvedItem?.barcode || null,
-      totalQty,
-      pickedQty,
-      remainingQty: remaining,
-      steps,
-      shortageQty: Math.max(0, need),
-    });
   }
 
   return plan;
@@ -3106,6 +3248,19 @@ app.get("/api/profile", auth, async (req, res) => {
       const plan = getPlan(planId);
       if (!plan) {
         return res.status(400).json({ message: "PLAN_NOT_FOUND" });
+      }
+      if (plan.id === "trial-1") {
+        const existing = req.user.isSystemOwner
+          ? await prisma.subscription.findFirst({
+              where: { userId: billingUserId },
+            })
+          : await prisma.subscription.findFirst({
+              where: { user: { orgId: targetOrgId } },
+              orderBy: [{ paidUntil: "desc" }, { id: "desc" }],
+            });
+        if (existing?.trialUsed || existing?.trialStartedAt) {
+          return res.status(400).json({ message: "TRIAL_ALREADY_USED" });
+        }
       }
       if (paymentMethod && paymentMethod !== "sbp" && paymentMethod !== "default") {
         return res.status(400).json({ message: "PAYMENT_METHOD_INVALID" });
@@ -5476,6 +5631,7 @@ app.get("/api/inventory/items/by-barcode/:barcode", auth, async (req, res) => {
       sku: item.sku,
       barcode: item.barcode,
       qrCode: item.qrCode,
+      imageUrl: item.imageUrl || null,
       unit: item.unit,
       minStock: item.minStock,
       maxStock: item.maxStock,
@@ -5913,6 +6069,7 @@ app.get("/api/warehouse/scan/resolve", auth, async (req, res) => {
           sku: item.sku,
           barcode: item.barcode,
           qrCode: item.qrCode,
+          imageUrl: item.imageUrl || null,
         },
       });
     }
@@ -5929,6 +6086,7 @@ app.get("/api/warehouse/scan/resolve", auth, async (req, res) => {
           sku: item.sku,
           barcode: item.barcode,
           qrCode: item.qrCode,
+          imageUrl: item.imageUrl || null,
         },
       });
     }
@@ -7253,7 +7411,7 @@ app.post("/api/warehouse/receiving", auth, async (req, res) => {
     const linesToPost = hasLines ? lines : [{ itemId, qty, manufacturedAt, expiresAt }];
 
     await prisma.$transaction(async (tx) => {
-      const receivingLocationId = await getReceivingLocationId(tx);
+      const receivingLocationId = await getReceivingLocationId(tx, req.user?.orgId || null);
       const effectiveLocationId = locationId || receivingLocationId;
 
       const location = await tx.warehouseLocation.findUnique({
@@ -7546,7 +7704,7 @@ app.post("/api/warehouse/putaway/from-receiving", auth, async (req, res) => {
       }
 
       const receivingLocationId =
-        line.locationId || (await getReceivingLocationId(tx));
+        line.locationId || (await getReceivingLocationId(tx, req.user?.orgId || null));
       const moveQty =
         amount && Number.isFinite(amount)
           ? Math.trunc(amount)
@@ -8395,6 +8553,7 @@ app.get("/api/inventory/stock", auth, async (req, res) => {
       orderBy: { name: "asc" },
       include: {
         movements: true,
+        stockHolds: { where: { status: "ACTIVE" } },
       },
     });
 
@@ -8409,6 +8568,12 @@ app.get("/api/inventory/stock", auth, async (req, res) => {
         }
       }
 
+      const heldQty = (item.stockHolds || []).reduce(
+        (sum, hold) => sum + (Number(hold?.qty) || 0),
+        0
+      );
+      const availableQty = Math.max(0, qty - heldQty);
+
       return {
         id: item.id,
         name: item.name,
@@ -8418,6 +8583,8 @@ app.get("/api/inventory/stock", auth, async (req, res) => {
         minStock: item.minStock,
         maxStock: item.maxStock,
         currentStock: Math.round(qty),
+        heldStock: Math.round(heldQty),
+        availableStock: Math.round(availableQty),
       };
     });
 
@@ -8436,7 +8603,7 @@ app.get("/api/warehouse/stock/summary", auth, async (req, res) => {
     const items = await prisma.item.findMany({
       where: { category: "STOCK" },
       orderBy: { name: "asc" },
-      include: { movements: true },
+      include: { movements: true, stockHolds: { where: { status: "ACTIVE" } } },
     });
 
     const result = items.map((item) => {
@@ -8450,6 +8617,12 @@ app.get("/api/warehouse/stock/summary", auth, async (req, res) => {
         }
       }
 
+      const heldQty = (item.stockHolds || []).reduce(
+        (sum, hold) => sum + (Number(hold?.qty) || 0),
+        0
+      );
+      const availableQty = Math.max(0, qty - heldQty);
+
       return {
         id: item.id,
         name: item.name,
@@ -8457,6 +8630,8 @@ app.get("/api/warehouse/stock/summary", auth, async (req, res) => {
         barcode: item.barcode,
         unit: item.unit,
         currentStock: Math.round(qty),
+        heldStock: Math.round(heldQty),
+        availableStock: Math.round(availableQty),
       };
     });
 
@@ -8467,6 +8642,181 @@ app.get("/api/warehouse/stock/summary", auth, async (req, res) => {
   }
 });
 
+app.get("/api/warehouse/holds", auth, async (req, res) => {
+  try {
+    const orgId = req.user?.orgId || null;
+    const status = String(req.query.status || "ACTIVE").toUpperCase();
+    const itemId = Number(req.query.itemId);
+    const locationId = Number(req.query.locationId);
+    const page = Math.max(1, Number(req.query.page) || 1);
+    const limit = Math.min(200, Math.max(1, Number(req.query.limit) || 50));
+
+    const where = {
+      orgId,
+      status: ["ACTIVE", "RELEASED"].includes(status) ? status : "ACTIVE",
+    };
+    if (Number.isFinite(itemId) && itemId > 0) where.itemId = itemId;
+    if (Number.isFinite(locationId) && locationId > 0) where.locationId = locationId;
+
+    const [total, rows] = await prisma.$transaction([
+      prisma.stockHold.count({ where }),
+      prisma.stockHold.findMany({
+        where,
+        include: {
+          item: { select: { id: true, name: true, sku: true, unit: true } },
+          location: {
+            select: { id: true, code: true, name: true, zone: true, aisle: true, rack: true, level: true },
+          },
+          createdBy: { select: { id: true, name: true, email: true } },
+          releasedBy: { select: { id: true, name: true, email: true } },
+        },
+        orderBy: [{ status: "asc" }, { createdAt: "desc" }],
+        skip: (page - 1) * limit,
+        take: limit,
+      }),
+    ]);
+
+    res.json({
+      items: rows,
+      paging: {
+        page,
+        limit,
+        total,
+        pages: Math.max(1, Math.ceil(total / limit)),
+      },
+    });
+  } catch (err) {
+    console.error("warehouse holds list error:", err);
+    res.status(500).json({ message: "\u041e\u0448\u0438\u0431\u043a\u0430 \u0437\u0430\u0433\u0440\u0443\u0437\u043a\u0438 \u0431\u043b\u043e\u043a\u0438\u0440\u043e\u0432\u043e\u043a \u043e\u0441\u0442\u0430\u0442\u043a\u043e\u0432." });
+  }
+});
+
+app.post("/api/warehouse/holds", auth, async (req, res) => {
+  try {
+    const orgId = req.user?.orgId || null;
+    const itemId = Number(req.body?.itemId);
+    const locationId = Number(req.body?.locationId);
+    const qty = Number(req.body?.qty);
+    const reason = String(req.body?.reason || "").trim();
+    const note = req.body?.note ? String(req.body.note).trim() : null;
+
+    if (!itemId || !locationId || !Number.isFinite(qty) || qty <= 0 || !reason) {
+      return res.status(400).json({
+        message: "\u041d\u0443\u0436\u043d\u043e \u0443\u043a\u0430\u0437\u0430\u0442\u044c \u0442\u043e\u0432\u0430\u0440, \u044f\u0447\u0435\u0439\u043a\u0443, \u043a\u043e\u043b\u0438\u0447\u0435\u0441\u0442\u0432\u043e (>0) \u0438 \u043f\u0440\u0438\u0447\u0438\u043d\u0443 \u0431\u043b\u043e\u043a\u0438\u0440\u043e\u0432\u043a\u0438.",
+      });
+    }
+
+    const created = await prisma.$transaction(async (tx) => {
+      const item = await tx.item.findFirst({ where: { id: itemId, orgId } });
+      if (!item || item.category === "TMC") {
+        const err = new Error("ITEM_NOT_FOUND");
+        err.code = "ITEM_NOT_FOUND";
+        throw err;
+      }
+
+      const location = await tx.warehouseLocation.findFirst({ where: { id: locationId, orgId } });
+      if (!location) {
+        const err = new Error("LOCATION_NOT_FOUND");
+        err.code = "LOCATION_NOT_FOUND";
+        throw err;
+      }
+
+      const onHandQty = await stockService.getItemLocationQty(tx, itemId, locationId);
+      const activeHoldQty = await getActiveHoldQtyForLocation(tx, itemId, locationId);
+      const availableQty = Math.max(0, (Number(onHandQty) || 0) - activeHoldQty);
+
+      if (availableQty < qty) {
+        const err = new Error("HOLD_EXCEEDS_AVAILABLE");
+        err.code = "HOLD_EXCEEDS_AVAILABLE";
+        err.detail = {
+          onHandQty: Number(onHandQty) || 0,
+          activeHoldQty,
+          availableQty,
+        };
+        throw err;
+      }
+
+      return tx.stockHold.create({
+        data: {
+          orgId,
+          itemId,
+          locationId,
+          qty,
+          reason,
+          note,
+          createdByUserId: req.user?.id || null,
+        },
+        include: {
+          item: { select: { id: true, name: true, sku: true, unit: true } },
+          location: {
+            select: { id: true, code: true, name: true, zone: true, aisle: true, rack: true, level: true },
+          },
+          createdBy: { select: { id: true, name: true, email: true } },
+        },
+      });
+    });
+
+    res.status(201).json({ ok: true, hold: created });
+  } catch (err) {
+    if (err.code === "ITEM_NOT_FOUND") {
+      return res.status(404).json({ message: "\u0422\u043e\u0432\u0430\u0440 \u043d\u0435 \u043d\u0430\u0439\u0434\u0435\u043d." });
+    }
+    if (err.code === "LOCATION_NOT_FOUND") {
+      return res.status(404).json({ message: "\u042f\u0447\u0435\u0439\u043a\u0430 \u043d\u0435 \u043d\u0430\u0439\u0434\u0435\u043d\u0430." });
+    }
+    if (err.code === "HOLD_EXCEEDS_AVAILABLE") {
+      return res.status(409).json({
+        message: "\u041d\u0435\u0434\u043e\u0441\u0442\u0430\u0442\u043e\u0447\u043d\u043e \u0434\u043e\u0441\u0442\u0443\u043f\u043d\u043e\u0433\u043e \u043e\u0441\u0442\u0430\u0442\u043a\u0430 \u0434\u043b\u044f \u0431\u043b\u043e\u043a\u0438\u0440\u043e\u0432\u043a\u0438.",
+        detail: err.detail || null,
+      });
+    }
+    console.error("warehouse hold create error:", err);
+    res.status(500).json({ message: "\u041e\u0448\u0438\u0431\u043a\u0430 \u0441\u043e\u0437\u0434\u0430\u043d\u0438\u044f \u0431\u043b\u043e\u043a\u0438\u0440\u043e\u0432\u043a\u0438 \u043e\u0441\u0442\u0430\u0442\u043a\u0430." });
+  }
+});
+
+app.post("/api/warehouse/holds/:id/release", auth, async (req, res) => {
+  try {
+    const orgId = req.user?.orgId || null;
+    const id = Number(req.params.id);
+    const releaseNote = req.body?.note ? String(req.body.note).trim() : null;
+
+    if (!id || Number.isNaN(id)) {
+      return res.status(400).json({ message: "\u041d\u0435\u043a\u043e\u0440\u0440\u0435\u043a\u0442\u043d\u044b\u0439 ID \u0431\u043b\u043e\u043a\u0438\u0440\u043e\u0432\u043a\u0438." });
+    }
+
+    const hold = await prisma.stockHold.findFirst({ where: { id, orgId } });
+    if (!hold) {
+      return res.status(404).json({ message: "\u0411\u043b\u043e\u043a\u0438\u0440\u043e\u0432\u043a\u0430 \u043d\u0435 \u043d\u0430\u0439\u0434\u0435\u043d\u0430." });
+    }
+    if (hold.status !== "ACTIVE") {
+      return res.status(409).json({ message: "\u0411\u043b\u043e\u043a\u0438\u0440\u043e\u0432\u043a\u0430 \u0443\u0436\u0435 \u0441\u043d\u044f\u0442\u0430." });
+    }
+
+    const updated = await prisma.stockHold.update({
+      where: { id },
+      data: {
+        status: "RELEASED",
+        releasedAt: new Date(),
+        releasedByUserId: req.user?.id || null,
+        releaseNote,
+      },
+      include: {
+        item: { select: { id: true, name: true, sku: true, unit: true } },
+        location: {
+          select: { id: true, code: true, name: true, zone: true, aisle: true, rack: true, level: true },
+        },
+        createdBy: { select: { id: true, name: true, email: true } },
+        releasedBy: { select: { id: true, name: true, email: true } },
+      },
+    });
+
+    res.json({ ok: true, hold: updated });
+  } catch (err) {
+    console.error("warehouse hold release error:", err);
+    res.status(500).json({ message: "\u041e\u0448\u0438\u0431\u043a\u0430 \u0441\u043d\u044f\u0442\u0438\u044f \u0431\u043b\u043e\u043a\u0438\u0440\u043e\u0432\u043a\u0438 \u043e\u0441\u0442\u0430\u0442\u043a\u0430." });
+  }
+});
 app.get("/api/warehouse/stock/item/:id", auth, async (req, res) => {
   try {
     const id = Number(req.params.id);
@@ -8506,7 +8856,7 @@ app.get("/api/inventory/low-stock-order-file", auth, async (req, res) => {
     const items = await prisma.item.findMany({
       where: { category: "STOCK" },
       orderBy: { name: "asc" },
-      include: { movements: true },
+      include: { movements: true, stockHolds: { where: { status: "ACTIVE" } } },
     });
 
     const lowItems = [];
@@ -9411,6 +9761,7 @@ app.get("/api/warehouse/receiving/open-pos", auth, async (req, res) => {
           number: order.number,
           date: order.date,
           status: order.status,
+          receivingStage: order.receivingStage,
           supplier: order.supplier
             ? { id: order.supplier.id, name: order.supplier.name }
             : null,
@@ -9488,14 +9839,25 @@ app.post("/api/warehouse/receiving/:poId/take", auth, async (req, res) => {
           })
         : linkedTruck;
 
+    const updatedOrder = await prisma.purchaseOrder.update({
+      where: { id: poId },
+      data: {
+        receivingStage:
+          order.receivingStage === "FINALIZED" ? "FINALIZED" : "IN_PROGRESS",
+      },
+      include: { supplier: true },
+    });
+
+
     res.json({
       ok: true,
       order: {
-        id: order.id,
-        number: order.number,
-        status: order.status,
-        supplier: order.supplier
-          ? { id: order.supplier.id, name: order.supplier.name }
+        id: updatedOrder.id,
+        number: updatedOrder.number,
+        status: updatedOrder.status,
+        receivingStage: updatedOrder.receivingStage,
+        supplier: updatedOrder.supplier
+          ? { id: updatedOrder.supplier.id, name: updatedOrder.supplier.name }
           : null,
       },
       queue: {
@@ -9889,9 +10251,15 @@ app.put("/api/purchase-orders/:id/status", auth, async (req, res) => {
       }
     }
 
+    const nextReceivingStage =
+      status === "RECEIVED" || status === "CLOSED"
+        ? "FINALIZED"
+        : status === "PARTIAL"
+          ? "CONFIRMED"
+          : "NEW";
     const updated = await prisma.purchaseOrder.update({
       where: { id },
-      data: { status },
+      data: { status, receivingStage: nextReceivingStage },
       include: {
         supplier: true,
         items: {
@@ -10051,7 +10419,10 @@ app.post("/api/purchase-orders/:id/receive", auth, async (req, res) => {
 
     await prisma.purchaseOrder.update({
       where: { id: order.id },
-      data: { status: nextStatus },
+      data: {
+        status: nextStatus,
+        receivingStage: nextStatus === "RECEIVED" ? "FINALIZED" : "CONFIRMED",
+      },
     });
 
     return res.json({
@@ -10111,7 +10482,7 @@ app.post("/api/warehouse/receiving/:poId/confirm", auth, async (req, res) => {
     const effectiveOrgId = order.orgId || req.user?.orgId || null;
     const fullOrderItems = await runWithoutTenantScope(() =>
       prismaBase.purchaseOrderItem.findMany({
-        where: { orderId: poId },
+        where: { orderId: poId, orgId: effectiveOrgId },
         include: { item: true },
       })
     );
@@ -10141,7 +10512,7 @@ app.post("/api/warehouse/receiving/:poId/confirm", auth, async (req, res) => {
         return res.status(404).json({ message: "LOCATION_NOT_FOUND" });
       }
     } else {
-      location = await getOrCreateReceivingLocation();
+      location = await getOrCreateReceivingLocation(effectiveOrgId);
     }
 
     const orderItemsByItemId = new Map();
@@ -10161,8 +10532,11 @@ app.post("/api/warehouse/receiving/:poId/confirm", auth, async (req, res) => {
 
         const lineOpId = opId ? `${opId}:${itemId}` : null;
         if (lineOpId) {
-          const existing = await tx.stockMovement.findUnique({
-            where: { opId: lineOpId },
+          const existing = await tx.stockMovement.findFirst({
+            where: {
+              opId: lineOpId,
+              orgId: effectiveOrgId,
+            },
           });
           if (existing) {
             continue;
@@ -10215,7 +10589,7 @@ app.post("/api/warehouse/receiving/:poId/confirm", auth, async (req, res) => {
 
           await runWithoutTenantScope(() =>
             tx.purchaseOrderItem.updateMany({
-              where: { id: orderRow.id },
+              where: { id: orderRow.id, orgId: effectiveOrgId },
               data: { receivedQty: nextReceived, orgId: effectiveOrgId },
             })
           );
@@ -10264,6 +10638,19 @@ app.post("/api/warehouse/receiving/:poId/confirm", auth, async (req, res) => {
         }
       }
 
+      await runWithoutTenantScope(() =>
+        tx.purchaseOrder.updateMany({
+          where: {
+            id: poId,
+            orgId: effectiveOrgId,
+            receivingStage: { not: "FINALIZED" },
+          },
+          data: {
+            receivingStage: "CONFIRMED",
+            orgId: effectiveOrgId,
+          },
+        })
+      );
       if (createdDiscrepancies.length > 0) {
         await tx.receivingDiscrepancy.findMany({
           where: { id: { in: createdDiscrepancies } },
@@ -10273,8 +10660,8 @@ app.post("/api/warehouse/receiving/:poId/confirm", auth, async (req, res) => {
     let updatedOrder = null;
     try {
       updatedOrder = await runWithoutTenantScope(() =>
-        prismaBase.purchaseOrder.findUnique({
-          where: { id: poId },
+        prismaBase.purchaseOrder.findFirst({
+          where: { id: poId, orgId: effectiveOrgId },
           include: {
             supplier: true,
             items: { include: { item: true } },
@@ -10330,15 +10717,13 @@ app.post("/api/warehouse/receiving/:poId/finalize", auth, async (req, res) => {
       return res.status(400).json({ message: "BAD_PO_ID" });
     }
 
-    const order = await runWithoutTenantScope(() =>
-      prismaBase.purchaseOrder.findUnique({
-        where: { id: poId },
-        include: {
-          supplier: true,
-          items: { include: { item: true } },
-        },
-      })
-    );
+    const order = await prisma.purchaseOrder.findUnique({
+      where: { id: poId },
+      include: {
+        supplier: true,
+        items: { include: { item: true } },
+      },
+    });
 
     if (!order) {
       return res.status(404).json({ message: "PO_NOT_FOUND" });
@@ -10359,12 +10744,10 @@ app.post("/api/warehouse/receiving/:poId/finalize", auth, async (req, res) => {
     }
 
     await prisma.$transaction(async (tx) => {
-      const refreshed = await runWithoutTenantScope(() =>
-        tx.purchaseOrder.findUnique({
-          where: { id: poId },
-          include: { items: true },
-        })
-      );
+      const refreshed = await tx.purchaseOrder.findUnique({
+        where: { id: poId },
+        include: { items: true },
+      });
       if (!refreshed) return;
 
       for (const row of refreshed.items || []) {
@@ -10409,11 +10792,19 @@ app.post("/api/warehouse/receiving/:poId/finalize", auth, async (req, res) => {
           ? "PARTIAL"
           : refreshed.status;
 
-      if (nextStatus !== refreshed.status || !refreshed.orgId) {
+      if (
+        nextStatus !== refreshed.status ||
+        !refreshed.orgId ||
+        refreshed.receivingStage !== "FINALIZED"
+      ) {
         await runWithoutTenantScope(() =>
           tx.purchaseOrder.updateMany({
-            where: { id: poId },
-            data: { status: nextStatus, orgId: effectiveOrgId },
+            where: { id: poId, orgId: effectiveOrgId },
+            data: {
+              status: nextStatus,
+              orgId: effectiveOrgId,
+              receivingStage: "FINALIZED",
+            },
           })
         );
       }
@@ -10424,7 +10815,7 @@ app.post("/api/warehouse/receiving/:poId/finalize", auth, async (req, res) => {
       try {
         await runWithoutTenantScope(() =>
           prismaBase.supplierTruck.updateMany({
-            where: { id: linkedTruck.id, status: { not: "DONE" } },
+            where: { id: linkedTruck.id, orgId: linkedTruck.orgId || effectiveOrgId, status: { not: "DONE" } },
             data: {
               status: "DONE",
               unloadEndAt: linkedTruck.unloadEndAt || now,
@@ -10437,15 +10828,13 @@ app.post("/api/warehouse/receiving/:poId/finalize", auth, async (req, res) => {
       }
     }
 
-    const updatedOrder = await runWithoutTenantScope(() =>
-      prismaBase.purchaseOrder.findUnique({
-        where: { id: poId },
-        include: {
-          supplier: true,
-          items: { include: { item: true } },
-        },
-      })
-    );
+    const updatedOrder = await prisma.purchaseOrder.findUnique({
+      where: { id: poId },
+      include: {
+        supplier: true,
+        items: { include: { item: true } },
+      },
+    });
 
     res.json({ ok: true, order: updatedOrder || { id: poId } });
   } catch (err) {
@@ -10806,7 +11195,7 @@ app.post("/api/orders/inbound", auth, async (req, res) => {
 
     const result = await prisma.$transaction(async (tx) => {
       if (externalOrderId) {
-        const existing = await tx.salesOrder.findUnique({
+        const existing = await tx.salesOrder.findFirst({
           where: { externalOrderId: String(externalOrderId) },
           include: { lines: true },
         });
@@ -10943,7 +11332,7 @@ app.post("/api/integrations/orders/inbound", async (req, res) => {
 
     const result = await prisma.$transaction(async (tx) => {
       if (externalOrderId) {
-        const existing = await tx.salesOrder.findUnique({
+        const existing = await tx.salesOrder.findFirst({
           where: { externalOrderId: String(externalOrderId) },
           include: { lines: true },
         });
@@ -11072,7 +11461,7 @@ app.post("/api/orders/import-batch", auth, requireAdmin, async (req, res) => {
       try {
         const result = await prisma.$transaction(async (tx) => {
           if (externalOrderId) {
-            const existing = await tx.salesOrder.findUnique({
+            const existing = await tx.salesOrder.findFirst({
               where: { externalOrderId: String(externalOrderId) },
               include: { lines: true },
             });
@@ -11296,6 +11685,54 @@ function parseAdminShortageMetaFromComment(commentValue) {
 function buildAdminShortageMetaLine(payload = {}) {
   return `${ADMIN_SHORTAGE_CLOSE_PREFIX}${JSON.stringify(payload)}`;
 }
+
+function parseSalesOrderStatusesCsv(value) {
+  const statuses = String(value || "")
+    .split(",")
+    .map((entry) => String(entry || "").trim().toUpperCase())
+    .filter(Boolean);
+  return Array.from(new Set(statuses));
+}
+
+function sanitizeOptionalText(value, maxLength = 255) {
+  if (value == null) return null;
+  const textValue = String(value).trim();
+  if (!textValue) return null;
+  return textValue.slice(0, maxLength);
+}
+
+function buildOrderStatusHistoryMeta(payload = {}) {
+  const entries = Object.entries(payload).filter(([, value]) => {
+    if (value == null) return false;
+    if (typeof value === "string") return value.trim().length > 0;
+    return true;
+  });
+  if (!entries.length) return null;
+  return Object.fromEntries(entries);
+}
+
+async function writeOrderStatusHistory(tx, {
+  orderId,
+  orgId = null,
+  fromStatus = null,
+  toStatus,
+  eventType,
+  actorUserId = null,
+  metaJson = null,
+}) {
+  if (!orderId || !toStatus || !eventType) return null;
+  return tx.orderStatusHistory.create({
+    data: {
+      orderId,
+      orgId: orgId || null,
+      fromStatus: fromStatus || null,
+      toStatus,
+      eventType,
+      actorUserId: actorUserId || null,
+      metaJson: metaJson || null,
+    },
+  });
+}
 app.get("/api/orders/queue", auth, async (req, res) => {
   try {
     const mineOnly = req.query.mine === "1";
@@ -11329,6 +11766,114 @@ app.get("/api/orders/queue", auth, async (req, res) => {
     res.status(500).json({ message: "?????? ???????? ??????? ???????." });
   }
 });
+
+app.get("/api/orders/status-history", auth, async (req, res) => {
+  try {
+    const orderId = Number(req.query.orderId || 0);
+    const actorUserId = Number(req.query.actorUserId || 0);
+    const statusFilter = parseSalesOrderStatusesCsv(req.query.toStatus);
+    const fromDate = parseDateInput(req.query.fromDate);
+    const toDate = parseDateInput(req.query.toDate);
+    const page = Math.max(1, Number(req.query.page) || 1);
+    const limit = Math.min(200, Math.max(1, Number(req.query.limit) || 50));
+    const skip = (page - 1) * limit;
+
+    const where = {};
+    if (orderId > 0) where.orderId = orderId;
+    if (actorUserId > 0) where.actorUserId = actorUserId;
+    if (statusFilter.length === 1) {
+      where.toStatus = statusFilter[0];
+    } else if (statusFilter.length > 1) {
+      where.toStatus = { in: statusFilter };
+    }
+    if (fromDate || toDate) {
+      where.createdAt = {};
+      if (fromDate) where.createdAt.gte = fromDate;
+      if (toDate) where.createdAt.lte = toDate;
+    }
+
+    const [total, events] = await Promise.all([
+      prisma.orderStatusHistory.count({ where }),
+      prisma.orderStatusHistory.findMany({
+        where,
+        orderBy: [{ createdAt: "desc" }, { id: "desc" }],
+        skip,
+        take: limit,
+        include: {
+          order: {
+            select: {
+              id: true,
+              orderNumber: true,
+              customerName: true,
+              status: true,
+            },
+          },
+          actorUser: {
+            select: {
+              id: true,
+              name: true,
+              email: true,
+            },
+          },
+        },
+      }),
+    ]);
+
+    res.json({
+      items: events,
+      page,
+      limit,
+      total,
+    });
+  } catch (err) {
+    console.error("orders status history list error:", err);
+    res.status(500).json({ message: "ORDER_STATUS_HISTORY_LIST_ERROR" });
+  }
+});
+
+app.get("/api/orders/:id/status-history", auth, async (req, res) => {
+  try {
+    const id = Number(req.params.id);
+    if (!id || Number.isNaN(id)) {
+      return res.status(400).json({ message: "BAD_ORDER_ID" });
+    }
+
+    const order = await prisma.salesOrder.findUnique({
+      where: { id },
+      select: {
+        id: true,
+        orderNumber: true,
+        customerName: true,
+        status: true,
+      },
+    });
+    if (!order) {
+      return res.status(404).json({ message: "ORDER_NOT_FOUND" });
+    }
+
+    const limit = Math.min(500, Math.max(1, Number(req.query.limit) || 200));
+    const items = await prisma.orderStatusHistory.findMany({
+      where: { orderId: id },
+      orderBy: [{ createdAt: "asc" }, { id: "asc" }],
+      take: limit,
+      include: {
+        actorUser: {
+          select: {
+            id: true,
+            name: true,
+            email: true,
+          },
+        },
+      },
+    });
+
+    res.json({ order, items });
+  } catch (err) {
+    console.error("orders status history by order error:", err);
+    res.status(500).json({ message: "ORDER_STATUS_HISTORY_BY_ORDER_ERROR" });
+  }
+});
+
 
 app.get("/api/orders/admin-shortage-candidates", auth, async (req, res) => {
   try {
@@ -11651,6 +12196,34 @@ app.get("/api/orders/admin-picking-journal", auth, async (req, res) => {
     res.status(500).json({ message: "ORDER_PICKING_JOURNAL_ERROR" });
   }
 });
+app.get("/api/orders/:id", auth, async (req, res) => {
+  try {
+    const id = Number(req.params.id);
+    if (!id || Number.isNaN(id)) {
+      return res.status(400).json({ message: "BAD_ORDER_ID" });
+    }
+
+    const order = await prisma.salesOrder.findUnique({
+      where: { id },
+      include: {
+        assignedToUser: { select: { id: true, name: true, email: true } },
+        passportPrintedBy: { select: { id: true, name: true, email: true } },
+        shippedBy: { select: { id: true, name: true, email: true } },
+        lines: { include: { item: true }, orderBy: { id: "asc" } },
+      },
+    });
+
+    if (!order) {
+      return res.status(404).json({ message: "ORDER_NOT_FOUND" });
+    }
+
+    res.json({ order });
+  } catch (err) {
+    console.error("orders get by id error:", err);
+    res.status(500).json({ message: "ORDER_GET_ERROR" });
+  }
+});
+
 app.get("/api/orders/:id/pick-skips", auth, async (req, res) => {
   try {
     const orderId = Number(req.params.id);
@@ -12234,6 +12807,27 @@ app.post("/api/orders/:id/pick-confirm", auth, async (req, res) => {
         }
       }
 
+      const holdQty = await getActiveHoldQtyForLocation(tx, actualItemId, location);
+      const locationQtyAfterSync = await stockService.getItemLocationQty(
+        tx,
+        actualItemId,
+        location
+      );
+      const locationAvailableQty = Math.max(
+        0,
+        (Number(locationQtyAfterSync) || 0) - holdQty
+      );
+      if (locationAvailableQty < amount) {
+        const err = new Error("HOLD_QTY_BLOCKED");
+        err.code = "HOLD_QTY_BLOCKED";
+        err.detail = {
+          holdQty,
+          locationQty: Number(locationQtyAfterSync) || 0,
+          availableQty: locationAvailableQty,
+        };
+        throw err;
+      }
+
       await stockService.createMovementInTx(tx, {
         opId: `ORDER:${orderId}:LINE:${line}:${Date.now()}`,
         type: "ISSUE",
@@ -12302,6 +12896,7 @@ app.post("/api/orders/:id/pick-confirm", auth, async (req, res) => {
     if (err.code === "BAD_STATUS") return res.status(400).json({ message: "Заказ не в статусе отбора." });
     if (err.code === "QTY_EXCEEDS_REMAINING") return res.status(400).json({ message: "Количество превышает остаток по строке." });
     if (err.code === "LINE_ITEM_NOT_LINKED") return res.status(400).json({ message: "Строка заказа не связана с товаром." });
+    if (err.code === "HOLD_QTY_BLOCKED") return res.status(409).json({ message: "\u041a\u043e\u043b\u0438\u0447\u0435\u0441\u0442\u0432\u043e \u0432 \u044f\u0447\u0435\u0439\u043a\u0435 \u0437\u0430\u0431\u043b\u043e\u043a\u0438\u0440\u043e\u0432\u0430\u043d\u043e (Hold).", detail: err.detail || null });
     if (err.code === "INSUFFICIENT_QTY") return res.status(400).json({ message: "Недостаточно остатка в ячейке." });
     console.error("orders pick confirm error:", err);
     res.status(500).json({ message: "Ошибка подтверждения отбора." });
@@ -12314,24 +12909,24 @@ app.post("/api/orders/:id/pack", auth, async (req, res) => {
     const id = Number(req.params.id);
     const { boxCode, boxType } = req.body || {};
     if (!id || Number.isNaN(id)) {
-      return res.status(400).json({ message: "???????????? ID ??????." });
+      return res.status(400).json({ message: "BAD_ORDER_ID" });
     }
     if (!boxCode) {
-      return res.status(400).json({ message: "??????? ????? ???????." });
+      return res.status(400).json({ message: "BOX_CODE_REQUIRED" });
     }
 
     const order = await prisma.salesOrder.findUnique({
       where: { id },
       include: { lines: true },
     });
-    if (!order) return res.status(404).json({ message: "????? ?? ??????." });
+    if (!order) return res.status(404).json({ message: "ORDER_NOT_FOUND" });
     if (order.assignedToUserId && order.assignedToUserId !== req.user.id) {
-      return res.status(403).json({ message: "????? ????????? ?? ?????? ???????????." });
+      return res.status(403).json({ message: "NOT_ASSIGNED_TO_YOU" });
     }
 
     const allPicked = order.lines.every((row) => Number(row.pickedQty) >= Number(row.qty));
     if (!allPicked) {
-      return res.status(400).json({ message: "??????? ????????? ?????." });
+      return res.status(400).json({ message: "ORDER_NOT_FULLY_PICKED" });
     }
 
     const updated = await prisma.salesOrder.update({
@@ -12351,7 +12946,7 @@ app.post("/api/orders/:id/pack", auth, async (req, res) => {
     res.json({ ok: true, order: updated });
   } catch (err) {
     console.error("orders pack error:", err);
-    res.status(500).json({ message: "?????? ???????? ??????." });
+    res.status(500).json({ message: "ORDER_PACK_ERROR" });
   }
 });
 
@@ -12390,52 +12985,169 @@ app.post("/api/orders/:id/complete", auth, async (req, res) => {
   try {
     const id = Number(req.params.id);
     if (!id || Number.isNaN(id)) {
-      return res.status(400).json({ message: "Некорректный ID заказа." });
+      return res.status(400).json({ message: "BAD_ORDER_ID" });
     }
 
     const order = await prisma.salesOrder.findUnique({
       where: { id },
       include: { lines: true },
     });
-    if (!order) return res.status(404).json({ message: "Заказ не найден." });
+    if (!order) return res.status(404).json({ message: "ORDER_NOT_FOUND" });
     if (order.assignedToUserId && order.assignedToUserId !== req.user.id) {
-      return res.status(403).json({ message: "Заказ закреплен за другим сотрудником." });
+      return res.status(403).json({ message: "NOT_ASSIGNED_TO_YOU" });
     }
     if (!["PICKED", "PACKED", "READY_TO_SHIP"].includes(order.status)) {
-      return res.status(400).json({ message: "Сначала завершите отбор." });
+      return res.status(400).json({ message: "ORDER_BAD_STATUS" });
     }
 
-    const updated = await prisma.salesOrder.update({
-      where: { id },
-      data: {
-        status: "READY_TO_SHIP",
-        completedAt: new Date(),
-      },
-      include: {
-        assignedToUser: { select: { id: true, name: true, email: true } },
-        lines: { include: { item: true }, orderBy: { id: "asc" } },
-      },
-    });
+    const updated = await prisma.$transaction(async (tx) => {
+      const current = await tx.salesOrder.findUnique({ where: { id } });
+      if (!current) {
+        const err = new Error("ORDER_NOT_FOUND");
+        err.code = "ORDER_NOT_FOUND";
+        throw err;
+      }
 
-    await prisma.salesOrderPickSkip.updateMany({
-      where: {
-        orderId: id,
-        status: "ACTIVE",
-      },
-      data: {
-        status: "RESTORED",
-        restoredAt: new Date(),
-        restoredById: req.user?.id || null,
-      },
+      const nextStatus = "READY_TO_SHIP";
+      const fromStatus = current.status;
+
+      const savedOrder = await tx.salesOrder.update({
+        where: { id },
+        data: {
+          status: nextStatus,
+          completedAt: new Date(),
+        },
+        include: {
+          assignedToUser: { select: { id: true, name: true, email: true } },
+          lines: { include: { item: true }, orderBy: { id: "asc" } },
+        },
+      });
+
+      await tx.salesOrderPickSkip.updateMany({
+        where: {
+          orderId: id,
+          status: "ACTIVE",
+        },
+        data: {
+          status: "RESTORED",
+          restoredAt: new Date(),
+          restoredById: req.user?.id || null,
+        },
+      });
+
+      if (fromStatus !== nextStatus) {
+        await writeOrderStatusHistory(tx, {
+          orderId: id,
+          orgId: savedOrder.orgId || req.user?.orgId || null,
+          fromStatus,
+          toStatus: nextStatus,
+          eventType: "COMPLETE",
+          actorUserId: req.user?.id || null,
+        });
+      }
+
+      return savedOrder;
     });
 
     res.json({ ok: true, order: updated });
   } catch (err) {
+    if (err.code === "ORDER_NOT_FOUND") {
+      return res.status(404).json({ message: "ORDER_NOT_FOUND" });
+    }
     console.error("orders complete error:", err);
-    res.status(500).json({ message: "Ошибка завершения заказа." });
+    res.status(500).json({ message: "ORDER_COMPLETE_ERROR" });
   }
 });
 
+app.post("/api/orders/:id/ship", auth, async (req, res) => {
+  try {
+    const id = Number(req.params.id);
+    if (!id || Number.isNaN(id)) {
+      return res.status(400).json({ message: "BAD_ORDER_ID" });
+    }
+
+    const carrier = sanitizeOptionalText(req.body?.carrier, 120);
+    const trackingNumber = sanitizeOptionalText(req.body?.trackingNumber, 160);
+    const notes = sanitizeOptionalText(req.body?.notes, 1000);
+    const methodRaw = sanitizeOptionalText(req.body?.method, 32);
+    const method = methodRaw ? methodRaw.toUpperCase() : null;
+
+    const updated = await prisma.$transaction(async (tx) => {
+      const order = await tx.salesOrder.findUnique({
+        where: { id },
+      });
+      if (!order) {
+        const err = new Error("ORDER_NOT_FOUND");
+        err.code = "ORDER_NOT_FOUND";
+        throw err;
+      }
+
+      if (order.status === "SHIPPED") {
+        const err = new Error("ORDER_ALREADY_SHIPPED");
+        err.code = "ORDER_ALREADY_SHIPPED";
+        throw err;
+      }
+
+      if (order.status !== "READY_TO_SHIP") {
+        const err = new Error("ORDER_BAD_STATUS");
+        err.code = "ORDER_BAD_STATUS";
+        throw err;
+      }
+
+      const now = new Date();
+      const nextStatus = "SHIPPED";
+
+      const savedOrder = await tx.salesOrder.update({
+        where: { id },
+        data: {
+          status: nextStatus,
+          shippedAt: now,
+          shippedByUserId: req.user?.id || null,
+          carrier,
+          trackingNumber,
+          shipNotes: notes,
+        },
+        include: {
+          assignedToUser: { select: { id: true, name: true, email: true } },
+          shippedBy: { select: { id: true, name: true, email: true } },
+          lines: { include: { item: true }, orderBy: { id: "asc" } },
+        },
+      });
+
+      await writeOrderStatusHistory(tx, {
+        orderId: id,
+        orgId: savedOrder.orgId || req.user?.orgId || null,
+        fromStatus: order.status,
+        toStatus: nextStatus,
+        eventType: "SHIP",
+        actorUserId: req.user?.id || null,
+        metaJson: buildOrderStatusHistoryMeta({
+          carrier,
+          trackingNumber,
+          notes,
+          method,
+        }),
+      });
+
+      return savedOrder;
+    });
+
+    res.json({ ok: true, order: updated });
+  } catch (err) {
+    if (err.code === "ORDER_NOT_FOUND") {
+      return res.status(404).json({ message: "ORDER_NOT_FOUND" });
+    }
+    if (err.code === "ORDER_ALREADY_SHIPPED") {
+      return res.status(409).json({ message: "ORDER_ALREADY_SHIPPED" });
+    }
+    if (err.code === "ORDER_BAD_STATUS") {
+      return res.status(409).json({ message: "ORDER_BAD_STATUS" });
+    }
+
+    console.error("orders ship error:", err);
+    res.status(500).json({ message: "ORDER_SHIP_ERROR" });
+  }
+});
 
 app.post("/api/orders/:id/passport-printed", auth, async (req, res) => {
   try {
@@ -13148,7 +13860,7 @@ app.post("/api/warehouse/stock/adjustment", requireAdmin, async (req, res) => {
       let affectedLocations = 0;
 
       if (delta > 0) {
-        const receivingLocationId = await getReceivingLocationId(tx);
+        const receivingLocationId = await getReceivingLocationId(tx, req.user?.orgId || null);
         await stockService.createMovementInTx(tx, {
           opId: `ADMIN_ADJ:${itemId}:${Date.now()}:PLUS`,
           type: "ADJUSTMENT",
@@ -13267,3 +13979,4 @@ async function bootstrapServer() {
 bootstrapServer().catch((err) =>
   console.error("РћС€РёР±РєР° Р·Р°РїСѓСЃРєР° bootstrapServer:", err)
 );
+

@@ -2,6 +2,35 @@ import { useEffect, useMemo, useState } from "react";
 import { NavLink, Outlet, useLocation } from "react-router-dom";
 import { useAuth } from "./context/AuthContext";
 import { hasPermission, PERMISSION_KEYS } from "./utils/permissions";
+import { APP_LOGO_DATA_URL } from "./assets/appLogoDataUrl";
+
+const DATE_INPUT_SELECTOR =
+  'input[type="date"], input[type="datetime-local"], input[type="month"]';
+const APP_LOGO_SRC = APP_LOGO_DATA_URL;
+
+function openDatePicker(input) {
+  if (!input) return;
+  try {
+    input.focus({ preventScroll: true });
+  } catch {
+    input.focus();
+  }
+
+  try {
+    if (typeof input.showPicker === "function") {
+      input.showPicker();
+      return;
+    }
+  } catch {
+    // ignore browser restrictions and fallback to click
+  }
+
+  try {
+    input.click();
+  } catch {
+    // no-op
+  }
+}
 
 export default function Layout() {
   const { user, logout } = useAuth();
@@ -61,6 +90,45 @@ export default function Layout() {
     return () => window.removeEventListener("keydown", onKeyDown);
   }, [drawerOpen]);
 
+  useEffect(() => {
+    const onDocumentClick = (event) => {
+      const target = event.target;
+      if (!(target instanceof Element)) return;
+
+      const directDateInput = target.closest(DATE_INPUT_SELECTOR);
+      if (directDateInput instanceof HTMLInputElement) {
+        openDatePicker(directDateInput);
+        return;
+      }
+
+      if (target.closest("button, a, [role='button']")) return;
+      if (target.closest("input, textarea, select")) return;
+
+      let node = target;
+      for (let depth = 0; node && depth < 8; depth += 1) {
+        const dateInputs = node.querySelectorAll(DATE_INPUT_SELECTOR);
+        if (dateInputs.length === 1 && dateInputs[0] instanceof HTMLInputElement) {
+          const dateInput = dateInputs[0];
+          const rowRect = node.getBoundingClientRect();
+          const inputRect = dateInput.getBoundingClientRect();
+
+          if (rowRect.height <= 140) {
+            const rowCenterY = (rowRect.top + rowRect.bottom) / 2;
+            const inputCenterY = (inputRect.top + inputRect.bottom) / 2;
+            if (Math.abs(rowCenterY - inputCenterY) <= 90) {
+              openDatePicker(dateInput);
+              return;
+            }
+          }
+        }
+        node = node.parentElement;
+      }
+    };
+
+    document.addEventListener("click", onDocumentClick, true);
+    return () => document.removeEventListener("click", onDocumentClick, true);
+  }, []);
+
   const handleLogout = () => {
     logout();
   };
@@ -79,7 +147,13 @@ export default function Layout() {
       <aside style={sidebarStyle}>
         {/* Лого / название */}
         <div style={styles.logoBlock}>
-          <div style={styles.logoMark} />
+          <img
+            src={APP_LOGO_SRC}
+            alt="Логотип"
+            style={styles.logoMarkImage}
+            loading="eager"
+            decoding="sync"
+          />
           <div>
             <div style={styles.logoTitle}>СкладОнлайн</div>
             <div style={styles.logoSubtitle}>Внутренний сервис компании</div>
@@ -113,34 +187,46 @@ export default function Layout() {
           ))}
         </nav>
 
-        {/* Кнопка выхода */}
-        <button style={styles.logoutBtn} onClick={handleLogout}>
-          Выйти
-        </button>
       </aside>
 
       {/* Правая часть: шапка + контент */}
       <div style={styles.main}>
         <header style={headerStyle} className="portal-header">
           <div style={styles.headerRow}>
-            {isMobile && (
+            <div style={styles.headerLeft}>
+              {isMobile && (
+                <button
+                  type="button"
+                  onClick={() => setDrawerOpen(true)}
+                  style={styles.burgerBtn}
+                  aria-label="Открыть меню"
+                  aria-expanded={drawerOpen}
+                >
+                  ☰
+                </button>
+              )}
+              <div>
+                <div style={styles.headerTitle}>{pageTitle}</div>
+                <div style={styles.headerSubtitle}>
+                  {user
+                    ? `Пользователь: ${user.name} (${user.role})`
+                    : "Вы не авторизованы"}
+                </div>
+              </div>
+            </div>
+            <div style={styles.headerActions}>
+              {!isMobile && (
+                <div style={styles.headerUserInfo}>
+                  {user?.name || "Пользователь"}
+                </div>
+              )}
               <button
                 type="button"
-                onClick={() => setDrawerOpen(true)}
-                style={styles.burgerBtn}
-                aria-label="Открыть меню"
-                aria-expanded={drawerOpen}
+                style={styles.headerLogoutBtn}
+                onClick={handleLogout}
               >
-                ☰
+                Выйти
               </button>
-            )}
-            <div>
-              <div style={styles.headerTitle}>{pageTitle}</div>
-              <div style={styles.headerSubtitle}>
-                {user
-                  ? `Пользователь: ${user.name} (${user.role})`
-                  : "Вы не авторизованы"}
-              </div>
             </div>
           </div>
         </header>
@@ -165,7 +251,13 @@ export default function Layout() {
             aria-label="Навигация"
           >
             <div style={styles.drawerHeader}>
-              <div style={styles.logoMark} />
+              <img
+                src={APP_LOGO_SRC}
+                alt="Логотип"
+                style={styles.logoMarkImage}
+                loading="eager"
+                decoding="sync"
+              />
               <div>
                 <div style={styles.logoTitle}>СкладОнлайн</div>
                 <div style={styles.logoSubtitle}>Меню</div>
@@ -189,16 +281,6 @@ export default function Layout() {
               ))}
             </nav>
 
-            <button
-              type="button"
-              style={styles.logoutBtn}
-              onClick={() => {
-                setDrawerOpen(false);
-                handleLogout();
-              }}
-            >
-              Выйти
-            </button>
           </aside>
         </div>
       )}
@@ -235,7 +317,7 @@ const styles = {
     borderRadius: 12,
     background: "#eff6ff",
     border: "1px solid #dbeafe",
-    gap: 10,
+    gap: 14,
   },
   logoMark: {
     width: 28,
@@ -244,12 +326,20 @@ const styles = {
     background:
       "linear-gradient(135deg, #2563eb 0%, #1e40af 40%, #93c5fd 100%)",
   },
+  logoMarkImage: {
+    width: 68,
+    height: 68,
+    borderRadius: 12,
+    objectFit: "cover",
+    display: "block",
+    background: "transparent",
+  },
   logoTitle: {
-    fontSize: 16,
+    fontSize: 18,
     fontWeight: 600,
   },
   logoSubtitle: {
-    fontSize: 11,
+    fontSize: 12,
     color: "#6b7280",
   },
   userCard: {
@@ -303,17 +393,6 @@ const styles = {
     boxShadow: "0 0 0 1px rgba(37, 99, 235, 0.12)",
     fontWeight: 600,
   },
-  logoutBtn: {
-    marginTop: 16,
-    padding: "8px 12px",
-    borderRadius: 8,
-    border: "none",
-    background: "#4b5563",
-    color: "white",
-    fontSize: 14,
-    cursor: "pointer",
-    textAlign: "center",
-  },
   main: {
     flex: 1,
     display: "flex",
@@ -336,7 +415,37 @@ const styles = {
   headerRow: {
     display: "flex",
     alignItems: "center",
+    justifyContent: "space-between",
+    gap: 12,
+  },
+  headerLeft: {
+    display: "flex",
+    alignItems: "center",
     gap: 10,
+    minWidth: 0,
+  },
+  headerActions: {
+    display: "inline-flex",
+    alignItems: "center",
+    gap: 10,
+    marginLeft: 12,
+    flexShrink: 0,
+  },
+  headerUserInfo: {
+    fontSize: 13,
+    color: "#4b5563",
+    whiteSpace: "nowrap",
+  },
+  headerLogoutBtn: {
+    padding: "7px 12px",
+    borderRadius: 8,
+    border: "1px solid #d1d5db",
+    background: "#ffffff",
+    color: "#111827",
+    fontSize: 13,
+    cursor: "pointer",
+    textAlign: "center",
+    whiteSpace: "nowrap",
   },
   burgerBtn: {
     width: 40,

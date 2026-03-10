@@ -1,4 +1,4 @@
-﻿export default function Privacy() {
+export default function Privacy() {
   return (
     <div className="page">
       <div className="page-header">
@@ -8,7 +8,7 @@
 
       <div className="card" style={{ display: "grid", gap: 12 }}>
         <div>
-          Оператор: самозанятый (НПД) Двинских Сергей Сергеевич, ИНН 743402272974.
+          Оператор: ИП Двинских Сергей Сергеевич, ИНН 743402272974, ОГРНИП 326745600045736.
         </div>
         <div>
           Мы обрабатываем персональные данные пользователей для предоставления доступа к

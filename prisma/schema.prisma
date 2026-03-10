@@ -21,117 +21,118 @@ model Organization {
 
 // ============ USERS ============
 model User {
-  id        Int      @id @default(autoincrement())
-  email     String   @unique
-  username  String?  @unique
-  password  String
-  passwordHash String?
+  id              Int           @id @default(autoincrement())
+  email           String        @unique
+  username        String?       @unique
+  password        String
+  passwordHash    String?
   passwordVisible String?
-  name      String
-  role      String   @default("EMPLOYEE")
+  name            String
+  role            String        @default("EMPLOYEE")
   permissionsJson String?
-  tokenVersion Int @default(0)
-  isActive  Boolean  @default(true)
-  orgId     Int?
-  organization Organization? @relation(fields: [orgId], references: [id])
+  tokenVersion    Int           @default(0)
+  isActive        Boolean       @default(true)
+  orgId           Int?
+  organization    Organization? @relation(fields: [orgId], references: [id])
   emailVerifiedAt DateTime?
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
+  createdAt       DateTime      @default(now())
+  updatedAt       DateTime      @updatedAt
 
-  leaveRequests     LeaveRequest[]
-  paymentRequests   PaymentRequest[]
-  payments          Payment[]
-  subscription      Subscription?
-  warehouseRequests WarehouseRequest[]
-  warehouseTasks    WarehouseTask[]
-  stockMovements    StockMovement[]
-  purchaseOrders    PurchaseOrder[]
-  binAuditSessions  BinAuditSession[]
-  discrepanciesClosed StockDiscrepancy[] @relation("DiscrepancyClosedBy")
-  receivingDiscrepanciesClosed ReceivingDiscrepancy[] @relation("ReceivingDiscrepancyClosedBy")
-  invitesCreated InviteToken[] @relation("InviteCreatedBy")
-  passwordResetTokens PasswordResetToken[]
-  revisionsCreated StockRevision[] @relation("RevisionCreatedBy")
-  revisionItemsApplied StockRevisionItem[] @relation("RevisionItemAppliedBy")
-  receivingLinesCreated WarehouseReceivingLine[] @relation("ReceivingLineCreatedBy")
-  receivingLinesPlaced WarehouseReceivingLine[] @relation("ReceivingLinePlacedBy")
-  assignedOrders SalesOrder[] @relation("OrderAssignedTo")
-  passportPrintedOrders SalesOrder[] @relation("OrderPassportPrintedBy")
-  orderPickSkipsCreated SalesOrderPickSkip[] @relation("OrderPickSkipCreatedBy")
-  orderPickSkipsRestored SalesOrderPickSkip[] @relation("OrderPickSkipRestoredBy")
+  leaveRequests                LeaveRequest[]
+  paymentRequests              PaymentRequest[]
+  payments                     Payment[]
+  subscription                 Subscription?
+  warehouseRequests            WarehouseRequest[]
+  warehouseTasks               WarehouseTask[]
+  stockMovements               StockMovement[]
+  purchaseOrders               PurchaseOrder[]
+  binAuditSessions             BinAuditSession[]
+  discrepanciesClosed          StockDiscrepancy[]       @relation("DiscrepancyClosedBy")
+  receivingDiscrepanciesClosed ReceivingDiscrepancy[]   @relation("ReceivingDiscrepancyClosedBy")
+  invitesCreated               InviteToken[]            @relation("InviteCreatedBy")
+  passwordResetTokens          PasswordResetToken[]
+  revisionsCreated             StockRevision[]          @relation("RevisionCreatedBy")
+  revisionItemsApplied         StockRevisionItem[]      @relation("RevisionItemAppliedBy")
+  receivingLinesCreated        WarehouseReceivingLine[] @relation("ReceivingLineCreatedBy")
+  receivingLinesPlaced         WarehouseReceivingLine[] @relation("ReceivingLinePlacedBy")
+  assignedOrders               SalesOrder[]             @relation("OrderAssignedTo")
+  passportPrintedOrders        SalesOrder[]             @relation("OrderPassportPrintedBy")
+  shippedOrders                SalesOrder[]             @relation("OrderShippedBy")
+  orderPickSkipsCreated        SalesOrderPickSkip[]     @relation("OrderPickSkipCreatedBy")
+  orderPickSkipsRestored       SalesOrderPickSkip[]     @relation("OrderPickSkipRestoredBy")
+  orderStatusHistoryEvents     OrderStatusHistory[]     @relation("OrderStatusHistoryActor")
+  stockHoldsCreated            StockHold[]              @relation("StockHoldCreatedBy")
+  stockHoldsReleased           StockHold[]              @relation("StockHoldReleasedBy")
 
   @@index([orgId])
 }
 
 // ============ SUBSCRIPTION ============
 model Subscription {
-  id        Int      @id @default(autoincrement())
-  userId    Int      @unique
-  plan      String
-  status    String
-  paidUntil DateTime?
+  id             Int       @id @default(autoincrement())
+  userId         Int       @unique
+  plan           String
+  status         String
+  paidUntil      DateTime?
   trialStartedAt DateTime?
-  trialUsed Boolean @default(false)
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
+  trialUsed      Boolean   @default(false)
+  createdAt      DateTime  @default(now())
+  updatedAt      DateTime  @updatedAt
 
   user User @relation(fields: [userId], references: [id], onDelete: Cascade)
 }
 
-
-
 model InviteToken {
-  id               Int      @id @default(autoincrement())
-  email            String
-  orgId            Int?
-  organization     Organization? @relation(fields: [orgId], references: [id])
-  tokenHash        String   @unique
-  role             String
-  expiresAt        DateTime
-  usedAt           DateTime?
-  createdByUserId  Int
-  createdBy        User     @relation("InviteCreatedBy", fields: [createdByUserId], references: [id])
-  createdAt        DateTime @default(now())
+  id              Int           @id @default(autoincrement())
+  email           String
+  orgId           Int?
+  organization    Organization? @relation(fields: [orgId], references: [id])
+  tokenHash       String        @unique
+  role            String
+  expiresAt       DateTime
+  usedAt          DateTime?
+  createdByUserId Int
+  createdBy       User          @relation("InviteCreatedBy", fields: [createdByUserId], references: [id])
+  createdAt       DateTime      @default(now())
 
   @@index([orgId])
 }
 
-
 model PasswordResetToken {
-  id        Int      @id @default(autoincrement())
+  id        Int       @id @default(autoincrement())
   userId    Int
-  tokenHash String   @unique
+  tokenHash String    @unique
   expiresAt DateTime
   usedAt    DateTime?
-  createdAt DateTime @default(now())
-  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  createdAt DateTime  @default(now())
+  user      User      @relation(fields: [userId], references: [id], onDelete: Cascade)
 }
 
 // ============ HR ============
 model Employee {
-  id                Int                  @id @default(autoincrement())
-  orgId             Int?
-  fullName          String
-  position          String
-  department        String
-  telegramChatId    String?
-  status            String               @default("ACTIVE") // ACTIVE / FIRED
-  hiredAt           DateTime             @default(now())
-  createdAt         DateTime             @default(now())
-  updatedAt         DateTime             @updatedAt
-  birthDate         DateTime?
-  leaveRegionCategory LeaveRegionCategory @default(STANDARD)
-  annualLeaveDays   Int                  @default(28)
-  leaveOverrideDays Int?
-  leaveApplications HrLeaveApplication[]
-  safetyAssignments SafetyAssignment[]
+  id                  Int                  @id @default(autoincrement())
+  orgId               Int?
+  fullName            String
+  position            String
+  department          String
+  telegramChatId      String?
+  status              String               @default("ACTIVE") // ACTIVE / FIRED
+  hiredAt             DateTime             @default(now())
+  createdAt           DateTime             @default(now())
+  updatedAt           DateTime             @updatedAt
+  birthDate           DateTime?
+  leaveRegionCategory LeaveRegionCategory  @default(STANDARD)
+  annualLeaveDays     Int                  @default(28)
+  leaveOverrideDays   Int?
+  leaveApplications   HrLeaveApplication[]
+  safetyAssignments   SafetyAssignment[]
 }
 
 model HrLeaveApplication {
   id         Int      @id @default(autoincrement())
   orgId      Int?
   employeeId Int
-  type       String   // PAID / UNPAID / TERMINATION
+  type       String // PAID / UNPAID / TERMINATION
   startDate  DateTime
   endDate    DateTime
   days       Int
@@ -144,12 +145,12 @@ model HrLeaveApplication {
 }
 
 model SafetyInstruction {
-  id          Int                 @id @default(autoincrement())
+  id          Int                @id @default(autoincrement())
   orgId       Int?
   title       String
   description String?
   role        String?
-  createdAt   DateTime            @default(now())
+  createdAt   DateTime           @default(now())
   assignments SafetyAssignment[]
 }
 
@@ -253,18 +254,18 @@ model WarehouseRequestItem {
 }
 
 model WarehouseTask {
-  id           Int      @id @default(autoincrement())
-  orgId        Int?
-  createdAt    DateTime @default(now())
-  updatedAt    DateTime @updatedAt
-  title        String
-  description  String?
-  dueDate      DateTime?
-  status       String   @default("NEW") // NEW / IN_PROGRESS / DONE / CANCELLED
-  executorName String?
+  id             Int       @id @default(autoincrement())
+  orgId          Int?
+  createdAt      DateTime  @default(now())
+  updatedAt      DateTime  @updatedAt
+  title          String
+  description    String?
+  dueDate        DateTime?
+  status         String    @default("NEW") // NEW / IN_PROGRESS / DONE / CANCELLED
+  executorName   String?
   executorChatId String?
-  assignerId   Int
-  assigner     User     @relation(fields: [assignerId], references: [id])
+  assignerId     Int
+  assigner       User      @relation(fields: [assignerId], references: [id])
   lastReminderAt DateTime?
 }
 
@@ -289,13 +290,14 @@ model PurchaseOrder {
   date        DateTime            @default(now())
   plannedDate DateTime?
   status      PurchaseOrderStatus @default(DRAFT)
+  receivingStage PurchaseOrderReceivingStage @default(NEW)
 
   supplierId Int
   supplier   Supplier @relation(fields: [supplierId], references: [id])
 
   comment String?
 
-  items PurchaseOrderItem[]
+  items         PurchaseOrderItem[]
   discrepancies ReceivingDiscrepancy[]
 
   createdById Int
@@ -316,9 +318,9 @@ model PurchaseOrderItem {
   itemId Int
   item   Item @relation(fields: [itemId], references: [id])
 
-  quantity Float
+  quantity    Float
   receivedQty Float @default(0)
-  price    Float
+  price       Float
 }
 
 enum PurchaseOrderStatus {
@@ -327,6 +329,13 @@ enum PurchaseOrderStatus {
   PARTIAL
   RECEIVED
   CLOSED
+}
+
+enum PurchaseOrderReceivingStage {
+  NEW
+  IN_PROGRESS
+  CONFIRMED
+  FINALIZED
 }
 
 enum ReceivingLineStatus {
@@ -341,40 +350,42 @@ enum ReceivingLineSource {
 
 // ============ STOCK ITEMS ============
 model Item {
-  id          Int      @id @default(autoincrement())
-  orgId       Int?
-  name        String
-  sku         String?
-  barcode     String?
-  qrCode      String?
-  unit        String?
-  minStock    Float?
-  maxStock    Float?
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
-  defaultPrice Float?
-  category    ItemCategory @default(STOCK)
-  autoReorderEnabled Boolean @default(false)
-  autoReorderMin Float?
-  autoReorderSupplierId Int?
-  autoReorderSupplier Supplier? @relation(fields: [autoReorderSupplierId], references: [id])
-  autoReorderContactName String?
-  autoReorderContactEmail String?
-  autoReorderMessage String?
-  autoReorderActive Boolean @default(false)
+  id                         Int          @id @default(autoincrement())
+  orgId                      Int?
+  name                       String
+  imageUrl                   String?
+  sku                        String?
+  barcode                    String?
+  qrCode                     String?
+  unit                       String?
+  minStock                   Float?
+  maxStock                   Float?
+  createdAt                  DateTime     @default(now())
+  updatedAt                  DateTime     @updatedAt
+  defaultPrice               Float?
+  category                   ItemCategory @default(STOCK)
+  autoReorderEnabled         Boolean      @default(false)
+  autoReorderMin             Float?
+  autoReorderSupplierId      Int?
+  autoReorderSupplier        Supplier?    @relation(fields: [autoReorderSupplierId], references: [id])
+  autoReorderContactName     String?
+  autoReorderContactEmail    String?
+  autoReorderMessage         String?
+  autoReorderActive          Boolean      @default(false)
   autoReorderLastTriggeredAt DateTime?
-  autoReorderLastReminderAt DateTime?
-  autoReorderLastOrderId Int?
+  autoReorderLastReminderAt  DateTime?
+  autoReorderLastOrderId     Int?
 
-  movements          StockMovement[]
-  purchaseOrderItems PurchaseOrderItem[]
-  placements         WarehousePlacement[]
-  discrepancies      StockDiscrepancy[]
+  movements              StockMovement[]
+  purchaseOrderItems     PurchaseOrderItem[]
+  placements             WarehousePlacement[]
+  discrepancies          StockDiscrepancy[]
   receivingDiscrepancies ReceivingDiscrepancy[]
-  revisionItems      StockRevisionItem[]
-  receivingLines     WarehouseReceivingLine[]
-  salesOrderLines    SalesOrderLine[]
-  pickSkips          SalesOrderPickSkip[]
+  revisionItems          StockRevisionItem[]
+  receivingLines         WarehouseReceivingLine[]
+  salesOrderLines        SalesOrderLine[]
+  pickSkips              SalesOrderPickSkip[]
+  stockHolds             StockHold[]
 
   @@unique([orgId, sku])
   @@unique([orgId, barcode])
@@ -389,40 +400,44 @@ model WarehouseLocation {
   aisle     String?
   rack      String?
   level     String?
-  code      String?  @unique
-  qrCode    String?  @unique
+  code      String?
+  qrCode    String?
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  placements WarehousePlacement[]
-  auditEvents BinAuditEvent[]
-  discrepancies StockDiscrepancy[]
-  revisionItems StockRevisionItem[]
+  placements     WarehousePlacement[]
+  auditEvents    BinAuditEvent[]
+  discrepancies  StockDiscrepancy[]
+  revisionItems  StockRevisionItem[]
   receivingLines WarehouseReceivingLine[]
   pickSkips      SalesOrderPickSkip[]
+  stockHolds     StockHold[]
+
+  @@unique([orgId, code])
+  @@unique([orgId, qrCode])
 }
 
 model WarehouseReceivingLine {
-  id            Int      @id @default(autoincrement())
-  orgId         Int?
-  itemId        Int
-  item          Item     @relation(fields: [itemId], references: [id])
-  qty           Int
-  remainingQty  Int
+  id             Int                 @id @default(autoincrement())
+  orgId          Int?
+  itemId         Int
+  item           Item                @relation(fields: [itemId], references: [id])
+  qty            Int
+  remainingQty   Int
   manufacturedAt DateTime
-  expiresAt     DateTime
-  status        ReceivingLineStatus @default(PENDING)
-  sourceType    ReceivingLineSource @default(RECEIVING)
-  discrepancyId Int?
-  discrepancy   StockDiscrepancy? @relation(fields: [discrepancyId], references: [id])
-  locationId    Int?
-  location      WarehouseLocation? @relation(fields: [locationId], references: [id])
-  createdAt     DateTime @default(now())
-  createdById   Int?
-  createdBy     User?    @relation("ReceivingLineCreatedBy", fields: [createdById], references: [id])
-  placedAt      DateTime?
-  placedById    Int?
-  placedBy      User?    @relation("ReceivingLinePlacedBy", fields: [placedById], references: [id])
+  expiresAt      DateTime
+  status         ReceivingLineStatus @default(PENDING)
+  sourceType     ReceivingLineSource @default(RECEIVING)
+  discrepancyId  Int?
+  discrepancy    StockDiscrepancy?   @relation(fields: [discrepancyId], references: [id])
+  locationId     Int?
+  location       WarehouseLocation?  @relation(fields: [locationId], references: [id])
+  createdAt      DateTime            @default(now())
+  createdById    Int?
+  createdBy      User?               @relation("ReceivingLineCreatedBy", fields: [createdById], references: [id])
+  placedAt       DateTime?
+  placedById     Int?
+  placedBy       User?               @relation("ReceivingLinePlacedBy", fields: [placedById], references: [id])
 
   @@index([status])
   @@index([itemId])
@@ -445,31 +460,55 @@ model WarehousePlacement {
 }
 
 model StockMovement {
-  id           Int               @id @default(autoincrement())
-  orgId        Int?
-  opId         String?           @unique
-  type         StockMovementType
-  itemId       Int
-  item         Item              @relation(fields: [itemId], references: [id])
-  locationId   Int?
+  id             Int               @id @default(autoincrement())
+  orgId          Int?
+  opId           String?           @unique
+  type           StockMovementType
+  itemId         Int
+  item           Item              @relation(fields: [itemId], references: [id])
+  locationId     Int?
   fromLocationId Int?
-  toLocationId Int?
-  quantity     Float
-  comment      String?
-  pricePerUnit Float?
-  refType      String?
-  refId        String?
-  createdAt    DateTime          @default(now())
-  createdById  Int?
-  createdBy    User?             @relation(fields: [createdById], references: [id])
+  toLocationId   Int?
+  quantity       Float
+  comment        String?
+  pricePerUnit   Float?
+  refType        String?
+  refId          String?
+  createdAt      DateTime          @default(now())
+  createdById    Int?
+  createdBy      User?             @relation(fields: [createdById], references: [id])
+}
+
+model StockHold {
+  id               Int             @id @default(autoincrement())
+  orgId            Int?
+  itemId           Int
+  item             Item            @relation(fields: [itemId], references: [id])
+  locationId       Int
+  location         WarehouseLocation @relation(fields: [locationId], references: [id])
+  qty              Float
+  status           StockHoldStatus @default(ACTIVE)
+  reason           String
+  note             String?
+  createdAt        DateTime        @default(now())
+  createdByUserId  Int?
+  createdBy        User?           @relation("StockHoldCreatedBy", fields: [createdByUserId], references: [id])
+  releasedAt       DateTime?
+  releasedByUserId Int?
+  releasedBy       User?           @relation("StockHoldReleasedBy", fields: [releasedByUserId], references: [id])
+  releaseNote      String?
+
+  @@index([orgId, status, createdAt])
+  @@index([orgId, itemId, locationId, status])
+  @@index([orgId, locationId, status])
 }
 
 model BinAuditSession {
-  id              Int                 @id @default(autoincrement())
+  id              Int                   @id @default(autoincrement())
   orgId           Int?
   startedByUserId Int?
-  startedBy       User?               @relation(fields: [startedByUserId], references: [id])
-  startedAt       DateTime            @default(now())
+  startedBy       User?                 @relation(fields: [startedByUserId], references: [id])
+  startedAt       DateTime              @default(now())
   finishedAt      DateTime?
   status          BinAuditSessionStatus @default(ACTIVE)
   events          BinAuditEvent[]
@@ -477,106 +516,105 @@ model BinAuditSession {
 }
 
 model BinAuditEvent {
-  id         Int            @id @default(autoincrement())
+  id         Int               @id @default(autoincrement())
   orgId      Int?
   sessionId  Int
-  session    BinAuditSession @relation(fields: [sessionId], references: [id])
+  session    BinAuditSession   @relation(fields: [sessionId], references: [id])
   locationId Int
   location   WarehouseLocation @relation(fields: [locationId], references: [id])
-  checkedAt  DateTime       @default(now())
+  checkedAt  DateTime          @default(now())
   result     BinAuditResult
   note       String?
 }
 
 model StockDiscrepancy {
-  id            Int                 @id @default(autoincrement())
-  orgId         Int?
-  sessionId     Int?
-  session       BinAuditSession?    @relation(fields: [sessionId], references: [id])
-  locationId    Int
-  location      WarehouseLocation   @relation(fields: [locationId], references: [id])
-  itemId        Int
-  item          Item                @relation(fields: [itemId], references: [id])
-  expectedQty   Int
-  countedQty    Int
-  delta         Int
-  status        StockDiscrepancyStatus @default(OPEN)
-  createdAt     DateTime            @default(now())
-  closedAt      DateTime?
+  id             Int                      @id @default(autoincrement())
+  orgId          Int?
+  sessionId      Int?
+  session        BinAuditSession?         @relation(fields: [sessionId], references: [id])
+  locationId     Int
+  location       WarehouseLocation        @relation(fields: [locationId], references: [id])
+  itemId         Int
+  item           Item                     @relation(fields: [itemId], references: [id])
+  expectedQty    Int
+  countedQty     Int
+  delta          Int
+  status         StockDiscrepancyStatus   @default(OPEN)
+  createdAt      DateTime                 @default(now())
+  closedAt       DateTime?
   closedByUserId Int?
-  closedByUser  User?               @relation("DiscrepancyClosedBy", fields: [closedByUserId], references: [id])
-  closeNote     String?
-  movementOpId  String?
-  revisionItems StockRevisionItem[]
+  closedByUser   User?                    @relation("DiscrepancyClosedBy", fields: [closedByUserId], references: [id])
+  closeNote      String?
+  movementOpId   String?
+  revisionItems  StockRevisionItem[]
   receivingLines WarehouseReceivingLine[]
 }
 
 model StockRevision {
-  id             Int      @id @default(autoincrement())
-  orgId          Int?
-  createdAt      DateTime @default(now())
+  id              Int                 @id @default(autoincrement())
+  orgId           Int?
+  createdAt       DateTime            @default(now())
   createdByUserId Int?
-  createdBy      User?    @relation("RevisionCreatedBy", fields: [createdByUserId], references: [id])
-  items          StockRevisionItem[]
+  createdBy       User?               @relation("RevisionCreatedBy", fields: [createdByUserId], references: [id])
+  items           StockRevisionItem[]
 }
 
 model StockRevisionItem {
-  id                 Int      @id @default(autoincrement())
-  orgId              Int?
-  revisionId         Int
-  revision           StockRevision @relation(fields: [revisionId], references: [id])
-  discrepancyId      Int?
-  discrepancy        StockDiscrepancy? @relation(fields: [discrepancyId], references: [id])
-  locationId         Int
-  location           WarehouseLocation @relation(fields: [locationId], references: [id])
-  itemId             Int
-  item               Item     @relation(fields: [itemId], references: [id])
-  expectedQty        Int
-  countedQty         Int
-  delta              Int
-  status             String   @default("OPEN")
-  appliedAt          DateTime?
-  appliedByUserId    Int?
-  appliedBy          User?    @relation("RevisionItemAppliedBy", fields: [appliedByUserId], references: [id])
+  id                  Int               @id @default(autoincrement())
+  orgId               Int?
+  revisionId          Int
+  revision            StockRevision     @relation(fields: [revisionId], references: [id])
+  discrepancyId       Int?
+  discrepancy         StockDiscrepancy? @relation(fields: [discrepancyId], references: [id])
+  locationId          Int
+  location            WarehouseLocation @relation(fields: [locationId], references: [id])
+  itemId              Int
+  item                Item              @relation(fields: [itemId], references: [id])
+  expectedQty         Int
+  countedQty          Int
+  delta               Int
+  status              String            @default("OPEN")
+  appliedAt           DateTime?
+  appliedByUserId     Int?
+  appliedBy           User?             @relation("RevisionItemAppliedBy", fields: [appliedByUserId], references: [id])
   appliedMovementOpId String?
-  note               String?
+  note                String?
 }
 
 model ReceivingDiscrepancy {
-  id            Int      @id @default(autoincrement())
-  orgId         Int?
+  id              Int                        @id @default(autoincrement())
+  orgId           Int?
   purchaseOrderId Int
-  purchaseOrder PurchaseOrder @relation(fields: [purchaseOrderId], references: [id])
-  itemId        Int?
-  item          Item?    @relation(fields: [itemId], references: [id])
-  expectedQty   Int
-  receivedQty   Int
-  delta         Int
-  note          String?
-  status        ReceivingDiscrepancyStatus @default(OPEN)
-  createdAt     DateTime @default(now())
-  closedAt      DateTime?
-  closedByUserId Int?
-  closedByUser  User? @relation("ReceivingDiscrepancyClosedBy", fields: [closedByUserId], references: [id])
-  closeNote     String?
-  movementOpId  String?
+  purchaseOrder   PurchaseOrder              @relation(fields: [purchaseOrderId], references: [id])
+  itemId          Int?
+  item            Item?                      @relation(fields: [itemId], references: [id])
+  expectedQty     Int
+  receivedQty     Int
+  delta           Int
+  note            String?
+  status          ReceivingDiscrepancyStatus @default(OPEN)
+  createdAt       DateTime                   @default(now())
+  closedAt        DateTime?
+  closedByUserId  Int?
+  closedByUser    User?                      @relation("ReceivingDiscrepancyClosedBy", fields: [closedByUserId], references: [id])
+  closeNote       String?
+  movementOpId    String?
 }
 
-
 model OrgProfile {
-  id            Int      @id @default(autoincrement())
-  orgId         Int?
-  orgName       String
-  legalAddress  String
-  actualAddress String
-  inn           String
-  kpp           String
-  phone         String
-  apiKeyHash    String?
-  apiKeyHint    String?
-  apiKeyLastRotatedAt DateTime?
+  id                    Int       @id @default(autoincrement())
+  orgId                 Int?
+  orgName               String
+  legalAddress          String
+  actualAddress         String
+  inn                   String
+  kpp                   String
+  phone                 String
+  apiKeyHash            String?
+  apiKeyHint            String?
+  apiKeyLastRotatedAt   DateTime?
   warehouseBootstrapKey String?
-  updatedAt     DateTime @updatedAt
+  updatedAt             DateTime  @updatedAt
 
   @@unique([orgId])
 }
@@ -585,6 +623,11 @@ enum StockMovementType {
   INCOME
   ISSUE
   ADJUSTMENT
+}
+
+enum StockHoldStatus {
+  ACTIVE
+  RELEASED
 }
 
 enum BinAuditSessionStatus {
@@ -627,33 +670,33 @@ model Supplier {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  orders PurchaseOrder[]
+  orders           PurchaseOrder[]
   autoReorderItems Item[]
 }
 
 model SupplierTruck {
-  id            Int                 @id @default(autoincrement())
-  orgId         Int?
-  status        SupplierTruckStatus @default(IN_QUEUE)
+  id     Int                 @id @default(autoincrement())
+  orgId  Int?
+  status SupplierTruckStatus @default(IN_QUEUE)
 
-  arrivalAt     DateTime            @default(now())
+  arrivalAt     DateTime  @default(now())
   unloadStartAt DateTime?
   unloadEndAt   DateTime?
 
-  supplier      String?
-  orderNumber   String?
-  deliveryDate  DateTime?
+  supplier     String?
+  orderNumber  String?
+  deliveryDate DateTime?
 
-  vehicleBrand  String?
-  truckNumber   String?
-  driverName    String?
-  driverPhone   String?
-  gate          String?
-  cargo         String?
-  note          String?
-  directImport  Boolean             @default(false)
+  vehicleBrand String?
+  truckNumber  String?
+  driverName   String?
+  driverPhone  String?
+  gate         String?
+  cargo        String?
+  note         String?
+  directImport Boolean @default(false)
 
-  createdAt     DateTime            @default(now())
+  createdAt DateTime @default(now())
 }
 
 enum SupplierTruckStatus {
@@ -662,60 +705,68 @@ enum SupplierTruckStatus {
   DONE
 }
 
-
 enum ItemCategory {
   STOCK
   TMC
 }
 
 model SalesOrder {
-  id               Int              @id @default(autoincrement())
-  orgId            Int?
-  externalOrderId  String?          @unique
-  source           String           @default("MANUAL")
-  status           SalesOrderStatus @default(NEW)
-  orderNumber      String
-  customerName     String
-  customerPhone    String?
-  shippingAddress  String
-  deliveryComment  String?
-  assignedToUserId Int?
-  assignedToUser   User?            @relation("OrderAssignedTo", fields: [assignedToUserId], references: [id])
-  takenAt          DateTime?
-  pickedAt         DateTime?
-  packedAt         DateTime?
-  completedAt      DateTime?
-  boxCode          String?
-  boxType          String?
-  labelPrintedAt   DateTime?
-  passportPrintedAt DateTime?
-  passportPrintCount Int @default(0)
+  id                  Int                  @id @default(autoincrement())
+  orgId               Int?
+  externalOrderId     String?
+  source              String               @default("MANUAL")
+  status              SalesOrderStatus     @default(NEW)
+  orderNumber         String
+  customerName        String
+  customerPhone       String?
+  shippingAddress     String
+  deliveryComment     String?
+  assignedToUserId    Int?
+  assignedToUser      User?                @relation("OrderAssignedTo", fields: [assignedToUserId], references: [id])
+  takenAt             DateTime?
+  pickedAt            DateTime?
+  packedAt            DateTime?
+  completedAt         DateTime?
+  boxCode             String?
+  boxType             String?
+  labelPrintedAt      DateTime?
+  passportPrintedAt   DateTime?
+  passportPrintCount  Int                  @default(0)
   passportPrintedById Int?
-  passportPrintedBy User? @relation("OrderPassportPrintedBy", fields: [passportPrintedById], references: [id])
-  createdAt        DateTime         @default(now())
-  updatedAt        DateTime         @updatedAt
-  lines            SalesOrderLine[]
-  pickSkips        SalesOrderPickSkip[]
+  passportPrintedBy   User?                @relation("OrderPassportPrintedBy", fields: [passportPrintedById], references: [id])
+  shippedAt           DateTime?
+  shippedByUserId     Int?
+  shippedBy           User?                @relation("OrderShippedBy", fields: [shippedByUserId], references: [id])
+  carrier             String?
+  trackingNumber      String?
+  shipNotes           String?
+  createdAt           DateTime             @default(now())
+  updatedAt           DateTime             @updatedAt
+  lines               SalesOrderLine[]
+  pickSkips           SalesOrderPickSkip[]
+  statusHistory       OrderStatusHistory[]
 
   @@index([status])
   @@index([assignedToUserId])
   @@index([passportPrintedById])
+  @@index([shippedByUserId])
   @@index([createdAt])
+  @@unique([orgId, externalOrderId])
 }
 
 model SalesOrderLine {
-  id            Int        @id @default(autoincrement())
+  id            Int                  @id @default(autoincrement())
   orgId         Int?
   orderId       Int
-  order         SalesOrder @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  order         SalesOrder           @relation(fields: [orderId], references: [id], onDelete: Cascade)
   itemId        Int?
-  item          Item?      @relation(fields: [itemId], references: [id])
+  item          Item?                @relation(fields: [itemId], references: [id])
   requestedSku  String?
   requestedName String?
   qty           Int
-  pickedQty     Int        @default(0)
-  createdAt     DateTime   @default(now())
-  updatedAt     DateTime   @updatedAt
+  pickedQty     Int                  @default(0)
+  createdAt     DateTime             @default(now())
+  updatedAt     DateTime             @updatedAt
   pickSkips     SalesOrderPickSkip[]
 
   @@index([orderId])
@@ -733,32 +784,50 @@ enum SalesOrderStatus {
 }
 
 model SalesOrderPickSkip {
-  id           Int             @id @default(autoincrement())
+  id           Int                      @id @default(autoincrement())
   orgId        Int?
   orderId      Int
-  order        SalesOrder      @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  order        SalesOrder               @relation(fields: [orderId], references: [id], onDelete: Cascade)
   lineId       Int
-  line         SalesOrderLine  @relation(fields: [lineId], references: [id], onDelete: Cascade)
+  line         SalesOrderLine           @relation(fields: [lineId], references: [id], onDelete: Cascade)
   itemId       Int?
-  item         Item?           @relation(fields: [itemId], references: [id])
+  item         Item?                    @relation(fields: [itemId], references: [id])
   locationId   Int?
-  location     WarehouseLocation? @relation(fields: [locationId], references: [id])
-  qty          Int             @default(0)
+  location     WarehouseLocation?       @relation(fields: [locationId], references: [id])
+  qty          Int                      @default(0)
   reason       String
   comment      String?
   status       SalesOrderPickSkipStatus @default(ACTIVE)
   skippedById  Int?
-  skippedBy    User?           @relation("OrderPickSkipCreatedBy", fields: [skippedById], references: [id])
+  skippedBy    User?                    @relation("OrderPickSkipCreatedBy", fields: [skippedById], references: [id])
   restoredById Int?
-  restoredBy   User?           @relation("OrderPickSkipRestoredBy", fields: [restoredById], references: [id])
+  restoredBy   User?                    @relation("OrderPickSkipRestoredBy", fields: [restoredById], references: [id])
   restoredAt   DateTime?
-  createdAt    DateTime        @default(now())
-  updatedAt    DateTime        @updatedAt
+  createdAt    DateTime                 @default(now())
+  updatedAt    DateTime                 @updatedAt
 
   @@index([orderId, status])
   @@index([lineId, status])
   @@index([itemId])
   @@index([locationId])
+}
+
+model OrderStatusHistory {
+  id          Int               @id @default(autoincrement())
+  orgId       Int?
+  orderId     Int
+  order       SalesOrder        @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  fromStatus  SalesOrderStatus?
+  toStatus    SalesOrderStatus
+  eventType   String
+  actorUserId Int?
+  actorUser   User?             @relation("OrderStatusHistoryActor", fields: [actorUserId], references: [id])
+  createdAt   DateTime          @default(now())
+  metaJson    Json?
+
+  @@index([orgId, createdAt])
+  @@index([orgId, orderId, createdAt])
+  @@index([orgId, toStatus, createdAt])
 }
 
 enum SalesOrderPickSkipStatus {

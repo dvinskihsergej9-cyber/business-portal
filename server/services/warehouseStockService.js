@@ -126,6 +126,7 @@ export function createWarehouseStockService(prisma) {
         sku: row.item.sku,
         barcode: row.item.barcode,
         unit: row.item.unit,
+        imageUrl: row.item.imageUrl || null,
       },
       qty: Math.round(row.qty),
     }));

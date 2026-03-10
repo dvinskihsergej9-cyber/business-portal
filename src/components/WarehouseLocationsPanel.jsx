@@ -1,5 +1,9 @@
 import { useEffect, useMemo, useState } from "react";
 import { API_BASE } from "../apiConfig";
+import {
+  openHtmlDocumentInNewTab,
+  prepareDocumentTab,
+} from "../utils/openInNewTab";
 
 const API = API_BASE;
 
@@ -150,12 +154,22 @@ export default function WarehouseLocationsPanel() {
   };
 
   const handlePrint = async () => {
-    if (!selectedId) {
-      setError("Выберите ячейку.");
+    const printWindow = prepareDocumentTab({ title: "Этикетки ячеек" });
+    if (!printWindow) {
+      setError("Не удалось открыть документ. Разрешите всплывающие окна для портала.");
       return;
     }
 
-    const printWindow = window;
+    if (!selectedId) {
+      setError("Выберите ячейку.");
+      try {
+        if (!printWindow.closed) printWindow.close();
+      } catch {
+        // ignore
+      }
+      return;
+    }
+
     try {
       setActionLoading(true);
       setError("");
@@ -181,10 +195,13 @@ export default function WarehouseLocationsPanel() {
         } catch {}
         throw new Error(messageText);
       }
-      printWindow.document.write(html);
-      printWindow.document.close();
-      printWindow.focus();
+      openHtmlDocumentInNewTab(html, { targetWindow: printWindow });
     } catch (err) {
+      try {
+        if (!printWindow.closed) printWindow.close();
+      } catch {
+        // ignore
+      }
       setError(err.message || "Ошибка печати");
     } finally {
       setActionLoading(false);
@@ -315,12 +332,22 @@ export default function WarehouseLocationsPanel() {
   };
 
   const handlePrintItems = async () => {
-    if (!selectedItems.length) {
-      setError("Выберите товары.");
+    const printWindow = prepareDocumentTab({ title: "Этикетки товаров" });
+    if (!printWindow) {
+      setError("Не удалось открыть документ. Разрешите всплывающие окна для портала.");
       return;
     }
 
-    const printWindow = window;
+    if (!selectedItems.length) {
+      setError("Выберите товары.");
+      try {
+        if (!printWindow.closed) printWindow.close();
+      } catch {
+        // ignore
+      }
+      return;
+    }
+
     try {
       setActionLoading(true);
       setError("");
@@ -344,10 +371,13 @@ export default function WarehouseLocationsPanel() {
         } catch {}
         throw new Error(messageText);
       }
-      printWindow.document.write(html);
-      printWindow.document.close();
-      printWindow.focus();
+      openHtmlDocumentInNewTab(html, { targetWindow: printWindow });
     } catch (err) {
+      try {
+        if (!printWindow.closed) printWindow.close();
+      } catch {
+        // ignore
+      }
       setError(err.message || "Ошибка печати");
     } finally {
       setActionLoading(false);
