@@ -2547,6 +2547,12 @@ input[type="number"] {
   -webkit-tap-highlight-color: transparent;
 }
 
+.pricing-rs__plan,
+.pricing-rs__plan div,
+.pricing-rs__plan span {
+  color: #2563eb;
+}
+
 .pricing-rs__plan:hover {
   border-color: #93c5fd;
   background: #eff6ff;
@@ -2567,6 +2573,12 @@ input[type="number"] {
   border-color: #3b82f6;
   background: #2f80ed;
   color: #ffffff;
+}
+
+.pricing-rs__plan.is-active,
+.pricing-rs__plan.is-active div,
+.pricing-rs__plan.is-active span {
+  color: #ffffff !important;
 }
 
 .pricing-rs__plan-head {
@@ -2648,6 +2660,23 @@ input[type="number"] {
 
 .pricing-rs__plan.is-active .pricing-rs__plan-old {
   color: rgba(255, 255, 255, 0.7);
+}
+
+.pricing-rs__plan:not(.is-active) .pricing-rs__plan-title {
+  color: #1d4ed8;
+}
+
+.pricing-rs__plan:not(.is-active) .pricing-rs__plan-price {
+  color: #2563eb;
+}
+
+.pricing-rs__plan:not(.is-active) .pricing-rs__plan-tools,
+.pricing-rs__plan:not(.is-active) .pricing-rs__plan-discount {
+  color: #60a5fa;
+}
+
+.pricing-rs__plan:not(.is-active) .pricing-rs__plan-old {
+  color: #93c5fd;
 }
 
 .pricing-rs__details {
