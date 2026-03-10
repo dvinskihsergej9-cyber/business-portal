@@ -14,34 +14,29 @@ const PLAN_CARDS = [
     key: "starter",
     id: "basic-30",
     title: "Стартовый",
-    description:
-      "Для малого и среднего склада. Закрывает ежедневные операции без лишней сложности.",
-    toolsCount: 4,
+    subtitle: "Для малого и среднего склада",
     amount: 1990,
     currency: "RUB",
-    highlight: "Рекомендуем",
     available: true,
-    features: [
-      "Приемка и размещение",
-      "Отбор и отгрузка",
-      "Мобильный режим ТСД",
-      "Роли сотрудников",
+    spotlight: true,
+    bullets: [
+      "Приемка, размещение, отбор, отгрузка",
+      "Мобильный ТСД и сканирование",
+      "Права сотрудников и SaaS-изоляция",
     ],
   },
   {
     key: "growth",
     id: null,
-    title: "Базовый",
-    description:
-      "Для растущих команд с повышенной нагрузкой и потребностью в расширенной аналитике.",
-    toolsCount: 7,
+    title: "Бизнес",
+    subtitle: "Для расширенной автоматизации",
     amount: 0,
     currency: "RUB",
-    highlight: "Скоро",
     available: false,
-    features: [
-      "Расширенная аналитика",
-      "Дополнительные модули склада",
+    spotlight: false,
+    bullets: [
+      "Расширенная аналитика склада",
+      "Дополнительные бизнес-процессы",
       "Приоритетная поддержка",
     ],
   },
@@ -49,19 +44,27 @@ const PLAN_CARDS = [
     key: "corp",
     id: null,
     title: "Корпоративный",
-    description:
-      "Для сетей складов, сложных процессов и интеграций под индивидуальные требования.",
-    toolsCount: 10,
+    subtitle: "Для сетей и сложных интеграций",
     amount: 0,
     currency: "RUB",
-    highlight: "Индивидуально",
     available: false,
-    features: [
+    spotlight: false,
+    bullets: [
       "Индивидуальные условия",
       "Кастомные интеграции",
       "Выделенный SLA",
     ],
   },
+];
+
+const FEATURE_MATRIX = [
+  { label: "Приемка и размещение", starter: true, growth: true, corp: true },
+  { label: "Отбор и отгрузка", starter: true, growth: true, corp: true },
+  { label: "Мобильный ТСД", starter: true, growth: true, corp: true },
+  { label: "Журнал статусов заказов", starter: true, growth: true, corp: true },
+  { label: "Расширенная аналитика", starter: false, growth: true, corp: true },
+  { label: "Кастомные интеграции", starter: false, growth: false, corp: true },
+  { label: "Выделенный SLA", starter: false, growth: false, corp: true },
 ];
 
 function formatPrice(amount, currency) {
@@ -93,11 +96,11 @@ function getPeriodAmount(baseAmount, periodId) {
 function getPeriodLabel(periodId) {
   if (periodId === "6m") return "6 месяцев";
   if (periodId === "12m") return "1 год";
-  return "30 дней";
+  return "1 месяц";
 }
 
-function getFirstAvailablePlanKey() {
-  return PLAN_CARDS.find((plan) => plan.available)?.key || PLAN_CARDS[0].key;
+function mark(value) {
+  return value ? "✓" : "—";
 }
 
 export default function Pricing() {
@@ -110,17 +113,11 @@ export default function Pricing() {
   const [billingReady, setBillingReady] = useState(false);
   const [billingLoading, setBillingLoading] = useState(true);
   const [periodId, setPeriodId] = useState("1m");
-  const [selectedPlanKey, setSelectedPlanKey] = useState(getFirstAvailablePlanKey());
 
   const canManageBilling =
     user?.isSystemOwner === true ||
     (Array.isArray(user?.roles) && user.roles.includes("ADMIN")) ||
     user?.role === "ADMIN";
-
-  const selectedPlan = useMemo(
-    () => PLAN_CARDS.find((plan) => plan.key === selectedPlanKey) || PLAN_CARDS[0],
-    [selectedPlanKey]
-  );
 
   const selectedPeriod = useMemo(
     () => PERIOD_OPTIONS.find((option) => option.id === periodId) || PERIOD_OPTIONS[0],
@@ -251,20 +248,20 @@ export default function Pricing() {
   }, []);
 
   return (
-    <div className="page pricing-rs">
+    <div className="page pricing-pf">
       {!canManageBilling && (
-        <div className="pricing-rs__notice">
+        <div className="pricing-pf__notice">
           Оплату и запуск пробного периода выполняет администратор вашей компании.
         </div>
       )}
 
       {subscription?.isActive && (
-        <section className="pricing-rs__active">
+        <section className="pricing-pf__active">
           <div>
-            <div className="pricing-rs__active-title">Подписка активна</div>
-            <div className="pricing-rs__active-subtitle">Оплачено до: {paidUntilDate}</div>
+            <div className="pricing-pf__active-title">Подписка активна</div>
+            <div className="pricing-pf__active-subtitle">Оплачено до: {paidUntilDate}</div>
           </div>
-          <button className="btn pricing-rs__mini-btn" onClick={handleRefresh}>
+          <button className="btn pricing-pf__mini-btn" onClick={handleRefresh}>
             Обновить статус
           </button>
         </section>
@@ -272,165 +269,160 @@ export default function Pricing() {
 
       {error && <div className="alert alert--error">{error}</div>}
 
-      <section className="pricing-rs__panel">
-        <div className="pricing-rs__brand">
+      <section className="pricing-pf__hero">
+        <div className="pricing-pf__brand">
           <img src="/logo-mark.png" alt="Логотип СкладОнлайн" />
-          <div className="pricing-rs__brand-text">
+          <div>
             <strong>СкладОнлайн</strong>
-            <span>Подписка и тарифы</span>
+            <span>Подписка для вашей команды</span>
           </div>
         </div>
 
-        <h1 className="pricing-rs__title">Цены</h1>
+        <h1 className="pricing-pf__title">Тарифы</h1>
 
-        <div className="pricing-rs__periods" role="tablist" aria-label="Период оплаты">
+        <div className="pricing-pf__periods" role="tablist" aria-label="Период оплаты">
           {PERIOD_OPTIONS.map((option) => (
             <button
               key={option.id}
               type="button"
-              className={`pricing-rs__period-btn ${option.id === periodId ? "is-active" : ""}`}
+              className={`pricing-pf__period-btn ${option.id === periodId ? "is-active" : ""}`}
               onClick={() => setPeriodId(option.id)}
             >
               <span>{option.label}</span>
               {option.discountPct > 0 && (
-                <span className="pricing-rs__period-discount">-{option.discountPct}%</span>
+                <span className="pricing-pf__period-discount">-{option.discountPct}%</span>
               )}
             </button>
           ))}
         </div>
 
-        <div className="pricing-rs__range">
-          <div className="pricing-rs__range-label">20 000 операций</div>
-          <div className="pricing-rs__range-track" aria-hidden="true">
-            <span className="pricing-rs__range-thumb" />
+        <p className="pricing-pf__subtitle">
+          Период: <b>{selectedPeriod.label}</b>. Один платеж на организацию, все сотрудники работают
+          в единой системе по вашим правам.
+        </p>
+      </section>
+
+      {showTrialCard && (
+        <section className="pricing-pf__trial">
+          <div>
+            <div className="pricing-pf__trial-title">Пробный период 30 дней</div>
+            <div className="pricing-pf__trial-text">Полный функционал без ограничений, один раз на компанию.</div>
           </div>
-        </div>
+          <button
+            className="btn pricing-pf__trial-btn"
+            onClick={handleStartTrial}
+            disabled={loading || !canManageBilling || !trialAvailable}
+          >
+            {loading ? "Активируем..." : "Начать бесплатно"}
+          </button>
+        </section>
+      )}
 
-        <div className="pricing-rs__layout">
-          <div className="pricing-rs__plans" role="listbox" aria-label="Список тарифов">
-            {PLAN_CARDS.map((plan) => {
-              const displayAmount = plan.available
-                ? getPeriodAmount(plan.amount, periodId)
-                : 0;
-              const regularAmount = plan.available
-                ? Number(plan.amount) * getPeriodMonths(periodId)
-                : 0;
-              const showOldPrice = plan.available && selectedPeriod.discountPct > 0;
+      <section className="pricing-pf__cards">
+        {PLAN_CARDS.map((plan) => {
+          const displayAmount = plan.available ? getPeriodAmount(plan.amount, periodId) : 0;
+          return (
+            <article
+              key={plan.key}
+              className={`pricing-pf__card ${plan.spotlight ? "pricing-pf__card--spotlight" : ""}`}
+            >
+              <div className="pricing-pf__card-head">
+                <h2>{plan.title}</h2>
+                {plan.spotlight ? <span className="pricing-pf__tag">Популярный</span> : null}
+              </div>
 
-              return (
+              <div className="pricing-pf__card-subtitle">{plan.subtitle}</div>
+
+              <div className="pricing-pf__price-row">
+                <div className="pricing-pf__price">
+                  {plan.available ? formatPrice(displayAmount, plan.currency) : "—"}
+                </div>
+                <div className="pricing-pf__period">/ {getPeriodLabel(periodId)}</div>
+              </div>
+
+              <ul className="pricing-pf__bullets">
+                {plan.bullets.map((item) => (
+                  <li key={item}>{item}</li>
+                ))}
+              </ul>
+
+              <div className="pricing-pf__actions">
                 <button
-                  key={plan.key}
-                  type="button"
-                  className={`pricing-rs__plan ${plan.key === selectedPlan.key ? "is-active" : ""}`}
-                  onClick={() => setSelectedPlanKey(plan.key)}
+                  className="btn pricing-pf__btn pricing-pf__btn--dark"
+                  onClick={() => handlePay(plan.id, "sbp")}
+                  disabled={
+                    !plan.available ||
+                    extendedPeriodSelected ||
+                    loading ||
+                    billingLoading ||
+                    !billingReady ||
+                    !canManageBilling
+                  }
                 >
-                  <div className="pricing-rs__plan-head">
-                    <span className="pricing-rs__radio" aria-hidden="true" />
-                    <div>
-                      <div className="pricing-rs__plan-title">{plan.title}</div>
-                      <div className="pricing-rs__plan-tools">{plan.toolsCount} инструментов</div>
-                    </div>
-                  </div>
-
-                  <div className="pricing-rs__plan-price-row">
-                    <div className="pricing-rs__plan-price">
-                      {plan.available ? formatPrice(displayAmount, plan.currency) : "—"}
-                    </div>
-                    {showOldPrice ? (
-                      <div className="pricing-rs__plan-old">
-                        {formatPrice(regularAmount, plan.currency)}
-                      </div>
-                    ) : null}
-                  </div>
-
-                  {showOldPrice ? (
-                    <div className="pricing-rs__plan-discount">
-                      Скидка {selectedPeriod.discountPct}% при оплате за {getPeriodLabel(periodId).toLowerCase()}
-                    </div>
-                  ) : (
-                    <div className="pricing-rs__plan-discount pricing-rs__plan-discount--empty">&nbsp;</div>
-                  )}
+                  {plan.available
+                    ? loading && loadingMethod === "sbp"
+                      ? "Переход..."
+                      : "Оплатить СБП"
+                    : "Скоро"}
                 </button>
-              );
-            })}
-          </div>
 
-          <aside className="pricing-rs__details">
-            <h2 className="pricing-rs__details-title">
-              Инструменты, включенные в тариф «{selectedPlan.title}»
-            </h2>
-            <p className="pricing-rs__details-desc">{selectedPlan.description}</p>
+                <button
+                  className="btn pricing-pf__btn pricing-pf__btn--light"
+                  onClick={() => handlePay(plan.id, "default")}
+                  disabled={
+                    !plan.available ||
+                    extendedPeriodSelected ||
+                    loading ||
+                    billingLoading ||
+                    !billingReady ||
+                    !canManageBilling
+                  }
+                >
+                  {plan.available
+                    ? loading && loadingMethod === "default"
+                      ? "Переход..."
+                      : "Оплатить картой"
+                    : "Недоступно"}
+                </button>
+              </div>
 
-            <ul className="pricing-rs__features">
-              {selectedPlan.features.map((feature) => (
-                <li key={feature}>{feature}</li>
+              {!plan.available && (
+                <div className="pricing-pf__hint">Тариф будет подключен на следующем этапе.</div>
+              )}
+              {plan.available && !billingReady && (
+                <div className="pricing-pf__hint">Платежи появятся после подключения YooKassa.</div>
+              )}
+              {plan.available && extendedPeriodSelected && (
+                <div className="pricing-pf__hint">Оплата за 6/12 месяцев будет добавлена отдельным этапом.</div>
+              )}
+            </article>
+          );
+        })}
+      </section>
+
+      <section className="pricing-pf__matrix">
+        <h3>Сравнение тарифов</h3>
+        <div className="pricing-pf__table-wrap">
+          <table className="pricing-pf__table">
+            <thead>
+              <tr>
+                <th>Функция</th>
+                <th>Стартовый</th>
+                <th>Бизнес</th>
+                <th>Корпоративный</th>
+              </tr>
+            </thead>
+            <tbody>
+              {FEATURE_MATRIX.map((row) => (
+                <tr key={row.label}>
+                  <td>{row.label}</td>
+                  <td>{mark(row.starter)}</td>
+                  <td>{mark(row.growth)}</td>
+                  <td>{mark(row.corp)}</td>
+                </tr>
               ))}
-            </ul>
-
-            <div className="pricing-rs__actions">
-              <button
-                className="btn pricing-rs__btn pricing-rs__btn--dark"
-                onClick={() => handlePay(selectedPlan.id, "sbp")}
-                disabled={
-                  !selectedPlan.available ||
-                  extendedPeriodSelected ||
-                  loading ||
-                  billingLoading ||
-                  !billingReady ||
-                  !canManageBilling
-                }
-              >
-                {selectedPlan.available
-                  ? loading && loadingMethod === "sbp"
-                    ? "Переход к оплате..."
-                    : "Оплатить по СБП"
-                  : "Скоро"}
-              </button>
-
-              <button
-                className="btn pricing-rs__btn pricing-rs__btn--light"
-                onClick={() => handlePay(selectedPlan.id, "default")}
-                disabled={
-                  !selectedPlan.available ||
-                  extendedPeriodSelected ||
-                  loading ||
-                  billingLoading ||
-                  !billingReady ||
-                  !canManageBilling
-                }
-              >
-                {selectedPlan.available
-                  ? loading && loadingMethod === "default"
-                    ? "Переход к оплате..."
-                    : "Оплатить картой"
-                  : "Недоступно"}
-              </button>
-            </div>
-
-            {showTrialCard && (
-              <div className="pricing-rs__trial">
-                <button
-                  className="btn pricing-rs__btn pricing-rs__btn--dark"
-                  onClick={handleStartTrial}
-                  disabled={loading || !canManageBilling || !trialAvailable}
-                >
-                  {loading ? "Активируем..." : "Начать 30 дней бесплатно"}
-                </button>
-              </div>
-            )}
-
-            {!billingReady && selectedPlan.available && (
-              <div className="pricing-rs__hint">
-                Платежи будут доступны после подключения YooKassa.
-              </div>
-            )}
-
-            {extendedPeriodSelected && selectedPlan.available && (
-              <div className="pricing-rs__hint">
-                Оплата за 6 месяцев и 1 год будет подключена следующим этапом.
-              </div>
-            )}
-          </aside>
+            </tbody>
+          </table>
         </div>
       </section>
     </div>
