@@ -2356,6 +2356,25 @@ input[type="number"] {
   animation: pricing-hero-in 0.45s ease both;
 }
 
+.pricing-modern__brand {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 8px;
+}
+
+.pricing-modern__brand img {
+  width: 38px;
+  height: 38px;
+  border-radius: 10px;
+}
+
+.pricing-modern__brand span {
+  font-size: 18px;
+  font-weight: 800;
+  color: #1e40af;
+}
+
 .pricing-modern__pill {
   display: inline-flex;
   align-items: center;
@@ -2684,6 +2703,10 @@ input[type="number"] {
   background: #15803d;
 }
 
+.pricing-modern__cta--dark:not(:disabled) {
+  animation: pricing-cta-pulse 1.9s ease-in-out infinite;
+}
+
 .pricing-modern__cta--light {
   background: #475569;
   color: #ffffff;
@@ -2761,6 +2784,21 @@ input[type="number"] {
   padding-bottom: 4px;
 }
 
+@keyframes pricing-cta-pulse {
+  0% {
+    box-shadow: 0 0 0 0 rgba(22, 163, 74, 0.45);
+    transform: translateY(0);
+  }
+  50% {
+    box-shadow: 0 0 0 8px rgba(22, 163, 74, 0);
+    transform: translateY(-1px);
+  }
+  100% {
+    box-shadow: 0 0 0 0 rgba(22, 163, 74, 0);
+    transform: translateY(0);
+  }
+}
+
 @keyframes pricing-hero-in {
   from {
     opacity: 0;
@@ -2798,6 +2836,10 @@ input[type="number"] {
   .pricing-modern__hero {
     border-radius: 16px;
     padding: 16px;
+  }
+
+  .pricing-modern__brand span {
+    font-size: 16px;
   }
 
   .pricing-modern__title {

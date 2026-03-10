@@ -1,4 +1,4 @@
-﻿import { useEffect, useMemo, useState } from "react";
+﻿import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { apiFetch, normalizeErrorMessage } from "../apiConfig";
 import { useAuth } from "../context/AuthContext";
@@ -88,7 +88,6 @@ export default function Pricing() {
   const navigate = useNavigate();
 
   const [loading, setLoading] = useState(false);
-  const [loadingMethod, setLoadingMethod] = useState("");
   const [error, setError] = useState("");
   const [billingReady, setBillingReady] = useState(false);
   const [billingLoading, setBillingLoading] = useState(true);
@@ -101,12 +100,8 @@ export default function Pricing() {
 
   const extendedPeriodSelected = periodId !== "1m";
 
-  const periodMeta = useMemo(
-    () => PERIOD_OPTIONS.find((option) => option.id === periodId) || PERIOD_OPTIONS[0],
-    [periodId]
-  );
 
-  const handlePay = async (planId, paymentMethod = "sbp") => {
+  const handlePay = async (planId) => {
     if (!planId) {
       setError("Этот тариф пока недоступен для онлайн-оплаты.");
       return;
@@ -124,7 +119,6 @@ export default function Pricing() {
 
     try {
       setLoading(true);
-      setLoadingMethod(paymentMethod);
       setError("");
 
       const token = localStorage.getItem("token");
@@ -134,7 +128,7 @@ export default function Pricing() {
           "Content-Type": "application/json",
           Authorization: `Bearer ${token}`,
         },
-        body: JSON.stringify({ planId, paymentMethod }),
+        body: JSON.stringify({ planId, paymentMethod: "sbp" }),
       });
 
       const data = await res.json();
@@ -156,7 +150,6 @@ export default function Pricing() {
       setError("Не удалось инициировать оплату.");
     } finally {
       setLoading(false);
-      setLoadingMethod("");
     }
   };
 
@@ -231,6 +224,10 @@ export default function Pricing() {
   return (
     <div className="page pricing-modern">
       <section className="pricing-modern__hero">
+        <div className="pricing-modern__brand">
+          <img src="/logo-mark.png" alt="Логотип СкладОнлайн" />
+          <span>СкладОнлайн</span>
+        </div>
         <span className="pricing-modern__pill">SaaS-подписка</span>
         <h1 className="pricing-modern__title pricing-modern__title--center">Цены</h1>
 
@@ -303,7 +300,7 @@ export default function Pricing() {
                 onClick={handleStartTrial}
                 disabled={loading || !canManageBilling || !trialAvailable}
               >
-                {loading ? "Активируем..." : "Начать 30 дней бесплатно"}
+                {loading ? "Оплатить" : "Оплатить"}
               </button>
             </div>
             {!trialAvailable && (
@@ -350,10 +347,10 @@ export default function Pricing() {
                 ))}
               </ul>
 
-              <div className="pricing-modern__actions">
+              <div className="pricing-modern__actions pricing-modern__actions--single">
                 <button
                   className="btn pricing-modern__cta pricing-modern__cta--dark"
-                  onClick={() => handlePay(plan.id, "sbp")}
+                  onClick={() => handlePay(plan.id)}
                   disabled={
                     !plan.available ||
                     extendedPeriodSelected ||
@@ -363,29 +360,7 @@ export default function Pricing() {
                     !canManageBilling
                   }
                 >
-                  {plan.available
-                    ? loading && loadingMethod === "sbp"
-                      ? "Переход к оплате..."
-                      : "Оплатить по СБП"
-                    : "Скоро"}
-                </button>
-                <button
-                  className="btn pricing-modern__cta pricing-modern__cta--light"
-                  onClick={() => handlePay(plan.id, "default")}
-                  disabled={
-                    !plan.available ||
-                    extendedPeriodSelected ||
-                    loading ||
-                    billingLoading ||
-                    !billingReady ||
-                    !canManageBilling
-                  }
-                >
-                  {plan.available
-                    ? loading && loadingMethod === "default"
-                      ? "Переход к оплате..."
-                      : "Оплатить картой"
-                    : "Недоступно"}
+                  {loading ? "Оплатить" : "Оплатить"}
                 </button>
               </div>
 
