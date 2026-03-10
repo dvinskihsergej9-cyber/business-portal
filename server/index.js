@@ -630,9 +630,9 @@ async function getReceivingLocationId(tx, orgIdInput = null) {
   return created.id;
 }
 const PLANS = {
-  "trial-1": {
-    id: "trial-1",
-    title: "Trial 30 days",
+  "start-30": {
+    id: "start-30",
+    title: "Start 30 days",
     amount: 1,
     currency: "RUB",
     days: 30,
@@ -640,7 +640,14 @@ const PLANS = {
   "basic-30": {
     id: "basic-30",
     title: "Basic 30 days",
-    amount: 1990,
+    amount: 1000,
+    currency: "RUB",
+    days: 30,
+  },
+  "pro-30": {
+    id: "pro-30",
+    title: "Pro 30 days",
+    amount: 2600,
     currency: "RUB",
     days: 30,
   },
