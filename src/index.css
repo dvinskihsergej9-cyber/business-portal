@@ -2357,10 +2357,12 @@ input[type="number"] {
 }
 
 .pricing-modern__brand {
-  display: inline-flex;
+  display: flex;
   align-items: center;
+  justify-content: center;
   gap: 10px;
   margin-bottom: 8px;
+  width: 100%;
 }
 
 .pricing-modern__brand img {
@@ -2376,8 +2378,9 @@ input[type="number"] {
 }
 
 .pricing-modern__pill {
-  display: inline-flex;
+  display: flex;
   align-items: center;
+  justify-content: center;
   padding: 5px 10px;
   border-radius: 999px;
   background: rgba(37, 99, 235, 0.12);
@@ -2386,6 +2389,8 @@ input[type="number"] {
   font-size: 12px;
   letter-spacing: 0.04em;
   text-transform: uppercase;
+  width: fit-content;
+  margin: 0 auto;
 }
 
 .pricing-modern__title {
