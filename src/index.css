@@ -2406,10 +2406,12 @@ input[type="number"] {
 }
 
 .pricing-modern__period-btn {
+  appearance: none;
+  -webkit-appearance: none;
   border: 1px solid transparent;
   border-radius: 10px;
   background: transparent;
-  color: #334155;
+  color: #1e40af;
   font-weight: 700;
   min-height: 50px;
   display: inline-flex;
@@ -2417,16 +2419,39 @@ input[type="number"] {
   justify-content: center;
   gap: 8px;
   cursor: pointer;
+  box-shadow: none !important;
+  -webkit-tap-highlight-color: transparent;
+  outline: none;
 }
 
 .pricing-modern__period-btn:hover {
   background: #eef4ff;
+  border-color: #93c5fd;
+  color: #1d4ed8;
+}
+
+.pricing-modern__period-btn:active {
+  background: #eaf2ff;
+  border-color: #93c5fd;
+  color: #1d4ed8;
+}
+
+.pricing-modern__period-btn:focus,
+.pricing-modern__period-btn:focus-visible {
+  background: #eaf2ff;
+  border-color: #60a5fa;
+  color: #1d4ed8;
+  outline: none;
 }
 
 .pricing-modern__period-btn.is-active {
   background: #eaf2ff;
   border-color: #93c5fd;
-  color: #1d4ed8;
+  color: #1d4ed8 !important;
+}
+
+.pricing-modern__period-btn span {
+  color: inherit;
 }
 
 .pricing-modern__period-discount {
