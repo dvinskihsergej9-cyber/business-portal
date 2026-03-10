@@ -236,17 +236,25 @@ export default function Pricing() {
 
         <div className="pricing-modern__periods" role="tablist" aria-label="Период оплаты">
           {PERIOD_OPTIONS.map((option) => (
-            <button
+            <div
               key={option.id}
-              type="button"
+              role="button"
+              tabIndex={0}
+              aria-pressed={option.id === periodId}
               className={`pricing-modern__period-btn ${option.id === periodId ? "is-active" : ""}`}
               onClick={() => setPeriodId(option.id)}
+              onKeyDown={(event) => {
+                if (event.key === "Enter" || event.key === " ") {
+                  event.preventDefault();
+                  setPeriodId(option.id);
+                }
+              }}
             >
               <span>{option.label}</span>
               {option.discountPct > 0 && (
                 <span className="pricing-modern__period-discount">-{option.discountPct}%</span>
               )}
-            </button>
+            </div>
           ))}
         </div>
 
