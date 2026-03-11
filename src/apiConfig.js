@@ -205,6 +205,9 @@ export const normalizeErrorMessage = (err, fallback = "Ошибка запрос
   if (message === "PAYMENT_METHOD_INVALID") {
     return "Некорректный способ оплаты.";
   }
+  if (message === "PLAN_USER_LIMIT_REACHED") {
+    return "Достигнут лимит сотрудников для текущего тарифа.";
+  }
   if (!hasCyrillic && isAsciiOnly) {
     return fallback;
   }

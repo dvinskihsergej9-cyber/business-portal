@@ -3750,6 +3750,29 @@ app.post("/api/users", auth, requireAdmin, async (req, res) => {
       return res.status(404).json({ message: "ORG_NOT_FOUND" });
     }
 
+    
+    const orgSubscription = await getOrgSubscription(targetOrgId, req.user.id);
+    const currentPlanId = String(orgSubscription?.plan || "start-30");
+    const planUserLimits = {
+      "start-30": 2,
+      "basic-30": 10,
+      "pro-30": 20,
+    };
+    const maxActiveUsers = Number(planUserLimits[currentPlanId] || 20);
+    const activeUsersCount = await prisma.user.count({
+      where: {
+        orgId: targetOrgId,
+        isActive: true,
+      },
+    });
+    if (activeUsersCount >= maxActiveUsers) {
+      return res.status(409).json({
+        message: "PLAN_USER_LIMIT_REACHED",
+        limit: maxActiveUsers,
+        plan: currentPlanId,
+      });
+    }
+
     const existingByUsername = await prisma.user.findUnique({
       where: { username: normalizedLogin },
       select: { id: true },
