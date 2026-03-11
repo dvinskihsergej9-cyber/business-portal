@@ -3755,7 +3755,7 @@ app.post("/api/users", auth, requireAdmin, async (req, res) => {
     const currentPlanId = String(orgSubscription?.plan || "start-30");
     const planUserLimits = {
       "start-30": 2,
-      "basic-30": 10,
+      "basic-30": 5,
       "pro-30": 20,
     };
     const maxActiveUsers = Number(planUserLimits[currentPlanId] || 20);
