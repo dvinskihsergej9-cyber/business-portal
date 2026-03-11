@@ -13853,14 +13853,46 @@ async function checkAutoReorders() {
         continue;
       }
 
-      if (item.autoReorderActive && availableQty <= minQty) {
+      if (availableQty > minQty) {
+        continue;
+      }
+
+      const supplier = item.autoReorderSupplier;
+      if (!supplier) continue;
+      if (!adminUserId) {
+        console.error(`AUTO_REORDER: admin user not found for org ${orgId}`);
+        continue;
+      }
+
+      const existingDraft = await prisma.purchaseOrder.findFirst({
+        where: {
+          orgId,
+          supplierId: supplier.id,
+          status: "DRAFT",
+          comment: { contains: "[AUTO-REORDER]" },
+        },
+        orderBy: { createdAt: "desc" },
+        include: {
+          items: {
+            where: { itemId: item.id },
+            select: { id: true, quantity: true, price: true },
+            take: 1,
+          },
+        },
+      });
+      const existingLine = Array.isArray(existingDraft?.items)
+        ? existingDraft.items[0]
+        : null;
+
+      if (item.autoReorderActive && existingLine) {
         const lastReminderAt = item.autoReorderLastReminderAt
           ? new Date(item.autoReorderLastReminderAt).getTime()
           : 0;
 
         if (Date.now() - lastReminderAt >= AUTO_REORDER_REMINDER_MS) {
-          const lastOrderInfo = item.autoReorderLastOrderId
-            ? `\nDraft order ID: #${item.autoReorderLastOrderId}`
+          const draftOrderId = existingDraft?.id || item.autoReorderLastOrderId;
+          const lastOrderInfo = draftOrderId
+            ? `\nDraft order ID: #${draftOrderId}`
             : "";
           const subject = `Auto reorder: action required for item \"${item.name}\"`;
           const text =
@@ -13881,36 +13913,10 @@ async function checkAutoReorders() {
         continue;
       }
 
-      if (availableQty > minQty) {
-        continue;
-      }
-
-      const supplier = item.autoReorderSupplier;
-      if (!supplier) continue;
-      if (!adminUserId) {
-        console.error(`AUTO_REORDER: admin user not found for org ${orgId}`);
-        continue;
-      }
-
       const targetMax = Number(item.maxStock || item.autoReorderMin || 0);
       const orderQty = Math.max(Math.round(targetMax - availableQty), 1);
 
-      let order = await prisma.purchaseOrder.findFirst({
-        where: {
-          orgId,
-          supplierId: supplier.id,
-          status: "DRAFT",
-          comment: { contains: "[AUTO-REORDER]" },
-        },
-        orderBy: { createdAt: "desc" },
-        include: {
-          items: {
-            where: { itemId: item.id },
-            select: { id: true, quantity: true, price: true },
-            take: 1,
-          },
-        },
-      });
+      let order = existingDraft;
 
       let isNewDraft = false;
       let lineUpdated = false;
@@ -13940,7 +13946,6 @@ async function checkAutoReorders() {
         });
         isNewDraft = true;
       } else {
-        const existingLine = Array.isArray(order.items) ? order.items[0] : null;
         if (existingLine) {
           await prisma.purchaseOrderItem.update({
             where: { id: existingLine.id },
