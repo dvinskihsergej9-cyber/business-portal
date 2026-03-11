@@ -1,4 +1,4 @@
-
+﻿
 
 import { useEffect, useMemo, useRef, useState, Fragment } from "react";
 
@@ -195,11 +195,11 @@ const TASK_STATUS_OPTIONS = [
 
 
 const PO_STATUS_LABELS = {
-  DRAFT: "Не получен",
-  SENT: "Не получен",
-  PARTIAL: "Частично",
-  RECEIVED: "Получен",
-  CLOSED: "Получен",
+  DRAFT: "\u0427\u0435\u0440\u043d\u043e\u0432\u0438\u043a",
+  SENT: "\u041e\u0442\u043f\u0440\u0430\u0432\u043b\u0435\u043d \u043f\u043e\u0441\u0442\u0430\u0432\u0449\u0438\u043a\u0443",
+  PARTIAL: "\u0427\u0430\u0441\u0442\u0438\u0447\u043d\u043e",
+  RECEIVED: "\u041f\u043e\u043b\u0443\u0447\u0435\u043d",
+  CLOSED: "\u0417\u0430\u043a\u0440\u044b\u0442",
 };
 
 
@@ -481,6 +481,8 @@ export default function Warehouse({
   const [viewPurchaseOrder, setViewPurchaseOrder] = useState(null);
   const [viewPurchaseOrderLoading, setViewPurchaseOrderLoading] = useState(false);
   const [viewPurchaseOrderError, setViewPurchaseOrderError] = useState("");
+  const [viewPurchaseOrderActionLoading, setViewPurchaseOrderActionLoading] = useState(false);
+  const [viewPurchaseOrderActionNotice, setViewPurchaseOrderActionNotice] = useState("");
 
   const [showReceiveModal, setShowReceiveModal] = useState(false);
 
@@ -2179,6 +2181,7 @@ export default function Warehouse({
     if (!order?.id) return;
     setViewPurchaseOrder(order);
     setViewPurchaseOrderError("");
+    setViewPurchaseOrderActionNotice("");
     setViewPurchaseOrderLoading(true);
     try {
       const res = await fetch(`${API}/purchase-orders/${order.id}`, {
@@ -2204,7 +2207,9 @@ export default function Warehouse({
   const handleCloseViewPurchaseOrder = () => {
     setViewPurchaseOrder(null);
     setViewPurchaseOrderError("");
+    setViewPurchaseOrderActionNotice("");
     setViewPurchaseOrderLoading(false);
+    setViewPurchaseOrderActionLoading(false);
   };
 
 
@@ -2263,6 +2268,54 @@ export default function Warehouse({
 
   };
 
+  const handlePurchaseOrderStatusSent = async (orderId) => {
+    const ok = window.confirm("\u041e\u0442\u043f\u0440\u0430\u0432\u0438\u0442\u044c \u0437\u0430\u043a\u0430\u0437 \u043f\u043e\u0441\u0442\u0430\u0432\u0449\u0438\u043a\u0443 \u0438 \u0443\u0441\u0442\u0430\u043d\u043e\u0432\u0438\u0442\u044c \u0441\u0442\u0430\u0442\u0443\u0441 '\u041e\u0442\u043f\u0440\u0430\u0432\u043b\u0435\u043d \u043f\u043e\u0441\u0442\u0430\u0432\u0449\u0438\u043a\u0443'?");
+    if (!ok) return;
+
+    try {
+      setViewPurchaseOrderActionLoading(true);
+      setViewPurchaseOrderError("");
+      setViewPurchaseOrderActionNotice("");
+
+      const res = await fetch(`${API}/purchase-orders/${orderId}/status`, {
+        method: "PUT",
+        headers: authHeaders,
+        body: JSON.stringify({ status: "SENT" }),
+      });
+
+      const data = await readResponsePayload(res);
+      if (!res.ok) {
+        throw new Error((data && data.message) || "\u041e\u0448\u0438\u0431\u043a\u0430 \u043e\u0442\u043f\u0440\u0430\u0432\u043a\u0438 \u0437\u0430\u043a\u0430\u0437\u0430 \u043f\u043e\u0441\u0442\u0430\u0432\u0449\u0438\u043a\u0443.");
+      }
+
+      if (data && typeof data === "object") {
+        setViewPurchaseOrder(data);
+      } else {
+        setViewPurchaseOrder((prev) => (prev ? { ...prev, status: "SENT" } : prev));
+      }
+
+      if (data?.emailSent) {
+        setViewPurchaseOrderActionNotice(
+          `\u041f\u043e\u0441\u0442\u0430\u0432\u0449\u0438\u043a\u0443 \u043e\u0442\u043f\u0440\u0430\u0432\u043b\u0435\u043d\u043e \u043f\u0438\u0441\u044c\u043c\u043e${data.emailRecipient ? `: ${data.emailRecipient}` : ""}.`
+        );
+      } else if (data?.emailError) {
+        setViewPurchaseOrderActionNotice(
+          `\u0421\u0442\u0430\u0442\u0443\u0441 \u043e\u0431\u043d\u043e\u0432\u043b\u0451\u043d, \u043d\u043e \u043f\u0438\u0441\u044c\u043c\u043e \u043d\u0435 \u043e\u0442\u043f\u0440\u0430\u0432\u043b\u0435\u043d\u043e: ${data.emailError}`
+        );
+      } else if (data?.emailSkippedReason) {
+        setViewPurchaseOrderActionNotice(`\u0421\u0442\u0430\u0442\u0443\u0441 \u043e\u0431\u043d\u043e\u0432\u043b\u0451\u043d: ${data.emailSkippedReason}.`);
+      } else {
+        setViewPurchaseOrderActionNotice("\u0421\u0442\u0430\u0442\u0443\u0441 \u0437\u0430\u043a\u0430\u0437\u0430 \u043e\u0431\u043d\u043e\u0432\u043b\u0451\u043d: \u043e\u0442\u043f\u0440\u0430\u0432\u043b\u0435\u043d \u043f\u043e\u0441\u0442\u0430\u0432\u0449\u0438\u043a\u0443.");
+      }
+
+      await loadPurchaseOrders();
+    } catch (e) {
+      console.error(e);
+      setViewPurchaseOrderError(resolveErrorMessage(e, "\u041e\u0448\u0438\u0431\u043a\u0430 \u043e\u0442\u043f\u0440\u0430\u0432\u043a\u0438 \u0437\u0430\u043a\u0430\u0437\u0430 \u043f\u043e\u0441\u0442\u0430\u0432\u0449\u0438\u043a\u0443."));
+    } finally {
+      setViewPurchaseOrderActionLoading(false);
+    }
+  };
   const sortedPurchaseOrders = useMemo(() => {
     return [...purchaseOrders].sort((a, b) => {
       const da = a.createdAt ? new Date(a.createdAt).getTime() : 0;
@@ -4379,6 +4432,11 @@ export default function Warehouse({
                   {viewPurchaseOrderError}
                 </div>
               )}
+              {viewPurchaseOrderActionNotice && (
+                <div className="alert alert--success" style={{ marginBottom: 12 }}>
+                  {viewPurchaseOrderActionNotice}
+                </div>
+              )}
 
               <div className="grid-2" style={{ marginBottom: 12 }}>
                 <div className="card">
@@ -4462,12 +4520,23 @@ export default function Warehouse({
               )}
 
               <div className="modal__actions">
+                {viewPurchaseOrder.status === "DRAFT" && (
+                  <button
+                    type="button"
+                    className="btn"
+                    onClick={() => handlePurchaseOrderStatusSent(viewPurchaseOrder.id)}
+                    disabled={viewPurchaseOrderActionLoading}
+                  >
+                    {viewPurchaseOrderActionLoading ? "\u041e\u0442\u043f\u0440\u0430\u0432\u043a\u0430..." : "\u041e\u0442\u043f\u0440\u0430\u0432\u0438\u0442\u044c \u043f\u043e\u0441\u0442\u0430\u0432\u0449\u0438\u043a\u0443"}
+                  </button>
+                )}
                 <button
                   type="button"
                   className="btn btn--ghost"
                   onClick={handleCloseViewPurchaseOrder}
+                  disabled={viewPurchaseOrderActionLoading}
                 >
-                  Закрыть
+                  {"\u0417\u0430\u043a\u0440\u044b\u0442\u044c"}
                 </button>
               </div>
             </div>
@@ -4510,43 +4579,3 @@ export default function Warehouse({
   );
 
 }
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
