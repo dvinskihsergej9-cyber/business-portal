@@ -13894,29 +13894,77 @@ async function checkAutoReorders() {
 
       const targetMax = Number(item.maxStock || item.autoReorderMin || 0);
       const orderQty = Math.max(Math.round(targetMax - availableQty), 1);
-      const nextNumber = await getNextPurchaseOrderNumber(orgId);
 
-      const order = await prisma.purchaseOrder.create({
-        data: {
+      let order = await prisma.purchaseOrder.findFirst({
+        where: {
           orgId,
-          number: nextNumber,
-          date: new Date(),
-          status: "DRAFT",
-          comment: `[AUTO-REORDER] Draft for item \"${item.name}\"`,
           supplierId: supplier.id,
-          createdById: adminUserId,
+          status: "DRAFT",
+          comment: { contains: "[AUTO-REORDER]" },
+        },
+        orderBy: { createdAt: "desc" },
+        include: {
           items: {
-            create: [
-              {
-                orgId,
-                itemId: item.id,
-                quantity: orderQty,
-                price: item.defaultPrice || 0,
-              },
-            ],
+            where: { itemId: item.id },
+            select: { id: true, quantity: true, price: true },
+            take: 1,
           },
         },
       });
+
+      let isNewDraft = false;
+      let lineUpdated = false;
+
+      if (!order) {
+        const nextNumber = await getNextPurchaseOrderNumber(orgId);
+        order = await prisma.purchaseOrder.create({
+          data: {
+            orgId,
+            number: nextNumber,
+            date: new Date(),
+            status: "DRAFT",
+            comment: `[AUTO-REORDER] Draft for supplier \"${supplier.name}\"`,
+            supplierId: supplier.id,
+            createdById: adminUserId,
+            items: {
+              create: [
+                {
+                  orgId,
+                  itemId: item.id,
+                  quantity: orderQty,
+                  price: item.defaultPrice || 0,
+                },
+              ],
+            },
+          },
+        });
+        isNewDraft = true;
+      } else {
+        const existingLine = Array.isArray(order.items) ? order.items[0] : null;
+        if (existingLine) {
+          await prisma.purchaseOrderItem.update({
+            where: { id: existingLine.id },
+            data: {
+              quantity: Number(existingLine.quantity || 0) + orderQty,
+              price:
+                Number(item.defaultPrice) ||
+                Number(existingLine.price) ||
+                0,
+            },
+          });
+          lineUpdated = true;
+        } else {
+          await prisma.purchaseOrderItem.create({
+            data: {
+              orgId,
+              orderId: order.id,
+              itemId: item.id,
+              quantity: orderQty,
+              price: item.defaultPrice || 0,
+            },
+          });
+        }
+      }
 
       await prisma.item.update({
         where: { id: item.id },
@@ -13928,15 +13976,19 @@ async function checkAutoReorders() {
         },
       });
 
-      const subject = `Auto reorder: draft created ${nextNumber}`;
+      const orderNumberLabel = order.number || `#${order.id}`;
+      const subject = isNewDraft
+        ? `Auto reorder: draft created ${orderNumberLabel}`
+        : `Auto reorder: draft updated ${orderNumberLabel}`;
       const text =
-        `System created a draft supplier order.\n` +
+        `System ${isNewDraft ? "created" : "updated"} a draft supplier order.\n` +
         `Item: ${item.name}\n` +
         `Available qty: ${availableQty}\n` +
         `Minimum: ${minQty}\n` +
         `Order qty: ${orderQty}\n` +
         `Supplier: ${supplier.name}\n` +
-        `Order number: ${nextNumber}\n\n` +
+        `Order number: ${orderNumberLabel}\n` +
+        `Line action: ${lineUpdated ? "quantity increased" : "line added"}\n\n` +
         `Manual step required: open order and click \"Send to supplier\".`;
 
       for (const email of adminEmails) {
