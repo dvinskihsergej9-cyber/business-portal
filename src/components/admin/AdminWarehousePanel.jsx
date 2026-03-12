@@ -43,8 +43,9 @@ const SECTION_REFRESH_BTN_STYLE = {
   border: "1px solid #e5e7eb",
   color: "#9ca3af",
   position: "absolute",
-  top: -10,
-  right: 0,
+  top: -24,
+  right: -8,
+  zIndex: 5,
 };
 
 async function fileToDataUrl(file) {
