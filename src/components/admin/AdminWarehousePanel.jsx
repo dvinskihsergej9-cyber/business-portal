@@ -287,7 +287,13 @@ export default function AdminWarehousePanel() {
 
       const minVal = Number(itemForm.minStock);
       const maxVal = Number(itemForm.maxStock);
-      const priceVal = Number(String(itemForm.defaultPrice).replace(",", "."));
+      const hasDefaultPrice =
+        itemForm.defaultPrice !== undefined &&
+        itemForm.defaultPrice !== null &&
+        String(itemForm.defaultPrice).trim() !== "";
+      const priceVal = hasDefaultPrice
+        ? Number(String(itemForm.defaultPrice).replace(",", "."))
+        : null;
 
       if (!Number.isFinite(minVal) || minVal <= 0) {
         return setItemError("Минимальный остаток должен быть положительным числом.");
@@ -295,8 +301,8 @@ export default function AdminWarehousePanel() {
       if (!Number.isFinite(maxVal) || maxVal <= 0) {
         return setItemError("Максимальный остаток должен быть положительным числом.");
       }
-      if (!Number.isFinite(priceVal) || priceVal <= 0) {
-        return setItemError("Цена за единицу должна быть положительным числом.");
+      if (hasDefaultPrice && (!Number.isFinite(priceVal) || priceVal < 0)) {
+        return setItemError("Цена за единицу должна быть числом (0 и больше).");
       }
 
       const body = {
@@ -711,11 +717,12 @@ export default function AdminWarehousePanel() {
                 />
               </div>
               <div>
-                <label className="admin-label">Цена</label>
+                <label className="admin-label">Цена (необязательно)</label>
                 <input
                   className="admin-input"
                   type="number"
                   value={itemForm.defaultPrice}
+                  placeholder="Например: 120.50"
                   onChange={(event) =>
                     setItemForm((prev) => ({
                       ...prev,
@@ -1059,10 +1066,11 @@ export default function AdminWarehousePanel() {
                 </div>
               </div>
               <div>
-                <label className="admin-label">Цена по умолчанию</label>
+                <label className="admin-label">Цена по умолчанию (необязательно)</label>
                 <input
                   className="admin-input"
                   type="number"
+                  placeholder="Например: 120.50"
                   value={itemForm.defaultPrice}
                   onChange={(event) =>
                     setItemForm((prev) => ({

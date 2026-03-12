@@ -5604,9 +5604,20 @@ app.post("/api/inventory/items", auth, async (req, res) => {
     // 2) Числовые поля
     const minVal = Number(minStock);
     const maxVal = Number(maxStock);
-    const priceVal = Number(
-      String(defaultPrice).toString().replace(",", ".")
-    );
+    const hasDefaultPrice =
+      defaultPrice !== undefined &&
+      defaultPrice !== null &&
+      String(defaultPrice).trim() !== "";
+    let priceVal = null;
+    if (hasDefaultPrice) {
+      const parsed = Number(String(defaultPrice).toString().replace(",", "."));
+      if (!Number.isFinite(parsed) || parsed < 0) {
+        return res.status(400).json({
+          message: "Цена за единицу должна быть числом (0 и больше)",
+        });
+      }
+      priceVal = parsed;
+    }
 
     if (!Number.isFinite(minVal) || minVal <= 0) {
       return res.status(400).json({
@@ -5617,12 +5628,6 @@ app.post("/api/inventory/items", auth, async (req, res) => {
     if (!Number.isFinite(maxVal) || maxVal <= 0) {
       return res.status(400).json({
         message: "Максимальный остаток должен быть положительным числом",
-      });
-    }
-
-    if (!Number.isFinite(priceVal) || priceVal <= 0) {
-      return res.status(400).json({
-        message: "Цена за единицу должна быть положительным числом",
       });
     }
 
@@ -9156,10 +9161,16 @@ app.post(
       let skipped = 0;
 
       const toNumber = (raw) => {
-        if (raw == null) return 0;
+        if (raw == null || String(raw).trim() === "") return 0;
         if (typeof raw === "number") return raw;
         const n = Number(String(raw).replace(",", "."));
         return Number.isFinite(n) ? n : 0;
+      };
+      const toOptionalNumber = (raw) => {
+        if (raw == null || String(raw).trim() === "") return null;
+        if (typeof raw === "number") return Number.isFinite(raw) ? raw : null;
+        const n = Number(String(raw).replace(",", "."));
+        return Number.isFinite(n) ? n : null;
       };
 
       for (let rowNumber = 2; rowNumber <= lastRow; rowNumber++) {
@@ -9174,7 +9185,7 @@ app.post(
         // F=6 (Min), I=9 (Max), J=10 (Price)
         let minStock = Math.round(toNumber(row.getCell(6).value));
         let maxStock = Math.round(toNumber(row.getCell(9).value));
-        let defaultPrice = toNumber(row.getCell(10).value);
+        let defaultPrice = toOptionalNumber(row.getCell(10).value);
 
         console.log(`Row ${rowNumber}: SKU=${sku}, Min=${minStock}, Max=${maxStock}, Price=${defaultPrice}`);
 
@@ -9199,7 +9210,7 @@ app.post(
           skipped++;
           continue;
         }
-        if (!Number.isFinite(defaultPrice) || defaultPrice < 0) {
+        if (defaultPrice !== null && (!Number.isFinite(defaultPrice) || defaultPrice < 0)) {
           skipped++;
           continue;
         }
@@ -9272,6 +9283,18 @@ app.post("/api/inventory/items/batch", auth, async (req, res) => {
         continue;
       }
 
+      const hasDefaultPrice =
+        item.defaultPrice !== undefined &&
+        item.defaultPrice !== null &&
+        String(item.defaultPrice).trim() !== "";
+      const parsedDefaultPrice = hasDefaultPrice
+        ? Number(String(item.defaultPrice).replace(",", "."))
+        : null;
+      if (hasDefaultPrice && (!Number.isFinite(parsedDefaultPrice) || parsedDefaultPrice < 0)) {
+        errors.push({ row: item.row, error: "Некорректная цена (должна быть 0 и больше)" });
+        continue;
+      }
+
       const data = {
         name: String(item.name).trim(),
         sku: String(item.sku).trim(),
@@ -9279,7 +9302,7 @@ app.post("/api/inventory/items/batch", auth, async (req, res) => {
         unit: item.unit ? String(item.unit).trim() : "шт",
         minStock: item.minStock ? Number(item.minStock) : 0,
         maxStock: item.maxStock ? Number(item.maxStock) : 0,
-        defaultPrice: item.defaultPrice ? Number(item.defaultPrice) : 0,
+        defaultPrice: parsedDefaultPrice,
       };
 
       try {
@@ -9641,6 +9664,43 @@ app.delete("/api/suppliers/:id", auth, async (req, res) => {
 
 // ================== ЗАКАЗЫ ПОСТАВЩИКУ ==================
 
+function buildPurchasePriceUpdates(rows = [], { onlyReceived = false } = {}) {
+  const latestByItemId = new Map();
+  for (const row of rows) {
+    const itemId = Number(row?.itemId);
+    const price = Number(row?.price);
+    if (!itemId || Number.isNaN(itemId)) continue;
+    if (!Number.isFinite(price) || price < 0) continue;
+    if (onlyReceived) {
+      const receivedQty = Number(row?.receivedQty) || 0;
+      if (receivedQty <= 0) continue;
+    }
+    latestByItemId.set(itemId, price);
+  }
+  return Array.from(latestByItemId.entries()).map(([itemId, price]) => ({
+    itemId,
+    price,
+  }));
+}
+
+async function applyPurchasePriceUpdates(db, updates = [], orgId = null) {
+  if (!Array.isArray(updates) || updates.length === 0) return;
+  for (const update of updates) {
+    const itemId = Number(update?.itemId);
+    const price = Number(update?.price);
+    if (!itemId || Number.isNaN(itemId)) continue;
+    if (!Number.isFinite(price) || price < 0) continue;
+    const where =
+      orgId === null || orgId === undefined
+        ? { id: itemId }
+        : { id: itemId, orgId };
+    await db.item.updateMany({
+      where,
+      data: { defaultPrice: price },
+    });
+  }
+}
+
 // Создать заказ поставщику (запись в БД)
 app.post("/api/purchase-orders", auth, async (req, res) => {
   try {
@@ -9735,6 +9795,12 @@ app.post("/api/purchase-orders", auth, async (req, res) => {
         },
       },
     });
+
+    await applyPurchasePriceUpdates(
+      prisma,
+      buildPurchasePriceUpdates(preparedItems),
+      req.user.orgId || null
+    );
 
     res.status(201).json(order);
   } catch (err) {
@@ -10393,6 +10459,12 @@ app.put("/api/purchase-orders/:id/status", auth, async (req, res) => {
           },
         });
       }
+
+      await applyPurchasePriceUpdates(
+        prisma,
+        buildPurchasePriceUpdates(order.items),
+        order.orgId || req.user.orgId || null
+      );
     }
 
     const nextReceivingStage =
@@ -10501,6 +10573,7 @@ app.post("/api/purchase-orders/:id/receive", auth, async (req, res) => {
     const movementsData = [];
     const discrepancies = [];
     const receivedByOrderItemId = new Map();
+    const priceUpdatesByItemId = new Map();
     const userId = req.user.id;
 
     for (const row of order.items) {
@@ -10520,6 +10593,10 @@ app.post("/api/purchase-orders/:id/receive", auth, async (req, res) => {
           comment: `Приход по заказу ${order.number} [PO#${order.id}] (заказано ${ordered}, получено ${received})`,
           createdById: userId,
         });
+        const price = Number(row.price);
+        if (Number.isFinite(price) && price >= 0) {
+          priceUpdatesByItemId.set(row.itemId, price);
+        }
       }
 
       const diff = received - ordered;
@@ -10539,6 +10616,15 @@ app.post("/api/purchase-orders/:id/receive", auth, async (req, res) => {
     if (movementsData.length > 0) {
       await prisma.stockMovement.createMany({ data: movementsData });
     }
+
+    await applyPurchasePriceUpdates(
+      prisma,
+      Array.from(priceUpdatesByItemId.entries()).map(([itemId, price]) => ({
+        itemId,
+        price,
+      })),
+      order.orgId || req.user.orgId || null
+    );
 
     // обновляем статус заказа
     for (const row of order.items) {
@@ -10671,6 +10757,7 @@ app.post("/api/warehouse/receiving/:poId/confirm", auth, async (req, res) => {
     const movementIds = [];
 
     await prisma.$transaction(async (tx) => {
+      const priceUpdatesByItemId = new Map();
       for (const line of lines) {
         const itemId = Number(line.productId ?? line.itemId);
         const qty = Number(line.qty);
@@ -10741,6 +10828,11 @@ app.post("/api/warehouse/receiving/:poId/confirm", auth, async (req, res) => {
             })
           );
 
+          const price = Number(orderRow.price);
+          if (Number.isFinite(price) && price >= 0) {
+            priceUpdatesByItemId.set(itemId, price);
+          }
+
           if (qtyInt !== expectedRemaining) {
             const delta = Math.trunc(qtyInt - expectedRemaining);
             const movementOpId = lineOpId || `po:${poId}:${itemId}:${Date.now()}`;
@@ -10784,6 +10876,15 @@ app.post("/api/warehouse/receiving/:poId/confirm", auth, async (req, res) => {
           }
         }
       }
+
+      await applyPurchasePriceUpdates(
+        tx,
+        Array.from(priceUpdatesByItemId.entries()).map(([itemId, price]) => ({
+          itemId,
+          price,
+        })),
+        effectiveOrgId
+      );
 
       await runWithoutTenantScope(() =>
         tx.purchaseOrder.updateMany({
@@ -10897,9 +10998,14 @@ app.post("/api/warehouse/receiving/:poId/finalize", auth, async (req, res) => {
       });
       if (!refreshed) return;
 
+      const priceUpdatesByItemId = new Map();
       for (const row of refreshed.items || []) {
         const ordered = Number(row.quantity) || 0;
         const received = Number(row.receivedQty) || 0;
+        const price = Number(row.price);
+        if (received > 0 && Number.isFinite(price) && price >= 0) {
+          priceUpdatesByItemId.set(row.itemId, price);
+        }
         if (ordered === received) continue;
 
         const delta = Math.trunc(received - ordered);
@@ -10926,6 +11032,15 @@ app.post("/api/warehouse/receiving/:poId/finalize", auth, async (req, res) => {
           });
         }
       }
+
+      await applyPurchasePriceUpdates(
+        tx,
+        Array.from(priceUpdatesByItemId.entries()).map(([itemId, price]) => ({
+          itemId,
+          price,
+        })),
+        effectiveOrgId
+      );
 
       const allReceived = refreshed.items.every(
         (row) => Number(row.receivedQty) >= Number(row.quantity)

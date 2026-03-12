@@ -160,7 +160,7 @@ export default function ImportItemsModal({ onClose, onImportSuccess }) {
                         <div style={{ textAlign: "center", padding: 40, border: "2px dashed #ccc", borderRadius: 8 }}>
                             <p>Загрузите Excel файл (.xlsx)</p>
                             <p style={{ fontSize: 12, color: "#666", marginBottom: 20 }}>
-                                Колонки: Наименование, Артикул, Штрихкод, Ед.изм., Мин.остаток, Макс.остаток, Цена
+                                Колонки: Наименование, Артикул, Штрихкод, Ед.изм., Мин.остаток, Макс.остаток, Цена (необязательно)
                             </p>
                             <input
                                 type="file"

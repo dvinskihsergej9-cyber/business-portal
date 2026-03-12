@@ -1658,7 +1658,13 @@ export default function Warehouse({
 
       const maxVal = Number(itemForm.maxStock);
 
-      const priceVal = Number(String(itemForm.defaultPrice).replace(",", "."));
+      const hasDefaultPrice =
+        itemForm.defaultPrice !== undefined &&
+        itemForm.defaultPrice !== null &&
+        String(itemForm.defaultPrice).trim() !== "";
+      const priceVal = hasDefaultPrice
+        ? Number(String(itemForm.defaultPrice).replace(",", "."))
+        : null;
 
 
 
@@ -1686,11 +1692,11 @@ export default function Warehouse({
 
 
 
-      if (!Number.isFinite(priceVal) || priceVal <= 0) {
+      if (hasDefaultPrice && (!Number.isFinite(priceVal) || priceVal < 0)) {
 
         return setInventoryError(
 
-          "Цена за единицу должна быть положительным числом."
+          "Цена за единицу должна быть числом (0 и больше)."
 
         );
 
