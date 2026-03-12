@@ -186,6 +186,19 @@
   opacity: 0.45;
 }
 
+.admin-corner-refresh-btn,
+.admin-corner-refresh-btn:hover,
+.admin-corner-refresh-btn:active,
+.admin-corner-refresh-btn:focus,
+.admin-corner-refresh-btn:focus-visible {
+  -webkit-tap-highlight-color: transparent;
+  background: #ffffff !important;
+  border: 1px solid #e5e7eb !important;
+  color: #9ca3af !important;
+  box-shadow: none !important;
+  outline: none !important;
+}
+
 .admin-table__actions .admin-copy-btn {
   width: auto;
   min-width: 0;

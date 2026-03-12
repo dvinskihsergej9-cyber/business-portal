@@ -21,29 +21,30 @@ function toDateInput(value) {
 
 const ITEM_IMAGE_MAX_BYTES = 3 * 1024 * 1024;
 const ITEM_IMAGE_MAX_SIDE = 1200;
+const SECTION_BLOCK_STYLE = {
+  position: "relative",
+};
 const SECTION_HEADER_STYLE = {
   display: "flex",
   alignItems: "center",
   justifyContent: "space-between",
   width: "100%",
 };
-const SECTION_HEADER_ACTIONS_STYLE = {
-  display: "flex",
-  alignItems: "center",
-  gap: 8,
-};
 const SECTION_REFRESH_BTN_STYLE = {
-  width: 30,
-  height: 30,
+  width: 26,
+  height: 26,
   borderRadius: "50%",
   padding: 0,
-  lineHeight: "30px",
+  lineHeight: "26px",
   textAlign: "center",
-  fontSize: 16,
+  fontSize: 14,
   fontWeight: 700,
   background: "#ffffff",
   border: "1px solid #e5e7eb",
-  color: "#94a3b8",
+  color: "#9ca3af",
+  position: "absolute",
+  top: -10,
+  right: 0,
 };
 
 async function fileToDataUrl(file) {
@@ -612,11 +613,11 @@ export default function AdminWarehousePanel() {
 
       {!loading && activeTab === "items" && (
         <div className="admin-form">
-          <div style={SECTION_HEADER_STYLE}>
-            <div className="admin-label" style={{ fontWeight: 700 }}>
-              Номенклатура
-            </div>
-            <div style={SECTION_HEADER_ACTIONS_STYLE}>
+          <div style={SECTION_BLOCK_STYLE}>
+            <div style={SECTION_HEADER_STYLE}>
+              <div className="admin-label" style={{ fontWeight: 700 }}>
+                Номенклатура
+              </div>
               <button
                 type="button"
                 className="admin-btn admin-btn--secondary"
@@ -624,17 +625,17 @@ export default function AdminWarehousePanel() {
               >
                 Импорт из Excel
               </button>
-              <button
-                type="button"
-                className="admin-btn admin-btn--ghost"
-                onClick={loadAll}
-                title="Обновить раздел"
-                aria-label="Обновить номенклатуру"
-                style={SECTION_REFRESH_BTN_STYLE}
-              >
-                ↻
-              </button>
             </div>
+            <button
+              type="button"
+              className="admin-corner-refresh-btn"
+              onClick={loadAll}
+              title="Обновить раздел"
+              aria-label="Обновить номенклатуру"
+              style={SECTION_REFRESH_BTN_STYLE}
+            >
+              ↻
+            </button>
           </div>
 
           {itemError && (
@@ -853,22 +854,23 @@ export default function AdminWarehousePanel() {
 
       {!loading && activeTab === "locations" && (
         <div className="admin-form">
-          <div style={SECTION_HEADER_STYLE}>
-            <div className="admin-label" style={{ fontWeight: 700 }}>
-              Ячейки
+          <div style={SECTION_BLOCK_STYLE}>
+            <div style={SECTION_HEADER_STYLE}>
+              <div className="admin-label" style={{ fontWeight: 700 }}>
+                Ячейки
+              </div>
+              <div />
             </div>
-            <div style={SECTION_HEADER_ACTIONS_STYLE}>
-              <button
-                type="button"
-                className="admin-btn admin-btn--ghost"
-                onClick={loadAll}
-                title="Обновить раздел"
-                aria-label="Обновить список ячеек"
-                style={SECTION_REFRESH_BTN_STYLE}
-              >
-                ↻
-              </button>
-            </div>
+            <button
+              type="button"
+              className="admin-corner-refresh-btn"
+              onClick={loadAll}
+              title="Обновить раздел"
+              aria-label="Обновить список ячеек"
+              style={SECTION_REFRESH_BTN_STYLE}
+            >
+              ↻
+            </button>
           </div>
           <div className="admin-table-wrapper">
             <table className="admin-table">
@@ -924,22 +926,23 @@ export default function AdminWarehousePanel() {
 
       {!loading && activeTab === "requests" && (
         <div className="admin-form">
-          <div style={SECTION_HEADER_STYLE}>
-            <div className="admin-label" style={{ fontWeight: 700 }}>
-              Заявки
+          <div style={SECTION_BLOCK_STYLE}>
+            <div style={SECTION_HEADER_STYLE}>
+              <div className="admin-label" style={{ fontWeight: 700 }}>
+                Заявки
+              </div>
+              <div />
             </div>
-            <div style={SECTION_HEADER_ACTIONS_STYLE}>
-              <button
-                type="button"
-                className="admin-btn admin-btn--ghost"
-                onClick={loadAll}
-                title="Обновить раздел"
-                aria-label="Обновить список заявок"
-                style={SECTION_REFRESH_BTN_STYLE}
-              >
-                ↻
-              </button>
-            </div>
+            <button
+              type="button"
+              className="admin-corner-refresh-btn"
+              onClick={loadAll}
+              title="Обновить раздел"
+              aria-label="Обновить список заявок"
+              style={SECTION_REFRESH_BTN_STYLE}
+            >
+              ↻
+            </button>
           </div>
           <div className="admin-table-wrapper">
             <table className="admin-table">
@@ -988,22 +991,23 @@ export default function AdminWarehousePanel() {
 
       {!loading && activeTab === "orders" && (
         <div className="admin-form">
-          <div style={SECTION_HEADER_STYLE}>
-            <div className="admin-label" style={{ fontWeight: 700 }}>
-              Заказы
+          <div style={SECTION_BLOCK_STYLE}>
+            <div style={SECTION_HEADER_STYLE}>
+              <div className="admin-label" style={{ fontWeight: 700 }}>
+                Заказы
+              </div>
+              <div />
             </div>
-            <div style={SECTION_HEADER_ACTIONS_STYLE}>
-              <button
-                type="button"
-                className="admin-btn admin-btn--ghost"
-                onClick={loadAll}
-                title="Обновить раздел"
-                aria-label="Обновить раздел заказов"
-                style={SECTION_REFRESH_BTN_STYLE}
-              >
-                ↻
-              </button>
-            </div>
+            <button
+              type="button"
+              className="admin-corner-refresh-btn"
+              onClick={loadAll}
+              title="Обновить раздел"
+              aria-label="Обновить раздел заказов"
+              style={SECTION_REFRESH_BTN_STYLE}
+            >
+              ↻
+            </button>
           </div>
           <div className="admin-label" style={{ fontWeight: 600 }}>
             Импорт заказов из Excel
