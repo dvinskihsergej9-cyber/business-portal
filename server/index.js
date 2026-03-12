@@ -6041,6 +6041,46 @@ app.post("/api/notifications/push/unsubscribe", auth, async (req, res) => {
   }
 });
 
+app.post("/api/notifications/push/test", auth, async (req, res) => {
+  try {
+    if (!WEB_PUSH_ENABLED) {
+      return res.status(400).json({ message: "Push-уведомления на сервере не настроены." });
+    }
+
+    const userSubsCount = await prisma.pushSubscription.count({
+      where: {
+        orgId: req.user.orgId || null,
+        userId: req.user.id,
+      },
+    });
+
+    if (!userSubsCount) {
+      return res.status(409).json({
+        message:
+          "Нет активной push-подписки на этом аккаунте. Откройте приложение на устройстве и разрешите уведомления.",
+      });
+    }
+
+    await createWarehouseNotification({
+      orgId: req.user.orgId || null,
+      userId: req.user.id,
+      type: "PUSH_TEST",
+      title: "Тест push-уведомления",
+      message: "Проверка прошла: push-канал подключен.",
+      linkUrl: "/warehouse",
+      payloadJson: { at: new Date().toISOString() },
+    });
+
+    return res.json({
+      ok: true,
+      message: "Тестовое push-уведомление отправлено.",
+    });
+  } catch (err) {
+    console.error("push test error:", err);
+    return res.status(500).json({ message: "Ошибка отправки тестового push-уведомления." });
+  }
+});
+
 // ================== СКЛАД: НОМЕНКЛАТУРА И ОСТАТКИ ==================
 
 // Создать товар (номенклатура)

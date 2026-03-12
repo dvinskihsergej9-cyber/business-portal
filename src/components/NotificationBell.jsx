@@ -14,6 +14,8 @@ export default function NotificationBell() {
   const [unreadCount, setUnreadCount] = useState(0);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
+  const [pushEnabled, setPushEnabled] = useState(false);
+  const [pushTestLoading, setPushTestLoading] = useState(false);
   const wrapperRef = useRef(null);
 
   const token = localStorage.getItem("token") || "";
@@ -87,6 +89,25 @@ export default function NotificationBell() {
     }
   };
 
+  const handlePushTest = async () => {
+    setPushTestLoading(true);
+    try {
+      const res = await fetch(`${API_BASE}/notifications/push/test`, {
+        method: "POST",
+        headers: authHeaders,
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        throw new Error(data?.message || "Не удалось отправить тестовый push.");
+      }
+      alert(data?.message || "Тестовое push-уведомление отправлено.");
+    } catch (err) {
+      alert(err?.message || "Ошибка отправки тестового push.");
+    } finally {
+      setPushTestLoading(false);
+    }
+  };
+
   useEffect(() => {
     if (!token) return;
     loadUnreadCount();
@@ -123,7 +144,9 @@ export default function NotificationBell() {
           headers: { Authorization: authHeaders.Authorization },
         });
         const keyData = await keyRes.json();
-        if (!keyRes.ok || !keyData?.enabled || !keyData?.publicKey) return;
+        const enabled = Boolean(keyRes.ok && keyData?.enabled && keyData?.publicKey);
+        setPushEnabled(enabled);
+        if (!enabled) return;
 
         const registration = await navigator.serviceWorker.register("/push-sw.js");
 
@@ -149,6 +172,7 @@ export default function NotificationBell() {
           body: JSON.stringify(subscription),
         });
       } catch {
+        setPushEnabled(false);
         // no-op: in-app notifications continue to work even without push
       }
     };
@@ -226,19 +250,38 @@ export default function NotificationBell() {
             }}
           >
             <strong style={{ fontSize: 14 }}>Уведомления</strong>
-            <button
-              type="button"
-              onClick={markAllRead}
-              style={{
-                border: "none",
-                background: "transparent",
-                color: "#2563eb",
-                fontSize: 12,
-                cursor: "pointer",
-              }}
-            >
-              Прочитать все
-            </button>
+            <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+              {pushEnabled && (
+                <button
+                  type="button"
+                  onClick={handlePushTest}
+                  disabled={pushTestLoading}
+                  style={{
+                    border: "none",
+                    background: "transparent",
+                    color: "#16a34a",
+                    fontSize: 12,
+                    cursor: pushTestLoading ? "default" : "pointer",
+                    opacity: pushTestLoading ? 0.7 : 1,
+                  }}
+                >
+                  {pushTestLoading ? "Отправка..." : "Тест push"}
+                </button>
+              )}
+              <button
+                type="button"
+                onClick={markAllRead}
+                style={{
+                  border: "none",
+                  background: "transparent",
+                  color: "#2563eb",
+                  fontSize: 12,
+                  cursor: "pointer",
+                }}
+              >
+                Прочитать все
+              </button>
+            </div>
           </div>
 
           {loading && <div style={{ padding: 12, fontSize: 13 }}>Загрузка...</div>}
