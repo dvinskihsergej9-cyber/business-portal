@@ -611,7 +611,7 @@ async function sendAutoReorderEmail({ to, subject, text }) {
   }
 }
 
-function buildPurchaseOrderEmailText(order) {
+function buildPurchaseOrderEmailText(order, templateText = null) {
   const number = order?.number || `PO-${order?.id || "?"}`;
   const date = order?.date
     ? new Date(order.date).toLocaleDateString("ru-RU")
@@ -629,6 +629,40 @@ function buildPurchaseOrderEmailText(order) {
       return `${index + 1}. ${name}${sku} - ${qty} ${unit}, цена ${price.toLocaleString("ru-RU")} ₽`;
     })
     .join("\n");
+
+  const totalAmount = lines.reduce((sum, row) => {
+    const qty = Number(row?.quantity) || 0;
+    const price = Number(row?.price) || 0;
+    return sum + qty * price;
+  }, 0);
+
+  const cleanTemplate = String(templateText || "").trim();
+  if (cleanTemplate) {
+    const placeholders = {
+      supplierName,
+      orderNumber: number,
+      orderDate: date,
+      lines: linesText || "-",
+      totalAmount: totalAmount.toLocaleString("ru-RU"),
+    };
+
+    let rendered = cleanTemplate.replace(/\{\{\s*(\w+)\s*\}\}/g, (_, key) => {
+      return placeholders[key] ?? "";
+    });
+
+    if (!/\{\{\s*lines\s*\}\}/i.test(cleanTemplate)) {
+      rendered = [
+        rendered.trim(),
+        "",
+        "Позиции заказа:",
+        linesText || "-",
+      ]
+        .filter(Boolean)
+        .join("\n");
+    }
+
+    return rendered.trim();
+  }
 
   return [
     `Здравствуйте, ${supplierName}!`,
@@ -3604,6 +3638,7 @@ app.put("/api/settings/org-profile", auth, async (req, res) => {
       inn,
       kpp,
       phone,
+      purchaseOrderEmailTemplate,
     } = req.body || {};
 
     if (!orgName || !legalAddress || !actualAddress || !inn || !kpp) {
@@ -3629,6 +3664,8 @@ app.put("/api/settings/org-profile", auth, async (req, res) => {
       inn,
       kpp,
       phone: phone || "",
+      purchaseOrderEmailTemplate:
+        String(purchaseOrderEmailTemplate || "").trim() || null,
     };
 
     const profile = existing
@@ -10400,6 +10437,10 @@ app.put("/api/purchase-orders/:id/status", auth, async (req, res) => {
 
     let emailResult = null;
     if (status === "SENT") {
+      const orgProfile = await prisma.orgProfile.findFirst({
+        where: { orgId: order.orgId || req.user.orgId || null },
+        select: { purchaseOrderEmailTemplate: true },
+      });
       const shouldSendEmail = sendEmail !== false;
       const preferredItem = (order.items || []).find(
         (row) => row?.item?.autoReorderContactEmail || row?.item?.autoReorderMessage
@@ -10414,7 +10455,10 @@ app.put("/api/purchase-orders/:id/status", auth, async (req, res) => {
       const text =
         String(emailMessage || "").trim() ||
         String(preferredItem?.item?.autoReorderMessage || "").trim() ||
-        buildPurchaseOrderEmailText(order);
+        buildPurchaseOrderEmailText(
+          order,
+          orgProfile?.purchaseOrderEmailTemplate || null
+        );
 
       if (!shouldSendEmail) {
         emailResult = {

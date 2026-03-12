@@ -8,6 +8,7 @@ const EMPTY_FORM = {
   inn: "",
   kpp: "",
   phone: "",
+  purchaseOrderEmailTemplate: "",
 };
 
 export default function AdminOrgProfilePanel() {
@@ -52,6 +53,7 @@ export default function AdminOrgProfilePanel() {
           inn: profile?.inn || "",
           kpp: profile?.kpp || "",
           phone: profile?.phone || "",
+          purchaseOrderEmailTemplate: profile?.purchaseOrderEmailTemplate || "",
         });
       } catch (err) {
         if (!active) return;
@@ -82,6 +84,9 @@ export default function AdminOrgProfilePanel() {
       inn: String(form.inn || "").trim(),
       kpp: String(form.kpp || "").trim(),
       phone: String(form.phone || "").trim(),
+      purchaseOrderEmailTemplate: String(
+        form.purchaseOrderEmailTemplate || ""
+      ),
     };
 
     if (
@@ -119,6 +124,7 @@ export default function AdminOrgProfilePanel() {
         inn: profile?.inn || "",
         kpp: profile?.kpp || "",
         phone: profile?.phone || "",
+        purchaseOrderEmailTemplate: profile?.purchaseOrderEmailTemplate || "",
       });
       setSuccess("Реквизиты сохранены.");
     } catch (err) {
@@ -197,6 +203,27 @@ export default function AdminOrgProfilePanel() {
                 value={form.kpp}
                 onChange={setField("kpp")}
               />
+            </div>
+          </div>
+
+          <div>
+            <label className="admin-label">Шаблон письма поставщику (необязательно)</label>
+            <textarea
+              className="admin-input"
+              value={form.purchaseOrderEmailTemplate}
+              onChange={setField("purchaseOrderEmailTemplate")}
+              rows={8}
+              placeholder={
+                "Здравствуйте, {{supplierName}}!\n\n" +
+                "Просим обработать заказ № {{orderNumber}} от {{orderDate}}.\n\n" +
+                "Позиции:\n{{lines}}\n\n" +
+                "Итого: {{totalAmount}} ₽\n\n" +
+                "С уважением,\nСкладОнлайн"
+              }
+              style={{ resize: "vertical", minHeight: 180 }}
+            />
+            <div className="admin-muted" style={{ marginTop: 6 }}>
+              Переменные: {"{{supplierName}}"}, {"{{orderNumber}}"}, {"{{orderDate}}"}, {"{{lines}}"}, {"{{totalAmount}}"}.
             </div>
           </div>
 

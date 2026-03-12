@@ -610,6 +610,7 @@ model OrgProfile {
   inn                   String
   kpp                   String
   phone                 String
+  purchaseOrderEmailTemplate String?
   apiKeyHash            String?
   apiKeyHint            String?
   apiKeyLastRotatedAt   DateTime?
