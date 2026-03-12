@@ -7,6 +7,7 @@ import ExcelJS from "exceljs";
 import multer from "multer";
 import crypto from "crypto";
 import nodemailer from "nodemailer";
+import webpush from "web-push";
 import QRCode from "qrcode";
 import bwipjs from "bwip-js";
 import { AsyncLocalStorage } from "node:async_hooks";
@@ -283,6 +284,8 @@ const TENANT_SCOPED_MODELS = new Set([
   "WarehouseRequest",
   "WarehouseRequestItem",
   "WarehouseTask",
+  "WarehouseNotification",
+  "PushSubscription",
   "PurchaseOrder",
   "PurchaseOrderItem",
   "Item",
@@ -462,6 +465,24 @@ const stockService = createWarehouseStockService(prisma, {
 
 let mailTransport = null;
 const MAIL_SEND_TIMEOUT_MS = Number(process.env.MAIL_SEND_TIMEOUT_MS || 12000);
+const WEB_PUSH_PUBLIC_KEY = String(process.env.WEB_PUSH_PUBLIC_KEY || "").trim();
+const WEB_PUSH_PRIVATE_KEY = String(process.env.WEB_PUSH_PRIVATE_KEY || "").trim();
+const WEB_PUSH_SUBJECT = String(
+  process.env.WEB_PUSH_SUBJECT || process.env.APP_URL || "mailto:noreply@sklad-online.local"
+).trim();
+const WEB_PUSH_ENABLED = Boolean(WEB_PUSH_PUBLIC_KEY && WEB_PUSH_PRIVATE_KEY);
+
+if (WEB_PUSH_ENABLED) {
+  try {
+    webpush.setVapidDetails(
+      WEB_PUSH_SUBJECT,
+      WEB_PUSH_PUBLIC_KEY,
+      WEB_PUSH_PRIVATE_KEY
+    );
+  } catch (err) {
+    console.error("[PUSH] Невозможно инициализировать VAPID:", err);
+  }
+}
 
 function getMailTransport() {
   if (mailTransport) return mailTransport;
@@ -491,6 +512,104 @@ async function sendMailWithTimeout(transport, payload) {
       setTimeout(() => reject(new Error("MAIL_TIMEOUT")), MAIL_SEND_TIMEOUT_MS)
     ),
   ]);
+}
+
+function parsePushSubscription(input) {
+  const endpoint = String(input?.endpoint || "").trim();
+  const p256dh = String(input?.keys?.p256dh || "").trim();
+  const auth = String(input?.keys?.auth || "").trim();
+  if (!endpoint || !p256dh || !auth) {
+    return null;
+  }
+  return { endpoint, p256dh, auth };
+}
+
+async function sendWebPushToUser(orgId, userId, payload) {
+  if (!WEB_PUSH_ENABLED) return;
+  if (!orgId || !userId) return;
+
+  const subscriptions = await prisma.pushSubscription.findMany({
+    where: { orgId, userId },
+    select: { id: true, endpoint: true, p256dh: true, auth: true },
+    take: 20,
+  });
+  if (!subscriptions.length) return;
+
+  const message = JSON.stringify(payload || {});
+  for (const sub of subscriptions) {
+    try {
+      await webpush.sendNotification(
+        {
+          endpoint: sub.endpoint,
+          keys: {
+            p256dh: sub.p256dh,
+            auth: sub.auth,
+          },
+        },
+        message,
+        { TTL: 60 * 60 }
+      );
+      await prisma.pushSubscription.update({
+        where: { id: sub.id },
+        data: {
+          lastSuccessAt: new Date(),
+          lastErrorAt: null,
+          lastErrorMessage: null,
+        },
+      });
+    } catch (err) {
+      const statusCode = Number(err?.statusCode || 0);
+      const messageText = String(err?.message || "PUSH_SEND_FAILED");
+      if (statusCode === 404 || statusCode === 410) {
+        await prisma.pushSubscription.delete({ where: { id: sub.id } }).catch(() => null);
+      } else {
+        await prisma.pushSubscription.update({
+          where: { id: sub.id },
+          data: {
+            lastErrorAt: new Date(),
+            lastErrorMessage: messageText.slice(0, 500),
+          },
+        }).catch(() => null);
+      }
+    }
+  }
+}
+
+async function createWarehouseNotification({
+  orgId,
+  userId,
+  type = "TASK",
+  title,
+  message,
+  linkUrl = null,
+  payloadJson = null,
+}) {
+  if (!orgId || !userId || !title || !message) return null;
+
+  const notification = await prisma.warehouseNotification.create({
+    data: {
+      orgId,
+      userId,
+      type,
+      title,
+      message,
+      linkUrl,
+      payloadJson,
+      isRead: false,
+    },
+  });
+
+  await sendWebPushToUser(orgId, userId, {
+    title,
+    body: message,
+    url: linkUrl || "/warehouse",
+    notificationId: notification.id,
+    type,
+  }).catch((err) => {
+    console.error("[PUSH] Ошибка отправки:", err);
+  });
+
+  return notification;
 }
 
 function hashInviteToken(token) {
@@ -2887,9 +3006,19 @@ async function checkWarehouseTaskNotifications() {
         dueDate: { not: null },
         status: { in: ["NEW", "IN_PROGRESS"] },
       },
+      select: {
+        id: true,
+        orgId: true,
+        title: true,
+        dueDate: true,
+        lastReminderAt: true,
+        executorUserId: true,
+        assignerId: true,
+      },
     });
 
     for (const task of tasks) {
+      if (!task.orgId) continue;
       const due = new Date(task.dueDate);
       if (Number.isNaN(due.getTime())) continue;
 
@@ -2903,50 +3032,59 @@ async function checkWarehouseTaskNotifications() {
         ? (now.getTime() - last.getTime()) / (1000 * 60)
         : Infinity;
 
-      // 1) За 5 минут до срока — одно напоминание
+      const dueStr = due.toLocaleString("ru-RU", {
+        day: "2-digit",
+        month: "2-digit",
+        year: "numeric",
+        hour: "2-digit",
+        minute: "2-digit",
+      });
+
+      // 1) За 5 минут до срока — одно напоминание.
       if (diffMinutes <= 5 && diffMinutes > 0 && !task.lastReminderAt) {
-        const dueStr = due.toLocaleString("ru-RU", {
-          day: "2-digit",
-          month: "2-digit",
-          year: "numeric",
-          hour: "2-digit",
-          minute: "2-digit",
-        });
-
-        const baseText = buildWarehouseTaskTelegramText({ task, dueStr, kind: "due_soon", isExecutor: false });
-
-        await sendWarehouseGroupMessage(baseText);
-
-        if (task.executorChatId) {
-          const execText = buildWarehouseTaskTelegramText({ task, dueStr, kind: "due_soon", isExecutor: true });
-          await sendTelegramMessage(task.executorChatId, execText);
+        if (task.executorUserId) {
+          await createWarehouseNotification({
+            orgId: task.orgId,
+            userId: task.executorUserId,
+            type: "TASK_DUE_SOON",
+            title: "Срок задачи скоро истекает",
+            message: `Задача "${task.title}" до ${dueStr}.`,
+            linkUrl: "/warehouse",
+            payloadJson: { taskId: task.id, dueDate: task.dueDate },
+          });
         }
 
         await prisma.warehouseTask.update({
           where: { id: task.id },
           data: { lastReminderAt: now },
         });
-
         continue;
       }
 
-      // 2) Срок уже прошёл — напоминание раз в час
+      // 2) Просрочка — напоминание раз в час.
       if (diffMinutes < 0 && minutesSinceLast >= 60) {
-        const dueStr = due.toLocaleString("ru-RU", {
-          day: "2-digit",
-          month: "2-digit",
-          year: "numeric",
-          hour: "2-digit",
-          minute: "2-digit",
-        });
+        if (task.executorUserId) {
+          await createWarehouseNotification({
+            orgId: task.orgId,
+            userId: task.executorUserId,
+            type: "TASK_OVERDUE",
+            title: "Задача просрочена",
+            message: `Задача "${task.title}" просрочена (срок: ${dueStr}).`,
+            linkUrl: "/warehouse",
+            payloadJson: { taskId: task.id, dueDate: task.dueDate },
+          });
+        }
 
-        const baseText = buildWarehouseTaskTelegramText({ task, dueStr, kind: "overdue", isExecutor: false });
-
-        await sendWarehouseGroupMessage(baseText);
-
-        if (task.executorChatId) {
-          const execText = buildWarehouseTaskTelegramText({ task, dueStr, kind: "overdue", isExecutor: true });
-          await sendTelegramMessage(task.executorChatId, execText);
+        if (task.assignerId && task.assignerId !== task.executorUserId) {
+          await createWarehouseNotification({
+            orgId: task.orgId,
+            userId: task.assignerId,
+            type: "TASK_OVERDUE",
+            title: "Просрочена назначенная задача",
+            message: `Задача "${task.title}" просрочена (срок: ${dueStr}).`,
+            linkUrl: "/warehouse",
+            payloadJson: { taskId: task.id, dueDate: task.dueDate },
+          });
         }
 
         await prisma.warehouseTask.update({
@@ -5431,6 +5569,7 @@ async function createWarehouseTaskFromRequest(request, assignerId) {
 
     const task = await prisma.warehouseTask.create({
       data: {
+        orgId: request.orgId || null,
         title: `\u0417\u0430\u044f\u0432\u043a\u0430 \u0441\u043a\u043b\u0430\u0434\u0430 #${request.id}: ${request.title || "\u0411\u0435\u0437 \u043d\u0430\u0437\u0432\u0430\u043d\u0438\u044f"}`,
         description,
         dueDate: null,
@@ -5442,6 +5581,9 @@ async function createWarehouseTaskFromRequest(request, assignerId) {
         assigner: {
           select: { id: true, name: true, email: true },
         },
+        executorUser: {
+          select: { id: true, name: true, email: true, role: true },
+        },
       },
     });
 
@@ -5449,20 +5591,42 @@ async function createWarehouseTaskFromRequest(request, assignerId) {
       `[Warehouse] \u0441\u043e\u0437\u0434\u0430\u043d\u0430 \u0437\u0430\u0434\u0430\u0447\u0430 ${task.id} \u043f\u043e \u0437\u0430\u044f\u0432\u043a\u0435 ${request.id}`
     );
 
-    const groupText = buildWarehouseTaskCreatedTelegramText(task);
-
-    await sendWarehouseGroupMessage(groupText);
-
     return task;
   } catch (err) {
     console.error("[createWarehouseTaskFromRequest] error:", err);
   }
 }
 
+const WAREHOUSE_TASK_INCLUDE = {
+  assigner: {
+    select: { id: true, name: true, email: true },
+  },
+  executorUser: {
+    select: { id: true, name: true, email: true, role: true },
+  },
+};
+
+const WAREHOUSE_TASK_EDIT_STATUSES = ["NEW", "IN_PROGRESS", "DONE", "CANCELLED"];
+const WAREHOUSE_TASK_STATUS_LABELS = {
+  NEW: "Не выполнена",
+  IN_PROGRESS: "В работе",
+  DONE: "Выполнена",
+  CANCELLED: "Отменена",
+};
+
+function canManageWarehouseTasks(user) {
+  return Boolean(
+    user?.role === "ADMIN" || hasPermission(user, PERMISSION_KEYS.WAREHOUSE_MANAGE)
+  );
+}
+
 app.post("/api/warehouse/tasks", auth, async (req, res) => {
   try {
-    const { title, description, dueDate, executorName, executorChatId } =
-      req.body;
+    if (!canManageWarehouseTasks(req.user)) {
+      return res.status(403).json({ message: "Только администратор может создавать задачи." });
+    }
+
+    const { title, description, dueDate, executorUserId } = req.body;
 
     if (!title) {
       return res
@@ -5470,63 +5634,48 @@ app.post("/api/warehouse/tasks", auth, async (req, res) => {
         .json({ message: "\u041d\u0443\u0436\u043d\u043e \u0443\u043a\u0430\u0437\u0430\u0442\u044c \u043d\u0430\u0437\u0432\u0430\u043d\u0438\u0435 \u0437\u0430\u0434\u0430\u0447\u0438." });
     }
 
+    const normalizedExecutorUserId =
+      Number(executorUserId) > 0 ? Number(executorUserId) : null;
+
+    let executor = null;
+    if (normalizedExecutorUserId) {
+      executor = await prisma.user.findFirst({
+        where: {
+          id: normalizedExecutorUserId,
+          orgId: req.user.orgId || null,
+          isActive: true,
+        },
+        select: { id: true, name: true, email: true, role: true },
+      });
+      if (!executor) {
+        return res.status(400).json({ message: "Выбранный исполнитель не найден." });
+      }
+    }
+
     const task = await prisma.warehouseTask.create({
       data: {
+        orgId: req.user.orgId || null,
         title,
         description: description || null,
         dueDate: dueDate ? new Date(dueDate) : null,
-        executorName: executorName || null,
-        executorChatId: executorChatId || null,
+        executorUserId: executor?.id || null,
+        executorName: executor?.name || null,
+        executorChatId: null,
         assignerId: req.user.id,
       },
-      include: {
-        assigner: {
-          select: { id: true, name: true, email: true },
-        },
-      },
+      include: WAREHOUSE_TASK_INCLUDE,
     });
 
-    const groupText = buildWarehouseTaskAssignedTelegramText(task, { forExecutor: false });
-
-    sendWarehouseGroupMessage(groupText).catch((err) =>
-      console.error("\u041e\u0448\u0438\u0431\u043a\u0430 \u043e\u0442\u043f\u0440\u0430\u0432\u043a\u0438 \u0432 Telegram (\u0433\u0440\u0443\u043f\u043f\u0430):", err)
-    );
-
-    if (task.executorChatId) {
-      const execText = buildWarehouseTaskAssignedTelegramText(task, { forExecutor: true });
-      let buttonText = "\u041e\u0442\u043c\u0435\u0442\u0438\u0442\u044c \u0432\u044b\u043f\u043e\u043b\u043d\u0435\u043d\u043e";
-      let callbackData = `done:${task.id}`;
-
-      try {
-        const requestId = extractRequestIdFromTitle(task.title);
-        if (requestId) {
-          const request = await prisma.warehouseRequest.findUnique({
-            where: { id: requestId },
-            include: { items: true },
-          });
-          if (await isTmcIssueRequest(request)) {
-            buttonText = "\u0412\u044b\u0434\u0430\u043d\u043e";
-            callbackData = `issue_done:${task.id}`;
-          }
-        }
-      } catch (e) {
-        console.error("[Telegram] cannot detect request for task:", e);
-      }
-
-      sendTelegramMessage(task.executorChatId, execText, {
-        reply_markup: {
-          inline_keyboard: [
-            [
-              {
-                text: buttonText,
-                callback_data: callbackData,
-              },
-            ],
-          ],
-        },
-      }).catch((err) =>
-        console.error("\u041e\u0448\u0438\u0431\u043a\u0430 \u043e\u0442\u043f\u0440\u0430\u0432\u043a\u0438 \u0432 Telegram (\u0438\u0441\u043f\u043e\u043b\u043d\u0438\u0442\u0435\u043b\u044c):", err)
-      );
+    if (task.executorUserId) {
+      await createWarehouseNotification({
+        orgId: req.user.orgId || null,
+        userId: task.executorUserId,
+        type: "TASK_ASSIGNED",
+        title: "Новая задача склада",
+        message: `Вам назначена задача: "${task.title}".`,
+        linkUrl: "/warehouse",
+        payloadJson: { taskId: task.id },
+      });
     }
 
     res.status(201).json(task);
@@ -5538,16 +5687,43 @@ app.post("/api/warehouse/tasks", auth, async (req, res) => {
   }
 });
 
+app.get("/api/warehouse/tasks/executors", auth, async (req, res) => {
+  try {
+    if (!canManageWarehouseTasks(req.user)) {
+      return res.status(403).json({ message: "Нет прав для просмотра исполнителей." });
+    }
+    const users = await prisma.user.findMany({
+      where: {
+        orgId: req.user.orgId || null,
+        isActive: true,
+        role: { in: ["EMPLOYEE", "ADMIN"] },
+      },
+      select: {
+        id: true,
+        name: true,
+        email: true,
+        role: true,
+      },
+      orderBy: [{ role: "asc" }, { name: "asc" }],
+    });
+    res.json(users);
+  } catch (err) {
+    console.error("warehouse task executors error:", err);
+    res.status(500).json({ message: "Ошибка сервера при загрузке исполнителей." });
+  }
+});
+
 app.get("/api/warehouse/tasks/my", auth, async (req, res) => {
   try {
+    const manager = canManageWarehouseTasks(req.user);
     const tasks = await prisma.warehouseTask.findMany({
-      where: { assignerId: req.user.id },
+      where: manager
+        ? {
+            OR: [{ executorUserId: req.user.id }, { assignerId: req.user.id }],
+          }
+        : { executorUserId: req.user.id },
       orderBy: { createdAt: "desc" },
-      include: {
-        assigner: {
-          select: { id: true, name: true, email: true },
-        },
-      },
+      include: WAREHOUSE_TASK_INCLUDE,
     });
 
     res.json(tasks);
@@ -5562,17 +5738,13 @@ app.get("/api/warehouse/tasks/my", auth, async (req, res) => {
 // все задачи склада (ADMIN/EMPLOYEE)
 app.get("/api/warehouse/tasks", auth, async (req, res) => {
   try {
-    if (!PORTAL_ALLOWED_ROLES.includes(req.user.role)) {
-      return res.status(403).json({ message: "Нет прав" });
+    if (!canManageWarehouseTasks(req.user)) {
+      return res.status(403).json({ message: "Нет прав для просмотра всех задач." });
     }
 
     const tasks = await prisma.warehouseTask.findMany({
       orderBy: { createdAt: "desc" },
-      include: {
-        assigner: {
-          select: { id: true, name: true, email: true },
-        },
-      },
+      include: WAREHOUSE_TASK_INCLUDE,
     });
 
     res.json(tasks);
@@ -5590,17 +5762,32 @@ app.put("/api/warehouse/tasks/:id/status", auth, async (req, res) => {
     const id = Number(req.params.id);
     const { status } = req.body;
 
-    if (!PORTAL_ALLOWED_ROLES.includes(req.user.role)) {
-      return res.status(403).json({ message: "Нет прав" });
+    if (!id) {
+      return res.status(400).json({ message: "Некорректный идентификатор задачи." });
     }
 
-    if (!["NEW", "IN_PROGRESS", "DONE", "CANCELLED"].includes(status)) {
+    if (!WAREHOUSE_TASK_EDIT_STATUSES.includes(status)) {
       return res.status(400).json({ message: "Недопустимый статус" });
+    }
+
+    const existing = await prisma.warehouseTask.findUnique({
+      where: { id },
+      include: WAREHOUSE_TASK_INCLUDE,
+    });
+    if (!existing) {
+      return res.status(404).json({ message: "Задача не найдена." });
+    }
+
+    const manager = canManageWarehouseTasks(req.user);
+    const isExecutor = existing.executorUserId === req.user.id;
+    if (!manager && !isExecutor) {
+      return res.status(403).json({ message: "Можно менять только назначенные вам задачи." });
     }
 
     const updated = await prisma.warehouseTask.update({
       where: { id },
       data: { status },
+      include: WAREHOUSE_TASK_INCLUDE,
     });
 
     // Если задача создана по заявке на склад и мы поставили DONE —
@@ -5623,12 +5810,223 @@ app.put("/api/warehouse/tasks/:id/status", auth, async (req, res) => {
       }
     }
 
+    if (existing.status !== updated.status) {
+      if (updated.assignerId && updated.assignerId !== req.user.id) {
+        await createWarehouseNotification({
+          orgId: req.user.orgId || null,
+          userId: updated.assignerId,
+          type: "TASK_STATUS_CHANGED",
+          title: "Статус задачи изменен",
+          message: `Задача "${updated.title}" переведена в статус "${
+            WAREHOUSE_TASK_STATUS_LABELS[updated.status] || updated.status
+          }".`,
+          linkUrl: "/warehouse",
+          payloadJson: {
+            taskId: updated.id,
+            fromStatus: existing.status,
+            toStatus: updated.status,
+          },
+        });
+      }
+      if (
+        updated.executorUserId &&
+        updated.executorUserId !== req.user.id &&
+        updated.executorUserId !== updated.assignerId
+      ) {
+        await createWarehouseNotification({
+          orgId: req.user.orgId || null,
+          userId: updated.executorUserId,
+          type: "TASK_STATUS_CHANGED",
+          title: "Статус вашей задачи обновлен",
+          message: `Задача "${updated.title}" теперь в статусе "${
+            WAREHOUSE_TASK_STATUS_LABELS[updated.status] || updated.status
+          }".`,
+          linkUrl: "/warehouse",
+          payloadJson: {
+            taskId: updated.id,
+            fromStatus: existing.status,
+            toStatus: updated.status,
+          },
+        });
+      }
+    }
+
     res.json(updated);
   } catch (err) {
     console.error("warehouse task status error:", err);
     res
       .status(500)
       .json({ message: "Ошибка сервера при обновлении статуса задачи" });
+  }
+});
+
+// ================== УВЕДОМЛЕНИЯ ==================
+
+app.get("/api/notifications", auth, async (req, res) => {
+  try {
+    const limitRaw = Number(req.query.limit || 25);
+    const limit = Math.max(1, Math.min(limitRaw || 25, 100));
+    const unreadOnly =
+      String(req.query.unreadOnly || "").trim().toLowerCase() === "true";
+
+    const where = {
+      orgId: req.user.orgId || null,
+      userId: req.user.id,
+      ...(unreadOnly ? { isRead: false } : {}),
+    };
+
+    const [items, unreadCount] = await Promise.all([
+      prisma.warehouseNotification.findMany({
+        where,
+        orderBy: { createdAt: "desc" },
+        take: limit,
+      }),
+      prisma.warehouseNotification.count({
+        where: {
+          orgId: req.user.orgId || null,
+          userId: req.user.id,
+          isRead: false,
+        },
+      }),
+    ]);
+
+    res.json({ items, unreadCount });
+  } catch (err) {
+    console.error("notifications list error:", err);
+    res.status(500).json({ message: "Ошибка загрузки уведомлений." });
+  }
+});
+
+app.get("/api/notifications/unread-count", auth, async (req, res) => {
+  try {
+    const unreadCount = await prisma.warehouseNotification.count({
+      where: {
+        orgId: req.user.orgId || null,
+        userId: req.user.id,
+        isRead: false,
+      },
+    });
+    res.json({ unreadCount });
+  } catch (err) {
+    console.error("notifications unread-count error:", err);
+    res.status(500).json({ message: "Ошибка загрузки количества уведомлений." });
+  }
+});
+
+app.post("/api/notifications/:id/read", auth, async (req, res) => {
+  try {
+    const id = Number(req.params.id);
+    if (!id) {
+      return res.status(400).json({ message: "Некорректный идентификатор уведомления." });
+    }
+
+    const current = await prisma.warehouseNotification.findFirst({
+      where: {
+        id,
+        orgId: req.user.orgId || null,
+        userId: req.user.id,
+      },
+      select: { id: true, isRead: true },
+    });
+
+    if (!current) {
+      return res.status(404).json({ message: "Уведомление не найдено." });
+    }
+    if (current.isRead) {
+      return res.json({ ok: true });
+    }
+
+    await prisma.warehouseNotification.update({
+      where: { id },
+      data: { isRead: true, readAt: new Date() },
+    });
+    res.json({ ok: true });
+  } catch (err) {
+    console.error("notifications mark-read error:", err);
+    res.status(500).json({ message: "Ошибка обновления уведомления." });
+  }
+});
+
+app.post("/api/notifications/read-all", auth, async (req, res) => {
+  try {
+    const result = await prisma.warehouseNotification.updateMany({
+      where: {
+        orgId: req.user.orgId || null,
+        userId: req.user.id,
+        isRead: false,
+      },
+      data: { isRead: true, readAt: new Date() },
+    });
+    res.json({ ok: true, updated: result.count || 0 });
+  } catch (err) {
+    console.error("notifications read-all error:", err);
+    res.status(500).json({ message: "Ошибка обновления уведомлений." });
+  }
+});
+
+app.get("/api/notifications/push/public-key", auth, async (req, res) => {
+  res.json({
+    enabled: WEB_PUSH_ENABLED,
+    publicKey: WEB_PUSH_ENABLED ? WEB_PUSH_PUBLIC_KEY : null,
+  });
+});
+
+app.post("/api/notifications/push/subscribe", auth, async (req, res) => {
+  try {
+    if (!WEB_PUSH_ENABLED) {
+      return res.status(400).json({ message: "Push-уведомления пока не настроены." });
+    }
+
+    const subscription = parsePushSubscription(req.body?.subscription || req.body);
+    if (!subscription) {
+      return res.status(400).json({ message: "Некорректные данные push-подписки." });
+    }
+
+    await prisma.pushSubscription.upsert({
+      where: { endpoint: subscription.endpoint },
+      create: {
+        orgId: req.user.orgId || null,
+        userId: req.user.id,
+        endpoint: subscription.endpoint,
+        p256dh: subscription.p256dh,
+        auth: subscription.auth,
+        userAgent: String(req.headers["user-agent"] || "").slice(0, 255),
+      },
+      update: {
+        orgId: req.user.orgId || null,
+        userId: req.user.id,
+        p256dh: subscription.p256dh,
+        auth: subscription.auth,
+        userAgent: String(req.headers["user-agent"] || "").slice(0, 255),
+      },
+    });
+
+    res.json({ ok: true });
+  } catch (err) {
+    console.error("push subscribe error:", err);
+    res.status(500).json({ message: "Не удалось сохранить push-подписку." });
+  }
+});
+
+app.post("/api/notifications/push/unsubscribe", auth, async (req, res) => {
+  try {
+    const endpoint = String(req.body?.endpoint || "").trim();
+    if (!endpoint) {
+      return res.status(400).json({ message: "Не передан endpoint подписки." });
+    }
+
+    await prisma.pushSubscription.deleteMany({
+      where: {
+        endpoint,
+        orgId: req.user.orgId || null,
+        userId: req.user.id,
+      },
+    });
+
+    res.json({ ok: true });
+  } catch (err) {
+    console.error("push unsubscribe error:", err);
+    res.status(500).json({ message: "Не удалось удалить push-подписку." });
   }
 });
 
