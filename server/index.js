@@ -1247,6 +1247,17 @@ app.use("/api/warehouse", (req, res, next) => {
         return next();
       }
 
+      const isOwnTasksRead =
+        isReadRequest(req) && req.path === "/tasks/my";
+      const isOwnTaskStatusUpdate =
+        req.method === "PUT" && /^\/tasks\/\d+\/status$/.test(req.path);
+      const canUseOwnTaskEndpointsWithoutPermission =
+        (isOwnTasksRead || isOwnTaskStatusUpdate) &&
+        !hasPermission(req.user, PERMISSION_KEYS.WAREHOUSE_TASKS);
+      if (canUseOwnTaskEndpointsWithoutPermission) {
+        return next();
+      }
+
       if (match.key && !hasPermission(req.user, match.key)) {
         if (
           match.key === PERMISSION_KEYS.WAREHOUSE_LOCATIONS &&

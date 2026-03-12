@@ -230,10 +230,18 @@ export default function Warehouse({
   ];
 
   const permissionAllowedSections = useMemo(
-    () =>
-      defaultSections.filter((sectionKey) =>
+    () => {
+      const allowed = defaultSections.filter((sectionKey) =>
         hasPermission(user, WAREHOUSE_SECTION_PERMISSION_MAP[sectionKey])
-      ),
+      );
+      if (
+        hasPermission(user, PERMISSION_KEYS.APP_WAREHOUSE) &&
+        !allowed.includes("tasks")
+      ) {
+        return ["tasks", ...allowed];
+      }
+      return allowed;
+    },
     [user]
   );
 
