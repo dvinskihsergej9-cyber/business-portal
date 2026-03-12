@@ -638,19 +638,27 @@ function buildPurchaseOrderEmailText(order, templateText = null) {
 
   const cleanTemplate = String(templateText || "").trim();
   if (cleanTemplate) {
+    const hasLinesToken =
+      /\{\{\s*lines\s*\}\}/i.test(cleanTemplate) ||
+      /\{\{\s*позиции\s*\}\}/i.test(cleanTemplate);
     const placeholders = {
       supplierName,
       orderNumber: number,
       orderDate: date,
       lines: linesText || "-",
       totalAmount: totalAmount.toLocaleString("ru-RU"),
+      поставщик: supplierName,
+      номерЗаказа: number,
+      датаЗаказа: date,
+      позиции: linesText || "-",
+      итого: totalAmount.toLocaleString("ru-RU"),
     };
 
-    let rendered = cleanTemplate.replace(/\{\{\s*(\w+)\s*\}\}/g, (_, key) => {
+    let rendered = cleanTemplate.replace(/\{\{\s*([^{}\s]+)\s*\}\}/g, (_, key) => {
       return placeholders[key] ?? "";
     });
 
-    if (!/\{\{\s*lines\s*\}\}/i.test(cleanTemplate)) {
+    if (!hasLinesToken) {
       rendered = [
         rendered.trim(),
         "",
