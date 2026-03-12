@@ -21,16 +21,7 @@ function toDateInput(value) {
 
 const ITEM_IMAGE_MAX_BYTES = 3 * 1024 * 1024;
 const ITEM_IMAGE_MAX_SIDE = 1200;
-const SECTION_BLOCK_STYLE = {
-  position: "relative",
-};
-const SECTION_HEADER_STYLE = {
-  display: "flex",
-  alignItems: "center",
-  justifyContent: "space-between",
-  width: "100%",
-};
-const SECTION_REFRESH_BTN_STYLE = {
+const CARD_REFRESH_BTN_STYLE = {
   width: 26,
   height: 26,
   borderRadius: "50%",
@@ -43,9 +34,8 @@ const SECTION_REFRESH_BTN_STYLE = {
   border: "1px solid #e5e7eb",
   color: "#9ca3af",
   position: "absolute",
-  top: 0,
-  right: 0,
-  transform: "translate(40%, -40%)",
+  top: 8,
+  right: 8,
   zIndex: 5,
 };
 
@@ -557,11 +547,21 @@ export default function AdminWarehousePanel() {
 
 
   return (
-    <div className="admin-console__card">
+    <div className="admin-console__card" style={{ position: "relative" }}>
       <div className="admin-console__card-title">Склад</div>
       <div className="admin-console__card-text">
         Редактирование товаров, ячеек и заявок.
       </div>
+      <button
+        type="button"
+        className="admin-corner-refresh-btn"
+        onClick={loadAll}
+        title="Обновить раздел"
+        aria-label="Обновить данные склада"
+        style={CARD_REFRESH_BTN_STYLE}
+      >
+        ↻
+      </button>
 
       <div className="admin-console__tabs admin-console__tabs--small">
         <button
@@ -615,28 +615,16 @@ export default function AdminWarehousePanel() {
 
       {!loading && activeTab === "items" && (
         <div className="admin-form">
-          <div style={SECTION_BLOCK_STYLE}>
-            <div style={SECTION_HEADER_STYLE}>
-              <div className="admin-label" style={{ fontWeight: 700 }}>
-                Номенклатура
-              </div>
-              <button
-                type="button"
-                className="admin-btn admin-btn--secondary"
-                onClick={() => setShowItemsImport(true)}
-              >
-                Импорт из Excel
-              </button>
+          <div className="admin-form__row" style={{ alignItems: "center" }}>
+            <div className="admin-label" style={{ fontWeight: 700 }}>
+              Номенклатура
             </div>
             <button
               type="button"
-              className="admin-corner-refresh-btn"
-              onClick={loadAll}
-              title="Обновить раздел"
-              aria-label="Обновить номенклатуру"
-              style={SECTION_REFRESH_BTN_STYLE}
+              className="admin-btn admin-btn--secondary"
+              onClick={() => setShowItemsImport(true)}
             >
-              ↻
+              Импорт из Excel
             </button>
           </div>
 
@@ -856,23 +844,8 @@ export default function AdminWarehousePanel() {
 
       {!loading && activeTab === "locations" && (
         <div className="admin-form">
-          <div style={SECTION_BLOCK_STYLE}>
-            <div style={SECTION_HEADER_STYLE}>
-              <div className="admin-label" style={{ fontWeight: 700 }}>
-                Ячейки
-              </div>
-              <div />
-            </div>
-            <button
-              type="button"
-              className="admin-corner-refresh-btn"
-              onClick={loadAll}
-              title="Обновить раздел"
-              aria-label="Обновить список ячеек"
-              style={SECTION_REFRESH_BTN_STYLE}
-            >
-              ↻
-            </button>
+          <div className="admin-label" style={{ fontWeight: 700 }}>
+            Ячейки
           </div>
           <div className="admin-table-wrapper">
             <table className="admin-table">
@@ -928,23 +901,8 @@ export default function AdminWarehousePanel() {
 
       {!loading && activeTab === "requests" && (
         <div className="admin-form">
-          <div style={SECTION_BLOCK_STYLE}>
-            <div style={SECTION_HEADER_STYLE}>
-              <div className="admin-label" style={{ fontWeight: 700 }}>
-                Заявки
-              </div>
-              <div />
-            </div>
-            <button
-              type="button"
-              className="admin-corner-refresh-btn"
-              onClick={loadAll}
-              title="Обновить раздел"
-              aria-label="Обновить список заявок"
-              style={SECTION_REFRESH_BTN_STYLE}
-            >
-              ↻
-            </button>
+          <div className="admin-label" style={{ fontWeight: 700 }}>
+            Заявки
           </div>
           <div className="admin-table-wrapper">
             <table className="admin-table">
@@ -993,23 +951,8 @@ export default function AdminWarehousePanel() {
 
       {!loading && activeTab === "orders" && (
         <div className="admin-form">
-          <div style={SECTION_BLOCK_STYLE}>
-            <div style={SECTION_HEADER_STYLE}>
-              <div className="admin-label" style={{ fontWeight: 700 }}>
-                Заказы
-              </div>
-              <div />
-            </div>
-            <button
-              type="button"
-              className="admin-corner-refresh-btn"
-              onClick={loadAll}
-              title="Обновить раздел"
-              aria-label="Обновить раздел заказов"
-              style={SECTION_REFRESH_BTN_STYLE}
-            >
-              ↻
-            </button>
+          <div className="admin-label" style={{ fontWeight: 700 }}>
+            Заказы
           </div>
           <div className="admin-label" style={{ fontWeight: 600 }}>
             Импорт заказов из Excel
