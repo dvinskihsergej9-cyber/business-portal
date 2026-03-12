@@ -454,7 +454,11 @@ prisma = prismaBase.$extends({
   },
 });
 
-const stockService = createWarehouseStockService(prisma);
+const stockService = createWarehouseStockService(prisma, {
+  onMovementCreated: ({ itemId }) => {
+    scheduleAutoReorderCheck(itemId);
+  },
+});
 
 let mailTransport = null;
 const MAIL_SEND_TIMEOUT_MS = Number(process.env.MAIL_SEND_TIMEOUT_MS || 12000);
@@ -5330,6 +5334,7 @@ async function autoPostRequestToStock(requestId, userId) {
       },
     });
 
+    scheduleAutoReorderCheck(invItem.id);
     createdCount++;
   }
 
@@ -8898,6 +8903,7 @@ app.post("/api/warehouse/holds", auth, async (req, res) => {
       });
     });
 
+    scheduleAutoReorderCheck(created.itemId);
     res.status(201).json({ ok: true, hold: created });
   } catch (err) {
     if (err.code === "ITEM_NOT_FOUND") {
@@ -8953,6 +8959,7 @@ app.post("/api/warehouse/holds/:id/release", auth, async (req, res) => {
       },
     });
 
+    scheduleAutoReorderCheck(updated.itemId);
     res.json({ ok: true, hold: updated });
   } catch (err) {
     console.error("warehouse hold release error:", err);
@@ -9566,6 +9573,7 @@ app.post("/api/inventory/movements", auth, async (req, res) => {
       },
     });
 
+    scheduleAutoReorderCheck(movement.itemId);
     res.status(201).json(movement);
   } catch (err) {
     console.error("create movement error:", err);
@@ -10498,6 +10506,8 @@ app.put("/api/purchase-orders/:id/status", auth, async (req, res) => {
       }
     }
 
+    const touchedAutoReorderItemIds = new Set();
+
     if (status === "RECEIVED") {
       const alreadyPosted = await prisma.stockMovement.findFirst({
         where: {
@@ -10526,6 +10536,7 @@ app.put("/api/purchase-orders/:id/status", auth, async (req, res) => {
             createdById: req.user.id,
           },
         });
+        touchedAutoReorderItemIds.add(Number(row.itemId));
       }
 
       await applyPurchasePriceUpdates(
@@ -10533,6 +10544,8 @@ app.put("/api/purchase-orders/:id/status", auth, async (req, res) => {
         buildPurchasePriceUpdates(order.items),
         order.orgId || req.user.orgId || null
       );
+
+      scheduleAutoReorderChecks(Array.from(touchedAutoReorderItemIds.values()));
     }
 
     const nextReceivingStage =
@@ -10683,6 +10696,9 @@ app.post("/api/purchase-orders/:id/receive", auth, async (req, res) => {
     // создаём движения
     if (movementsData.length > 0) {
       await prisma.stockMovement.createMany({ data: movementsData });
+      scheduleAutoReorderChecks(
+        movementsData.map((row) => Number(row.itemId)).filter((value) => Number.isFinite(value) && value > 0)
+      );
     }
 
     await applyPurchasePriceUpdates(
@@ -13700,6 +13716,65 @@ const AUTO_REORDER_INTERVAL_MS = Number(
 const AUTO_REORDER_REMINDER_MS = Number(
   process.env.AUTO_REORDER_REMINDER_MS || 24 * 60 * 60 * 1000
 );
+const AUTO_REORDER_EVENT_DEBOUNCE_MS = Math.max(
+  250,
+  Number(process.env.AUTO_REORDER_EVENT_DEBOUNCE_MS || 1200)
+);
+const autoReorderPendingItemIds = new Set();
+let autoReorderEventTimer = null;
+let autoReorderEventRunning = false;
+let autoReorderEventRerun = false;
+
+function scheduleAutoReorderCheck(itemId) {
+  const id = Number(itemId);
+  if (!id || Number.isNaN(id)) return;
+  autoReorderPendingItemIds.add(id);
+  if (autoReorderEventTimer) return;
+  autoReorderEventTimer = setTimeout(() => {
+    autoReorderEventTimer = null;
+    flushAutoReorderQueue().catch((err) =>
+      console.error("AUTO_REORDER_EVENT_FLUSH_ERROR:", err)
+    );
+  }, AUTO_REORDER_EVENT_DEBOUNCE_MS);
+}
+
+function scheduleAutoReorderChecks(itemIds = []) {
+  for (const itemId of itemIds) {
+    scheduleAutoReorderCheck(itemId);
+  }
+}
+
+async function flushAutoReorderQueue() {
+  if (autoReorderEventRunning) {
+    autoReorderEventRerun = true;
+    return;
+  }
+
+  const itemIds = Array.from(autoReorderPendingItemIds.values())
+    .map((value) => Number(value))
+    .filter((value) => Number.isFinite(value) && value > 0);
+
+  autoReorderPendingItemIds.clear();
+  if (!itemIds.length) return;
+
+  autoReorderEventRunning = true;
+  try {
+    await checkAutoReorders({ itemIds });
+  } finally {
+    autoReorderEventRunning = false;
+    if (autoReorderEventRerun || autoReorderPendingItemIds.size > 0) {
+      autoReorderEventRerun = false;
+      if (!autoReorderEventTimer) {
+        autoReorderEventTimer = setTimeout(() => {
+          autoReorderEventTimer = null;
+          flushAutoReorderQueue().catch((err) =>
+            console.error("AUTO_REORDER_EVENT_FLUSH_ERROR:", err)
+          );
+        }, AUTO_REORDER_EVENT_DEBOUNCE_MS);
+      }
+    }
+  }
+}
 
 async function getItemTotalQty(itemId, options = {}) {
   const id = Number(itemId);
@@ -13975,14 +14050,29 @@ async function ensureWarehouseItemsResetForCurrentRevision() {
   );
 }
 
-async function checkAutoReorders() {
+async function checkAutoReorders(options = {}) {
   try {
+    const requestedItemIds = Array.isArray(options?.itemIds)
+      ? options.itemIds
+          .map((value) => Number(value))
+          .filter((value) => Number.isFinite(value) && value > 0)
+      : [];
+
+    if (Array.isArray(options?.itemIds) && !requestedItemIds.length) {
+      return;
+    }
+
+    const itemsWhere = {
+      autoReorderEnabled: true,
+      autoReorderMin: { not: null },
+      autoReorderSupplierId: { not: null },
+    };
+    if (requestedItemIds.length) {
+      itemsWhere.id = { in: requestedItemIds };
+    }
+
     const items = await prisma.item.findMany({
-      where: {
-        autoReorderEnabled: true,
-        autoReorderMin: { not: null },
-        autoReorderSupplierId: { not: null },
-      },
+      where: itemsWhere,
       include: {
         autoReorderSupplier: true,
       },
