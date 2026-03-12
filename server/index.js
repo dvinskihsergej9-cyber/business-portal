@@ -457,6 +457,7 @@ prisma = prismaBase.$extends({
 const stockService = createWarehouseStockService(prisma);
 
 let mailTransport = null;
+const MAIL_SEND_TIMEOUT_MS = Number(process.env.MAIL_SEND_TIMEOUT_MS || 12000);
 
 function getMailTransport() {
   if (mailTransport) return mailTransport;
@@ -471,9 +472,21 @@ function getMailTransport() {
     host,
     port,
     secure,
+    connectionTimeout: MAIL_SEND_TIMEOUT_MS,
+    greetingTimeout: MAIL_SEND_TIMEOUT_MS,
+    socketTimeout: MAIL_SEND_TIMEOUT_MS,
     auth: { user, pass },
   });
   return mailTransport;
+}
+
+async function sendMailWithTimeout(transport, payload) {
+  return Promise.race([
+    transport.sendMail(payload),
+    new Promise((_, reject) =>
+      setTimeout(() => reject(new Error("MAIL_TIMEOUT")), MAIL_SEND_TIMEOUT_MS)
+    ),
+  ]);
 }
 
 function hashInviteToken(token) {
@@ -519,7 +532,7 @@ async function sendInviteEmail(email, token) {
   `;
 
   try {
-    await transport.sendMail({ from, to: email, subject, text, html });
+    await sendMailWithTimeout(transport, { from, to: email, subject, text, html });
     return { sent: true, link };
   } catch (err) {
     console.error("Invite email send error:", err);
@@ -550,7 +563,7 @@ async function sendPasswordResetEmail(email, token) {
   `;
 
   try {
-    await transport.sendMail({ from, to: email, subject, text, html });
+    await sendMailWithTimeout(transport, { from, to: email, subject, text, html });
     return { sent: true, link };
   } catch (err) {
     console.error("Reset email send error:", err);
@@ -573,7 +586,7 @@ async function sendPasswordChangedEmail(email) {
   `;
 
   try {
-    await transport.sendMail({ from, to: email, subject, text, html });
+    await sendMailWithTimeout(transport, { from, to: email, subject, text, html });
     return { sent: true };
   } catch (err) {
     console.error("Password changed email error:", err);
@@ -590,7 +603,7 @@ async function sendAutoReorderEmail({ to, subject, text }) {
 
   const from = process.env.MAIL_FROM || `����������� <${process.env.MAIL_USER}>`;
   try {
-    await transport.sendMail({ from, to, subject, text });
+    await sendMailWithTimeout(transport, { from, to, subject, text });
     return { sent: true };
   } catch (err) {
     console.error("Auto reorder email send error:", err);
