@@ -21,6 +21,16 @@ function toDateInput(value) {
 
 const ITEM_IMAGE_MAX_BYTES = 3 * 1024 * 1024;
 const ITEM_IMAGE_MAX_SIDE = 1200;
+const SECTION_REFRESH_BTN_STYLE = {
+  width: 30,
+  height: 30,
+  borderRadius: "50%",
+  padding: 0,
+  lineHeight: "30px",
+  textAlign: "center",
+  fontSize: 16,
+  fontWeight: 700,
+};
 
 async function fileToDataUrl(file) {
   return new Promise((resolve, reject) => {
@@ -577,36 +587,6 @@ export default function AdminWarehousePanel() {
         >
           Заказы
         </button>
-        <div className="admin-console__tab-actions">
-          <button
-            type="button"
-            className="admin-console__tab admin-console__tab--action"
-            onClick={loadAll}
-          >
-            {"Обновить"}
-          </button>
-          <button
-            type="button"
-            className="admin-btn admin-btn--ghost"
-            title="\u041e\u0431\u043d\u043e\u0432\u0438\u0442\u044c \u0441\u043f\u0438\u0441\u043e\u043a \u0442\u043e\u0432\u0430\u0440\u043e\u0432, \u044f\u0447\u0435\u0435\u043a \u0438 \u0437\u0430\u044f\u0432\u043e\u043a"
-            aria-label="\u041f\u043e\u0434\u0441\u043a\u0430\u0437\u043a\u0430: \u043e\u0431\u043d\u043e\u0432\u043b\u044f\u0435\u0442 \u0441\u043f\u0438\u0441\u043e\u043a \u0442\u043e\u0432\u0430\u0440\u043e\u0432, \u044f\u0447\u0435\u0435\u043a \u0438 \u0437\u0430\u044f\u0432\u043e\u043a"
-            onClick={() => {
-              if (typeof window !== "undefined") {
-                window.alert("\u041e\u0431\u043d\u043e\u0432\u043b\u044f\u0435\u0442 \u0441\u043f\u0438\u0441\u043e\u043a \u0442\u043e\u0432\u0430\u0440\u043e\u0432, \u044f\u0447\u0435\u0435\u043a \u0438 \u0437\u0430\u044f\u0432\u043e\u043a.");
-              }
-            }}
-            style={{
-              width: 28,
-              height: 28,
-              borderRadius: "50%",
-              padding: 0,
-              lineHeight: "28px",
-              textAlign: "center",
-            }}
-          >
-            ?
-          </button>
-        </div>
       </div>
 
       {error && (
@@ -622,6 +602,16 @@ export default function AdminWarehousePanel() {
             <div className="admin-label" style={{ fontWeight: 700 }}>
               Номенклатура
             </div>
+            <button
+              type="button"
+              className="admin-btn admin-btn--ghost"
+              onClick={loadAll}
+              title="Обновить раздел"
+              aria-label="Обновить номенклатуру"
+              style={SECTION_REFRESH_BTN_STYLE}
+            >
+              ↻
+            </button>
             <button
               type="button"
               className="admin-btn admin-btn--secondary"
@@ -846,104 +836,153 @@ export default function AdminWarehousePanel() {
       )}
 
       {!loading && activeTab === "locations" && (
-        <div className="admin-table-wrapper">
-          <table className="admin-table">
-            <thead>
-              <tr>
-                <th>Ячейка</th>
-                <th>Код</th>
-                <th>Зона</th>
-                <th>Ряд</th>
-                <th></th>
-              </tr>
-            </thead>
-            <tbody>
-              {locations.map((loc) => (
-                <tr key={loc.id}>
-                  <td data-label="Ячейка">
-                    <div className="admin-table__title">{loc.name}</div>
-                    <div className="admin-table__meta">ID: {loc.id}</div>
-                  </td>
-                  <td data-label="Код">{loc.code || "-"}</td>
-                  <td data-label="Зона">{loc.zone || "-"}</td>
-                  <td data-label="Ряд">{loc.aisle || "-"}</td>
-                  <td data-label="Действия" className="admin-table__actions">
-                    <button
-                      type="button"
-                      className="admin-btn admin-btn--secondary"
-                      onClick={() => setEditLocation(loc)}
-                    >
-                      Редактировать
-                    </button>
-                    <button
-                      type="button"
-                      className="admin-btn admin-btn--danger"
-                      onClick={() => setDeleteLocation(loc)}
-                    >
-                      Удалить
-                    </button>
-                  </td>
-                </tr>
-              ))}
-              {!locations.length && (
+        <div className="admin-form">
+          <div className="admin-form__row" style={{ alignItems: "center" }}>
+            <div className="admin-label" style={{ fontWeight: 700 }}>
+              Ячейки
+            </div>
+            <button
+              type="button"
+              className="admin-btn admin-btn--ghost"
+              onClick={loadAll}
+              title="Обновить раздел"
+              aria-label="Обновить список ячеек"
+              style={SECTION_REFRESH_BTN_STYLE}
+            >
+              ↻
+            </button>
+          </div>
+          <div className="admin-table-wrapper">
+            <table className="admin-table">
+              <thead>
                 <tr>
-                  <td colSpan="5" className="admin-muted">
-                    Нет ячеек.
-                  </td>
+                  <th>Ячейка</th>
+                  <th>Код</th>
+                  <th>Зона</th>
+                  <th>Ряд</th>
+                  <th></th>
                 </tr>
-              )}
-            </tbody>
-          </table>
+              </thead>
+              <tbody>
+                {locations.map((loc) => (
+                  <tr key={loc.id}>
+                    <td data-label="Ячейка">
+                      <div className="admin-table__title">{loc.name}</div>
+                      <div className="admin-table__meta">ID: {loc.id}</div>
+                    </td>
+                    <td data-label="Код">{loc.code || "-"}</td>
+                    <td data-label="Зона">{loc.zone || "-"}</td>
+                    <td data-label="Ряд">{loc.aisle || "-"}</td>
+                    <td data-label="Действия" className="admin-table__actions">
+                      <button
+                        type="button"
+                        className="admin-btn admin-btn--secondary"
+                        onClick={() => setEditLocation(loc)}
+                      >
+                        Редактировать
+                      </button>
+                      <button
+                        type="button"
+                        className="admin-btn admin-btn--danger"
+                        onClick={() => setDeleteLocation(loc)}
+                      >
+                        Удалить
+                      </button>
+                    </td>
+                  </tr>
+                ))}
+                {!locations.length && (
+                  <tr>
+                    <td colSpan="5" className="admin-muted">
+                      Нет ячеек.
+                    </td>
+                  </tr>
+                )}
+              </tbody>
+            </table>
+          </div>
         </div>
       )}
 
       {!loading && activeTab === "requests" && (
-        <div className="admin-table-wrapper">
-          <table className="admin-table">
-            <thead>
-              <tr>
-                <th>Заявка</th>
-                <th>Тип</th>
-                <th>Статус</th>
-                <th>Автор</th>
-                <th></th>
-              </tr>
-            </thead>
-            <tbody>
-              {requests.map((req) => (
-                <tr key={req.id}>
-                  <td data-label="Заявка">
-                    <div className="admin-table__title">{req.title}</div>
-                    <div className="admin-table__meta">ID: {req.id}</div>
-                  </td>
-                  <td data-label="Тип">{req.type}</td>
-                  <td data-label="Статус">{req.status}</td>
-                  <td data-label="Автор">{req.createdBy?.name || "-"}</td>
-                  <td data-label="Действия" className="admin-table__actions">
-                    <button
-                      type="button"
-                      className="admin-btn admin-btn--secondary"
-                      onClick={() => setEditRequest(req)}
-                    >
-                      Открыть
-                    </button>
-                  </td>
-                </tr>
-              ))}
-              {!requests.length && (
+        <div className="admin-form">
+          <div className="admin-form__row" style={{ alignItems: "center" }}>
+            <div className="admin-label" style={{ fontWeight: 700 }}>
+              Заявки
+            </div>
+            <button
+              type="button"
+              className="admin-btn admin-btn--ghost"
+              onClick={loadAll}
+              title="Обновить раздел"
+              aria-label="Обновить список заявок"
+              style={SECTION_REFRESH_BTN_STYLE}
+            >
+              ↻
+            </button>
+          </div>
+          <div className="admin-table-wrapper">
+            <table className="admin-table">
+              <thead>
                 <tr>
-                  <td colSpan="5" className="admin-muted">
-                    Нет заявок.
-                  </td>
+                  <th>Заявка</th>
+                  <th>Тип</th>
+                  <th>Статус</th>
+                  <th>Автор</th>
+                  <th></th>
                 </tr>
-              )}
-            </tbody>
-          </table>
+              </thead>
+              <tbody>
+                {requests.map((req) => (
+                  <tr key={req.id}>
+                    <td data-label="Заявка">
+                      <div className="admin-table__title">{req.title}</div>
+                      <div className="admin-table__meta">ID: {req.id}</div>
+                    </td>
+                    <td data-label="Тип">{req.type}</td>
+                    <td data-label="Статус">{req.status}</td>
+                    <td data-label="Автор">{req.createdBy?.name || "-"}</td>
+                    <td data-label="Действия" className="admin-table__actions">
+                      <button
+                        type="button"
+                        className="admin-btn admin-btn--secondary"
+                        onClick={() => setEditRequest(req)}
+                      >
+                        Открыть
+                      </button>
+                    </td>
+                  </tr>
+                ))}
+                {!requests.length && (
+                  <tr>
+                    <td colSpan="5" className="admin-muted">
+                      Нет заявок.
+                    </td>
+                  </tr>
+                )}
+              </tbody>
+            </table>
+          </div>
         </div>
       )}
 
       {!loading && activeTab === "orders" && (
         <div className="admin-form">
+          <div className="admin-form__row" style={{ alignItems: "center" }}>
+            <div className="admin-label" style={{ fontWeight: 700 }}>
+              Заказы
+            </div>
+            <button
+              type="button"
+              className="admin-btn admin-btn--ghost"
+              onClick={loadAll}
+              title="Обновить раздел"
+              aria-label="Обновить раздел заказов"
+              style={SECTION_REFRESH_BTN_STYLE}
+            >
+              ↻
+            </button>
+          </div>
           <div className="admin-label" style={{ fontWeight: 600 }}>
             Импорт заказов из Excel
           </div>
