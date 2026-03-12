@@ -218,7 +218,6 @@ export default function Warehouse({
 
 
   const defaultSections = [
-    "requests",
     "tasks",
     "inventory","movement",
     "transactions",
@@ -332,11 +331,11 @@ export default function Warehouse({
 
     dueDate: "",
 
-    executorName: "",
-
-    executorChatId: "",
+    executorUserId: "",
 
   });
+
+  const [taskExecutors, setTaskExecutors] = useState([]);
 
 
 
@@ -677,6 +676,26 @@ export default function Warehouse({
 
   };
 
+  const loadTaskExecutors = async () => {
+    if (!isWarehouseManager) {
+      setTaskExecutors([]);
+      return;
+    }
+    try {
+      const res = await fetch(`${API}/warehouse/tasks/executors`, {
+        headers: authHeaders,
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        throw new Error(data.message || "Ошибка загрузки исполнителей");
+      }
+      setTaskExecutors(Array.isArray(data) ? data : []);
+    } catch (e) {
+      console.error(e);
+      setTaskError(e.message || "Ошибка загрузки исполнителей");
+    }
+  };
+
 
 
   // ===== API: ИНВЕНТАРИЗАЦИЯ / ОСТАТКИ =====
@@ -969,6 +988,7 @@ export default function Warehouse({
     if (!canTasks) return;
 
     loadTasks();
+    loadTaskExecutors();
 
     const intervalId = setInterval(() => {
 
@@ -981,6 +1001,12 @@ export default function Warehouse({
     // eslint-disable-next-line react-hooks/exhaustive-deps
 
   }, [section, canTasks]);
+
+  useEffect(() => {
+    if (section === "tasks" && !isWarehouseManager) {
+      setTaskView("journal");
+    }
+  }, [section, isWarehouseManager]);
 
 
 
@@ -1400,9 +1426,9 @@ export default function Warehouse({
 
         dueDate: taskForm.dueDate || null,
 
-        executorName: taskForm.executorName?.trim() || null,
-
-        executorChatId: taskForm.executorChatId?.trim() || null,
+        executorUserId: taskForm.executorUserId
+          ? Number(taskForm.executorUserId)
+          : null,
 
       };
 
@@ -1438,9 +1464,7 @@ export default function Warehouse({
 
         dueDate: "",
 
-        executorName: "",
-
-        executorChatId: "",
+        executorUserId: "",
 
       });
 
@@ -1464,42 +1488,15 @@ export default function Warehouse({
 
 
 
-  const handleTaskStatusChangeLocal = (id, newStatus) => {
-
-    setTaskAllList((prev) =>
-
-      prev.map((t) => (t.id === id ? { ...t, status: newStatus } : t))
-
-    );
-
-  };
-
-
-
-  const handleTaskStatusSave = async (id) => {
-
-    const task = taskAllList.find((t) => t.id === id);
-
-    if (!task) return;
-
-
-
+  const handleTaskStatusSave = async (id, nextStatus) => {
     setTaskStatusSavingId(id);
-
     setTaskError("");
 
-
-
     try {
-
       const res = await fetch(`${API}/warehouse/tasks/${id}/status`, {
-
         method: "PUT",
-
         headers: authHeaders,
-
-        body: JSON.stringify({ status: task.status }),
-
+        body: JSON.stringify({ status: nextStatus }),
       });
 
 
@@ -1588,6 +1585,8 @@ export default function Warehouse({
 
           t.description,
 
+          t.executorUser?.name,
+
           t.executorName,
 
           t.assigner?.name,
@@ -1613,6 +1612,12 @@ export default function Warehouse({
     return res;
 
   }, [taskListForTab, taskFilterStatus, taskFilterText]);
+
+  const canEditTaskStatus = (task) =>
+    Boolean(
+      isWarehouseManager ||
+        (task && Number(task.executorUserId) === Number(user?.id))
+    );
 
 
 
@@ -2360,8 +2365,7 @@ export default function Warehouse({
 
   const sectionCards = useMemo(
     () => [
-      { key: "requests", title: "\u0417\u0430\u044f\u0432\u043a\u0438 \u043d\u0430 \u0441\u043a\u043b\u0430\u0434", subtitle: "\u0421\u043e\u0437\u0434\u0430\u043d\u0438\u0435 \u0437\u0430\u044f\u0432\u043e\u043a \u0438 \u043a\u043e\u043d\u0442\u0440\u043e\u043b\u044c \u0432\u044b\u0434\u0430\u0447\u0438 \u0440\u0430\u0441\u0445\u043e\u0434\u043d\u044b\u0445 \u043c\u0430\u0442\u0435\u0440\u0438\u0430\u043b\u043e\u0432." },
-      { key: "tasks", title: "\u0417\u0430\u0434\u0430\u0447\u0438 \u0441\u043a\u043b\u0430\u0434\u0430", subtitle: "\u041d\u0430\u0437\u043d\u0430\u0447\u0435\u043d\u0438\u0435 \u0437\u0430\u0434\u0430\u0447, \u0441\u0440\u043e\u043a\u0438 \u0438 \u043d\u0430\u043f\u043e\u043c\u0438\u043d\u0430\u043d\u0438\u044f \u0432 Telegram." },
+      { key: "tasks", title: "Задачи склада", subtitle: "Постановка задач сотрудникам, сроки и журнал выполнения." },
       { key: "inventory", title: "\u041e\u0441\u0442\u0430\u0442\u043a\u0438", subtitle: "\u0422\u0435\u043a\u0443\u0449\u0438\u0435 \u043e\u0441\u0442\u0430\u0442\u043a\u0438 \u043f\u043e \u0441\u043a\u043b\u0430\u0434\u0443." },
       { key: "movement", title: "\u0418\u0441\u0442\u043e\u0440\u0438\u044f \u0434\u0432\u0438\u0436\u0435\u043d\u0438\u0439", subtitle: "\u0416\u0443\u0440\u043d\u0430\u043b \u043e\u043f\u0435\u0440\u0430\u0446\u0438\u0439 \u043f\u043e \u0441\u043a\u043b\u0430\u0434\u0443." },
       { key: "transactions", title: "\u0422\u0440\u0430\u043d\u0437\u0430\u043a\u0446\u0438\u0438", subtitle: "\u0412\u0441\u0435 \u0434\u0435\u0439\u0441\u0442\u0432\u0438\u044f \u043f\u043e \u044f\u0447\u0435\u0439\u043a\u0430\u043c \u0438 \u0442\u043e\u0432\u0430\u0440\u0443." },
@@ -2973,23 +2977,17 @@ export default function Warehouse({
 
           <div className="tabs tabs--sm" style={{ marginBottom: 16 }}>
 
-            <button
-
-              type="button"
-
-              className={
-
-                "tabs__btn " + (taskView === "new" ? "tabs__btn--active" : "")
-
-              }
-
-              onClick={() => setTaskView("new")}
-
-            >
-
-              Новая задача
-
-            </button>
+            {isWarehouseManager && (
+              <button
+                type="button"
+                className={
+                  "tabs__btn " + (taskView === "new" ? "tabs__btn--active" : "")
+                }
+                onClick={() => setTaskView("new")}
+              >
+                Новая задача
+              </button>
+            )}
 
             <button
 
@@ -3043,13 +3041,12 @@ export default function Warehouse({
 
 
 
-                <form
-
-                  onSubmit={handleCreateTask}
-
-                  className="form request-form-1c"
-
-                >
+                {!isWarehouseManager ? (
+                  <div className="alert alert--warning">
+                    Создавать задачи может только администратор.
+                  </div>
+                ) : (
+                <form onSubmit={handleCreateTask} className="form request-form-1c">
 
                   <div className="form__group">
 
@@ -3136,69 +3133,24 @@ export default function Warehouse({
 
 
                   <div className="form__group">
-
-                    <label className="form__label">Исполнитель (имя)</label>
-
-                    <input
-
-                      type="text"
-
-                      className="form__input"
-
-                      value={taskForm.executorName}
-
+                    <label className="form__label">Исполнитель</label>
+                    <select
+                      className="form__select"
+                      value={taskForm.executorUserId}
                       onChange={(e) =>
-
                         setTaskForm({
-
                           ...taskForm,
-
-                          executorName: e.target.value,
-
+                          executorUserId: e.target.value,
                         })
-
                       }
-
-                      placeholder="Иван Иванов"
-
-                    />
-
-                  </div>
-
-
-
-                  <div className="form__group">
-
-                    <label className="form__label">
-
-                      ID исполнителя в Telegram
-
-                    </label>
-
-                    <input
-
-                      type="text"
-
-                      className="form__input"
-
-                      value={taskForm.executorChatId}
-
-                      onChange={(e) =>
-
-                        setTaskForm({
-
-                          ...taskForm,
-
-                          executorChatId: e.target.value,
-
-                        })
-
-                      }
-
-                      placeholder="Например: 514030529"
-
-                    />
-
+                    >
+                      <option value="">Не назначен</option>
+                      {taskExecutors.map((exec) => (
+                        <option key={exec.id} value={exec.id}>
+                          {exec.name} ({exec.role})
+                        </option>
+                      ))}
+                    </select>
                   </div>
 
 
@@ -3222,6 +3174,7 @@ export default function Warehouse({
                   </div>
 
                 </form>
+                )}
 
               </div>
 
@@ -3379,11 +3332,7 @@ export default function Warehouse({
 
                           <th style={{ width: 260 }}>Описание</th>
 
-                          {isWarehouseManager && (
-
-  <th style={{ width: 190 }}>Действия</th>
-
-)}
+                          <th style={{ width: 190 }}>Изменить статус</th>
 
                         </tr>
 
@@ -3394,6 +3343,7 @@ export default function Warehouse({
                         {filteredTasks.map((t, index) => {
 
                           const overdue = isTaskOverdue(t);
+                          const canEdit = canEditTaskStatus(t);
 
                           return (
 
@@ -3493,19 +3443,7 @@ export default function Warehouse({
 
                               <td>
 
-                                {t.executorName || t.executorChatId
-
-                                  ? `${t.executorName || ""}${
-
-                                      t.executorChatId
-
-                                        ? ` (TG: ${t.executorChatId})`
-
-                                        : ""
-
-                                    }`
-
-                                  : "-"}
+                                {t.executorUser?.name || t.executorName || "-"}
 
                               </td>
 
@@ -3521,45 +3459,27 @@ export default function Warehouse({
 
                               <td data-label="desc">{t.description || "-"}</td>
 
-                              {isWarehouseManager && (
-
-  <td>
-
-    <select
-
-      className="form__select form__select--sm"
-
-      style={{ minWidth: 170 }}
-
-      value={t.status}
-
-      onChange={(e) =>
-
-        handleTaskStatusChangeLocal(t.id, e.target.value)
-
-      }
-
-      onBlur={() => handleTaskStatusSave(t.id)}
-
-      disabled={taskStatusSavingId === t.id}
-
-    >
-
-      {TASK_STATUS_OPTIONS.map((o) => (
-
-        <option key={o.value} value={o.value}>
-
-          {o.label}
-
-        </option>
-
-      ))}
-
-    </select>
-
-  </td>
-
-)}
+                              <td>
+                                {canEdit ? (
+                                  <select
+                                    className="form__select form__select--sm"
+                                    style={{ minWidth: 170 }}
+                                    value={t.status}
+                                    onChange={(e) =>
+                                      handleTaskStatusSave(t.id, e.target.value)
+                                    }
+                                    disabled={taskStatusSavingId === t.id}
+                                  >
+                                    {TASK_STATUS_OPTIONS.map((o) => (
+                                      <option key={o.value} value={o.value}>
+                                        {o.label}
+                                      </option>
+                                    ))}
+                                  </select>
+                                ) : (
+                                  <span className="text-muted">Нет прав</span>
+                                )}
+                              </td>
 
                             </tr>
 

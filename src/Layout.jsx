@@ -3,6 +3,7 @@ import { NavLink, Outlet, useLocation } from "react-router-dom";
 import { useAuth } from "./context/AuthContext";
 import { hasPermission, PERMISSION_KEYS } from "./utils/permissions";
 import { APP_LOGO_DATA_URL } from "./assets/appLogoDataUrl";
+import NotificationBell from "./components/NotificationBell";
 
 const DATE_INPUT_SELECTOR =
   'input[type="date"], input[type="datetime-local"], input[type="month"]';
@@ -220,6 +221,7 @@ export default function Layout() {
                   {user?.name || "Пользователь"}
                 </div>
               )}
+              {user && <NotificationBell />}
               <button
                 type="button"
                 style={styles.headerLogoutBtn}
