@@ -616,29 +616,32 @@ function buildPurchaseOrderEmailText(order) {
   const date = order?.date
     ? new Date(order.date).toLocaleDateString("ru-RU")
     : new Date().toLocaleDateString("ru-RU");
-  const supplierName = order?.supplier?.name || "Supplier";
+  const supplierName = order?.supplier?.name || "поставщик";
 
   const lines = Array.isArray(order?.items) ? order.items : [];
   const linesText = lines
     .map((row, index) => {
-      const name = row?.item?.name || "Item";
+      const name = row?.item?.name || "Товар";
       const sku = row?.item?.sku ? ` (SKU: ${row.item.sku})` : "";
       const qty = Number(row?.quantity) || 0;
-      const unit = row?.item?.unit || "pcs";
+      const unit = row?.item?.unit || "шт";
       const price = Number(row?.price) || 0;
-      return `${index + 1}. ${name}${sku} - ${qty} ${unit}, price ${price.toLocaleString("ru-RU")} RUB`;
+      return `${index + 1}. ${name}${sku} - ${qty} ${unit}, цена ${price.toLocaleString("ru-RU")} ₽`;
     })
     .join("\n");
 
   return [
-    `Hello, ${supplierName}!`,
+    `Здравствуйте, ${supplierName}!`,
     "",
-    `Please process purchase order No. ${number} dated ${date}.`,
+    `Просим обработать заказ поставщику № ${number} от ${date}.`,
     "",
-    "Order lines:",
+    "Позиции заказа:",
     linesText || "-",
     "",
-    "Please confirm receipt and estimated delivery date.",
+    "Просим подтвердить получение заказа и плановую дату поставки.",
+    "",
+    "С уважением,",
+    "СкладОнлайн",
   ].join("\n");
 }
 
