@@ -63,6 +63,9 @@ model User {
   orderStatusHistoryEvents     OrderStatusHistory[]     @relation("OrderStatusHistoryActor")
   stockHoldsCreated            StockHold[]              @relation("StockHoldCreatedBy")
   stockHoldsReleased           StockHold[]              @relation("StockHoldReleasedBy")
+  warehouseTasksAssigned       WarehouseTask[]          @relation("WarehouseTaskExecutor")
+  warehouseNotifications       WarehouseNotification[]
+  pushSubscriptions            PushSubscription[]
 
   @@index([orgId])
 }
@@ -262,11 +265,56 @@ model WarehouseTask {
   description    String?
   dueDate        DateTime?
   status         String    @default("NEW") // NEW / IN_PROGRESS / DONE / CANCELLED
+  executorUserId Int?
+  executorUser   User?     @relation("WarehouseTaskExecutor", fields: [executorUserId], references: [id])
   executorName   String?
   executorChatId String?
   assignerId     Int
   assigner       User      @relation(fields: [assignerId], references: [id])
   lastReminderAt DateTime?
+
+  @@index([orgId, status, dueDate])
+  @@index([orgId, executorUserId, status])
+}
+
+model WarehouseNotification {
+  id          Int      @id @default(autoincrement())
+  orgId       Int?
+  userId      Int
+  type        String   @default("TASK")
+  title       String
+  message     String
+  linkUrl     String?
+  payloadJson Json?
+  isRead      Boolean  @default(false)
+  readAt      DateTime?
+  createdAt   DateTime @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([orgId, userId, createdAt])
+  @@index([orgId, userId, isRead, createdAt])
+  @@index([orgId, type, createdAt])
+}
+
+model PushSubscription {
+  id               Int      @id @default(autoincrement())
+  orgId            Int?
+  userId           Int
+  endpoint         String   @unique
+  p256dh           String
+  auth             String
+  userAgent        String?
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
+  lastSuccessAt    DateTime?
+  lastErrorAt      DateTime?
+  lastErrorMessage String?
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([orgId, userId, createdAt])
+  @@index([orgId, userId, updatedAt])
 }
 
 enum WarehouseRequestType {
