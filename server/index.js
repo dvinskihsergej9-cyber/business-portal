@@ -3053,8 +3053,8 @@ async function checkWarehouseTaskNotifications() {
         minute: "2-digit",
       });
 
-      // 1) За 5 минут до срока — одно напоминание.
-      if (diffMinutes <= 5 && diffMinutes > 0 && !task.lastReminderAt) {
+      // 1) За 10 минут до срока — одно напоминание (только исполнителю).
+      if (diffMinutes <= 10 && diffMinutes > 0 && !task.lastReminderAt) {
         if (task.executorUserId) {
           await createWarehouseNotification({
             orgId: task.orgId,
@@ -3074,8 +3074,16 @@ async function checkWarehouseTaskNotifications() {
         continue;
       }
 
-      // 2) Просрочка — напоминание раз в час.
-      if (diffMinutes < 0 && minutesSinceLast >= 60) {
+      // 2) Просрочка:
+      // - первое уведомление сразу после наступления срока;
+      // - затем повтор раз в час;
+      // - исполнителю и руководителю (назначившему), если это разные люди.
+      const hadDueSoonReminder = Boolean(last && last.getTime() < due.getTime());
+      const shouldSendOverdue =
+        diffMinutes < 0 &&
+        (!last || hadDueSoonReminder || minutesSinceLast >= 60);
+
+      if (shouldSendOverdue) {
         if (task.executorUserId) {
           await createWarehouseNotification({
             orgId: task.orgId,

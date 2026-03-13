@@ -9,8 +9,6 @@ export default function NotificationBell() {
   const [unreadCount, setUnreadCount] = useState(0);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
-  const [pushEnabled, setPushEnabled] = useState(false);
-  const [pushTestLoading, setPushTestLoading] = useState(false);
   const wrapperRef = useRef(null);
   const navigate = useNavigate();
 
@@ -98,7 +96,6 @@ export default function NotificationBell() {
   const ensurePushSubscription = useCallback(
     async ({ interactive = false } = {}) => {
       const result = await ensurePushSubscriptionShared({ token, interactive });
-      setPushEnabled(Boolean(result?.enabled));
       return Boolean(result?.subscribed);
     },
     [token]
@@ -120,33 +117,6 @@ export default function NotificationBell() {
     },
     [navigate]
   );
-
-  const handlePushTest = async () => {
-    setPushTestLoading(true);
-    try {
-      const ready = await ensurePushSubscription({ interactive: true });
-      if (!ready) {
-        alert(
-          "Нет активной push-подписки. Разрешите уведомления для приложения и повторите."
-        );
-        return;
-      }
-
-      const res = await fetch(`${API_BASE}/notifications/push/test`, {
-        method: "POST",
-        headers: authHeaders,
-      });
-      const data = await res.json().catch(() => ({}));
-      if (!res.ok) {
-        throw new Error(data?.message || "Не удалось отправить тестовый push.");
-      }
-      alert(data?.message || "Тестовое push-уведомление отправлено.");
-    } catch (err) {
-      alert(err?.message || "Ошибка отправки тестового push.");
-    } finally {
-      setPushTestLoading(false);
-    }
-  };
 
   useEffect(() => {
     if (!token) return;
@@ -261,23 +231,6 @@ export default function NotificationBell() {
           >
             <strong style={{ fontSize: 14 }}>Уведомления</strong>
             <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-              {pushEnabled && (
-                <button
-                  type="button"
-                  onClick={handlePushTest}
-                  disabled={pushTestLoading}
-                  style={{
-                    border: "none",
-                    background: "transparent",
-                    color: "#16a34a",
-                    fontSize: 12,
-                    cursor: pushTestLoading ? "default" : "pointer",
-                    opacity: pushTestLoading ? 0.7 : 1,
-                  }}
-                >
-                  {pushTestLoading ? "Отправка..." : "Тест push"}
-                </button>
-              )}
               <button
                 type="button"
                 onClick={markAllRead}
