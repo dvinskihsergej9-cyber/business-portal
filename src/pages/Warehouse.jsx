@@ -1451,7 +1451,9 @@ export default function Warehouse({
 
         description: taskForm.description?.trim() || null,
 
-        dueDate: taskForm.dueDate || null,
+        dueDate: taskForm.dueDate
+          ? new Date(taskForm.dueDate).toISOString()
+          : null,
 
         executorUserId: taskForm.executorUserId
           ? Number(taskForm.executorUserId)
