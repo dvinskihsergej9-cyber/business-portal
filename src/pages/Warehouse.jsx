@@ -3378,9 +3378,9 @@ export default function Warehouse({
 
                             <tr key={t.id} className="tasks-journal-row">
 
-                              <td data-label="index">{index + 1}</td>
+                              <td data-label="Номер">{index + 1}</td>
 
-                              <td data-label="date">
+                              <td data-label="Дата">
 
                                 {t.createdAt
 
@@ -3406,7 +3406,7 @@ export default function Warehouse({
 
                               </td>
 
-                              <td data-label="status">
+                              <td data-label="Статус">
 
                                 <span
 
@@ -3420,7 +3420,7 @@ export default function Warehouse({
 
                               </td>
 
-                              <td data-label="due">
+                              <td data-label="Срок">
 
                                 {t.dueDate
 
@@ -3468,15 +3468,15 @@ export default function Warehouse({
 
                               </td>
 
-                              <td data-label="title">{t.title}</td>
+                              <td data-label="Задача">{t.title}</td>
 
-                              <td data-label="executor">
+                              <td data-label="Исполнитель">
 
                                 {t.executorUser?.name || t.executorName || "-"}
 
                               </td>
 
-                              <td data-label="author">
+                              <td data-label="Автор">
 
                                 {t.assigner?.name ||
 
@@ -3486,9 +3486,9 @@ export default function Warehouse({
 
                               </td>
 
-                              <td data-label="desc">{t.description || "-"}</td>
+                              <td data-label="Описание">{t.description || "-"}</td>
 
-                              <td data-label="actions">
+                              <td data-label="Изменить статус">
                                 {canEdit ? (
                                   <select
                                     className="form__select form__select--sm"
