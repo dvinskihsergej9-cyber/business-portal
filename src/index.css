@@ -3206,6 +3206,16 @@ input[type="number"] {
   border-radius: 10px;
 }
 
+.login-card__notice {
+  margin-bottom: 12px;
+  background: #ecfdf5;
+  color: #065f46;
+  padding: 10px 12px;
+  border-radius: 10px;
+  border: 1px solid #a7f3d0;
+  font-size: 13px;
+}
+
 .login-form {
   display: grid;
   gap: 10px;

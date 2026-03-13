@@ -88,13 +88,48 @@ export async function ensurePushSubscription({ token, interactive = false } = {}
 }
 
 export async function requestPushPermissionIfNeeded() {
-  if (typeof window === "undefined") return;
-  if (typeof Notification === "undefined") return;
-  if (!("PushManager" in window)) return;
-  if (Notification.permission !== "default") return;
+  if (typeof window === "undefined") {
+    return { ok: false, permission: "default", reason: "NO_WINDOW" };
+  }
+  if (typeof Notification === "undefined") {
+    return { ok: false, permission: "default", reason: "NO_NOTIFICATION_API" };
+  }
+  if (window.isSecureContext === false) {
+    return { ok: false, permission: Notification.permission, reason: "INSECURE_CONTEXT" };
+  }
+
+  const ua = String(window.navigator?.userAgent || "").toLowerCase();
+  const isIos = /iphone|ipad|ipod/.test(ua);
+  const isStandalone =
+    window.matchMedia?.("(display-mode: standalone)")?.matches === true ||
+    window.navigator?.standalone === true;
+
+  if (isIos && !isStandalone) {
+    return { ok: false, permission: Notification.permission, reason: "IOS_NOT_STANDALONE" };
+  }
+
+  if (!("PushManager" in window)) {
+    return { ok: false, permission: Notification.permission, reason: "NO_PUSH_MANAGER" };
+  }
+
+  if (Notification.permission !== "default") {
+    return {
+      ok: Notification.permission === "granted",
+      permission: Notification.permission,
+      reason: Notification.permission === "denied" ? "DENIED" : undefined,
+    };
+  }
   try {
-    await Notification.requestPermission();
+    const permission = await Notification.requestPermission();
+    if (permission === "default") {
+      return { ok: false, permission, reason: "PERMISSION_NOT_CHOSEN" };
+    }
+    return {
+      ok: permission === "granted",
+      permission,
+      reason: permission === "denied" ? "DENIED" : undefined,
+    };
   } catch {
-    // ignore permission request errors
+    return { ok: false, permission: Notification.permission, reason: "REQUEST_FAILED" };
   }
 }

@@ -82,6 +82,7 @@ export default function Login() {
   const [loginValue, setLoginValue] = useState("");
   const [password, setPassword] = useState("");
   const [error, setError] = useState("");
+  const [pushHint, setPushHint] = useState("");
   const [loading, setLoading] = useState(false);
   const [showWelcome, setShowWelcome] = useState(false);
 
@@ -104,7 +105,27 @@ export default function Login() {
     e.preventDefault();
     if (loading || showWelcome) return;
 
-    await requestPushPermissionIfNeeded();
+    setPushHint("");
+    const pushPermission = await requestPushPermissionIfNeeded();
+    if (pushPermission?.reason === "IOS_NOT_STANDALONE") {
+      setPushHint(
+        "На iPhone push работают из ярлыка «На экран Домой». Откройте приложение с иконки на домашнем экране."
+      );
+    } else if (pushPermission?.reason === "DENIED") {
+      setPushHint(
+        "Уведомления для сайта запрещены. Разрешите их в настройках браузера и откройте приложение снова."
+      );
+    } else if (
+      pushPermission?.reason === "NO_NOTIFICATION_API" ||
+      pushPermission?.reason === "NO_PUSH_MANAGER"
+    ) {
+      setPushHint("На этом устройстве push-уведомления не поддерживаются в текущем режиме.");
+    } else if (pushPermission?.reason === "INSECURE_CONTEXT") {
+      setPushHint("Push-уведомления работают только по защищённой ссылке https.");
+    } else if (pushPermission?.reason === "PERMISSION_NOT_CHOSEN") {
+      setPushHint("Разрешение на уведомления не выбрано. Запрос можно включить через колокольчик.");
+    }
+
     setError("");
     setLoading(true);
 
@@ -130,6 +151,7 @@ export default function Login() {
         <h1 className="login-card__title">Вход</h1>
 
         {error && <div className="login-card__error">{error}</div>}
+        {pushHint && <div className="login-card__notice">{pushHint}</div>}
 
         <form onSubmit={handleSubmit} className="login-form">
           <div className="login-form__field">
