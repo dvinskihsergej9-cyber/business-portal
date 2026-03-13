@@ -68,6 +68,21 @@ export const normalizeErrorMessage = (err, fallback = "Ошибка запрос
   if (lower.includes("failed to fetch") || lower.includes("networkerror")) {
     return "Не удалось подключиться к серверу.";
   }
+  if (lower.includes("notfounderror")) {
+    return "Камера не найдена на устройстве.";
+  }
+  if (lower.includes("notallowederror")) {
+    return "Доступ к камере запрещен. Разрешите доступ в настройках браузера.";
+  }
+  if (lower.includes("notreadableerror")) {
+    return "Не удалось получить доступ к камере. Возможно, она занята другим приложением.";
+  }
+  if (lower.includes("overconstrainederror")) {
+    return "Камера не поддерживает выбранные параметры.";
+  }
+  if (lower.includes("securityerror")) {
+    return "Браузер заблокировал доступ к камере по настройкам безопасности.";
+  }
   if (lower.includes("aborterror") || lower.includes("timeout")) {
     return "Превышено время ожидания ответа сервера.";
   }

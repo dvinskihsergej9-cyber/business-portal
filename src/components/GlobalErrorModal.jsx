@@ -10,12 +10,25 @@ const ERROR_SELECTORS = [
   "[data-global-error='true']",
 ];
 
-function isVisible(node) {
-  if (!(node instanceof Element)) return false;
-  const style = window.getComputedStyle(node);
-  if (style.display === "none" || style.visibility === "hidden") return false;
-  if (Number(style.opacity || 1) === 0) return false;
-  return node.getClientRects().length > 0;
+function normalizeTechnicalMessage(message) {
+  const raw = String(message || "");
+  const lower = raw.toLowerCase();
+  if (lower.includes("notfounderror")) {
+    return "Камера не найдена на устройстве.";
+  }
+  if (lower.includes("notallowederror")) {
+    return "Доступ к камере запрещен. Разрешите доступ в настройках браузера.";
+  }
+  if (lower.includes("notreadableerror")) {
+    return "Не удалось получить доступ к камере. Возможно, она занята другим приложением.";
+  }
+  if (lower.includes("overconstrainederror")) {
+    return "Камера не поддерживает выбранные параметры.";
+  }
+  if (lower.includes("securityerror")) {
+    return "Браузер заблокировал доступ к камере по настройкам безопасности.";
+  }
+  return raw;
 }
 
 function extractMessage(node) {
@@ -55,17 +68,18 @@ export default function GlobalErrorModal() {
         .replace(/\s+/g, " ")
         .trim();
       if (!normalized) return;
+      const translated = normalizeTechnicalMessage(normalized);
 
       if (
-        normalized === lastMessageRef.current &&
+        translated === lastMessageRef.current &&
         now - lastAtRef.current < 1200
       ) {
         return;
       }
 
-      lastMessageRef.current = normalized;
+      lastMessageRef.current = translated;
       lastAtRef.current = now;
-      setMessage(normalized);
+      setMessage(translated);
       setOpen(true);
     },
     []
@@ -95,7 +109,6 @@ export default function GlobalErrorModal() {
     const processNode = (node) => {
       const candidates = collectCandidatesFromNode(node);
       for (const candidate of candidates) {
-        if (!isVisible(candidate)) continue;
         const text = extractMessage(candidate);
         if (!text) continue;
         const prev = candidate.getAttribute("data-global-error-last") || "";
@@ -145,15 +158,17 @@ export default function GlobalErrorModal() {
       onClick={close}
     >
       <div className="global-error-modal__panel" onClick={(e) => e.stopPropagation()}>
-        <button
-          type="button"
-          className="global-error-modal__close"
-          onClick={close}
-          aria-label="Закрыть"
-        >
-          ×
-        </button>
-        <div className="global-error-modal__title">Ошибка</div>
+        <div className="global-error-modal__header">
+          <div className="global-error-modal__title">Ошибка</div>
+          <button
+            type="button"
+            className="global-error-modal__close"
+            onClick={close}
+            aria-label="Закрыть"
+          >
+            ×
+          </button>
+        </div>
         <div className="global-error-modal__text">{message}</div>
         <div className="global-error-modal__actions">
           <button type="button" className="btn" onClick={close}>
@@ -164,4 +179,3 @@ export default function GlobalErrorModal() {
     </div>
   );
 }
-
