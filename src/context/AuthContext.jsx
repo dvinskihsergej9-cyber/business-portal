@@ -1,5 +1,6 @@
 import { createContext, useContext, useEffect, useState } from "react";
 import { apiFetch } from "../apiConfig";
+import { ensurePushSubscription } from "../utils/pushSubscription";
 
 export const AuthContext = createContext(null);
 export const useAuth = () => useContext(AuthContext);
@@ -71,6 +72,7 @@ export function AuthProvider({ children }) {
       localStorage.setItem("token", data.token);
       localStorage.setItem("user", JSON.stringify(data.user));
       setUser(data.user);
+      ensurePushSubscription({ token: data.token, interactive: false }).catch(() => null);
 
       return { ok: true };
     } catch (e) {
@@ -98,6 +100,7 @@ export function AuthProvider({ children }) {
       localStorage.setItem("token", data.token);
       localStorage.setItem("user", JSON.stringify(data.user));
       setUser(data.user);
+      ensurePushSubscription({ token: data.token, interactive: false }).catch(() => null);
 
       return { ok: true };
     } catch (e) {
