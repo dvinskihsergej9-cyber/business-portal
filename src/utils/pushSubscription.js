@@ -1,5 +1,7 @@
 import { API_BASE } from "../apiConfig";
 
+const RETRY_DELAYS_MS = [0, 700, 1800];
+
 function urlBase64ToUint8Array(base64String) {
   const padding = "=".repeat((4 - (base64String.length % 4)) % 4);
   const base64 = (base64String + padding).replace(/-/g, "+").replace(/_/g, "/");
@@ -19,50 +21,70 @@ export async function ensurePushSubscription({ token, interactive = false } = {}
     return { enabled: false, subscribed: false };
   }
 
-  try {
-    if (Notification.permission === "default" && interactive) {
+  if (Notification.permission === "default" && interactive) {
+    try {
       const permission = await Notification.requestPermission();
       if (permission !== "granted") {
         return { enabled: true, subscribed: false };
       }
+    } catch {
+      return { enabled: true, subscribed: false };
     }
+  }
 
+  let keyData = null;
+  try {
     const keyRes = await fetch(`${API_BASE}/notifications/push/public-key`, {
       headers: { Authorization: `Bearer ${token}` },
     });
-    const keyData = await keyRes.json().catch(() => ({}));
+    keyData = await keyRes.json().catch(() => ({}));
     const enabled = Boolean(keyRes.ok && keyData?.enabled && keyData?.publicKey);
-
     if (!enabled) {
       return { enabled: false, subscribed: false };
     }
-
-    if (Notification.permission !== "granted") {
-      return { enabled: true, subscribed: false };
-    }
-
-    const registration = await navigator.serviceWorker.register("/push-sw.js");
-    let subscription = await registration.pushManager.getSubscription();
-    if (!subscription) {
-      subscription = await registration.pushManager.subscribe({
-        userVisibleOnly: true,
-        applicationServerKey: urlBase64ToUint8Array(keyData.publicKey),
-      });
-    }
-
-    const saveRes = await fetch(`${API_BASE}/notifications/push/subscribe`, {
-      method: "POST",
-      headers: {
-        Authorization: `Bearer ${token}`,
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify(subscription),
-    });
-
-    return { enabled: true, subscribed: saveRes.ok };
   } catch {
     return { enabled: true, subscribed: false };
   }
+
+  if (Notification.permission !== "granted") {
+    return { enabled: true, subscribed: false };
+  }
+
+  for (const delayMs of RETRY_DELAYS_MS) {
+    if (delayMs > 0) {
+      await new Promise((resolve) => setTimeout(resolve, delayMs));
+    }
+
+    try {
+      const registration = await navigator.serviceWorker.register("/push-sw.js");
+      const readyRegistration = await navigator.serviceWorker.ready.catch(() => registration);
+
+      let subscription = await readyRegistration.pushManager.getSubscription();
+      if (!subscription) {
+        subscription = await readyRegistration.pushManager.subscribe({
+          userVisibleOnly: true,
+          applicationServerKey: urlBase64ToUint8Array(keyData.publicKey),
+        });
+      }
+
+      const saveRes = await fetch(`${API_BASE}/notifications/push/subscribe`, {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${token}`,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify(subscription),
+      });
+
+      if (saveRes.ok) {
+        return { enabled: true, subscribed: true };
+      }
+    } catch {
+      // retry
+    }
+  }
+
+  return { enabled: true, subscribed: false };
 }
 
 export async function requestPushPermissionIfNeeded() {

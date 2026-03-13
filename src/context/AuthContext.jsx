@@ -18,6 +18,19 @@ export function AuthProvider({ children }) {
   });
   const [loading, setLoading] = useState(true);
 
+  const bindPushForSession = (token, interactive = false) => {
+    if (!token) return;
+    ensurePushSubscription({ token, interactive }).then((result) => {
+      if (result?.subscribed) return;
+      setTimeout(() => {
+        ensurePushSubscription({ token, interactive: false }).catch(() => null);
+      }, 1800);
+      setTimeout(() => {
+        ensurePushSubscription({ token, interactive: false }).catch(() => null);
+      }, 5000);
+    }).catch(() => null);
+  };
+
   // авто-подтягивание пользователя по токену
   useEffect(() => {
     const token = localStorage.getItem("token");
@@ -72,7 +85,7 @@ export function AuthProvider({ children }) {
       localStorage.setItem("token", data.token);
       localStorage.setItem("user", JSON.stringify(data.user));
       setUser(data.user);
-      ensurePushSubscription({ token: data.token, interactive: false }).catch(() => null);
+      bindPushForSession(data.token, true);
 
       return { ok: true };
     } catch (e) {
@@ -100,7 +113,7 @@ export function AuthProvider({ children }) {
       localStorage.setItem("token", data.token);
       localStorage.setItem("user", JSON.stringify(data.user));
       setUser(data.user);
-      ensurePushSubscription({ token: data.token, interactive: false }).catch(() => null);
+      bindPushForSession(data.token, true);
 
       return { ok: true };
     } catch (e) {
@@ -156,10 +169,18 @@ export function AuthProvider({ children }) {
       const data = await res.json();
       setUser(data);
       localStorage.setItem("user", JSON.stringify(data));
+      bindPushForSession(token, false);
     } catch (err) {
       console.error("Refresh user error:", err);
     }
   };
+
+  useEffect(() => {
+    if (!user?.id) return;
+    const token = localStorage.getItem("token");
+    bindPushForSession(token, false);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [user?.id]);
 
   const value = {
     user,
