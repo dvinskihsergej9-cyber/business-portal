@@ -3378,7 +3378,7 @@ export default function Warehouse({
 
                               <td data-label="index">{index + 1}</td>
 
-                              <td>
+                              <td data-label="date">
 
                                 {t.createdAt
 
@@ -3404,7 +3404,7 @@ export default function Warehouse({
 
                               </td>
 
-                              <td>
+                              <td data-label="status">
 
                                 <span
 
@@ -3418,7 +3418,7 @@ export default function Warehouse({
 
                               </td>
 
-                              <td>
+                              <td data-label="due">
 
                                 {t.dueDate
 
@@ -3468,13 +3468,13 @@ export default function Warehouse({
 
                               <td data-label="title">{t.title}</td>
 
-                              <td>
+                              <td data-label="executor">
 
                                 {t.executorUser?.name || t.executorName || "-"}
 
                               </td>
 
-                              <td>
+                              <td data-label="author">
 
                                 {t.assigner?.name ||
 
@@ -3486,7 +3486,7 @@ export default function Warehouse({
 
                               <td data-label="desc">{t.description || "-"}</td>
 
-                              <td>
+                              <td data-label="actions">
                                 {canEdit ? (
                                   <select
                                     className="form__select form__select--sm"
@@ -4532,3 +4532,4 @@ export default function Warehouse({
   );
 
 }
+

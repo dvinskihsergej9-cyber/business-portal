@@ -1559,26 +1559,32 @@ input[type="number"] {
 
   .tasks-journal-table .tasks-journal-row td {
     display: grid;
-    grid-template-columns: 110px minmax(0, 1fr);
+    grid-template-columns: 126px minmax(0, 1fr);
     align-items: baseline;
     gap: 8px;
-    padding: 0;
+    padding: 4px 0;
     border: none;
+    border-bottom: 1px solid #f1f5f9;
     background: transparent;
     font-weight: 600;
   }
 
+  .tasks-journal-table .tasks-journal-row td:last-child {
+    border-bottom: none;
+    padding-bottom: 0;
+  }
+
   .tasks-journal-table .tasks-journal-row td::before {
     content: attr(data-label);
-    font-size: 12px;
-    text-transform: uppercase;
-    letter-spacing: 0.04em;
+    font-size: 11px;
+    text-transform: none;
+    letter-spacing: 0;
     color: #64748b;
     font-weight: 700;
   }
 
   .tasks-journal-table .tasks-journal-row td[data-label="index"]::before {
-    content: "в„–";
+    content: "№";
   }
 
   .tasks-journal-table .tasks-journal-row td[data-label="date"]::before {
