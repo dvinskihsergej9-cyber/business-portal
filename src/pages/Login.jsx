@@ -3,6 +3,7 @@ import { useNavigate, Link } from "react-router-dom";
 import lottie from "lottie-web";
 import { useAuth } from "../context/AuthContext";
 import modernWmsWarehouseAnimation from "../assets/login/modernwms-warehouse.json";
+import { requestPushPermissionIfNeeded } from "../utils/pushSubscription";
 
 const normalizeLoginInput = (value) =>
   String(value || "").replace(/\s+/g, "_");
@@ -103,6 +104,7 @@ export default function Login() {
     e.preventDefault();
     if (loading || showWelcome) return;
 
+    await requestPushPermissionIfNeeded();
     setError("");
     setLoading(true);
 

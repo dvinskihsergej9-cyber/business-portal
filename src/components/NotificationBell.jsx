@@ -1,12 +1,6 @@
 ﻿import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { API_BASE } from "../apiConfig";
-
-function urlBase64ToUint8Array(base64String) {
-  const padding = "=".repeat((4 - (base64String.length % 4)) % 4);
-  const base64 = (base64String + padding).replace(/-/g, "+").replace(/_/g, "/");
-  const rawData = atob(base64);
-  return Uint8Array.from([...rawData].map((char) => char.charCodeAt(0)));
-}
+import { ensurePushSubscription as ensurePushSubscriptionShared } from "../utils/pushSubscription";
 
 export default function NotificationBell() {
   const [open, setOpen] = useState(false);
@@ -15,9 +9,7 @@ export default function NotificationBell() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
   const [pushEnabled, setPushEnabled] = useState(false);
-  const [pushSubscribed, setPushSubscribed] = useState(false);
   const [pushTestLoading, setPushTestLoading] = useState(false);
-  const [pushSetupLoading, setPushSetupLoading] = useState(false);
   const wrapperRef = useRef(null);
 
   const token = localStorage.getItem("token") || "";
@@ -103,91 +95,12 @@ export default function NotificationBell() {
 
   const ensurePushSubscription = useCallback(
     async ({ interactive = false } = {}) => {
-      if (!token) return false;
-      if (!("serviceWorker" in navigator) || !("PushManager" in window)) {
-        setPushEnabled(false);
-        setPushSubscribed(false);
-        return false;
-      }
-
-      try {
-        const keyRes = await fetch(`${API_BASE}/notifications/push/public-key`, {
-          headers: { Authorization: authHeaders.Authorization },
-        });
-        const keyData = await keyRes.json().catch(() => ({}));
-        const enabled = Boolean(
-          keyRes.ok && keyData?.enabled && keyData?.publicKey
-        );
-
-        setPushEnabled(enabled);
-        if (!enabled) {
-          setPushSubscribed(false);
-          return false;
-        }
-
-        const registration = await navigator.serviceWorker.register("/push-sw.js");
-
-        if (Notification.permission === "default" && interactive) {
-          const permission = await Notification.requestPermission();
-          if (permission !== "granted") {
-            setPushSubscribed(false);
-            return false;
-          }
-        }
-
-        if (Notification.permission !== "granted") {
-          setPushSubscribed(false);
-          return false;
-        }
-
-        let subscription = await registration.pushManager.getSubscription();
-        if (!subscription) {
-          if (!interactive) {
-            setPushSubscribed(false);
-            return false;
-          }
-          subscription = await registration.pushManager.subscribe({
-            userVisibleOnly: true,
-            applicationServerKey: urlBase64ToUint8Array(keyData.publicKey),
-          });
-        }
-
-        const saveRes = await fetch(`${API_BASE}/notifications/push/subscribe`, {
-          method: "POST",
-          headers: authHeaders,
-          body: JSON.stringify(subscription),
-        });
-
-        if (!saveRes.ok) {
-          setPushSubscribed(false);
-          return false;
-        }
-
-        setPushSubscribed(true);
-        return true;
-      } catch {
-        setPushSubscribed(false);
-        return false;
-      }
+      const result = await ensurePushSubscriptionShared({ token, interactive });
+      setPushEnabled(Boolean(result?.enabled));
+      return Boolean(result?.subscribed);
     },
-    [token, authHeaders]
+    [token]
   );
-
-  const handlePushSetup = async () => {
-    setPushSetupLoading(true);
-    try {
-      const ok = await ensurePushSubscription({ interactive: true });
-      if (!ok) {
-        alert(
-          "Не удалось включить push. Проверьте, что уведомления разрешены для приложения/сайта."
-        );
-        return;
-      }
-      alert("Push-уведомления включены.");
-    } finally {
-      setPushSetupLoading(false);
-    }
-  };
 
   const handlePushTest = async () => {
     setPushTestLoading(true);
@@ -195,7 +108,7 @@ export default function NotificationBell() {
       const ready = await ensurePushSubscription({ interactive: true });
       if (!ready) {
         alert(
-          "Нет активной push-подписки. Нажмите «Включить push» и разрешите уведомления."
+          "Нет активной push-подписки. Разрешите уведомления для приложения и повторите."
         );
         return;
       }
@@ -242,7 +155,6 @@ export default function NotificationBell() {
   useEffect(() => {
     ensurePushSubscription({ interactive: false }).catch(() => {
       setPushEnabled(false);
-      setPushSubscribed(false);
     });
   }, [ensurePushSubscription]);
 
@@ -260,10 +172,26 @@ export default function NotificationBell() {
           color: "#0f172a",
           cursor: "pointer",
           position: "relative",
+          display: "inline-flex",
+          alignItems: "center",
+          justifyContent: "center",
+          padding: 0,
         }}
         aria-label="Уведомления"
       >
-        🔔
+        <span
+          style={{
+            fontSize: 19,
+            lineHeight: 1,
+            display: "inline-flex",
+            alignItems: "center",
+            justifyContent: "center",
+            width: "100%",
+            height: "100%",
+          }}
+        >
+          🔔
+        </span>
         {unreadCount > 0 && (
           <span
             style={{
@@ -314,27 +242,6 @@ export default function NotificationBell() {
           >
             <strong style={{ fontSize: 14 }}>Уведомления</strong>
             <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-              {pushEnabled && (
-                <button
-                  type="button"
-                  onClick={handlePushSetup}
-                  disabled={pushSetupLoading}
-                  style={{
-                    border: "none",
-                    background: "transparent",
-                    color: pushSubscribed ? "#0f766e" : "#2563eb",
-                    fontSize: 12,
-                    cursor: pushSetupLoading ? "default" : "pointer",
-                    opacity: pushSetupLoading ? 0.7 : 1,
-                  }}
-                >
-                  {pushSetupLoading
-                    ? "Подключение..."
-                    : pushSubscribed
-                    ? "Push включен"
-                    : "Включить push"}
-                </button>
-              )}
               {pushEnabled && (
                 <button
                   type="button"

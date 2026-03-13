@@ -1582,35 +1582,35 @@ input[type="number"] {
   }
 
   .tasks-journal-table .tasks-journal-row td[data-label="date"]::before {
-    content: "Р”Р°С‚Р°";
+    content: "Дата";
   }
 
   .tasks-journal-table .tasks-journal-row td[data-label="status"]::before {
-    content: "РЎС‚Р°С‚СѓСЃ";
+    content: "Статус";
   }
 
   .tasks-journal-table .tasks-journal-row td[data-label="due"]::before {
-    content: "РЎСЂРѕРє";
+    content: "Срок";
   }
 
   .tasks-journal-table .tasks-journal-row td[data-label="title"]::before {
-    content: "Р—Р°РґР°С‡Р°";
+    content: "Задача";
   }
 
   .tasks-journal-table .tasks-journal-row td[data-label="executor"]::before {
-    content: "РСЃРїРѕР»РЅРёС‚РµР»СЊ";
+    content: "Исполнитель";
   }
 
   .tasks-journal-table .tasks-journal-row td[data-label="author"]::before {
-    content: "РђРІС‚РѕСЂ";
+    content: "Автор";
   }
 
   .tasks-journal-table .tasks-journal-row td[data-label="desc"]::before {
-    content: "РћРїРёСЃР°РЅРёРµ";
+    content: "Описание";
   }
 
   .tasks-journal-table .tasks-journal-row td[data-label="actions"]::before {
-    content: "Р”РµР№СЃС‚РІРёСЏ";
+    content: "Действия";
   }
 
   .tasks-journal-table .tasks-journal-row td[data-label="actions"] {
