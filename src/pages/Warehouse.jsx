@@ -1,6 +1,7 @@
 ﻿
 
 import { useEffect, useMemo, useRef, useState, Fragment } from "react";
+import { useLocation } from "react-router-dom";
 
 import { API_BASE, normalizeErrorMessage } from "../apiConfig";
 import { useAuth } from "../context/AuthContext";
@@ -210,6 +211,7 @@ export default function Warehouse({
 }) {
 
   const { user } = useAuth();
+  const location = useLocation();
 
   const isWarehouseManager =
     user?.role === "ADMIN" ||
@@ -352,6 +354,23 @@ export default function Warehouse({
   const [taskAllList, setTaskAllList] = useState([]);
 
     const [taskView, setTaskView] = useState("new"); // 'new' | 'journal'
+
+  useEffect(() => {
+    const params = new URLSearchParams(location.search || "");
+    const sectionParam = params.get("section");
+    const taskViewParam = params.get("taskView");
+
+    if (sectionParam && sectionSet.has(sectionParam)) {
+      setSection(sectionParam);
+    }
+
+    if (
+      sectionParam === "tasks" &&
+      (taskViewParam === "new" || taskViewParam === "journal")
+    ) {
+      setTaskView(taskViewParam);
+    }
+  }, [location.search, sectionSet]);
 
   const [taskTab, setTaskTab] = useState("my");
 

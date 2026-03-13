@@ -1,4 +1,5 @@
 ﻿import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useNavigate } from "react-router-dom";
 import { API_BASE } from "../apiConfig";
 import { ensurePushSubscription as ensurePushSubscriptionShared } from "../utils/pushSubscription";
 
@@ -11,6 +12,7 @@ export default function NotificationBell() {
   const [pushEnabled, setPushEnabled] = useState(false);
   const [pushTestLoading, setPushTestLoading] = useState(false);
   const wrapperRef = useRef(null);
+  const navigate = useNavigate();
 
   const token = localStorage.getItem("token") || "";
   const authHeaders = useMemo(
@@ -100,6 +102,23 @@ export default function NotificationBell() {
       return Boolean(result?.subscribed);
     },
     [token]
+  );
+
+  const openNotificationLink = useCallback(
+    (linkUrl) => {
+      if (!linkUrl) return;
+      try {
+        const normalized = new URL(linkUrl, window.location.origin);
+        if (normalized.origin === window.location.origin) {
+          navigate(`${normalized.pathname}${normalized.search}${normalized.hash}`);
+          return;
+        }
+      } catch {
+        // fallback to full reload
+      }
+      window.location.href = linkUrl;
+    },
+    [navigate]
   );
 
   const handlePushTest = async () => {
@@ -299,7 +318,7 @@ export default function NotificationBell() {
                     await markRead(item.id);
                   }
                   if (item.linkUrl) {
-                    window.location.href = item.linkUrl;
+                    openNotificationLink(item.linkUrl);
                   }
                   setOpen(false);
                 }}

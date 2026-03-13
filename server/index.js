@@ -612,6 +612,8 @@ async function createWarehouseNotification({
   return notification;
 }
 
+const TASKS_JOURNAL_LINK = "/warehouse?section=tasks&taskView=journal";
+
 function hashInviteToken(token) {
   return crypto.createHash("sha256").update(token).digest("hex");
 }
@@ -3060,7 +3062,7 @@ async function checkWarehouseTaskNotifications() {
             type: "TASK_DUE_SOON",
             title: "Срок задачи скоро истекает",
             message: `Задача "${task.title}" до ${dueStr}.`,
-            linkUrl: "/warehouse",
+            linkUrl: TASKS_JOURNAL_LINK,
             payloadJson: { taskId: task.id, dueDate: task.dueDate },
           });
         }
@@ -3081,7 +3083,7 @@ async function checkWarehouseTaskNotifications() {
             type: "TASK_OVERDUE",
             title: "Задача просрочена",
             message: `Задача "${task.title}" просрочена (срок: ${dueStr}).`,
-            linkUrl: "/warehouse",
+            linkUrl: TASKS_JOURNAL_LINK,
             payloadJson: { taskId: task.id, dueDate: task.dueDate },
           });
         }
@@ -3093,7 +3095,7 @@ async function checkWarehouseTaskNotifications() {
             type: "TASK_OVERDUE",
             title: "Просрочена назначенная задача",
             message: `Задача "${task.title}" просрочена (срок: ${dueStr}).`,
-            linkUrl: "/warehouse",
+            linkUrl: TASKS_JOURNAL_LINK,
             payloadJson: { taskId: task.id, dueDate: task.dueDate },
           });
         }
@@ -5684,7 +5686,7 @@ app.post("/api/warehouse/tasks", auth, async (req, res) => {
         type: "TASK_ASSIGNED",
         title: "Новая задача склада",
         message: `Вам назначена задача: "${task.title}".`,
-        linkUrl: "/warehouse",
+        linkUrl: TASKS_JOURNAL_LINK,
         payloadJson: { taskId: task.id },
       });
     }
@@ -5831,7 +5833,7 @@ app.put("/api/warehouse/tasks/:id/status", auth, async (req, res) => {
           message: `Задача "${updated.title}" переведена в статус "${
             WAREHOUSE_TASK_STATUS_LABELS[updated.status] || updated.status
           }".`,
-          linkUrl: "/warehouse",
+          linkUrl: TASKS_JOURNAL_LINK,
           payloadJson: {
             taskId: updated.id,
             fromStatus: existing.status,
@@ -5852,7 +5854,7 @@ app.put("/api/warehouse/tasks/:id/status", auth, async (req, res) => {
           message: `Задача "${updated.title}" теперь в статусе "${
             WAREHOUSE_TASK_STATUS_LABELS[updated.status] || updated.status
           }".`,
-          linkUrl: "/warehouse",
+          linkUrl: TASKS_JOURNAL_LINK,
           payloadJson: {
             taskId: updated.id,
             fromStatus: existing.status,
