@@ -9,7 +9,11 @@ function urlBase64ToUint8Array(base64String) {
   return Uint8Array.from([...rawData].map((char) => char.charCodeAt(0)));
 }
 
-export async function ensurePushSubscription({ token, interactive = false } = {}) {
+export async function ensurePushSubscription({
+  token,
+  interactive = false,
+  forceRebind = false,
+} = {}) {
   if (!token) return { enabled: false, subscribed: false };
   if (typeof window === "undefined" || typeof navigator === "undefined") {
     return { enabled: false, subscribed: false };
@@ -60,6 +64,29 @@ export async function ensurePushSubscription({ token, interactive = false } = {}
       const readyRegistration = await navigator.serviceWorker.ready.catch(() => registration);
 
       let subscription = await readyRegistration.pushManager.getSubscription();
+      // На входе под другим пользователем на том же устройстве принудительно
+      // отвязываем старую локальную подписку и создаем новую для текущего аккаунта.
+      if (subscription && forceRebind) {
+        try {
+          await fetch(`${API_BASE}/notifications/push/unsubscribe`, {
+            method: "POST",
+            headers: {
+              Authorization: `Bearer ${token}`,
+              "Content-Type": "application/json",
+            },
+            body: JSON.stringify({ endpoint: subscription.endpoint }),
+          });
+        } catch {
+          // no-op
+        }
+        try {
+          await subscription.unsubscribe();
+        } catch {
+          // no-op
+        }
+        subscription = null;
+      }
+
       if (!subscription) {
         subscription = await readyRegistration.pushManager.subscribe({
           userVisibleOnly: true,

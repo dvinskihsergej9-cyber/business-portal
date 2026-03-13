@@ -18,15 +18,15 @@ export function AuthProvider({ children }) {
   });
   const [loading, setLoading] = useState(true);
 
-  const bindPushForSession = (token, interactive = false) => {
+  const bindPushForSession = (token, interactive = false, forceRebind = false) => {
     if (!token) return;
-    ensurePushSubscription({ token, interactive }).then((result) => {
+    ensurePushSubscription({ token, interactive, forceRebind }).then((result) => {
       if (result?.subscribed) return;
       setTimeout(() => {
-        ensurePushSubscription({ token, interactive: false }).catch(() => null);
+        ensurePushSubscription({ token, interactive: false, forceRebind: false }).catch(() => null);
       }, 1800);
       setTimeout(() => {
-        ensurePushSubscription({ token, interactive: false }).catch(() => null);
+        ensurePushSubscription({ token, interactive: false, forceRebind: false }).catch(() => null);
       }, 5000);
     }).catch(() => null);
   };
@@ -85,7 +85,7 @@ export function AuthProvider({ children }) {
       localStorage.setItem("token", data.token);
       localStorage.setItem("user", JSON.stringify(data.user));
       setUser(data.user);
-      bindPushForSession(data.token, true);
+      bindPushForSession(data.token, true, true);
 
       return { ok: true };
     } catch (e) {
@@ -113,7 +113,7 @@ export function AuthProvider({ children }) {
       localStorage.setItem("token", data.token);
       localStorage.setItem("user", JSON.stringify(data.user));
       setUser(data.user);
-      bindPushForSession(data.token, true);
+      bindPushForSession(data.token, true, true);
 
       return { ok: true };
     } catch (e) {
@@ -169,7 +169,7 @@ export function AuthProvider({ children }) {
       const data = await res.json();
       setUser(data);
       localStorage.setItem("user", JSON.stringify(data));
-      bindPushForSession(token, false);
+      bindPushForSession(token, false, false);
     } catch (err) {
       console.error("Refresh user error:", err);
     }
@@ -178,7 +178,7 @@ export function AuthProvider({ children }) {
   useEffect(() => {
     if (!user?.id) return;
     const token = localStorage.getItem("token");
-    bindPushForSession(token, false);
+    bindPushForSession(token, false, false);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [user?.id]);
 
