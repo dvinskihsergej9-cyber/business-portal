@@ -1,4 +1,4 @@
-﻿import { useEffect, useMemo, useRef, useState } from "react";
+﻿import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { API_BASE } from "../apiConfig";
 
 function urlBase64ToUint8Array(base64String) {
@@ -15,7 +15,9 @@ export default function NotificationBell() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
   const [pushEnabled, setPushEnabled] = useState(false);
+  const [pushSubscribed, setPushSubscribed] = useState(false);
   const [pushTestLoading, setPushTestLoading] = useState(false);
+  const [pushSetupLoading, setPushSetupLoading] = useState(false);
   const wrapperRef = useRef(null);
 
   const token = localStorage.getItem("token") || "";
@@ -30,7 +32,7 @@ export default function NotificationBell() {
       const res = await fetch(`${API_BASE}/notifications/unread-count`, {
         headers: { Authorization: authHeaders.Authorization },
       });
-      const data = await res.json();
+      const data = await res.json().catch(() => ({}));
       if (res.ok) {
         setUnreadCount(Number(data?.unreadCount || 0));
       }
@@ -47,7 +49,7 @@ export default function NotificationBell() {
       const res = await fetch(`${API_BASE}/notifications?limit=25`, {
         headers: { Authorization: authHeaders.Authorization },
       });
-      const data = await res.json();
+      const data = await res.json().catch(() => ({}));
       if (!res.ok) {
         throw new Error(data?.message || "Ошибка загрузки уведомлений");
       }
@@ -68,7 +70,11 @@ export default function NotificationBell() {
         headers: authHeaders,
       });
       setItems((prev) =>
-        prev.map((item) => (item.id === id ? { ...item, isRead: true, readAt: new Date().toISOString() } : item))
+        prev.map((item) =>
+          item.id === id
+            ? { ...item, isRead: true, readAt: new Date().toISOString() }
+            : item
+        )
       );
       setUnreadCount((prev) => Math.max(0, prev - 1));
     } catch {
@@ -82,16 +88,118 @@ export default function NotificationBell() {
         method: "POST",
         headers: authHeaders,
       });
-      setItems((prev) => prev.map((item) => ({ ...item, isRead: true, readAt: item.readAt || new Date().toISOString() })));
+      setItems((prev) =>
+        prev.map((item) => ({
+          ...item,
+          isRead: true,
+          readAt: item.readAt || new Date().toISOString(),
+        }))
+      );
       setUnreadCount(0);
     } catch {
       // no-op
     }
   };
 
+  const ensurePushSubscription = useCallback(
+    async ({ interactive = false } = {}) => {
+      if (!token) return false;
+      if (!("serviceWorker" in navigator) || !("PushManager" in window)) {
+        setPushEnabled(false);
+        setPushSubscribed(false);
+        return false;
+      }
+
+      try {
+        const keyRes = await fetch(`${API_BASE}/notifications/push/public-key`, {
+          headers: { Authorization: authHeaders.Authorization },
+        });
+        const keyData = await keyRes.json().catch(() => ({}));
+        const enabled = Boolean(
+          keyRes.ok && keyData?.enabled && keyData?.publicKey
+        );
+
+        setPushEnabled(enabled);
+        if (!enabled) {
+          setPushSubscribed(false);
+          return false;
+        }
+
+        const registration = await navigator.serviceWorker.register("/push-sw.js");
+
+        if (Notification.permission === "default" && interactive) {
+          const permission = await Notification.requestPermission();
+          if (permission !== "granted") {
+            setPushSubscribed(false);
+            return false;
+          }
+        }
+
+        if (Notification.permission !== "granted") {
+          setPushSubscribed(false);
+          return false;
+        }
+
+        let subscription = await registration.pushManager.getSubscription();
+        if (!subscription) {
+          if (!interactive) {
+            setPushSubscribed(false);
+            return false;
+          }
+          subscription = await registration.pushManager.subscribe({
+            userVisibleOnly: true,
+            applicationServerKey: urlBase64ToUint8Array(keyData.publicKey),
+          });
+        }
+
+        const saveRes = await fetch(`${API_BASE}/notifications/push/subscribe`, {
+          method: "POST",
+          headers: authHeaders,
+          body: JSON.stringify(subscription),
+        });
+
+        if (!saveRes.ok) {
+          setPushSubscribed(false);
+          return false;
+        }
+
+        setPushSubscribed(true);
+        return true;
+      } catch {
+        setPushSubscribed(false);
+        return false;
+      }
+    },
+    [token, authHeaders]
+  );
+
+  const handlePushSetup = async () => {
+    setPushSetupLoading(true);
+    try {
+      const ok = await ensurePushSubscription({ interactive: true });
+      if (!ok) {
+        alert(
+          "Не удалось включить push. Проверьте, что уведомления разрешены для приложения/сайта."
+        );
+        return;
+      }
+      alert("Push-уведомления включены.");
+    } finally {
+      setPushSetupLoading(false);
+    }
+  };
+
   const handlePushTest = async () => {
     setPushTestLoading(true);
     try {
+      const ready = await ensurePushSubscription({ interactive: true });
+      if (!ready) {
+        alert(
+          "Нет активной push-подписки. Нажмите «Включить push» и разрешите уведомления."
+        );
+        return;
+      }
+
       const res = await fetch(`${API_BASE}/notifications/push/test`, {
         method: "POST",
         headers: authHeaders,
@@ -132,56 +240,11 @@ export default function NotificationBell() {
   }, []);
 
   useEffect(() => {
-    let cancelled = false;
-
-    const ensurePush = async () => {
-      if (!token) return;
-      if (!("serviceWorker" in navigator) || !("PushManager" in window)) return;
-      if (Notification.permission === "denied") return;
-
-      try {
-        const keyRes = await fetch(`${API_BASE}/notifications/push/public-key`, {
-          headers: { Authorization: authHeaders.Authorization },
-        });
-        const keyData = await keyRes.json();
-        const enabled = Boolean(keyRes.ok && keyData?.enabled && keyData?.publicKey);
-        setPushEnabled(enabled);
-        if (!enabled) return;
-
-        const registration = await navigator.serviceWorker.register("/push-sw.js");
-
-        if (Notification.permission === "default") {
-          const permission = await Notification.requestPermission();
-          if (permission !== "granted") return;
-        }
-        if (Notification.permission !== "granted") return;
-
-        let subscription = await registration.pushManager.getSubscription();
-        if (!subscription) {
-          subscription = await registration.pushManager.subscribe({
-            userVisibleOnly: true,
-            applicationServerKey: urlBase64ToUint8Array(keyData.publicKey),
-          });
-        }
-
-        if (cancelled) return;
-
-        await fetch(`${API_BASE}/notifications/push/subscribe`, {
-          method: "POST",
-          headers: authHeaders,
-          body: JSON.stringify(subscription),
-        });
-      } catch {
-        setPushEnabled(false);
-        // no-op: in-app notifications continue to work even without push
-      }
-    };
-
-    ensurePush();
-    return () => {
-      cancelled = true;
-    };
-  }, [token, authHeaders]);
+    ensurePushSubscription({ interactive: false }).catch(() => {
+      setPushEnabled(false);
+      setPushSubscribed(false);
+    });
+  }, [ensurePushSubscription]);
 
   return (
     <div ref={wrapperRef} style={{ position: "relative" }}>
@@ -254,6 +317,27 @@ export default function NotificationBell() {
               {pushEnabled && (
                 <button
                   type="button"
+                  onClick={handlePushSetup}
+                  disabled={pushSetupLoading}
+                  style={{
+                    border: "none",
+                    background: "transparent",
+                    color: pushSubscribed ? "#0f766e" : "#2563eb",
+                    fontSize: 12,
+                    cursor: pushSetupLoading ? "default" : "pointer",
+                    opacity: pushSetupLoading ? 0.7 : 1,
+                  }}
+                >
+                  {pushSetupLoading
+                    ? "Подключение..."
+                    : pushSubscribed
+                    ? "Push включен"
+                    : "Включить push"}
+                </button>
+              )}
+              {pushEnabled && (
+                <button
+                  type="button"
                   onClick={handlePushTest}
                   disabled={pushTestLoading}
                   style={{
@@ -285,13 +369,20 @@ export default function NotificationBell() {
           </div>
 
           {loading && <div style={{ padding: 12, fontSize: 13 }}>Загрузка...</div>}
-          {error && !loading && <div style={{ padding: 12, color: "#b91c1c", fontSize: 13 }}>{error}</div>}
-
-          {!loading && !error && items.length === 0 && (
-            <div style={{ padding: 12, color: "#64748b", fontSize: 13 }}>Новых уведомлений нет.</div>
+          {error && !loading && (
+            <div style={{ padding: 12, color: "#b91c1c", fontSize: 13 }}>
+              {error}
+            </div>
           )}
 
-          {!loading && !error &&
+          {!loading && !error && items.length === 0 && (
+            <div style={{ padding: 12, color: "#64748b", fontSize: 13 }}>
+              Новых уведомлений нет.
+            </div>
+          )}
+
+          {!loading &&
+            !error &&
             items.map((item) => (
               <button
                 key={item.id}
@@ -315,12 +406,23 @@ export default function NotificationBell() {
                   cursor: "pointer",
                 }}
               >
-                <div style={{ fontSize: 13, fontWeight: 600, color: "#0f172a" }}>{item.title}</div>
-                <div style={{ marginTop: 4, fontSize: 12, color: "#334155", whiteSpace: "normal" }}>
+                <div style={{ fontSize: 13, fontWeight: 600, color: "#0f172a" }}>
+                  {item.title}
+                </div>
+                <div
+                  style={{
+                    marginTop: 4,
+                    fontSize: 12,
+                    color: "#334155",
+                    whiteSpace: "normal",
+                  }}
+                >
                   {item.message}
                 </div>
                 <div style={{ marginTop: 6, fontSize: 11, color: "#64748b" }}>
-                  {item.createdAt ? new Date(item.createdAt).toLocaleString("ru-RU") : ""}
+                  {item.createdAt
+                    ? new Date(item.createdAt).toLocaleString("ru-RU")
+                    : ""}
                 </div>
               </button>
             ))}
