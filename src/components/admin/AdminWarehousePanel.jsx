@@ -248,12 +248,7 @@ export default function AdminWarehousePanel() {
 
   useEffect(() => {
     if (!error) return;
-    const node = errorRef.current;
-    if (node?.scrollIntoView) {
-      node.scrollIntoView({ behavior: "smooth", block: "start" });
-    } else if (typeof window !== "undefined") {
-      window.scrollTo({ top: 0, behavior: "smooth" });
-    }
+    // Ошибки показываются через глобальное модальное окно.
   }, [error]);
 
   const handleSaveItem = async () => {

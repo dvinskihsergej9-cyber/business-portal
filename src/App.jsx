@@ -10,6 +10,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { AuthProvider, useAuth } from "./context/AuthContext";
 import ProtectedRoute from "./components/ProtectedRoute";
 import BackgroundNetwork from "./components/BackgroundNetwork";
+import GlobalErrorModal from "./components/GlobalErrorModal";
 
 import Layout from "./Layout";
 
@@ -214,6 +215,7 @@ function AppRoutesWithBackground() {
           <Route path="*" element={<Navigate to="/" replace />} />
         </Routes>
       </div>
+      <GlobalErrorModal />
     </>
   );
 }

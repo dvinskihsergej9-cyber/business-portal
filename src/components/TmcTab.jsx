@@ -54,11 +54,9 @@ export default function TmcTab() {
   }, []);
 
   useEffect(() => {
-    if (!error || !errorRef.current) return;
-    const id = setTimeout(() => {
-      errorRef.current?.scrollIntoView({ behavior: "smooth", block: "center" });
-    }, 50);
-    return () => clearTimeout(id);
+    if (!error) return;
+    // Ошибки показываются в глобальном модальном окне, без автоскролла к блоку.
+    return undefined;
   }, [error]);
 
   const loadAll = async () => {

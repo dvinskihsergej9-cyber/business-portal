@@ -1,4 +1,5 @@
-﻿// src/apiConfig.js
+﻿import { showGlobalError } from "./utils/globalErrorModal";
+// src/apiConfig.js
 const envBase = import.meta.env.VITE_API_BASE?.trim();
 
 const devFallbackBase = `${window.location.protocol}//${window.location.hostname}:3001`;
@@ -243,14 +244,17 @@ export const apiFetch = async (path, options = {}) => {
       signal: controller.signal,
     });
   } catch (err) {
-    if (err?.name === "AbortError") {
-      throw new Error("Не удалось подключиться к серверу.");
-    }
-    throw new Error(normalizeErrorMessage(err, "Ошибка подключения к серверу."));
+    const message =
+      err?.name === "AbortError"
+        ? "Не удалось подключиться к серверу."
+        : normalizeErrorMessage(err, "Ошибка подключения к серверу.");
+    showGlobalError(message);
+    throw new Error(message);
   } finally {
     clearTimeout(timeoutId);
   }
 };
+
 
 
 
