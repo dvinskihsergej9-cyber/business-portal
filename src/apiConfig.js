@@ -106,6 +106,9 @@ export const normalizeErrorMessage = (err, fallback = "Ошибка запрос
   }
   if (message === "CODE_REQUIRED") return "Скан не распознан. Повторите сканирование.";
   if (message === "CODE_NOT_FOUND") return "Код не найден.";
+  if (message === "SCAN_RESOLVE_ERROR") {
+    return "Не удалось распознать код. Повторите сканирование.";
+  }
   if (message === "LOCATION_UPDATE_ERROR") return "Ошибка обновления ячейки.";
   if (message === "LOCATIONS_LIST_ERROR") return "Ошибка загрузки ячеек.";
   if (message === "REQUESTS_LIST_ERROR") return "Ошибка загрузки заявок.";
