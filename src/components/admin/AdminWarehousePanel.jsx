@@ -288,7 +288,7 @@ export default function AdminWarehousePanel() {
         return setItemError("Наименование товара обязательно.");
       }
       if (!itemForm.sku.trim()) {
-        return setItemError("Артикул (SKU) обязателен.");
+        return setItemError("Артикул обязателен.");
       }
       if (!itemForm.barcode.trim()) {
         return setItemError("Штрихкод обязателен.");
@@ -641,7 +641,7 @@ export default function AdminWarehousePanel() {
                 />
               </div>
               <div>
-                <label className="admin-label">SKU</label>
+                <label className="admin-label">Артикул</label>
                 <input
                   className="admin-input"
                   value={itemForm.sku}
@@ -737,7 +737,7 @@ export default function AdminWarehousePanel() {
                 <tr>
                   <th>Фото</th>
                   <th>Товар</th>
-                  <th>SKU</th>
+                  <th>Артикул</th>
                   <th>Штрихкод</th>
                   <th>Ед.</th>
                   <th>Мин</th>
@@ -774,7 +774,7 @@ export default function AdminWarehousePanel() {
                       <div className="admin-table__title">{item.name}</div>
                       <div className="admin-table__meta">ID: {item.id}</div>
                     </td>
-                    <td data-label="SKU">{item.sku || "-"}</td>
+                    <td data-label="Артикул">{item.sku || "-"}</td>
                     <td data-label="Штрихкод">{item.barcode || "-"}</td>
                     <td data-label="Ед.">{item.unit || "-"}</td>
                     <td data-label="Мин">{item.minStock ?? "-"}</td>
@@ -999,7 +999,7 @@ export default function AdminWarehousePanel() {
                   />
                 </div>
                 <div>
-                  <label className="admin-label">SKU</label>
+                  <label className="admin-label">Артикул</label>
                   <input
                     className="admin-input"
                     value={itemForm.sku}

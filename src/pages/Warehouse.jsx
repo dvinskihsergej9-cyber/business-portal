@@ -1670,7 +1670,7 @@ export default function Warehouse({
 
       if (!itemForm.sku.trim()) {
 
-        return setInventoryError("Артикул (SKU) обязателен.");
+        return setInventoryError("Артикул обязателен.");
 
       }
 
@@ -4427,7 +4427,7 @@ export default function Warehouse({
                       <tr>
                         <th>№</th>
                         <th>Товар</th>
-                        <th>SKU</th>
+                        <th>Артикул</th>
                         <th>Ед.</th>
                         <th>Заказано</th>
                         <th>Получено</th>

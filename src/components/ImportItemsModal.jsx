@@ -100,7 +100,7 @@ export default function ImportItemsModal({ onClose, onImportSuccess }) {
                     item.validationError = "Нет названия";
                 } else if (!item.sku || !String(item.sku).trim()) {
                     item.isValid = false;
-                    item.validationError = "Нет артикула (SKU)";
+                    item.validationError = "Нет артикула";
                 }
 
                 return item;
@@ -201,7 +201,7 @@ export default function ImportItemsModal({ onClose, onImportSuccess }) {
                                             <th style={{ padding: 8, borderBottom: "1px solid #ddd" }}>№</th>
                                             <th style={{ padding: 8, borderBottom: "1px solid #ddd" }}>Статус</th>
                                             <th style={{ padding: 8, borderBottom: "1px solid #ddd" }}>Название</th>
-                                            <th style={{ padding: 8, borderBottom: "1px solid #ddd" }}>SKU</th>
+                                            <th style={{ padding: 8, borderBottom: "1px solid #ddd" }}>Артикул</th>
                                             <th style={{ padding: 8, borderBottom: "1px solid #ddd" }}>Штрихкод</th>
                                             <th style={{ padding: 8, borderBottom: "1px solid #ddd" }}>Ед.</th>
                                             <th style={{ padding: 8, borderBottom: "1px solid #ddd" }}>Цена</th>

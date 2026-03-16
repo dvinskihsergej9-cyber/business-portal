@@ -112,7 +112,7 @@ export default function ImportOrdersModal({ onClose, onImportSuccess }) {
           return;
         }
         if (!sku && !name && !barcode) {
-          importErrors.push({ row: index + 2, error: "Нет SKU или наименования." });
+          importErrors.push({ row: index + 2, error: "Нет артикула или наименования." });
           return;
         }
 
@@ -223,7 +223,7 @@ export default function ImportOrdersModal({ onClose, onImportSuccess }) {
         {step === 1 && (
           <div className="admin-form">
             <div className="admin-muted">
-              Колонки: номер заказа, получатель, телефон, адрес, комментарий, SKU, наименование, количество.
+              Колонки: номер заказа, получатель, телефон, адрес, комментарий, артикул, наименование, количество.
             </div>
             <div className="admin-form__row" style={{ marginTop: 12 }}>
               <button

@@ -162,7 +162,7 @@ export default function StockTransactionsTab() {
         <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
           <input
             className="form__input"
-            placeholder="Поиск по товару, SKU, штрих-коду, ячейке"
+            placeholder="Поиск по товару, артикулу, штрих-коду, ячейке"
             value={query}
             onChange={(event) => setQuery(event.target.value)}
           />

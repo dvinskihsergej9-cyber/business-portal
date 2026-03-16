@@ -757,7 +757,7 @@ export default function WarehouseLocationsPanel() {
                         </div>
                         {item.sku && (
                           <div className="warehouse-locations__list-meta">
-                            SKU: {item.sku}
+                            Артикул: {item.sku}
                           </div>
                         )}
                       </div>
