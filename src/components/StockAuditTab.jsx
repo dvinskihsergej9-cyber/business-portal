@@ -101,13 +101,31 @@ function openInventoryAuditActWindow(items, includeZero) {
       border-bottom: 1px solid #000;
       margin: 18px 0 4px;
     }
-    .print-btn {
+    .print-actions {
       margin-top: 16px;
+      display: flex;
+      gap: 8px;
+      flex-wrap: wrap;
+    }
+    .print-btn {
       padding: 6px 16px;
       font-size: 13px;
+      border: 1px solid #bbb;
+      border-radius: 8px;
+      background: #fff;
+      cursor: pointer;
+    }
+    .print-btn--primary {
+      border-color: #1890d8;
+      background: #1ba3e0;
+      color: #fff;
+    }
+    .print-btn--ghost {
+      background: #fff;
+      color: #0f172a;
     }
     @media print {
-      .print-btn { display: none; }
+      .print-actions { display: none; }
       body { margin: 0; }
       .a4 { width: auto; margin: 0; }
     }
@@ -152,8 +170,26 @@ function openInventoryAuditActWindow(items, includeZero) {
       </div>
     </div>
 
-    <button class="print-btn" onclick="window.print()">Печать</button>
+    <div class="print-actions">
+      <button class="print-btn print-btn--primary" onclick="window.print()">Печать</button>
+      <button class="print-btn print-btn--ghost" onclick="returnToApp()">Вернуться в приложение</button>
+    </div>
   </div>
+  <script>
+    function returnToApp() {
+      try {
+        if (window.opener && !window.opener.closed) {
+          window.close();
+          return;
+        }
+      } catch (e) {}
+      if (window.history.length > 1) {
+        window.history.back();
+        return;
+      }
+      window.location.href = '/warehouse';
+    }
+  </script>
 </body>
 </html>
   `;
