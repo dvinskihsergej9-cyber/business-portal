@@ -747,7 +747,7 @@ function buildPurchaseOrderEmailText(order, templateText = null) {
   const linesText = lines
     .map((row, index) => {
       const name = row?.item?.name || "Товар";
-      const sku = row?.item?.sku ? ` (SKU: ${row.item.sku})` : "";
+      const sku = row?.item?.sku ? ` (Артикул: ${row.item.sku})` : "";
       const qty = Number(row?.quantity) || 0;
       const unit = row?.item?.unit || "шт";
       const price = Number(row?.price) || 0;
@@ -2315,7 +2315,7 @@ function buildOrderLabelHtml(order) {
         <tr>
           <th>#</th>
           <th>?????</th>
-          <th>SKU</th>
+          <th>Артикул</th>
           <th>???-??</th>
         </tr>
       </thead>
@@ -6117,7 +6117,7 @@ app.post("/api/inventory/items", auth, async (req, res) => {
     if (!sku || !sku.trim()) {
       return res
         .status(400)
-        .json({ message: "Артикул (SKU) обязателен" });
+        .json({ message: "Артикул обязателен" });
     }
 
     if (!unit || !unit.trim()) {
@@ -6210,7 +6210,7 @@ app.get("/api/inventory/items/by-barcode/:barcode", auth, async (req, res) => {
       return res.status(400).json({ message: "Штрихкод обязателен" });
     }
 
-    // ищем по штрихкоду, QR или SKU (на случай, если сканер посылает код артикула)
+    // ищем по штрихкоду, QR или артикулу (на случай, если сканер посылает код артикула)
     const item = await prisma.item.findFirst({
       where: {
         category: "STOCK",
@@ -6584,7 +6584,7 @@ app.get("/api/warehouse/scan/resolve", auth, async (req, res) => {
     const isLoc = raw.startsWith("BP:LOC:") || raw.startsWith("BP:LOCATION:");
     const isItem =
       raw.startsWith("BP:ITEM:") ||
-      raw.startsWith("BP:SKU:") ||
+      raw.startsWith("BP:ARTICLE:") ||
       raw.startsWith("BP:PRODUCT:");
 
     if (isLoc) {
@@ -6648,7 +6648,7 @@ app.get("/api/warehouse/scan/resolve", auth, async (req, res) => {
     }
 
     if (isItem) {
-      const payload = raw.replace(/^BP:(ITEM|SKU|PRODUCT):/, "");
+      const payload = raw.replace(/^BP:(ITEM|ARTICLE|PRODUCT):/, "");
       const id = Number(payload);
       const hasId =
         (raw.startsWith("BP:ITEM:") || raw.startsWith("BP:PRODUCT:")) &&
@@ -8669,7 +8669,7 @@ app.post("/api/warehouse/print/labels", auth, async (req, res) => {
           kind: "item",
           title: item.name,
           subtitle: item.sku
-            ? `SKU: ${item.sku}`
+            ? `Артикул: ${item.sku}`
             : item.barcode
               ? `BARCODE: ${item.barcode}`
               : "",
@@ -8826,7 +8826,7 @@ app.post("/api/warehouse/qr/print", auth, async (req, res) => {
       const item = await prisma.item.findUnique({ where: { id: Number(id) } });
       if (!item) return res.status(404).json({ message: "Товар не найден" });
       title = item.name;
-      subtitle = item.sku ? `SKU: ${item.sku}` : "";
+      subtitle = item.sku ? `Артикул: ${item.sku}` : "";
       qrValue = item.qrCode || `BP:PRODUCT:${item.id}`;
     } else {
       const location = await prisma.warehouseLocation.findUnique({ where: { id: Number(id) } });
@@ -9124,7 +9124,7 @@ app.post("/api/warehouse/labels/print", auth, async (req, res) => {
                 return `
                   <div class="label ${isLabel ? "label--label" : ""}">
                     <div class="title">${r.title}</div>
-                    ${r.sku ? `<div class="sku">SKU: ${r.sku}</div>` : ""}
+                    ${r.sku ? `<div class="sku">Артикул: ${r.sku}</div>` : ""}
                     <div class="content">
                       <div>
                         ${r.barcodeImg ? `<img class="barcode" src="${r.barcodeImg}" />` : ""}
@@ -9675,7 +9675,7 @@ app.post(
       // Предполагаем структуру файла "Импорт.xlsx":
       // 1-я строка — заголовки, дальше — данные
       // A: Наименование
-      // B: Артикул (SKU)
+      // B: Артикул
       // C: Штрихкод
       // D: Ед. изм.
       // E: Мин. остаток
@@ -9714,7 +9714,7 @@ app.post(
         let maxStock = Math.round(toNumber(row.getCell(9).value));
         let defaultPrice = toOptionalNumber(row.getCell(10).value);
 
-        console.log(`Row ${rowNumber}: SKU=${sku}, Min=${minStock}, Max=${maxStock}, Price=${defaultPrice}`);
+        console.log(`Row ${rowNumber}: Артикул=${sku}, Мин=${minStock}, Макс=${maxStock}, Цена=${defaultPrice}`);
 
         // Если строка совсем пустая — пропускаем
         if (!name && !sku && !barcode) {
@@ -9722,7 +9722,7 @@ app.post(
           continue;
         }
 
-        // Без имени или SKU — пропускаем (как и в API создания товара)
+        // Без имени или артикула — пропускаем (как и в API создания товара)
         if (!name || !sku) {
           skipped++;
           continue;
@@ -9753,7 +9753,7 @@ app.post(
         };
 
         try {
-          // Ищем по SKU (он у тебя уникальный)
+          // Ищем по артикулу (он уникальный)
           const existing = await prisma.item.findFirst({
             where: { sku, category: "STOCK" },
           });
@@ -9806,7 +9806,7 @@ app.post("/api/inventory/items/batch", auth, async (req, res) => {
     for (const item of items) {
       // Валидация
       if (!item.name || !item.sku) {
-        errors.push({ row: item.row, error: "Нет имени или SKU" });
+        errors.push({ row: item.row, error: "Нет имени или артикула" });
         continue;
       }
 
