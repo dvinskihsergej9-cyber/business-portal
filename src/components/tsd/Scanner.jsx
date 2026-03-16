@@ -1,5 +1,8 @@
-import React, { useMemo, useRef, useState, useEffect, useCallback } from "react";
-import { Html5Qrcode as Html5QrcodeLib } from "html5-qrcode";
+﻿import React, { useMemo, useRef, useState, useEffect, useCallback } from "react";
+import {
+  Html5Qrcode as Html5QrcodeLib,
+  Html5QrcodeSupportedFormats as Html5QrcodeSupportedFormatsLib,
+} from "html5-qrcode";
 import TsdErrorAlert from "./TsdErrorAlert";
 
 export default function Scanner({
@@ -10,6 +13,7 @@ export default function Scanner({
   disabled = false,
   autoStart = false,
   onUserAction,
+  scanKind = "mixed",
 }) {
   const scannerId = useMemo(
     () => `tsd-scan-${Math.random().toString(36).slice(2)}`,
@@ -27,6 +31,71 @@ export default function Scanner({
     }
     return Html5QrcodeLib;
   }, []);
+
+  const getSupportedFormatsEnum = useCallback(() => {
+    if (typeof window !== "undefined" && window?.Html5QrcodeSupportedFormats) {
+      return window.Html5QrcodeSupportedFormats;
+    }
+    return Html5QrcodeSupportedFormatsLib;
+  }, []);
+
+  const normalizeDecodedText = useCallback((value) => {
+    const raw = String(value || "");
+    return raw
+      .replace(/^\]C1/i, "")
+      .replace(/\u001d/g, "")
+      .trim();
+  }, []);
+
+  const buildScanConfig = useCallback(() => {
+    const formatsEnum = getSupportedFormatsEnum();
+    const resolveFormat = (key) =>
+      formatsEnum && Object.prototype.hasOwnProperty.call(formatsEnum, key)
+        ? formatsEnum[key]
+        : null;
+
+    const qrFormats = ["QR_CODE"];
+    const barcodeFormats = [
+      "EAN_13",
+      "EAN_8",
+      "UPC_A",
+      "UPC_E",
+      "CODE_128",
+      "CODE_39",
+      "CODE_93",
+      "ITF",
+      "CODABAR",
+      "UPC_EAN_EXTENSION",
+    ];
+
+    const requestedKeys =
+      scanKind === "qr"
+        ? qrFormats
+        : scanKind === "barcode"
+          ? barcodeFormats
+          : [...qrFormats, ...barcodeFormats];
+
+    const formatsToSupport = requestedKeys
+      .map(resolveFormat)
+      .filter((value) => Number.isInteger(value));
+
+    const scanConfig = {
+      fps: 10,
+      qrbox:
+        scanKind === "barcode"
+          ? { width: 320, height: 140 }
+          : scanKind === "mixed"
+            ? { width: 300, height: 180 }
+            : { width: 240, height: 240 },
+      experimentalFeatures: { useBarCodeDetectorIfSupported: true },
+    };
+
+    if (formatsToSupport.length) {
+      scanConfig.formatsToSupport = formatsToSupport;
+    }
+
+    return scanConfig;
+  }, [getSupportedFormatsEnum, scanKind]);
 
   const stopScanner = useCallback(async () => {
     const scanner = scannerRef.current;
@@ -78,11 +147,13 @@ export default function Scanner({
       }
 
       const handleSuccess = (decodedText) => {
-        onScan(decodedText);
+        const normalizedCode = normalizeDecodedText(decodedText);
+        if (!normalizedCode) return;
+        onScan(normalizedCode);
         stopScanner();
       };
       const handleError = () => {};
-      const scanConfig = { fps: 10, qrbox: { width: 240, height: 240 } };
+      const scanConfig = buildScanConfig();
 
       const tryStart = async (cameraConfig) => {
         await scanner.start(cameraConfig, scanConfig, handleSuccess, handleError);
@@ -131,7 +202,7 @@ export default function Scanner({
       if (errCode.includes("camera_unsupported")) {
         setCameraError("Камера не поддерживается в этом браузере.");
       } else if (errCode.includes("notallowed")) {
-        setCameraError("Нет доступа к камере. Разрешите доступ в настройках Safari.");
+        setCameraError("Нет доступа к камере. Разрешите доступ в настройках браузера.");
       } else if (errCode.includes("secure")) {
         setCameraError("Камера работает только по защищенному HTTPS-соединению.");
       } else {
@@ -140,7 +211,14 @@ export default function Scanner({
       }
       await stopScanner();
     }
-  }, [getHtml5QrcodeClass, onScan, scannerId, stopScanner]);
+  }, [
+    buildScanConfig,
+    getHtml5QrcodeClass,
+    normalizeDecodedText,
+    onScan,
+    scannerId,
+    stopScanner,
+  ]);
 
   useEffect(() => {
     return () => {
