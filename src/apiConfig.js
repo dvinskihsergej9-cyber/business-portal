@@ -54,8 +54,109 @@ if (normalizedBase === "/api" && !isLocalHost) {
 export const API_BASE = normalizedBase;
 
 const API_TIMEOUT_MS = 20_000;
+const CODE_LIKE_PATTERN = /^[A-Z0-9_]+$/;
 
-export const normalizeErrorMessage = (err, fallback = "Ошибка запроса.") => {
+const EXTRA_ERROR_MESSAGES = {
+  BAD_ID: "Некорректный идентификатор.",
+  BAD_INVITE: "Некорректное приглашение.",
+  BAD_INVITE_ID: "Некорректный идентификатор приглашения.",
+  BAD_ITEMS: "Некорректный список товаров.",
+  BAD_ITEM_ID: "Некорректный идентификатор товара.",
+  BAD_KIND: "Некорректный тип операции.",
+  BAD_LINES: "Некорректные строки документа.",
+  BAD_LOCATION_ID: "Некорректная ячейка.",
+  BAD_MOVEMENT_TYPE: "Некорректный тип движения.",
+  BAD_NAME: "Некорректное название.",
+  BAD_ORDER_ID: "Некорректный идентификатор заказа.",
+  BAD_PO_ID: "Некорректный идентификатор заказа поставщику.",
+  BAD_RANGE: "Некорректный период.",
+  BAD_REQUEST: "Некорректный запрос.",
+  BAD_REVISION_ID: "Некорректный идентификатор ревизии.",
+  BAD_SESSION_ID: "Некорректная сессия.",
+  BAD_STATUS: "Некорректный статус.",
+  BAD_TOKEN: "Некорректный токен.",
+  BAD_USER_ID: "Некорректный идентификатор пользователя.",
+  BOX_CODE_REQUIRED: "Введите код короба.",
+  COUNT_CELL_NOT_EMPTY: "Ячейка не пуста. Операция недоступна.",
+  COUNT_DATE_MISMATCH: "Дата не совпадает с остатком в ячейке.",
+  COUNT_ITEM_NOT_IN_LOCATION: "Товар отсутствует в выбранной ячейке.",
+  COUNT_MINUS_ONLY: "Для этого режима допустимо только уменьшение количества.",
+  COUNT_PLUS_ONLY: "Для этого режима допустимо только увеличение количества.",
+  HOLD_EXCEEDS_AVAILABLE: "Нельзя заблокировать больше доступного остатка.",
+  HOLD_QTY_BLOCKED: "Часть остатка уже заблокирована.",
+  INSUFFICIENT_QTY: "Недостаточно количества для операции.",
+  INSUFFICIENT_STOCK: "Недостаточно остатка на складе.",
+  INVALID_LOCATION_ID: "Некорректная ячейка.",
+  ITEM_MISMATCH: "Товар не совпадает с ожидаемым.",
+  LINE_ITEM_NOT_LINKED: "Позиция не связана с товаром.",
+  LINE_NOT_FOUND: "Позиция не найдена.",
+  LOCATION_EXISTS: "Ячейка с таким кодом уже существует.",
+  MAIL_TIMEOUT: "Почтовый сервер не ответил вовремя.",
+  MANUFACTURED_AT_REQUIRED: "Укажите дату изготовления.",
+  NAME_REQUIRED: "Укажите название.",
+  NOTHING_TO_PRINT: "Нет данных для печати.",
+  NOT_ALLOWED: "Недостаточно прав для выполнения операции.",
+  NOT_ASSIGNED_TO_YOU: "Эта задача назначена другому сотруднику.",
+  NO_ACCESS: "Нет доступа к операции.",
+  NO_LOCATION: "Ячейка не выбрана.",
+  OPEN_POS_ERROR: "Не удалось загрузить открытые позиции.",
+  ORDER_ALREADY_SHIPPED: "Заказ уже отгружен.",
+  ORDER_ALREADY_TAKEN: "Заказ уже взят другим сотрудником.",
+  ORDER_BAD_STATUS: "Операция недоступна для текущего статуса заказа.",
+  ORDER_LOCKED: "Заказ сейчас обрабатывается другим сотрудником.",
+  ORDER_NOT_FULLY_PICKED: "Сначала завершите отбор всех позиций заказа.",
+  ORG_CODE_REQUIRED: "Укажите код организации.",
+  ORG_NOT_FOUND: "Организация не найдена.",
+  PAYMENT_AMOUNT_MISMATCH: "Сумма платежа не совпадает с тарифом.",
+  PAYMENT_METADATA_MISMATCH: "Ошибка данных платежа.",
+  PAYMENT_USER_MISMATCH: "Платеж относится к другому пользователю.",
+  PO_NOT_FOUND: "Заказ поставщику не найден.",
+  QTY_EXCEEDS_REMAINING: "Количество больше доступного остатка.",
+  RECEIVING_LOCATION_CREATE_FAILED: "Не удалось создать служебную ячейку приемки.",
+  REVISION_NOT_FOUND: "Ревизия не найдена.",
+  SAME_LOCATION: "Ячейки отправления и назначения совпадают.",
+  SESSION_NOT_FOUND: "Сессия не найдена или уже завершена.",
+  SKIP_NOT_FOUND: "Пропущенная позиция не найдена.",
+  TAKE_RECEIVING_ORDER_ERROR: "Не удалось взять заказ в приемку.",
+  TENANT_CONFLICT: "Клиент с такими данными уже существует.",
+  TOKEN_INVALID: "Недействительный или устаревший токен.",
+  TRIAL_CONFIG_INVALID: "Некорректная конфигурация пробного периода.",
+  USER_INACTIVE: "Пользователь отключен.",
+  USER_NOT_FOUND: "Пользователь не найден.",
+  WEAK_PASSWORD: "Пароль слишком короткий (минимум 8 символов).",
+  YOOKASSA_CONFIG_MISSING: "Платежи не настроены. Заполните ключи ЮKassa в окружении.",
+};
+
+const normalizeBackendCodeMessage = (value) => {
+  const code = String(value || "").trim().toUpperCase();
+  if (!code || !CODE_LIKE_PATTERN.test(code)) return "";
+  if (EXTRA_ERROR_MESSAGES[code]) return EXTRA_ERROR_MESSAGES[code];
+
+  if (code.startsWith("BAD_")) {
+    return "Переданы некорректные данные запроса.";
+  }
+  if (code.endsWith("_REQUIRED")) {
+    return "Заполните обязательные поля и повторите.";
+  }
+  if (code.endsWith("_NOT_FOUND")) {
+    return "Запись не найдена. Проверьте данные и повторите.";
+  }
+  if (code === "FORBIDDEN" || code.endsWith("_FORBIDDEN")) {
+    return "Недостаточно прав для выполнения операции.";
+  }
+  if (code.endsWith("_TIMEOUT")) {
+    return "Превышено время ожидания ответа сервера.";
+  }
+  if (code.includes("LIMIT")) {
+    return "Превышено допустимое ограничение для этой операции.";
+  }
+  if (code.endsWith("_ERROR")) {
+    return "Не удалось выполнить операцию. Повторите попытку.";
+  }
+  return "Не удалось выполнить операцию. Повторите попытку.";
+};
+
+export const normalizeErrorMessage = (err, fallback = "Не удалось выполнить запрос.") => {
   const message = String(err?.message || err || "").trim();
   if (!message) return fallback;
   const lower = message.toLowerCase();
@@ -227,6 +328,10 @@ export const normalizeErrorMessage = (err, fallback = "Ошибка запрос
   if (message === "PLAN_USER_LIMIT_REACHED") {
     return "Достигнут лимит сотрудников для текущего тарифа.";
   }
+  const mappedBackendCode = normalizeBackendCodeMessage(message);
+  if (mappedBackendCode) {
+    return mappedBackendCode;
+  }
   if (!hasCyrillic && isAsciiOnly) {
     return fallback;
   }
@@ -265,7 +370,7 @@ export const apiFetch = async (path, options = {}) => {
     const message =
       err?.name === "AbortError"
         ? "Не удалось подключиться к серверу."
-        : normalizeErrorMessage(err, "Ошибка подключения к серверу.");
+        : normalizeErrorMessage(err, "Не удалось подключиться к серверу.");
     showGlobalError(message);
     throw new Error(message);
   } finally {

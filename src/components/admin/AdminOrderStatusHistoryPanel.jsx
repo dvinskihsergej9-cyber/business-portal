@@ -142,9 +142,9 @@ export default function AdminOrderStatusHistoryPanel() {
             }}
           >
             <option value="">Все</option>
-            <option value="READY_TO_SHIP">READY_TO_SHIP</option>
-            <option value="SHIPPED">SHIPPED</option>
-            <option value="CANCELLED">CANCELLED</option>
+            <option value="READY_TO_SHIP">{statusLabel("READY_TO_SHIP")}</option>
+            <option value="SHIPPED">{statusLabel("SHIPPED")}</option>
+            <option value="CANCELLED">{statusLabel("CANCELLED")}</option>
           </select>
         </div>
         <div>
