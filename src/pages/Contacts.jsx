@@ -4,26 +4,33 @@ export default function Contacts() {
   const navigate = useNavigate();
 
   return (
-    <div className="page">
-      <div style={{ marginBottom: 12 }}>
-        <button type="button" onClick={() => navigate("/login")}>
-          Назад ко входу
+    <div className="page legal-page">
+      <div className="legal-topbar">
+        <button type="button" className="legal-back-btn" onClick={() => navigate("/login")}>
+          ← Ко входу
         </button>
+        <div className="legal-brand">
+          <img src="/logo-mark.png" alt="Логотип СкладОнлайн" />
+          <span>СкладОнлайн</span>
+        </div>
       </div>
 
-      <div className="page-header">
-        <h1 className="page-title">Контакты</h1>
-        <p className="page-subtitle">Реквизиты и связь.</p>
+      <div className="legal-hero">
+        <span className="legal-badge">Документы</span>
+        <h1 className="page-title">Контакты и реквизиты</h1>
+        <p className="page-subtitle">Официальные реквизиты и каналы связи.</p>
       </div>
 
-      <div className="card" style={{ display: "grid", gap: 10 }}>
-        <div>ИП Двинских Сергей Сергеевич</div>
-        <div>ИНН: 743402272974</div>
-        <div>ОГРНИП: 326745600045736</div>
-        <div>Email: sergeydvin0998@mail.ru</div>
-        <div>Телефон: +7-909-084-03-43</div>
-        <div>Адрес: г. Куса, ул. Розы Люксембург, д. 34, кв. 1</div>
-        <div>Сайт: https://business-portal-weld.vercel.app</div>
+      <div className="legal-grid">
+        <div className="legal-card" style={{ display: "grid", gap: 8 }}>
+          <p>ИП Двинских Сергей Сергеевич</p>
+          <p>ИНН: 743402272974</p>
+          <p>ОГРНИП: 326745600045736</p>
+          <p>Email: sergeydvin0998@mail.ru</p>
+          <p>Телефон: +7-909-084-03-43</p>
+          <p>Адрес: г. Куса, ул. Розы Люксембург, д. 34, кв. 1</p>
+          <p>Сайт: https://business-portal-weld.vercel.app</p>
+        </div>
       </div>
     </div>
   );

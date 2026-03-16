@@ -140,6 +140,124 @@ a:hover {
   color: var(--muted);
 }
 
+.legal-page {
+  max-width: 980px;
+  padding: 20px 14px 36px;
+}
+
+.legal-topbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 12px;
+}
+
+.legal-brand {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  color: #0f172a;
+  font-size: 16px;
+  font-weight: 700;
+}
+
+.legal-brand img {
+  width: 30px;
+  height: 30px;
+  border-radius: 8px;
+  border: 1px solid #dbeafe;
+  background: #ffffff;
+}
+
+.legal-back-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  width: auto;
+  padding: 10px 14px;
+  border-radius: 12px;
+  border: 1px solid #cbd5e1;
+  background: #1f2937;
+  color: #f8fafc;
+  font-size: 14px;
+  font-weight: 600;
+  box-shadow: 0 6px 16px rgba(15, 23, 42, 0.18);
+}
+
+.legal-back-btn:hover:not(:disabled) {
+  background: #111827;
+  transform: translateY(-1px);
+}
+
+.legal-hero {
+  margin-bottom: 12px;
+  padding: 16px 18px;
+  border-radius: 16px;
+  border: 1px solid #dbeafe;
+  background: linear-gradient(180deg, #f8fbff 0%, #eef4ff 100%);
+}
+
+.legal-badge {
+  display: inline-flex;
+  align-items: center;
+  padding: 4px 10px;
+  border-radius: 999px;
+  border: 1px solid #bfdbfe;
+  background: #eff6ff;
+  color: #1d4ed8;
+  font-size: 12px;
+  font-weight: 700;
+  margin-bottom: 8px;
+}
+
+.legal-grid {
+  display: grid;
+  gap: 12px;
+}
+
+.legal-card {
+  background: #ffffff;
+  border: 1px solid #e2e8f0;
+  border-radius: 14px;
+  padding: 16px 18px;
+  box-shadow: 0 8px 20px rgba(15, 23, 42, 0.05);
+}
+
+.legal-card p {
+  margin: 0;
+  line-height: 1.55;
+  color: #334155;
+}
+
+.legal-links {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+  margin-top: 8px;
+}
+
+.legal-link {
+  font-weight: 600;
+  color: #1d4ed8;
+}
+
+@media (max-width: 720px) {
+  .legal-page {
+    padding: 14px 10px 24px;
+  }
+
+  .legal-topbar {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+
+  .legal-back-btn {
+    width: 100%;
+    justify-content: center;
+  }
+}
+
 .card {
   background: var(--card-bg);
   border-radius: var(--radius-md);

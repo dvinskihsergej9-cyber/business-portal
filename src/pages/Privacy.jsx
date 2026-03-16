@@ -4,32 +4,35 @@ export default function Privacy() {
   const navigate = useNavigate();
 
   return (
-    <div className="page">
-      <div style={{ marginBottom: 12 }}>
-        <button type="button" onClick={() => navigate("/login")}>
-          Назад ко входу
+    <div className="page legal-page">
+      <div className="legal-topbar">
+        <button type="button" className="legal-back-btn" onClick={() => navigate("/login")}>
+          ← Ко входу
         </button>
+        <div className="legal-brand">
+          <img src="/logo-mark.png" alt="Логотип СкладОнлайн" />
+          <span>СкладОнлайн</span>
+        </div>
       </div>
 
-      <div className="page-header">
+      <div className="legal-hero">
+        <span className="legal-badge">Документы</span>
         <h1 className="page-title">Политика конфиденциальности</h1>
-        <p className="page-subtitle">Обработка персональных данных.</p>
+        <p className="page-subtitle">Обработка персональных данных пользователей.</p>
       </div>
 
-      <div className="card" style={{ display: "grid", gap: 12 }}>
-        <div>
-          Оператор: ИП Двинских Сергей Сергеевич, ИНН 743402272974, ОГРНИП 326745600045736.
-        </div>
-        <div>
-          Мы обрабатываем персональные данные пользователей для предоставления доступа к
-          сервису «СкладОнлайн», исполнения обязательств и связи с пользователями.
-        </div>
-        <div>
-          Данные не передаются третьим лицам, за исключением случаев, предусмотренных законом,
-          и платежных процедур.
-        </div>
-        <div>
-          По вопросам обработки данных свяжитесь с нами через страницу контактов.
+      <div className="legal-grid">
+        <div className="legal-card" style={{ display: "grid", gap: 10 }}>
+          <p>Оператор: ИП Двинских Сергей Сергеевич, ИНН 743402272974, ОГРНИП 326745600045736.</p>
+          <p>
+            Мы обрабатываем персональные данные только для предоставления доступа к сервису,
+            исполнения обязательств и связи с пользователями.
+          </p>
+          <p>
+            Данные не передаются третьим лицам, кроме случаев, предусмотренных законом,
+            и операций оплаты через платёжного провайдера.
+          </p>
+          <p>По вопросам обработки данных используйте контакты, указанные в разделе «Контакты».</p>
         </div>
       </div>
     </div>

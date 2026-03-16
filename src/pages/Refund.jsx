@@ -4,29 +4,32 @@ export default function Refund() {
   const navigate = useNavigate();
 
   return (
-    <div className="page">
-      <div style={{ marginBottom: 12 }}>
-        <button type="button" onClick={() => navigate("/login")}>
-          Назад ко входу
+    <div className="page legal-page">
+      <div className="legal-topbar">
+        <button type="button" className="legal-back-btn" onClick={() => navigate("/login")}>
+          ← Ко входу
         </button>
+        <div className="legal-brand">
+          <img src="/logo-mark.png" alt="Логотип СкладОнлайн" />
+          <span>СкладОнлайн</span>
+        </div>
       </div>
 
-      <div className="page-header">
+      <div className="legal-hero">
+        <span className="legal-badge">Документы</span>
         <h1 className="page-title">Возврат</h1>
-        <p className="page-subtitle">Порядок возврата средств.</p>
+        <p className="page-subtitle">Порядок возврата средств по цифровой услуге.</p>
       </div>
 
-      <div className="card" style={{ display: "grid", gap: 12 }}>
-        <div>
-          Услуга является цифровой (доступ к функционалу сервиса «СкладОнлайн»).
-        </div>
-        <div>
-          Возврат возможен в течение 7 календарных дней по обращению на email
-          sergeydvin0998@mail.ru или по телефону +7-909-084-03-43,
-          если доступ не был предоставлен или не использовался.
-        </div>
-        <div>
-          Если доступ был предоставлен и сервис использовался, возврат не производится.
+      <div className="legal-grid">
+        <div className="legal-card" style={{ display: "grid", gap: 10 }}>
+          <p>Услуга является цифровой: предоставляется доступ к функционалу «СкладОнлайн».</p>
+          <p>
+            Возврат возможен в течение 7 календарных дней по обращению на
+            sergeydvin0998@mail.ru или +7-909-084-03-43,
+            если доступ не был предоставлен или не использовался.
+          </p>
+          <p>Если доступ был предоставлен и сервис использовался, возврат не производится.</p>
         </div>
       </div>
     </div>
