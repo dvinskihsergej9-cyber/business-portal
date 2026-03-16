@@ -1,6 +1,16 @@
-﻿export default function Contacts() {
+﻿import { useNavigate } from "react-router-dom";
+
+export default function Contacts() {
+  const navigate = useNavigate();
+
   return (
     <div className="page">
+      <div style={{ marginBottom: 12 }}>
+        <button type="button" onClick={() => navigate("/login")}>
+          Назад ко входу
+        </button>
+      </div>
+
       <div className="page-header">
         <h1 className="page-title">Контакты</h1>
         <p className="page-subtitle">Реквизиты и связь.</p>
@@ -13,9 +23,8 @@
         <div>Email: sergeydvin0998@mail.ru</div>
         <div>Телефон: +7-909-084-03-43</div>
         <div>Адрес: г. Куса, ул. Розы Люксембург, д. 34, кв. 1</div>
-        <div>Сайт: https://business-portal-7ag3j7zbr-sergeys-projects-dba39f06.vercel.app</div>
+        <div>Сайт: https://business-portal-weld.vercel.app</div>
       </div>
     </div>
   );
 }
-

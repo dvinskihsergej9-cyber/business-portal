@@ -1,8 +1,16 @@
-﻿import { Link } from "react-router-dom";
+﻿import { Link, useNavigate } from "react-router-dom";
 
 export default function Offer() {
+  const navigate = useNavigate();
+
   return (
     <div className="page">
+      <div style={{ marginBottom: 12 }}>
+        <button type="button" onClick={() => navigate("/login")}>
+          Назад ко входу
+        </button>
+      </div>
+
       <div className="page-header">
         <h1 className="page-title">Публичная оферта</h1>
         <p className="page-subtitle">
@@ -38,4 +46,3 @@ export default function Offer() {
     </div>
   );
 }
-

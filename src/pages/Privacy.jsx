@@ -1,6 +1,16 @@
+﻿import { useNavigate } from "react-router-dom";
+
 export default function Privacy() {
+  const navigate = useNavigate();
+
   return (
     <div className="page">
+      <div style={{ marginBottom: 12 }}>
+        <button type="button" onClick={() => navigate("/login")}>
+          Назад ко входу
+        </button>
+      </div>
+
       <div className="page-header">
         <h1 className="page-title">Политика конфиденциальности</h1>
         <p className="page-subtitle">Обработка персональных данных.</p>
