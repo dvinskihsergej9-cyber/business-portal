@@ -3623,6 +3623,10 @@ input[type="number"] {
   font-size: 18px;
 }
 
+.stock-holds-mobile-nav {
+  display: none;
+}
+
 .stock-holds-tabs {
   display: inline-flex;
   gap: 6px;
@@ -3654,24 +3658,31 @@ input[type="number"] {
   }
 
   .stock-holds-title {
-    font-size: 24px;
+    font-size: 18px;
   }
 
-  .stock-holds-tabs {
+  .stock-holds-tabs,
+  .stock-holds-mobile-nav {
     display: grid;
     grid-template-columns: repeat(2, minmax(0, 1fr));
     width: 100%;
-    border-radius: 14px;
+    border-radius: 12px;
     padding: 4px;
     gap: 4px;
+    background: #f1f5f9;
   }
 
-  .stock-holds-tabs .tabs__btn {
+  .stock-holds-tabs .tabs__btn,
+  .stock-holds-mobile-nav .tabs__btn {
     width: 100%;
-    border-radius: 10px;
+    border-radius: 8px;
     padding: 9px 10px;
     font-size: 14px;
     text-align: center;
+  }
+
+  .stock-holds-mobile-nav {
+    margin-top: 10px;
   }
 
   .stock-holds-table {
@@ -3724,6 +3735,11 @@ input[type="number"] {
     text-transform: uppercase;
     color: #64748b;
     font-weight: 700;
+  }
+
+  .stock-holds-table tbody td:last-child {
+    grid-template-columns: 1fr;
+    justify-items: stretch;
   }
 
   .stock-holds-table tbody td[data-label="Действие"] {

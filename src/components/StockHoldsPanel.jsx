@@ -3,14 +3,22 @@ import { API_BASE } from "../apiConfig";
 
 const API = API_BASE;
 
-function formatDate(value) {
+function formatDateTime(value) {
   if (!value) return "-";
-  const d = new Date(value);
-  if (Number.isNaN(d.getTime())) return "-";
-  return d.toLocaleString("ru-RU");
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return "-";
+  return date.toLocaleString("ru-RU");
 }
 
-export default function StockHoldsPanel() {
+function toNumber(value) {
+  const num = Number(value);
+  return Number.isFinite(num) ? num : 0;
+}
+
+export default function StockHoldsPanel({
+  showTitle = true,
+  withTopMargin = true,
+}) {
   const token = localStorage.getItem("token");
   const authHeaders = useMemo(() => ({ Authorization: `Bearer ${token}` }), [token]);
 
@@ -20,9 +28,14 @@ export default function StockHoldsPanel() {
 
   const [statusFilter, setStatusFilter] = useState("ACTIVE");
   const [loading, setLoading] = useState(true);
-  const [error, setError] = useState("");
   const [saving, setSaving] = useState(false);
   const [releasingId, setReleasingId] = useState(null);
+  const [error, setError] = useState("");
+
+  const [mobileView, setMobileView] = useState("create");
+  const [isMobile, setIsMobile] = useState(() =>
+    typeof window !== "undefined" ? window.innerWidth <= 680 : false
+  );
 
   const [itemId, setItemId] = useState("");
   const [locationId, setLocationId] = useState("");
@@ -36,9 +49,11 @@ export default function StockHoldsPanel() {
       headers: authHeaders,
     });
     const data = await res.json().catch(() => ({}));
+
     if (!res.ok) {
-      throw new Error(data?.message || "Ошибка загрузки блокировок.");
+      throw new Error(data?.message || "Не удалось загрузить блокировки остатков.");
     }
+
     setHolds(Array.isArray(data?.items) ? data.items : []);
   };
 
@@ -64,7 +79,6 @@ export default function StockHoldsPanel() {
       const stockItems = (Array.isArray(itemsData) ? itemsData : []).filter(
         (it) => String(it?.category || "STOCK").toUpperCase() === "STOCK"
       );
-
       setItems(stockItems);
       setLocations(Array.isArray(locationsData) ? locationsData : []);
 
@@ -77,19 +91,27 @@ export default function StockHoldsPanel() {
   };
 
   useEffect(() => {
+    if (typeof window === "undefined") return undefined;
+    const onResize = () => setIsMobile(window.innerWidth <= 680);
+    window.addEventListener("resize", onResize);
+    return () => window.removeEventListener("resize", onResize);
+  }, []);
+
+  useEffect(() => {
     loadInitial();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   useEffect(() => {
-    if (!loading) {
-      loadHolds(statusFilter).catch((e) => setError(e?.message || "Ошибка загрузки блокировок."));
-    }
+    if (loading) return;
+    loadHolds(statusFilter).catch((e) =>
+      setError(e?.message || "Не удалось загрузить список блокировок.")
+    );
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [statusFilter]);
 
-  const onCreateHold = async (e) => {
-    e.preventDefault();
+  const onCreateHold = async (event) => {
+    event.preventDefault();
     setSaving(true);
     setError("");
     try {
@@ -109,8 +131,8 @@ export default function StockHoldsPanel() {
         },
         body: JSON.stringify(payload),
       });
-
       const data = await res.json().catch(() => ({}));
+
       if (!res.ok) {
         throw new Error(data?.message || "Не удалось создать блокировку.");
       }
@@ -120,6 +142,10 @@ export default function StockHoldsPanel() {
       setNote("");
       setStatusFilter("ACTIVE");
       await loadHolds("ACTIVE");
+
+      if (isMobile) {
+        setMobileView("journal");
+      }
     } catch (e) {
       setError(e?.message || "Ошибка создания блокировки.");
     } finally {
@@ -151,21 +177,24 @@ export default function StockHoldsPanel() {
     }
   };
 
+  const showCreate = !isMobile || mobileView === "create";
+  const showJournal = !isMobile || mobileView === "journal";
+
   return (
-    <div className="card" style={{ marginTop: 16 }}>
+    <div className="card stock-holds-panel" style={{ marginTop: withTopMargin ? 16 : 0 }}>
       <div className="stock-holds-header">
-        <h3 className="stock-holds-title">Блокировка остатков</h3>
+        {showTitle ? <h3 className="stock-holds-title">Блокировка остатков</h3> : <span />}
         <div className="stock-holds-tabs">
           <button
             type="button"
-            className={"tabs__btn " + (statusFilter === "ACTIVE" ? "tabs__btn--active" : "")}
+            className={`tabs__btn ${statusFilter === "ACTIVE" ? "tabs__btn--active" : ""}`}
             onClick={() => setStatusFilter("ACTIVE")}
           >
             Активные
           </button>
           <button
             type="button"
-            className={"tabs__btn " + (statusFilter === "RELEASED" ? "tabs__btn--active" : "")}
+            className={`tabs__btn ${statusFilter === "RELEASED" ? "tabs__btn--active" : ""}`}
             onClick={() => setStatusFilter("RELEASED")}
           >
             Снятые
@@ -173,112 +202,139 @@ export default function StockHoldsPanel() {
         </div>
       </div>
 
-      {error && <div className="alert alert--danger">{error}</div>}
-
-      <form className="stock-holds-form" onSubmit={onCreateHold}>
-        <select value={itemId} onChange={(e) => setItemId(e.target.value)} required>
-          <option value="">Выберите товар</option>
-          {items.map((it) => (
-            <option key={it.id} value={it.id}>
-              {it.name} {it.sku ? `(${it.sku})` : ""}
-            </option>
-          ))}
-        </select>
-
-        <select value={locationId} onChange={(e) => setLocationId(e.target.value)} required>
-          <option value="">Выберите ячейку</option>
-          {locations.map((loc) => (
-            <option key={loc.id} value={loc.id}>
-              {loc.code || loc.name}
-            </option>
-          ))}
-        </select>
-
-        <input
-          type="number"
-          min="0.0001"
-          step="0.0001"
-          placeholder="Количество"
-          value={qty}
-          onChange={(e) => setQty(e.target.value)}
-          required
-        />
-
-        <input
-          type="text"
-          placeholder="Причина"
-          value={reason}
-          onChange={(e) => setReason(e.target.value)}
-          required
-        />
-
-        <input
-          type="text"
-          placeholder="Комментарий (необязательно)"
-          value={note}
-          onChange={(e) => setNote(e.target.value)}
-        />
-
-        <button type="submit" disabled={saving || loading}>
-          {saving ? "Сохраняем..." : "Заблокировать"}
-        </button>
-      </form>
-
-      {loading ? (
-        <p>Загрузка...</p>
-      ) : (
-        <div className="table-wrapper stock-holds-table" style={{ marginTop: 12 }}>
-          <table>
-            <thead>
-              <tr>
-                <th>№</th>
-                <th>Товар</th>
-                <th>Ячейка</th>
-                <th>Количество</th>
-                <th>Причина</th>
-                <th>Дата</th>
-                <th>Статус</th>
-                <th>Действие</th>
-              </tr>
-            </thead>
-            <tbody>
-              {holds.length === 0 ? (
-                <tr>
-                  <td colSpan={8} style={{ textAlign: "center", color: "#64748b" }}>
-                    Нет записей.
-                  </td>
-                </tr>
-              ) : (
-                holds.map((hold) => (
-                  <tr key={hold.id}>
-                    <td data-label="№">{hold.id}</td>
-                    <td data-label="Товар">{hold.item?.name || `#${hold.itemId}`}</td>
-                    <td data-label="Ячейка">{hold.location?.code || hold.location?.name || `#${hold.locationId}`}</td>
-                    <td data-label="Количество">{Number(hold.qty || 0)}</td>
-                    <td data-label="Причина">{hold.reason}</td>
-                    <td data-label="Дата">{formatDate(hold.createdAt)}</td>
-                    <td data-label="Статус">{hold.status === "ACTIVE" ? "Активна" : "Снята"}</td>
-                    <td data-label="Действие">
-                      {hold.status === "ACTIVE" ? (
-                        <button
-                          type="button"
-                          className="btn btn--secondary btn--sm"
-                          onClick={() => onReleaseHold(hold.id)}
-                          disabled={releasingId === hold.id}
-                        >
-                          {releasingId === hold.id ? "Снимаем..." : "Снять"}
-                        </button>
-                      ) : (
-                        "-"
-                      )}
-                    </td>
-                  </tr>
-                ))
-              )}
-            </tbody>
-          </table>
+      {isMobile && (
+        <div className="stock-holds-mobile-nav">
+          <button
+            type="button"
+            className={`tabs__btn ${mobileView === "create" ? "tabs__btn--active" : ""}`}
+            onClick={() => setMobileView("create")}
+          >
+            Создать
+          </button>
+          <button
+            type="button"
+            className={`tabs__btn ${mobileView === "journal" ? "tabs__btn--active" : ""}`}
+            onClick={() => setMobileView("journal")}
+          >
+            Журнал
+          </button>
         </div>
       )}
+
+      {error && <div className="alert alert--danger">{error}</div>}
+
+      {showCreate && (
+        <form className="stock-holds-form" onSubmit={onCreateHold}>
+          <select value={itemId} onChange={(e) => setItemId(e.target.value)} required>
+            <option value="">Выберите товар</option>
+            {items.map((it) => (
+              <option key={it.id} value={it.id}>
+                {it.name}
+                {it.article || it.sku ? ` (${it.article || it.sku})` : ""}
+              </option>
+            ))}
+          </select>
+
+          <select value={locationId} onChange={(e) => setLocationId(e.target.value)} required>
+            <option value="">Выберите ячейку</option>
+            {locations.map((loc) => (
+              <option key={loc.id} value={loc.id}>
+                {loc.code || loc.name}
+              </option>
+            ))}
+          </select>
+
+          <input
+            type="number"
+            min="0.0001"
+            step="0.0001"
+            placeholder="Количество"
+            value={qty}
+            onChange={(e) => setQty(e.target.value)}
+            required
+          />
+
+          <input
+            type="text"
+            placeholder="Причина"
+            value={reason}
+            onChange={(e) => setReason(e.target.value)}
+            required
+          />
+
+          <input
+            type="text"
+            placeholder="Комментарий (необязательно)"
+            value={note}
+            onChange={(e) => setNote(e.target.value)}
+          />
+
+          <button type="submit" disabled={saving || loading}>
+            {saving ? "Сохраняем..." : "Заблокировать"}
+          </button>
+        </form>
+      )}
+
+      {showJournal &&
+        (loading ? (
+          <p style={{ marginTop: 12 }}>Загрузка...</p>
+        ) : (
+          <div className="table-wrapper stock-holds-table" style={{ marginTop: 12 }}>
+            <table>
+              <thead>
+                <tr>
+                  <th>№</th>
+                  <th>Товар</th>
+                  <th>Ячейка</th>
+                  <th>Количество</th>
+                  <th>Причина</th>
+                  <th>Дата</th>
+                  <th>Статус</th>
+                  <th>Действие</th>
+                </tr>
+              </thead>
+              <tbody>
+                {holds.length === 0 ? (
+                  <tr>
+                    <td colSpan={8} style={{ textAlign: "center", color: "#64748b" }}>
+                      Нет записей.
+                    </td>
+                  </tr>
+                ) : (
+                  holds.map((hold) => (
+                    <tr key={hold.id}>
+                      <td data-label="№">{hold.id}</td>
+                      <td data-label="Товар">{hold.item?.name || `#${hold.itemId}`}</td>
+                      <td data-label="Ячейка">
+                        {hold.location?.code || hold.location?.name || `#${hold.locationId}`}
+                      </td>
+                      <td data-label="Количество">{toNumber(hold.qty)}</td>
+                      <td data-label="Причина">{hold.reason || "-"}</td>
+                      <td data-label="Дата">{formatDateTime(hold.createdAt)}</td>
+                      <td data-label="Статус">
+                        {hold.status === "ACTIVE" ? "Активна" : "Снята"}
+                      </td>
+                      <td data-label="Действие">
+                        {hold.status === "ACTIVE" ? (
+                          <button
+                            type="button"
+                            className="btn btn--secondary btn--sm"
+                            onClick={() => onReleaseHold(hold.id)}
+                            disabled={releasingId === hold.id}
+                          >
+                            {releasingId === hold.id ? "Снимаем..." : "Снять"}
+                          </button>
+                        ) : (
+                          "-"
+                        )}
+                      </td>
+                    </tr>
+                  ))
+                )}
+              </tbody>
+            </table>
+          </div>
+        ))}
     </div>
   );
 }

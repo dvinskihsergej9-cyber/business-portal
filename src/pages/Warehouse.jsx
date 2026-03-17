@@ -32,6 +32,7 @@ const WAREHOUSE_EMOJI = {
   requests: "📦",
   tasks: "✅",
   inventory: "🧾",
+  holds: "🔒",
   movement: "\uD83D\uDCE6",
   transactions: "\uD83D\uDD01",
   revision: "\uD83E\uDDFE",
@@ -51,6 +52,7 @@ const WAREHOUSE_ICON_FALLBACK = {
   requests: "REQ",
   tasks: "TASK",
   inventory: "INV",
+  holds: "HOLD",
   movement: "\uD83D\uDCE6",
   transactions: "\uD83D\uDD01",
   locations: "LOC",
@@ -69,6 +71,7 @@ const WAREHOUSE_ICON_FALLBACK = {
 const WAREHOUSE_IMAGE = {
   tasks: WAREHOUSE_EMBEDDED_ICONS.tasks,
   inventory: WAREHOUSE_EMBEDDED_ICONS.inventory,
+  holds: WAREHOUSE_EMBEDDED_ICONS.inventory,
   movement: WAREHOUSE_EMBEDDED_ICONS.movement,
   transactions: WAREHOUSE_EMBEDDED_ICONS.transactions,
   revision: WAREHOUSE_EMBEDDED_ICONS.revision,
@@ -218,7 +221,9 @@ export default function Warehouse({
 
   const defaultSections = [
     "tasks",
-    "inventory","movement",
+    "inventory",
+    "holds",
+    "movement",
     "transactions",
     "revision",
     "suppliers",
@@ -280,6 +285,7 @@ export default function Warehouse({
   const requestsRef = useRef(null);
   const tasksRef = useRef(null);
   const inventoryRef = useRef(null);
+  const holdsRef = useRef(null);
   const locationsRef = useRef(null);
   const queueRef = useRef(null);
   const tsdRef = useRef(null);
@@ -2396,6 +2402,7 @@ export default function Warehouse({
     () => [
       { key: "tasks", title: "Задачи склада", subtitle: "Постановка задач сотрудникам, сроки и журнал выполнения." },
       { key: "inventory", title: "\u041e\u0441\u0442\u0430\u0442\u043a\u0438", subtitle: "\u0422\u0435\u043a\u0443\u0449\u0438\u0435 \u043e\u0441\u0442\u0430\u0442\u043a\u0438 \u043f\u043e \u0441\u043a\u043b\u0430\u0434\u0443." },
+      { key: "holds", title: "Блокировка остатков", subtitle: "Фиксация и снятие блокировок по товарам и ячейкам." },
       { key: "movement", title: "\u0418\u0441\u0442\u043e\u0440\u0438\u044f \u0434\u0432\u0438\u0436\u0435\u043d\u0438\u0439", subtitle: "\u0416\u0443\u0440\u043d\u0430\u043b \u043e\u043f\u0435\u0440\u0430\u0446\u0438\u0439 \u043f\u043e \u0441\u043a\u043b\u0430\u0434\u0443." },
       { key: "transactions", title: "\u0422\u0440\u0430\u043d\u0437\u0430\u043a\u0446\u0438\u0438", subtitle: "\u0412\u0441\u0435 \u0434\u0435\u0439\u0441\u0442\u0432\u0438\u044f \u043f\u043e \u044f\u0447\u0435\u0439\u043a\u0430\u043c \u0438 \u0442\u043e\u0432\u0430\u0440\u0443." },
       { key: "revision", title: "\u0420\u0435\u0432\u0438\u0437\u0438\u044f", subtitle: "\u0421\u043d\u0438\u043c\u043e\u043a \u0440\u0430\u0441\u0445\u043e\u0436\u0434\u0435\u043d\u0438\u0439 \u043f\u043e \u043a\u043e\u043d\u0442\u0440\u043e\u043b\u044e \u044f\u0447\u0435\u0435\u043a." },
@@ -3585,6 +3592,12 @@ export default function Warehouse({
         </div>
       )}
 
+      {sectionSet.has("holds") && section === "holds" && (
+        <div className="inventory-section" ref={holdsRef}>
+          <StockHoldsPanel showTitle={false} withTopMargin={false} />
+        </div>
+      )}
+
       {/* ====== ОСТАТКИ / ИНВЕНТАРИЗАЦИЯ / ЗАКУПКИ ====== */}
 
       {sectionSet.has(section) && ["inventory","movement","suppliers"].includes(section) && (
@@ -3636,7 +3649,6 @@ export default function Warehouse({
           {inventoryTab === "stock" && (
             <>
               <StockAuditTab />
-              {isWarehouseManager && <StockHoldsPanel />}
             </>
           )}
 

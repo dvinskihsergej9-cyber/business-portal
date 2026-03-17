@@ -367,12 +367,15 @@ export const PERMISSION_GROUPS = Object.freeze(
 );
 
 export const WAREHOUSE_SECTION_PERMISSION_MAP = Object.freeze(
-  Object.fromEntries(
-    ENTRY_DEFINITIONS.filter((entry) => entry.warehouseSection).map((entry) => [
-      entry.warehouseSection,
-      entry.key,
-    ])
-  )
+  {
+    ...Object.fromEntries(
+      ENTRY_DEFINITIONS.filter((entry) => entry.warehouseSection).map((entry) => [
+        entry.warehouseSection,
+        entry.key,
+      ])
+    ),
+    holds: PERMISSION_KEYS.WAREHOUSE_MANAGE,
+  }
 );
 
 export const TSD_MODE_PERMISSION_MAP = Object.freeze(
