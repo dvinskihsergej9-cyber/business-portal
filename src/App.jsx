@@ -31,7 +31,6 @@ import AdminConsole from "./pages/AdminConsole";
 import PlatformNews from "./pages/PlatformNews";
 
 import Warehouse from "./pages/Warehouse";
-import TmcRm from "./pages/TmcRm";
 import MobileTsd from "./pages/MobileTsd";
 import {
   hasPermission,
@@ -71,14 +70,13 @@ function AppRoutesWithBackground() {
   const mainWarehouseSections = useMemo(
     () =>
       allowedWarehouseSections.filter(
-        (section) => section !== "tmc" && section !== "requests"
+        (section) => section !== "requests"
       ),
     [allowedWarehouseSections]
   );
 
   const defaultPrivateRoute = useMemo(() => {
     if (hasPermission(user, PERMISSION_KEYS.APP_WAREHOUSE)) return "/warehouse";
-    if (hasPermission(user, PERMISSION_KEYS.APP_TMC)) return "/tmc";
     if (hasPermission(user, PERMISSION_KEYS.APP_ADMIN)) return "/admin";
     return "/403";
   }, [user]);
@@ -165,14 +163,6 @@ function AppRoutesWithBackground() {
               element={
                 <ProtectedRoute permissionsAny={[PERMISSION_KEYS.WAREHOUSE_TSD]}>
                   <MobileTsd />
-                </ProtectedRoute>
-              }
-            />
-            <Route
-              path="tmc"
-              element={
-                <ProtectedRoute permissionsAny={[PERMISSION_KEYS.APP_TMC]}>
-                  <TmcRm />
                 </ProtectedRoute>
               }
             />

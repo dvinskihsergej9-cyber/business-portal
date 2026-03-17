@@ -22,7 +22,6 @@ import StockRevisionTab from "../components/StockRevisionTab";
 import SupplierTrucksQueueTab from "../components/SupplierTrucksQueueTab";
 import MobileTsdTab from "../components/MobileTsdTab";
 import WarehouseLocationsPanel from "../components/WarehouseLocationsPanel";
-import TmcTab from "../components/TmcTab";
 import { WAREHOUSE_EMBEDDED_ICONS } from "../assets/warehouse/embeddedIcons";
 
 
@@ -36,7 +35,6 @@ const WAREHOUSE_EMOJI = {
   movement: "\uD83D\uDCE6",
   transactions: "\uD83D\uDD01",
   revision: "\uD83E\uDDFE",
-  tmc: "\uD83D\uDCCE",
   locations: "📍",
   queue: "🚚",
   tsd: "📱",
@@ -55,7 +53,6 @@ const WAREHOUSE_ICON_FALLBACK = {
   inventory: "INV",
   movement: "\uD83D\uDCE6",
   transactions: "\uD83D\uDD01",
-  tmc: "\uD83D\uDCCE",
   locations: "LOC",
   queue: "QUEUE",
   tsd: "TSD",
@@ -224,7 +221,6 @@ export default function Warehouse({
     "inventory","movement",
     "transactions",
     "revision",
-    "tmc",
     "suppliers",
     "locations",
     "queue",
@@ -263,7 +259,6 @@ export default function Warehouse({
   const canInventory = sectionSet.has("inventory");
   const canMovement = sectionSet.has("movement");
   const canSuppliers = sectionSet.has("suppliers");
-  const canTmc = sectionSet.has("tmc");
 
   const [section, setSection] = useState("");
 
@@ -290,7 +285,6 @@ export default function Warehouse({
   const tsdRef = useRef(null);
   const transactionsRef = useRef(null);
   const revisionRef = useRef(null);
-  const tmcRef = useRef(null);
   const purchaseOrdersLoadSeqRef = useRef(0);
   const purchaseOrdersRef = useRef([]);
 
@@ -955,12 +949,12 @@ export default function Warehouse({
     if (canInventory || canMovement || canSuppliers) {
       loadInventory();
     }
-    if (canTmc || canRequests) {
+    if (canRequests) {
       loadTmcStock();
     }
 
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [canRequests, canTasks, canInventory, canMovement, canSuppliers, canTmc]);
+  }, [canRequests, canTasks, canInventory, canMovement, canSuppliers]);
 
 
 
@@ -2399,7 +2393,6 @@ export default function Warehouse({
       { key: "movement", title: "\u0418\u0441\u0442\u043e\u0440\u0438\u044f \u0434\u0432\u0438\u0436\u0435\u043d\u0438\u0439", subtitle: "\u0416\u0443\u0440\u043d\u0430\u043b \u043e\u043f\u0435\u0440\u0430\u0446\u0438\u0439 \u043f\u043e \u0441\u043a\u043b\u0430\u0434\u0443." },
       { key: "transactions", title: "\u0422\u0440\u0430\u043d\u0437\u0430\u043a\u0446\u0438\u0438", subtitle: "\u0412\u0441\u0435 \u0434\u0435\u0439\u0441\u0442\u0432\u0438\u044f \u043f\u043e \u044f\u0447\u0435\u0439\u043a\u0430\u043c \u0438 \u0442\u043e\u0432\u0430\u0440\u0443." },
       { key: "revision", title: "\u0420\u0435\u0432\u0438\u0437\u0438\u044f", subtitle: "\u0421\u043d\u0438\u043c\u043e\u043a \u0440\u0430\u0441\u0445\u043e\u0436\u0434\u0435\u043d\u0438\u0439 \u043f\u043e \u043a\u043e\u043d\u0442\u0440\u043e\u043b\u044e \u044f\u0447\u0435\u0435\u043a." },
-      { key: "tmc", title: "\u0422\u041c\u0426", subtitle: "\u0420\u0430\u0441\u0445\u043e\u0434\u043d\u044b\u0435 \u043c\u0430\u0442\u0435\u0440\u0438\u0430\u043b\u044b \u0434\u043b\u044f \u043e\u0442\u0434\u0435\u043b\u043e\u0432 \u0438 \u0441\u043e\u0442\u0440\u0434\u043d\u0438\u043a\u043e\u0432." },
       { key: "suppliers", title: "\u041f\u043e\u0441\u0442\u0430\u0432\u0449\u0438\u043a\u0438", subtitle: "\u041f\u043e\u0441\u0442\u0430\u0432\u0449\u0438\u043a\u0438 \u0438 \u0437\u0430\u043a\u0430\u0437\u044b \u043f\u043e\u0441\u0442\u0430\u0432\u0449\u0438\u043a\u0443." },
       { key: "locations", title: "\u0421\u043f\u0440\u0430\u0432\u043e\u0447\u043d\u0438\u043a \u044f\u0447\u0435\u0435\u043a", subtitle: "\u0421\u043e\u0437\u0434\u0430\u043d\u0438\u0435 \u044f\u0447\u0435\u0435\u043a \u0438 \u043f\u0435\u0447\u0430\u0442\u044c QR-\u044d\u0442\u0438\u043a\u0435\u0442\u043e\u043a." },
       { key: "queue", title: "\u041c\u0430\u0448\u0438\u043d\u044b \u043f\u043e\u0441\u0442\u0430\u0432\u0449\u0438\u043a\u043e\u0432 \u0432 \u043e\u0447\u0435\u0440\u0435\u0434\u0438", subtitle: "\u041e\u0447\u0435\u0440\u0435\u0434\u044c \u043d\u0430 \u0440\u0430\u0437\u0433\u0440\u0443\u0437\u043a\u0443, \u0432\u043e\u0440\u043e\u0442\u0430 \u0438 \u0432\u0440\u0435\u043c\u044f." },
@@ -3585,15 +3578,6 @@ export default function Warehouse({
           <StockRevisionTab />
         </div>
       )}
-
-      {sectionSet.has("tmc") && section === "tmc" && (
-        <div className="inventory-section" ref={tmcRef}>
-          <TmcTab />
-        </div>
-      )}
-
-
-
 
       {/* ====== ОСТАТКИ / ИНВЕНТАРИЗАЦИЯ / ЗАКУПКИ ====== */}
 
