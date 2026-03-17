@@ -188,12 +188,28 @@ function openMobileDiscrepancyActWindow(order, rows, orgInfo, options = {}) {
       </div>
     </div>
 
-    <button class="print-btn" onclick="window.print()">Печать</button>
-    <button class="print-btn" onclick="handleShareAct()">Отправить</button>
+    <div style="margin-top:24px; display:flex; gap:8px; flex-wrap:wrap;">
+      <button class="print-btn" onclick="window.print()">Печать</button>
+      <button class="print-btn" onclick="handleShareAct()">Отправить</button>
+      <button class="print-btn" onclick="returnToApp()">Назад</button>
+    </div>
   </div>
 
   <script>
     // Отправка акта через системное меню «Поделиться» (для мобильных)
+    function returnToApp() {
+      try {
+        if (window.opener && !window.opener.closed) {
+          window.close();
+          return;
+        }
+      } catch (e) {}
+      if (window.history.length > 1) {
+        window.history.back();
+        return;
+      }
+      window.location.href = "/warehouse/tsd";
+    }
     async function handleShareAct() {
       if (!navigator.share) {
         alert(

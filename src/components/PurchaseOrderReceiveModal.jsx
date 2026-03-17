@@ -190,8 +190,26 @@ function openDiscrepancyActWindow(order, rows, orgInfo, options = {}) {
       </div>
     </div>
 
-    <button class="print-btn" onclick="window.print()">Печать</button>
+    <div style="margin-top:24px; display:flex; gap:8px; flex-wrap:wrap;">
+      <button class="print-btn" onclick="window.print()">Печать</button>
+      <button class="print-btn" onclick="returnToApp()">Назад</button>
+    </div>
   </div>
+  <script>
+    function returnToApp() {
+      try {
+        if (window.opener && !window.opener.closed) {
+          window.close();
+          return;
+        }
+      } catch (e) {}
+      if (window.history.length > 1) {
+        window.history.back();
+        return;
+      }
+      window.location.href = "/warehouse/tsd";
+    }
+  </script>
 </body>
 </html>
   `;
