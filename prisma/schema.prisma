@@ -756,7 +756,6 @@ enum SupplierTruckStatus {
 
 enum ItemCategory {
   STOCK
-  TMC
 }
 
 model SalesOrder {
