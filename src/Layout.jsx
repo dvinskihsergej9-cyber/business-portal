@@ -50,6 +50,10 @@ export default function Layout() {
       permission: PERMISSION_KEYS.APP_TMC,
     },
     {
+      label: "Новости платформы",
+      to: "/news",
+    },
+    {
       label: "\u0410\u0434\u043c\u0438\u043d\u0438\u0441\u0442\u0440\u0438\u0440\u043e\u0432\u0430\u043d\u0438\u0435",
       to: "/admin",
       permission: PERMISSION_KEYS.APP_ADMIN,
@@ -62,6 +66,7 @@ export default function Layout() {
 
   const pageTitle = useMemo(() => {
     if (location.pathname.startsWith("/admin")) return "\u0410\u0434\u043c\u0438\u043d\u0438\u0441\u0442\u0440\u0438\u0440\u043e\u0432\u0430\u043d\u0438\u0435";
+    if (location.pathname.startsWith("/news")) return "Новости платформы";
     if (location.pathname.startsWith("/tmc")) return "\u0422\u041c\u0426 \u0438 \u0420\u041c";
     if (location.pathname.startsWith("/warehouse")) return "\u0421\u043a\u043b\u0430\u0434";
     return "\u0421\u043a\u043b\u0430\u0434\u041e\u043d\u043b\u0430\u0439\u043d";

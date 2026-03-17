@@ -28,6 +28,7 @@ import Contacts from "./pages/Contacts";
 import Refund from "./pages/Refund";
 import Page403 from "./pages/Page403";
 import AdminConsole from "./pages/AdminConsole";
+import PlatformNews from "./pages/PlatformNews";
 
 import Warehouse from "./pages/Warehouse";
 import TmcRm from "./pages/TmcRm";
@@ -172,6 +173,14 @@ function AppRoutesWithBackground() {
               element={
                 <ProtectedRoute permissionsAny={[PERMISSION_KEYS.APP_TMC]}>
                   <TmcRm />
+                </ProtectedRoute>
+              }
+            />
+            <Route
+              path="news"
+              element={
+                <ProtectedRoute>
+                  <PlatformNews />
                 </ProtectedRoute>
               }
             />

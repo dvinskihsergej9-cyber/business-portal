@@ -22,7 +22,6 @@ function priorityLabel(value) {
 export default function AdminPlatformNewsPanel() {
   const [title, setTitle] = useState("");
   const [message, setMessage] = useState("");
-  const [linkUrl, setLinkUrl] = useState("");
   const [priority, setPriority] = useState("NORMAL");
 
   const [loading, setLoading] = useState(false);
@@ -71,7 +70,6 @@ export default function AdminPlatformNewsPanel() {
     try {
       const preparedTitle = String(title || "").trim();
       const preparedMessage = String(message || "").trim();
-      const preparedLink = String(linkUrl || "").trim();
       if (!preparedTitle) {
         setError("Введите заголовок новости.");
         return;
@@ -94,7 +92,6 @@ export default function AdminPlatformNewsPanel() {
         body: JSON.stringify({
           title: preparedTitle,
           message: preparedMessage,
-          linkUrl: preparedLink,
           priority,
         }),
       });
@@ -157,18 +154,6 @@ export default function AdminPlatformNewsPanel() {
 
         <div className="admin-form__row">
           <div>
-            <label className="admin-label">Ссылка при открытии уведомления</label>
-            <input
-              className="admin-input"
-              value={linkUrl}
-              onChange={(event) => setLinkUrl(event.target.value)}
-              placeholder="Необязательно"
-            />
-            <div className="admin-hint">
-              Можно оставить пустым.
-            </div>
-          </div>
-          <div>
             <label className="admin-label">Приоритет</label>
             <select
               className="admin-input"
@@ -199,7 +184,6 @@ export default function AdminPlatformNewsPanel() {
             onClick={() => {
               setTitle("");
               setMessage("");
-              setLinkUrl("");
               setPriority("NORMAL");
               setError("");
               setSuccess("");
@@ -227,7 +211,6 @@ export default function AdminPlatformNewsPanel() {
               <th>Заголовок</th>
               <th>Приоритет</th>
               <th>Получатели</th>
-              <th>Ссылка</th>
             </tr>
           </thead>
           <tbody>
@@ -243,12 +226,11 @@ export default function AdminPlatformNewsPanel() {
                   {Number(item.sentCount || 0)} / {Number(item.totalRecipients || 0)}
                   {Number(item.failedCount || 0) > 0 ? ` (ошибок: ${item.failedCount})` : ""}
                 </td>
-                <td data-label="Ссылка">{item.linkUrl || "-"}</td>
               </tr>
             ))}
             {!items.length ? (
               <tr>
-                <td colSpan={5} className="admin-muted">
+                <td colSpan={4} className="admin-muted">
                   Рассылок пока нет.
                 </td>
               </tr>

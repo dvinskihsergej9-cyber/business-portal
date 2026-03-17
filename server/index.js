@@ -4780,7 +4780,6 @@ app.get("/api/admin/platform-news/history", auth, requireAdmin, requireSystemOwn
         title: String(meta.title || row.title || ""),
         message: String(meta.message || ""),
         priority: String(meta.priority || "NORMAL"),
-        linkUrl: String(meta.linkUrl || row.linkUrl || ""),
         sentCount: Number(meta.sentCount || 0),
         totalRecipients: Number(meta.totalRecipients || 0),
         failedCount: Number(meta.failedCount || 0),
@@ -4807,7 +4806,6 @@ app.post("/api/admin/platform-news/publish", auth, requireAdmin, requireSystemOw
 
     const rawTitle = String(req.body?.title || "").trim();
     const rawMessage = String(req.body?.message || "").trim();
-    const rawLinkUrl = String(req.body?.linkUrl || "").trim();
     const rawPriority = String(req.body?.priority || "").trim().toUpperCase();
 
     if (!rawTitle) {
@@ -4820,10 +4818,6 @@ app.post("/api/admin/platform-news/publish", auth, requireAdmin, requireSystemOw
     const title = rawTitle.slice(0, 140);
     const message = rawMessage.slice(0, 4000);
     const priority = ["LOW", "NORMAL", "HIGH"].includes(rawPriority) ? rawPriority : "NORMAL";
-    const linkUrl =
-      rawLinkUrl && (rawLinkUrl.startsWith("/") || rawLinkUrl.startsWith("http://") || rawLinkUrl.startsWith("https://"))
-        ? rawLinkUrl
-        : "";
 
     const admins = await prisma.user.findMany({
       where: {
@@ -4862,11 +4856,10 @@ app.post("/api/admin/platform-news/publish", auth, requireAdmin, requireSystemOw
           type: PLATFORM_NEWS_TYPE,
           title,
           message,
-          linkUrl: linkUrl || null,
+          linkUrl: "/news",
           payloadJson: {
             kind: "platform-news",
             priority,
-            linkUrl: linkUrl || null,
             publishedAt: new Date().toISOString(),
           },
         })
@@ -4900,7 +4893,6 @@ app.post("/api/admin/platform-news/publish", auth, requireAdmin, requireSystemOw
           title,
           message,
           priority,
-          linkUrl: linkUrl || null,
           sentCount,
           failedCount,
           totalRecipients: recipients.length,
@@ -4920,14 +4912,13 @@ app.post("/api/admin/platform-news/publish", auth, requireAdmin, requireSystemOw
         title,
         message,
         priority,
-        linkUrl: linkUrl || "",
         sentCount,
         failedCount,
         totalRecipients: recipients.length,
       },
       warning:
         recipients.length === 0
-          ? "Нет активных владельцев компаний для рассылки."
+          ? "Нет владельцев компаний для рассылки."
           : failedCount > 0
             ? "Часть уведомлений не отправлена. Повторите попытку позже."
             : "",
@@ -4935,6 +4926,54 @@ app.post("/api/admin/platform-news/publish", auth, requireAdmin, requireSystemOw
   } catch (err) {
     console.error("platform news publish error:", err);
     res.status(500).json({ message: "Не удалось отправить новость владельцам компаний." });
+  }
+});
+
+app.get("/api/platform-news", auth, async (req, res) => {
+  try {
+    const limitRaw = Number(req.query.limit || 30);
+    const limit = Math.max(1, Math.min(limitRaw || 30, 100));
+    const pageRaw = Number(req.query.page || 1);
+    const page = Math.max(1, pageRaw || 1);
+    const skip = (page - 1) * limit;
+
+    const where = {
+      type: PLATFORM_NEWS_BROADCAST_TYPE,
+    };
+
+    const [rows, total] = await Promise.all([
+      runWithoutTenantScope(() =>
+        prismaBase.warehouseNotification.findMany({
+          where,
+          orderBy: { createdAt: "desc" },
+          skip,
+          take: limit,
+        })
+      ),
+      runWithoutTenantScope(() =>
+        prismaBase.warehouseNotification.count({ where })
+      ),
+    ]);
+    const items = rows.map((row) => {
+      const meta = row?.payloadJson && typeof row.payloadJson === "object" ? row.payloadJson : {};
+      return {
+        id: row.id,
+        title: String(meta.title || row.title || ""),
+        message: String(meta.message || row.message || ""),
+        priority: String(meta.priority || "NORMAL"),
+        createdAt: row.createdAt,
+      };
+    });
+
+    res.json({
+      items,
+      total,
+      page,
+      limit,
+    });
+  } catch (err) {
+    console.error("platform news list error:", err);
+    res.status(500).json({ message: "Не удалось загрузить новости платформы." });
   }
 });
 
