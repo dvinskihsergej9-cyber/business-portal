@@ -3406,6 +3406,129 @@ input[type="number"] {
   background: #1565c0;
 }
 
+.register-card {
+  width: min(560px, 100%);
+}
+
+.register-card__title {
+  margin-bottom: 14px;
+}
+
+.register-card__error,
+.register-card__success {
+  margin-bottom: 12px;
+  padding: 10px 12px;
+  border-radius: 10px;
+  font-size: 14px;
+  line-height: 1.4;
+}
+
+.register-card__error {
+  background: #ffe6e6;
+  color: #b00020;
+}
+
+.register-card__success {
+  background: #ecfdf5;
+  color: #065f46;
+  border: 1px solid #a7f3d0;
+}
+
+.register-card__hint {
+  margin: 0;
+  color: #0f172a;
+  font-size: 14px;
+}
+
+.register-form {
+  display: grid;
+  gap: 10px;
+}
+
+.register-form__field {
+  display: grid;
+  gap: 6px;
+}
+
+.register-form__field span {
+  font-size: 13px;
+  color: #334155;
+}
+
+.register-form__field input,
+.register-form__field textarea {
+  width: 100%;
+  min-height: 42px;
+  padding: 9px 11px;
+  border: 1px solid #cbd5e1;
+  border-radius: 10px;
+  background: #fff;
+  font-size: 14px;
+  color: #0f172a;
+}
+
+.register-form__field textarea {
+  min-height: 84px;
+  resize: vertical;
+}
+
+.register-form__field input:focus,
+.register-form__field textarea:focus {
+  outline: none;
+  border-color: #2563eb;
+  box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.14);
+}
+
+.register-form__submit,
+.register-form__secondary {
+  width: 100%;
+  min-height: 44px;
+  border-radius: 10px;
+  border: none;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.register-form__submit {
+  background: #1976d2;
+  color: #fff;
+}
+
+.register-form__submit:hover:not(:disabled) {
+  background: #1565c0;
+}
+
+.register-form__secondary {
+  background: #eef2ff;
+  color: #1d4ed8;
+}
+
+.register-form__secondary:hover:not(:disabled) {
+  background: #dbeafe;
+}
+
+.register-form__submit:disabled,
+.register-form__secondary:disabled {
+  opacity: 0.7;
+  cursor: not-allowed;
+}
+
+.register-form__link {
+  border: none;
+  background: transparent;
+  color: #1d4ed8;
+  text-align: left;
+  padding: 4px 0;
+  cursor: pointer;
+  font-size: 13px;
+}
+
+.register-card__footer {
+  margin: 12px 0 0;
+  color: #475569;
+  font-size: 14px;
+}
+
 .login-card__help {
   margin: 12px 0 0;
 }
@@ -3570,6 +3693,18 @@ input[type="number"] {
   .login-card {
     border-radius: 14px;
     padding: 14px;
+  }
+
+  .register-form__field input,
+  .register-form__field textarea,
+  .register-form__submit,
+  .register-form__secondary {
+    min-height: 46px;
+    font-size: 16px;
+  }
+
+  .register-form__field textarea {
+    min-height: 96px;
   }
 
   .login-card__brand {

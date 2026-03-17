@@ -78,6 +78,8 @@ export default function Login() {
   const { login } = useAuth();
   const navigate = useNavigate();
   const welcomeTimerRef = useRef(null);
+  const disablePublicRegister =
+    String(import.meta.env.VITE_DISABLE_PUBLIC_REGISTER || "true") === "true";
 
   const [loginValue, setLoginValue] = useState("");
   const [password, setPassword] = useState("");
@@ -182,6 +184,11 @@ export default function Login() {
         <p className="login-card__help">
           <Link to="/forgot-password">Забыли пароль?</Link>
         </p>
+        {!disablePublicRegister && (
+          <p className="login-card__help">
+            <Link to="/register">Нет аккаунта? Зарегистрироваться</Link>
+          </p>
+        )}
         <p className="login-card__hint">
           Доступ создаёт администратор в разделе «Пользователи».
         </p>

@@ -1,4 +1,4 @@
-import { createContext, useContext, useEffect, useState } from "react";
+﻿import { createContext, useContext, useEffect, useState } from "react";
 import { apiFetch } from "../apiConfig";
 import { ensurePushSubscription } from "../utils/pushSubscription";
 
@@ -31,7 +31,7 @@ export function AuthProvider({ children }) {
     }).catch(() => null);
   };
 
-  // авто-подтягивание пользователя по токену
+  // Р°РІС‚Рѕ-РїРѕРґС‚СЏРіРёРІР°РЅРёРµ РїРѕР»СЊР·РѕРІР°С‚РµР»СЏ РїРѕ С‚РѕРєРµРЅСѓ
   useEffect(() => {
     const token = localStorage.getItem("token");
     if (!token) {
@@ -57,7 +57,7 @@ export function AuthProvider({ children }) {
           localStorage.setItem("user", JSON.stringify(data));
         }
       } catch (e) {
-        console.error("Ошибка автоавторизации:", e);
+        console.error("РћС€РёР±РєР° Р°РІС‚РѕР°РІС‚РѕСЂРёР·Р°С†РёРё:", e);
         localStorage.removeItem("token");
         localStorage.removeItem("user");
         setUser(null);
@@ -79,7 +79,7 @@ export function AuthProvider({ children }) {
       const data = await res.json();
 
       if (!res.ok) {
-        return { ok: false, message: data.message || "Ошибка входа" };
+        return { ok: false, message: data.message || "РћС€РёР±РєР° РІС…РѕРґР°" };
       }
 
       localStorage.setItem("token", data.token);
@@ -90,24 +90,69 @@ export function AuthProvider({ children }) {
       return { ok: true };
     } catch (e) {
       console.error("Login error:", e);
-      return { ok: false, message: "Сетевая ошибка" };
+      return { ok: false, message: "РЎРµС‚РµРІР°СЏ РѕС€РёР±РєР°" };
     }
   };
 
-  // РЕГИСТРАЦИЯ БЕЗ ROLE — роль ставит сервер
-  const register = async (email, password, name) => {
+  // Р Р•Р“РРЎРўР РђР¦РРЇ Р‘Р•Р— ROLE вЂ” СЂРѕР»СЊ СЃС‚Р°РІРёС‚ СЃРµСЂРІРµСЂ
+  const register = async ({
+    email,
+    password,
+    name,
+    phone = "",
+    companyName = "",
+    note = "",
+  }) => {
     try {
       const normalizedEmail = String(email || "").trim().toLowerCase();
       const res = await apiFetch("/register", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ email: normalizedEmail, password, name }),
+        body: JSON.stringify({
+          email: normalizedEmail,
+          password,
+          name,
+          phone,
+          companyName,
+          note,
+        }),
       });
 
       const data = await res.json();
 
       if (!res.ok) {
         return { ok: false, message: data.message || "Ошибка регистрации" };
+      }
+
+      return {
+        ok: true,
+        requiresVerification: Boolean(data?.requiresVerification),
+        email: data?.email || normalizedEmail,
+        message: data?.message || "Код подтверждения отправлен на почту.",
+      };
+    } catch (e) {
+      console.error("Register error:", e);
+      return { ok: false, message: "Сетевая ошибка" };
+    }
+  };
+
+  const verifyRegistrationCode = async (email, code) => {
+    try {
+      const normalizedEmail = String(email || "").trim().toLowerCase();
+      const normalizedCode = String(code || "").replace(/\s+/g, "");
+      const res = await apiFetch("/auth/verify-email-code", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          email: normalizedEmail,
+          code: normalizedCode,
+        }),
+      });
+
+      const data = await res.json();
+
+      if (!res.ok) {
+        return { ok: false, message: data.message || "Код подтверждения неверный." };
       }
 
       localStorage.setItem("token", data.token);
@@ -117,7 +162,32 @@ export function AuthProvider({ children }) {
 
       return { ok: true };
     } catch (e) {
-      console.error("Register error:", e);
+      console.error("Verify registration code error:", e);
+      return { ok: false, message: "Сетевая ошибка" };
+    }
+  };
+
+  const resendRegistrationCode = async (email) => {
+    try {
+      const normalizedEmail = String(email || "").trim().toLowerCase();
+      const res = await apiFetch("/auth/resend-email-code", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ email: normalizedEmail }),
+      });
+
+      const data = await res.json();
+
+      if (!res.ok) {
+        return { ok: false, message: data.message || "Не удалось отправить код повторно." };
+      }
+
+      return {
+        ok: true,
+        message: data?.message || "Код подтверждения отправлен повторно.",
+      };
+    } catch (e) {
+      console.error("Resend registration code error:", e);
       return { ok: false, message: "Сетевая ошибка" };
     }
   };
@@ -137,7 +207,7 @@ export function AuthProvider({ children }) {
       const data = await res.json();
 
       if (!res.ok) {
-        return { ok: false, message: data.message || "Ошибка сохранения" };
+        return { ok: false, message: data.message || "РћС€РёР±РєР° СЃРѕС…СЂР°РЅРµРЅРёСЏ" };
       }
 
       setUser(data.user);
@@ -146,7 +216,7 @@ export function AuthProvider({ children }) {
       return { ok: true };
     } catch (e) {
       console.error("Update profile error:", e);
-      return { ok: false, message: "Сетевая ошибка" };
+      return { ok: false, message: "РЎРµС‚РµРІР°СЏ РѕС€РёР±РєР°" };
     }
   };
 
@@ -187,6 +257,8 @@ export function AuthProvider({ children }) {
     loading,
     login,
     register,
+    verifyRegistrationCode,
+    resendRegistrationCode,
     updateProfile,
     logout,
     refreshUser,
@@ -194,3 +266,5 @@ export function AuthProvider({ children }) {
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
 }
+
+
