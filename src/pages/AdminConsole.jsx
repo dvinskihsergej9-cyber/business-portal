@@ -7,6 +7,7 @@ import AdminWarehousePanel from "../components/admin/AdminWarehousePanel";
 import AdminOrgProfilePanel from "../components/admin/AdminOrgProfilePanel";
 import AdminPickingShortagePanel from "../components/admin/AdminPickingShortagePanel";
 import AdminOrderStatusHistoryPanel from "../components/admin/AdminOrderStatusHistoryPanel";
+import AdminPlatformNewsPanel from "../components/admin/AdminPlatformNewsPanel";
 import "../components/admin/admin.css";
 import { hasPermission, PERMISSION_KEYS } from "../utils/permissions";
 
@@ -20,6 +21,7 @@ const BASE_TABS = [
 ];
 
 const OWNER_TAB = { id: "tenants", label: "Клиенты" };
+const OWNER_PLATFORM_NEWS_TAB = { id: "platform-news", label: "Новости платформы" };
 
 export default function AdminConsole({ initialTab = "users" }) {
   const { user } = useAuth();
@@ -34,6 +36,7 @@ export default function AdminConsole({ initialTab = "users" }) {
     () =>
       [
         canTenants ? OWNER_TAB : null,
+        canTenants ? OWNER_PLATFORM_NEWS_TAB : null,
         canUsers ? BASE_TABS.find((item) => item.id === "users") : null,
         canWarehouse ? BASE_TABS.find((item) => item.id === "warehouse") : null,
         canWarehouse
@@ -118,6 +121,7 @@ export default function AdminConsole({ initialTab = "users" }) {
 
       <div className="admin-console__body">
         {activeTab === "tenants" && <TenantManagement />}
+        {activeTab === "platform-news" && <AdminPlatformNewsPanel />}
         {activeTab === "users" && <UserManagement />}
         {activeTab === "warehouse" && <AdminWarehousePanel />}
         {activeTab === "picking-shortage" && <AdminPickingShortagePanel />}

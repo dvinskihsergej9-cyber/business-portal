@@ -198,6 +198,17 @@ function AppRoutesWithBackground() {
               }
             />
             <Route
+              path="admin/platform-news"
+              element={
+                <ProtectedRoute
+                  roles={["ADMIN"]}
+                  permissionsAny={[PERMISSION_KEYS.ADMIN_TENANTS]}
+                >
+                  <AdminConsole initialTab="platform-news" />
+                </ProtectedRoute>
+              }
+            />
+            <Route
               path="admin"
               element={
                 <ProtectedRoute

@@ -613,6 +613,9 @@ async function createWarehouseNotification({
 }
 
 const TASKS_JOURNAL_LINK = "/warehouse?section=tasks&taskView=journal";
+const PLATFORM_NEWS_ADMIN_LINK = "/admin/platform-news";
+const PLATFORM_NEWS_TYPE = "PLATFORM_NEWS";
+const PLATFORM_NEWS_BROADCAST_TYPE = "PLATFORM_NEWS_BROADCAST";
 
 function hashInviteToken(token) {
   return crypto.createHash("sha256").update(token).digest("hex");
@@ -2298,7 +2301,13 @@ function buildOrderLabelHtml(order) {
     table { width: 100%; border-collapse: collapse; margin-top: 12px; }
     th, td { border: 1px solid #c7c7c7; padding: 6px; font-size: 13px; text-align: left; }
     .barcode { margin-top: 12px; font-family: monospace; font-size: 18px; font-weight: 700; }
-    @media print { body { margin: 0; } .label { border: none; } }
+    .print-actions { margin-top: 14px; display: flex; gap: 8px; flex-wrap: wrap; }
+    .print-btn { padding: 6px 14px; font-size: 13px; cursor: pointer; }
+    @media print {
+      body { margin: 0; }
+      .label { border: none; }
+      .print-actions { display: none; }
+    }
   </style>
 </head>
 <body>
@@ -2324,8 +2333,27 @@ function buildOrderLabelHtml(order) {
       </tbody>
     </table>
     <div class="barcode">ORDER: ${escapeHtml(order.orderNumber)}</div>
+    <div class="print-actions">
+      <button class="print-btn" onclick="window.print()">Печать</button>
+      <button class="print-btn" onclick="returnToApp()">Назад</button>
+    </div>
   </div>
-  <script>window.onload = () => window.print();</script>
+  <script>
+    function returnToApp() {
+      try {
+        if (window.opener && !window.opener.closed) {
+          window.close();
+          return;
+        }
+      } catch (e) {}
+      if (window.history.length > 1) {
+        window.history.back();
+        return;
+      }
+      window.location.href = "/warehouse";
+    }
+    window.onload = () => window.print();
+  </script>
 </body>
 </html>`;
 }
@@ -2517,10 +2545,24 @@ function buildReceiveActHtml(order, rows, orgInfo) {
     <div style="margin-top:24px; display:flex; gap:8px; flex-wrap:wrap;">
       <button class="print-btn" onclick="window.print()">&#1055;&#1077;&#1095;&#1072;&#1090;&#1100;</button>
       <button class="print-btn" onclick="handleShareAct()">&#1055;&#1086;&#1076;&#1077;&#1083;&#1080;&#1090;&#1100;&#1089;&#1103;</button>
-      <button class="print-btn" onclick="if (window.history.length > 1) { window.history.back(); } else { window.location.href = \"/warehouse/tsd\"; }">&#1042;&#1077;&#1088;&#1085;&#1091;&#1090;&#1100;&#1089;&#1103; &#1074; &#1087;&#1088;&#1080;&#1083;&#1086;&#1078;&#1077;&#1085;&#1080;&#1077;</button>
+      <button class="print-btn" onclick="returnToApp()">&#1053;&#1072;&#1079;&#1072;&#1076;</button>
     </div>
   </div>
 <script>
+  function returnToApp() {
+    try {
+      if (window.opener && !window.opener.closed) {
+        window.close();
+        return;
+      }
+    } catch (e) {}
+    if (window.history.length > 1) {
+      window.history.back();
+      return;
+    }
+    window.location.href = "/warehouse/tsd";
+  }
+
   async function handleShareAct() {
     if (!navigator.share) {
       alert("\u0424\u0443\u043d\u043a\u0446\u0438\u044f \"\u041f\u043e\u0434\u0435\u043b\u0438\u0442\u044c\u0441\u044f\" \u0434\u043e\u0441\u0442\u0443\u043f\u043d\u0430 \u0442\u043e\u043b\u044c\u043a\u043e \u043d\u0430 \u043c\u043e\u0431\u0438\u043b\u044c\u043d\u044b\u0445 \u0443\u0441\u0442\u0440\u043e\u0439\u0441\u0442\u0432\u0430\u0445.");
@@ -4700,6 +4742,199 @@ app.post("/api/admin/tenants", auth, requireAdmin, requireSystemOwner, async (re
     }
     console.error("tenant create error:", err);
     res.status(500).json({ message: "TENANT_CREATE_ERROR" });
+  }
+});
+
+app.get("/api/admin/platform-news/history", auth, requireAdmin, requireSystemOwner, async (req, res) => {
+  try {
+    if (!hasPermission(req.user, PERMISSION_KEYS.ADMIN_TENANTS)) {
+      return res.status(403).json({ message: "Нет доступа к разделу." });
+    }
+
+    const limitRaw = Number(req.query.limit || 20);
+    const limit = Math.max(1, Math.min(limitRaw || 20, 100));
+    const pageRaw = Number(req.query.page || 1);
+    const page = Math.max(1, pageRaw || 1);
+    const skip = (page - 1) * limit;
+
+    const where = {
+      userId: req.user.id,
+      type: PLATFORM_NEWS_BROADCAST_TYPE,
+    };
+
+    const [items, total] = await Promise.all([
+      prisma.warehouseNotification.findMany({
+        where,
+        orderBy: { createdAt: "desc" },
+        skip,
+        take: limit,
+      }),
+      prisma.warehouseNotification.count({ where }),
+    ]);
+
+    const mapped = items.map((row) => {
+      const meta = row?.payloadJson && typeof row.payloadJson === "object" ? row.payloadJson : {};
+      return {
+        id: row.id,
+        createdAt: row.createdAt,
+        title: String(meta.title || row.title || ""),
+        message: String(meta.message || ""),
+        priority: String(meta.priority || "NORMAL"),
+        linkUrl: String(meta.linkUrl || row.linkUrl || ""),
+        sentCount: Number(meta.sentCount || 0),
+        totalRecipients: Number(meta.totalRecipients || 0),
+        failedCount: Number(meta.failedCount || 0),
+      };
+    });
+
+    res.json({
+      items: mapped,
+      total,
+      page,
+      limit,
+    });
+  } catch (err) {
+    console.error("platform news history error:", err);
+    res.status(500).json({ message: "Не удалось загрузить историю новостей." });
+  }
+});
+
+app.post("/api/admin/platform-news/publish", auth, requireAdmin, requireSystemOwner, async (req, res) => {
+  try {
+    if (!hasPermission(req.user, PERMISSION_KEYS.ADMIN_TENANTS)) {
+      return res.status(403).json({ message: "Нет доступа к разделу." });
+    }
+
+    const rawTitle = String(req.body?.title || "").trim();
+    const rawMessage = String(req.body?.message || "").trim();
+    const rawLinkUrl = String(req.body?.linkUrl || "").trim();
+    const rawPriority = String(req.body?.priority || "").trim().toUpperCase();
+
+    if (!rawTitle) {
+      return res.status(400).json({ message: "Введите заголовок новости." });
+    }
+    if (!rawMessage) {
+      return res.status(400).json({ message: "Введите текст новости." });
+    }
+
+    const title = rawTitle.slice(0, 140);
+    const message = rawMessage.slice(0, 4000);
+    const priority = ["LOW", "NORMAL", "HIGH"].includes(rawPriority) ? rawPriority : "NORMAL";
+    const linkUrl =
+      rawLinkUrl && (rawLinkUrl.startsWith("/") || rawLinkUrl.startsWith("http://") || rawLinkUrl.startsWith("https://"))
+        ? rawLinkUrl
+        : "";
+
+    const admins = await prisma.user.findMany({
+      where: {
+        role: "ADMIN",
+        isActive: true,
+        orgId: { not: null },
+        organization: {
+          is: {
+            isActive: true,
+          },
+        },
+      },
+      orderBy: [{ orgId: "asc" }, { id: "asc" }],
+      select: {
+        id: true,
+        orgId: true,
+        email: true,
+      },
+    });
+
+    const orgSeen = new Set();
+    const recipients = [];
+    for (const user of admins) {
+      if (isOwnerEmail(user.email)) continue;
+      const orgId = Number(user.orgId || 0);
+      if (!orgId || orgSeen.has(orgId)) continue;
+      orgSeen.add(orgId);
+      recipients.push({ orgId, userId: user.id });
+    }
+
+    const sendResults = await Promise.allSettled(
+      recipients.map((recipient) =>
+        createWarehouseNotification({
+          orgId: recipient.orgId,
+          userId: recipient.userId,
+          type: PLATFORM_NEWS_TYPE,
+          title,
+          message,
+          linkUrl: linkUrl || "/warehouse",
+          payloadJson: {
+            kind: "platform-news",
+            priority,
+            linkUrl: linkUrl || null,
+            publishedAt: new Date().toISOString(),
+          },
+        })
+      )
+    );
+
+    let sentCount = 0;
+    let failedCount = 0;
+    for (const result of sendResults) {
+      if (result.status === "fulfilled") {
+        sentCount += 1;
+      } else {
+        failedCount += 1;
+      }
+    }
+
+    const summaryMessage =
+      failedCount > 0
+        ? `Отправлено ${sentCount} из ${recipients.length}. Ошибок: ${failedCount}.`
+        : `Отправлено ${sentCount} из ${recipients.length}.`;
+
+    const historyEntry = await prisma.warehouseNotification.create({
+      data: {
+        orgId: req.user.orgId || null,
+        userId: req.user.id,
+        type: PLATFORM_NEWS_BROADCAST_TYPE,
+        title: "Рассылка новости платформы",
+        message: summaryMessage,
+        linkUrl: PLATFORM_NEWS_ADMIN_LINK,
+        payloadJson: {
+          title,
+          message,
+          priority,
+          linkUrl: linkUrl || null,
+          sentCount,
+          failedCount,
+          totalRecipients: recipients.length,
+          publishedAt: new Date().toISOString(),
+        },
+      },
+    });
+
+    res.json({
+      ok: true,
+      sentCount,
+      failedCount,
+      totalRecipients: recipients.length,
+      historyItem: {
+        id: historyEntry.id,
+        createdAt: historyEntry.createdAt,
+        title,
+        message,
+        priority,
+        linkUrl: linkUrl || "",
+        sentCount,
+        failedCount,
+        totalRecipients: recipients.length,
+      },
+      warning:
+        recipients.length === 0
+          ? "Нет активных владельцев компаний для рассылки."
+          : failedCount > 0
+            ? "Часть уведомлений не отправлена. Повторите попытку позже."
+            : "",
+    });
+  } catch (err) {
+    console.error("platform news publish error:", err);
+    res.status(500).json({ message: "Не удалось отправить новость владельцам компаний." });
   }
 });
 
@@ -8741,6 +8976,9 @@ app.post("/api/warehouse/print/labels", auth, async (req, res) => {
             .qr { width: ${isLabel ? "90px" : "60mm"}; height: ${isLabel ? "90px" : "60mm"}; }
             .code { font-size: ${isLabel ? "11px" : "14px"}; letter-spacing: 0.4px; text-align: center; }
             .label--location .qr { width: ${isLabel ? "110px" : "70mm"}; height: ${isLabel ? "110px" : "70mm"}; }
+            .print-actions { margin: 12px 8px 8px; display: flex; gap: 8px; flex-wrap: wrap; }
+            .print-btn { padding: 6px 14px; font-size: 13px; cursor: pointer; }
+            @media print { .print-actions { display: none; } }
           </style>
         </head>
         <body>
@@ -8762,7 +9000,24 @@ app.post("/api/warehouse/print/labels", auth, async (req, res) => {
               })
               .join("")}
           </div>
+          <div class="print-actions">
+            <button class="print-btn" onclick="window.print()">Печать</button>
+            <button class="print-btn" onclick="returnToApp()">Назад</button>
+          </div>
           <script>
+            function returnToApp() {
+              try {
+                if (window.opener && !window.opener.closed) {
+                  window.close();
+                  return;
+                }
+              } catch (e) {}
+              if (window.history.length > 1) {
+                window.history.back();
+                return;
+              }
+              window.location.href = "/warehouse";
+            }
             (function () {
               const images = Array.from(document.images || []);
               const finish = () => setTimeout(() => window.print(), 200);
@@ -8855,6 +9110,9 @@ app.post("/api/warehouse/qr/print", auth, async (req, res) => {
             .qr { width: ${isLabel ? "90px" : "80px"}; height: ${isLabel ? "90px" : "80px"}; }
             .code { font-size: 11px; letter-spacing: 0.4px; text-align: center; }
             .label--location .qr { width: ${isLabel ? "110px" : "90px"}; height: ${isLabel ? "110px" : "90px"}; }
+            .print-actions { margin: 12px 8px 8px; display: flex; gap: 8px; flex-wrap: wrap; }
+            .print-btn { padding: 6px 14px; font-size: 13px; cursor: pointer; }
+            @media print { .print-actions { display: none; } }
           </style>
         </head>
         <body>
@@ -8872,7 +9130,26 @@ app.post("/api/warehouse/qr/print", auth, async (req, res) => {
               )
               .join("")}
           </div>
-          <script>window.print();</script>
+          <div class="print-actions">
+            <button class="print-btn" onclick="window.print()">Печать</button>
+            <button class="print-btn" onclick="returnToApp()">Назад</button>
+          </div>
+          <script>
+            function returnToApp() {
+              try {
+                if (window.opener && !window.opener.closed) {
+                  window.close();
+                  return;
+                }
+              } catch (e) {}
+              if (window.history.length > 1) {
+                window.history.back();
+                return;
+              }
+              window.location.href = "/warehouse";
+            }
+            window.print();
+          </script>
         </body>
       </html>
     `;
@@ -9102,6 +9379,9 @@ app.post("/api/warehouse/labels/print", auth, async (req, res) => {
             .qr--big { width: 90px; height: 90px; }
             .content { display: grid; grid-template-columns: 1fr auto; gap: 8px; align-items: center; }
             .print-date { font-size: 9px; color: #94a3b8; margin-top: 2px; }
+            .print-actions { margin: 12px 0 8px; display: flex; gap: 8px; flex-wrap: wrap; }
+            .print-btn { padding: 6px 14px; font-size: 13px; cursor: pointer; }
+            @media print { .print-actions { display: none; } }
           </style>
         </head>
         <body>
@@ -9138,7 +9418,26 @@ app.post("/api/warehouse/labels/print", auth, async (req, res) => {
               })
               .join("")}
           </div>
-          <script>window.print();</script>
+          <div class="print-actions">
+            <button class="print-btn" onclick="window.print()">Печать</button>
+            <button class="print-btn" onclick="returnToApp()">Назад</button>
+          </div>
+          <script>
+            function returnToApp() {
+              try {
+                if (window.opener && !window.opener.closed) {
+                  window.close();
+                  return;
+                }
+              } catch (e) {}
+              if (window.history.length > 1) {
+                window.history.back();
+                return;
+              }
+              window.location.href = "/warehouse";
+            }
+            window.print();
+          </script>
         </body>
       </html>
     `;
