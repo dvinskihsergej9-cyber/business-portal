@@ -293,7 +293,7 @@ export default function Scanner({
           className="tsd-btn tsd-btn--primary"
           disabled={disabled}
         >
-          ОК
+          Ввести
         </button>
       </form>
     </div>

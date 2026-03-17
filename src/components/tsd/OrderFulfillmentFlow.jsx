@@ -1188,7 +1188,7 @@ export default function OrderFulfillmentFlow({ authHeaders, onBack }) {
                     disabled={loading || !canPrintPassport}
                     onClick={printPassport}
                   >
-                    Паспорт (PDF)
+                    Паспорт
                   </button>
                   {!isClosed && (
                     <button
