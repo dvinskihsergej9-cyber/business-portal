@@ -2698,27 +2698,6 @@ async function sendSafetyReminders() {
 // старт фоновых задач переносим после проверки готовности БД
 
 // обработка callback_query (кнопка "✅ Выполнено")
-async function isTmcIssueRequest(request) {
-  if (!request || request.type !== "ISSUE") return false;
-  const items = request.items || [];
-  if (!items.length) return false;
-
-  for (const it of items) {
-    if (it.itemId) {
-      const item = await prisma.item.findUnique({ where: { id: it.itemId } });
-      if (item?.category === "TMC") return true;
-      continue;
-    }
-    if (it.name) {
-      const item = await prisma.item.findFirst({
-        where: { name: it.name, category: "TMC" },
-      });
-      if (item) return true;
-    }
-  }
-
-  return false;
-}
 
 function extractRequestIdFromTitle(title) {
   if (!title) return null;
@@ -2734,84 +2713,6 @@ async function handleTelegramUpdate(update) {
   const { id: callbackId, data, from } = update.callback_query;
 
   if (!data) return;
-
-  // admin approval for TMC issue
-  if (data.startsWith("approve_issue:") || data.startsWith("reject_issue:")) {
-    const reqId = Number(data.split(":")[1]);
-    if (!reqId) return;
-
-    try {
-      const request = await prisma.warehouseRequest.findUnique({
-        where: { id: reqId },
-        include: { items: true },
-      });
-
-      if (!request) {
-        await fetch(`${TELEGRAM_API}/answerCallbackQuery`, {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            callback_query_id: callbackId,
-            text: "\u0417\u0430\u044f\u0432\u043a\u0430 \u043d\u0435 \u043d\u0430\u0439\u0434\u0435\u043d\u0430.",
-            show_alert: true,
-          }),
-        });
-        return;
-      }
-
-      if (data.startsWith("reject_issue:")) {
-        await prisma.warehouseRequest.update({
-          where: { id: reqId },
-          data: {
-            status: "REJECTED",
-            statusComment: "\u041e\u0442\u043a\u043b\u043e\u043d\u0435\u043d\u043e \u0430\u0434\u043c\u0438\u043d\u0438\u0441\u0442\u0440\u0430\u0442\u043e\u0440\u043e\u043c",
-          },
-        });
-        await fetch(`${TELEGRAM_API}/answerCallbackQuery`, {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            callback_query_id: callbackId,
-            text: "\u041e\u0442\u043a\u043b\u043e\u043d\u0435\u043d\u043e. \u0421\u043f\u0438\u0441\u0430\u043d\u0438\u0435 \u043d\u0435 \u0432\u044b\u043f\u043e\u043b\u043d\u0435\u043d\u043e.",
-            show_alert: false,
-          }),
-        });
-        return;
-      }
-
-      await autoPostRequestToStock(reqId, request.createdById);
-      await prisma.warehouseRequest.update({
-        where: { id: reqId },
-        data: {
-          status: "DONE",
-          statusComment: "\u0421\u043f\u0438\u0441\u0430\u043d\u043e \u043f\u043e \u043f\u043e\u0434\u0442\u0432\u0435\u0440\u0436\u0434\u0435\u043d\u0438\u044e \u0430\u0434\u043c\u0438\u043d\u0430",
-        },
-      });
-
-      await fetch(`${TELEGRAM_API}/answerCallbackQuery`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          callback_query_id: callbackId,
-          text: "\u0421\u043f\u0438\u0441\u0430\u043d\u0438\u0435 \u043f\u043e\u0434\u0442\u0432\u0435\u0440\u0436\u0434\u0435\u043d\u043e. \u041e\u0441\u0442\u0430\u0442\u043a\u0438 \u043e\u0431\u043d\u043e\u0432\u043b\u0435\u043d\u044b.",
-          show_alert: false,
-        }),
-      });
-      return;
-    } catch (err) {
-      console.error("[Telegram] approve_issue error:", err);
-      await fetch(`${TELEGRAM_API}/answerCallbackQuery`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          callback_query_id: callbackId,
-          text: "\u041e\u0448\u0438\u0431\u043a\u0430. \u041d\u0435 \u0443\u0434\u0430\u043b\u043e\u0441\u044c \u043e\u0431\u0440\u0430\u0431\u043e\u0442\u0430\u0442\u044c \u0437\u0430\u043f\u0440\u043e\u0441.",
-          show_alert: true,
-        }),
-      });
-      return;
-    }
-  }
 
   const isIssueDone = data.startsWith("issue_done:");
   const isDone = data.startsWith("done:");
@@ -2872,38 +2773,7 @@ async function handleTelegramUpdate(update) {
           include: { items: true },
         });
 
-        if (isIssueDone && (await isTmcIssueRequest(request))) {
-          const lines = [];
-          lines.push("\u{1F9FE} \u0417\u0430\u043f\u0440\u043e\u0441 \u043d\u0430 \u0441\u043f\u0438\u0441\u0430\u043d\u0438\u0435 \u0422\u041c\u0426");
-          lines.push(`\u0417\u0430\u044f\u0432\u043a\u0430 #${requestId}`);
-          if (request?.items?.length) {
-            lines.push("");
-            lines.push("\u041f\u043e\u0437\u0438\u0446\u0438\u0438:");
-            for (const it of request.items) {
-              lines.push(`- ${it.name} \u2014 ${it.quantity} ${it.unit || ""}`.trim());
-            }
-          }
-          const approvalText = lines.join("\n");
-
-          await sendWarehouseGroupMessage(approvalText, {
-            reply_markup: {
-              inline_keyboard: [
-                [
-                  {
-                    text: "\u0421\u043f\u0438\u0441\u0430\u0442\u044c",
-                    callback_data: `approve_issue:${requestId}`,
-                  },
-                  {
-                    text: "\u041e\u0442\u043a\u043b\u043e\u043d\u0438\u0442\u044c",
-                    callback_data: `reject_issue:${requestId}`,
-                  },
-                ],
-              ],
-            },
-          });
-        } else {
-          await autoPostRequestToStock(requestId, task.assignerId);
-        }
+        await autoPostRequestToStock(requestId, task.assignerId);
       }
     } catch (e) {
       console.error("[Telegram] autoPostRequestFromTask error:", e);
@@ -2915,7 +2785,7 @@ async function handleTelegramUpdate(update) {
       body: JSON.stringify({
         callback_query_id: callbackId,
         text: isIssueDone
-          ? "\u041e\u0442\u043c\u0435\u0447\u0435\u043d\u043e \u00ab\u0412\u044b\u0434\u0430\u043d\u043e\u00bb. \u041e\u0436\u0438\u0434\u0430\u0435\u0442 \u043f\u043e\u0434\u0442\u0432\u0435\u0440\u0436\u0434\u0435\u043d\u0438\u044f \u0430\u0434\u043c\u0438\u043d\u0430."
+          ? "\u041e\u0442\u043c\u0435\u0447\u0435\u043d\u043e \u00ab\u0412\u044b\u0434\u0430\u043d\u043e\u00bb. \u0417\u0430\u044f\u0432\u043a\u0430 \u043e\u0431\u043d\u043e\u0432\u043b\u0435\u043d\u0430."
           : "\u0417\u0430\u0434\u0430\u0447\u0430 \u043e\u0442\u043c\u0435\u0447\u0435\u043d\u0430 \u043a\u0430\u043a \u0432\u044b\u043f\u043e\u043b\u043d\u0435\u043d\u043d\u0430\u044f.",
         show_alert: false,
       }),
@@ -5541,10 +5411,7 @@ app.post("/api/warehouse/requests", auth, async (req, res) => {
 
         if (!invItem) continue;
 
-        const currentStock =
-          invItem.category === "TMC"
-            ? await getTmcStockForItem(invItem.id)
-            : await getCurrentStockForItem(invItem.id);
+        const currentStock = await getCurrentStockForItem(invItem.id);
         const current = currentStock ?? 0;
 
         if (current < it.quantity) {
@@ -5705,15 +5572,9 @@ async function autoPostRequestToStock(requestId, userId) {
     }
 
     // Ищем товар в номенклатуре по точному имени
-    let invItem = await prisma.item.findFirst({
-      where: { name: item.name, category: "TMC" },
+    const invItem = await prisma.item.findFirst({
+      where: { name: item.name },
     });
-
-    if (!invItem) {
-      invItem = await prisma.item.findFirst({
-        where: { name: item.name },
-      });
-    }
 
     if (!invItem) {
       console.warn(
@@ -5725,27 +5586,13 @@ async function autoPostRequestToStock(requestId, userId) {
     // Если это расход — проверяем, хватит ли остатка
     if (movementType === "ISSUE") {
       try {
-        if (invItem.category === "TMC") {
-          const current = await getTmcStockForItem(invItem.id);
-          if (current < q) {
-            console.warn(
-              `[Warehouse] Insufficient stock for "${item.name}" in request #${id} (have ${current}, need ${q})`
-            );
-            continue;
-          }
-        } else {
-          const stockInfo = await calculateStockAfterMovement(
-            invItem.id,
-            "ISSUE",
-            q
-          );
+        const stockInfo = await calculateStockAfterMovement(invItem.id, "ISSUE", q);
 
-          if (stockInfo.newStock < 0) {
-            console.warn(
-              `[Warehouse] Insufficient stock for "${item.name}" in request #${id} (have ${stockInfo.current}, need ${q})`
-            );
-            continue;
-          }
+        if (stockInfo.newStock < 0) {
+          console.warn(
+            `[Warehouse] Insufficient stock for "${item.name}" in request #${id} (have ${stockInfo.current}, need ${q})`
+          );
+          continue;
         }
       } catch (e) {
         console.error(
@@ -6675,9 +6522,6 @@ app.post("/api/warehouse/products/:id/codes", auth, async (req, res) => {
     }
 
     const item = await prisma.item.findUnique({ where: { id } });
-    if (item && item.category === "TMC") {
-      return res.status(404).json({ message: "ITEM_NOT_FOUND" });
-    }
     if (!item) {
       return res.status(404).json({ message: "Товар не найден" });
     }
@@ -6794,9 +6638,6 @@ app.post("/api/warehouse/products/:id/qr", auth, async (req, res) => {
       return res.status(400).json({ message: "Некорректный ID товара" });
     }
     const item = await prisma.item.findUnique({ where: { id } });
-    if (item && item.category === "TMC") {
-      return res.status(404).json({ message: "ITEM_NOT_FOUND" });
-    }
     if (!item) {
       return res.status(404).json({ message: "Товар не найден" });
     }
@@ -7672,256 +7513,6 @@ app.post("/api/warehouse/revisions/:id/apply", auth, requireAdmin, async (req, r
   } catch (err) {
     console.error("revision apply error:", err);
     res.status(500).json({ message: "REVISION_APPLY_ERROR" });
-  }
-});
-
-// ===== TMC (SUPPLIES) =====
-const TMC_DEFAULTS = [
-  { name: "?????? ?4", unit: "?????" },
-  { name: "????? ?????????", unit: "??" },
-  { name: "?????? ????????????", unit: "??" },
-  { name: "????? ??????????", unit: "?????" },
-  { name: "??????-?????", unit: "?????" },
-  { name: "???????? ???????", unit: "????" },
-  { name: "????????", unit: "??" },
-  { name: "????? ??? ??????", unit: "??" },
-  { name: "????????", unit: "??" },
-  { name: "??????? ?????", unit: "?????" },
-  { name: "????????", unit: "?????" },
-  { name: "??? ????????????", unit: "??" },
-  { name: "????? ????????????", unit: "?????" },
-  { name: "?????? ???", unit: "??" },
-  { name: "????????????? ????????", unit: "??" },
-];
-
-
-const getTmcStockForItem = async (itemId) => {
-  const movements = await prisma.stockMovement.findMany({
-    where: { itemId },
-    orderBy: { createdAt: "asc" },
-  });
-  let qty = 0;
-  for (const m of movements) {
-    if (m.type === "INCOME" || m.type === "ADJUSTMENT") {
-      qty += Number(m.quantity);
-    } else if (m.type === "ISSUE") {
-      qty -= Number(m.quantity);
-    }
-  }
-  return Math.round(qty);
-};
-
-app.get("/api/tmc/items", auth, async (req, res) => {
-  try {
-    const items = await prisma.item.findMany({
-      where: { category: "TMC" },
-      orderBy: { name: "asc" },
-    });
-    res.json(items);
-  } catch (err) {
-    console.error("tmc items error:", err);
-    res.status(500).json({ message: "TMC_ITEMS_ERROR" });
-  }
-});
-
-app.get("/api/tmc/stock", auth, async (req, res) => {
-  try {
-    const items = await prisma.item.findMany({
-      where: { category: "TMC" },
-      orderBy: { name: "asc" },
-    });
-    const result = [];
-    for (const item of items) {
-      const currentStock = await getTmcStockForItem(item.id);
-      result.push({
-        id: item.id,
-        name: item.name,
-        sku: item.sku,
-        barcode: item.barcode,
-        unit: item.unit,
-        currentStock,
-      });
-    }
-    res.json(result);
-  } catch (err) {
-    console.error("tmc stock error:", err);
-    res.status(500).json({ message: "TMC_STOCK_ERROR" });
-  }
-});
-
-app.get("/api/tmc/transactions", auth, async (req, res) => {
-  try {
-    const limit = Math.min(Number(req.query.limit) || 200, 500);
-    const items = await prisma.stockMovement.findMany({
-      where: { item: { category: "TMC" } },
-      orderBy: { createdAt: "desc" },
-      take: limit,
-      include: { item: true, createdBy: true },
-    });
-    const result = items.map((m) => ({
-      id: m.id,
-      type: m.type,
-      createdAt: m.createdAt,
-      qty: m.type === "ISSUE" ? -Number(m.quantity) : Number(m.quantity),
-      comment: m.comment || null,
-      item: m.item
-        ? { id: m.item.id, name: m.item.name, sku: m.item.sku }
-        : null,
-      user: m.createdBy ? { id: m.createdBy.id, name: m.createdBy.name } : null,
-    }));
-    res.json({ items: result });
-  } catch (err) {
-    console.error("tmc transactions error:", err);
-    res.status(500).json({ message: "TMC_TRANSACTIONS_ERROR" });
-  }
-});
-
-app.post("/api/tmc/items", auth, requireAdmin, async (req, res) => {
-  try {
-    const { name, unit, sku, barcode } = req.body || {};
-    if (!name || String(name).trim().length < 2) {
-      return res.status(400).json({ message: "BAD_NAME" });
-    }
-    const item = await prisma.item.create({
-      data: {
-        name: String(name).trim(),
-        unit: unit ? String(unit).trim() : "??",
-        sku: sku ? String(sku).trim() : null,
-        barcode: barcode ? String(barcode).trim() : null,
-        category: "TMC",
-      },
-    });
-    res.json(item);
-  } catch (err) {
-    console.error("tmc item create error:", err);
-    res.status(500).json({ message: "TMC_ITEM_CREATE_ERROR" });
-  }
-});
-
-app.put("/api/tmc/items/:id", auth, requireAdmin, async (req, res) => {
-  try {
-    const id = Number(req.params.id);
-    const { name, unit, sku, barcode } = req.body || {};
-    if (!id || Number.isNaN(id)) {
-      return res.status(400).json({ message: "BAD_ITEM_ID" });
-    }
-    const existing = await prisma.item.findUnique({ where: { id } });
-    if (!existing || existing.category !== "TMC") {
-      return res.status(404).json({ message: "ITEM_NOT_FOUND" });
-    }
-    const item = await prisma.item.update({
-      where: { id },
-      data: {
-        name: name ? String(name).trim() : existing.name,
-        unit: unit ? String(unit).trim() : existing.unit,
-        sku: sku ? String(sku).trim() : existing.sku,
-        barcode: barcode ? String(barcode).trim() : existing.barcode,
-      },
-    });
-    res.json(item);
-  } catch (err) {
-    console.error("tmc item update error:", err);
-    res.status(500).json({ message: "TMC_ITEM_UPDATE_ERROR" });
-  }
-});
-
-app.post("/api/tmc/receive", auth, requireAdmin, async (req, res) => {
-  try {
-    const { itemId, qty, comment, docNo } = req.body || {};
-    const item = Number(itemId);
-    const amount = Number(qty);
-    if (!item || !Number.isFinite(amount) || amount <= 0) {
-      return res.status(400).json({ message: "BAD_REQUEST" });
-    }
-    const itemRow = await prisma.item.findUnique({ where: { id: item } });
-    if (!itemRow || itemRow.category !== "TMC") {
-      return res.status(404).json({ message: "ITEM_NOT_FOUND" });
-    }
-    const note = docNo ? `?????? ???: ${docNo}` : "?????? ???";
-    const movement = await stockService.createMovement({
-      type: "INCOME",
-      itemId: item,
-      qty: Math.trunc(amount),
-      locationId: null,
-      comment: comment ? `${note}. ${comment}` : note,
-      userId: req.user?.id || null,
-    });
-    res.json({ ok: true, id: movement.id });
-  } catch (err) {
-    console.error("tmc receive error:", err);
-    res.status(500).json({ message: "TMC_RECEIVE_ERROR" });
-  }
-});
-
-app.post("/api/tmc/issue", auth, async (req, res) => {
-  try {
-    const { itemId, qty, department, employee, comment } = req.body || {};
-    const item = Number(itemId);
-    const amount = Number(qty);
-    if (!item || !Number.isFinite(amount) || amount <= 0) {
-      return res.status(400).json({ message: "BAD_REQUEST" });
-    }
-    const itemRow = await prisma.item.findUnique({ where: { id: item } });
-    if (!itemRow || itemRow.category !== "TMC") {
-      return res.status(404).json({ message: "ITEM_NOT_FOUND" });
-    }
-
-    const current = await getTmcStockForItem(itemRow.id);
-    if (current < amount) {
-      return res.status(400).json({ message: "INSUFFICIENT_QTY" });
-    }
-
-    const target = [department, employee].filter(Boolean).join(" / ");
-    const note = target ? `?????? ???: ${target}` : "?????? ???";
-    const movement = await stockService.createMovement({
-      type: "ISSUE",
-      itemId: item,
-      qty: Math.trunc(amount),
-      locationId: null,
-      comment: comment ? `${note}. ${comment}` : note,
-      userId: req.user?.id || null,
-    });
-    res.json({ ok: true, id: movement.id });
-  } catch (err) {
-    console.error("tmc issue error:", err);
-    res.status(500).json({ message: "TMC_ISSUE_ERROR" });
-  }
-});
-
-app.post("/api/tmc/seed-defaults", auth, requireAdmin, async (req, res) => {
-  try {
-    const existing = await prisma.item.findMany({
-      where: { category: "TMC" },
-      select: { id: true, name: true },
-    });
-    const bad = existing.filter((row) => (row.name || "").includes(String.fromCharCode(0xFFFD)) || (row.name || "").includes("?"));
-    if (bad.length) {
-      await prisma.item.deleteMany({
-        where: { id: { in: bad.map((row) => row.id) } },
-      });
-    }
-
-    const existingAfter = await prisma.item.findMany({
-      where: { category: "TMC" },
-      select: { name: true },
-    });
-
-    const exists = new Set(existingAfter.map((i) => i.name.toLowerCase()));
-    const toCreate = TMC_DEFAULTS.filter((row) => !exists.has(row.name.toLowerCase()))
-      .map((row) => ({
-        name: row.name,
-        unit: row.unit || "\u0448\u0442",
-        category: "TMC",
-      }));
-
-    if (toCreate.length) {
-      await prisma.item.createMany({ data: toCreate });
-    }
-
-    res.json({ added: toCreate.length });
-  } catch (err) {
-    console.error("tmc seed error:", err);
-    res.status(500).json({ message: "TMC_SEED_ERROR" });
   }
 });
 
@@ -8935,9 +8526,6 @@ app.post("/api/warehouse/print/labels", auth, async (req, res) => {
 
       if (kind === "item") {
         const item = await prisma.item.findUnique({ where: { id } });
-    if (item && item.category === "TMC") {
-      return res.status(404).json({ message: "ITEM_NOT_FOUND" });
-    }
         if (!item) continue;
         labels.push({
           kind: "item",
@@ -9651,11 +9239,11 @@ app.post("/api/warehouse/holds", auth, async (req, res) => {
     }
 
     const created = await prisma.$transaction(async (tx) => {
-      const item = await tx.item.findFirst({ where: { id: itemId, orgId } });
-      if (!item || item.category === "TMC") {
-        const err = new Error("ITEM_NOT_FOUND");
-        err.code = "ITEM_NOT_FOUND";
-        throw err;
+        const item = await tx.item.findFirst({ where: { id: itemId, orgId } });
+        if (!item) {
+          const err = new Error("ITEM_NOT_FOUND");
+          err.code = "ITEM_NOT_FOUND";
+          throw err;
       }
 
       const location = await tx.warehouseLocation.findFirst({ where: { id: locationId, orgId } });
@@ -9771,9 +9359,6 @@ app.get("/api/warehouse/stock/item/:id", auth, async (req, res) => {
     }
 
     const item = await prisma.item.findUnique({ where: { id } });
-    if (item && item.category === "TMC") {
-      return res.status(404).json({ message: "ITEM_NOT_FOUND" });
-    }
     if (!item) {
       return res.status(404).json({ message: "ITEM_NOT_FOUND" });
     }

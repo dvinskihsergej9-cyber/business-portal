@@ -120,7 +120,7 @@ function WarehouseTileIcon({ name }) {
 
 const TYPE_LABELS = {
 
-  ISSUE: "Выдача расходных материалов (РМ)",
+  ISSUE: "Выдача со склада",
 
   RETURN: "Возврат на склад",
 
@@ -392,7 +392,7 @@ export default function Warehouse({
 
   const [inventoryError, setInventoryError] = useState("");
 
-  const [tmcStock, setTmcStock] = useState([]);
+  const [requestStock, setRequestStock] = useState([]);
 
 
   const [inventoryTab, setInventoryTab] = useState("stock"); // stock | movement | suppliers
@@ -787,19 +787,25 @@ export default function Warehouse({
 
   };
 
-  const loadTmcStock = async () => {
+  const loadRequestStock = async () => {
     try {
-      const res = await fetch(`${API}/tmc/stock`, {
+      const res = await fetch(`${API}/inventory/stock`, {
         headers: { Authorization: authHeaders.Authorization },
       });
       const data = await res.json();
       if (!res.ok) {
-        throw new Error(data.message || "Ошибка загрузки ТМЦ");
+        throw new Error(data.message || "Ошибка загрузки остатков для заявок");
       }
-      setTmcStock(data || []);
+      const normalized = Array.isArray(data)
+        ? data.map((item) => ({
+            ...item,
+            currentStock: Number(item?.availableStock ?? item?.currentStock ?? 0),
+          }))
+        : [];
+      setRequestStock(normalized);
     } catch (e) {
       console.error(e);
-      setError(e.message || "Ошибка загрузки ТМЦ");
+      setError(e.message || "Ошибка загрузки остатков для заявок");
     }
   };
 
@@ -950,7 +956,7 @@ export default function Warehouse({
       loadInventory();
     }
     if (canRequests) {
-      loadTmcStock();
+      loadRequestStock();
     }
 
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -1034,7 +1040,7 @@ export default function Warehouse({
   useEffect(() => {
     if (section !== "requests") return;
     if (!canRequests) return;
-    loadTmcStock();
+    loadRequestStock();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [section, canRequests]);
 
@@ -1090,10 +1096,10 @@ export default function Warehouse({
 
     try {
 
-      const selectedItem = selectedTmcItem;
+      const selectedItem = selectedRequestItem;
       if (!selectedItem) {
         setSaving(false);
-        return setError("Выберите товар из ТМЦ.");
+        return setError("Выберите товар.");
       }
 
       const title = selectedItem.name;
@@ -1185,9 +1191,9 @@ export default function Warehouse({
       setError("");
       setPostMessage("");
 
-      const selectedItem = selectedTmcItem;
+      const selectedItem = selectedRequestItem;
       if (!selectedItem) {
-        return setError("Выберите товар из ТМЦ.");
+        return setError("Выберите товар.");
       }
 
       const qty = Number(requestForm.quantity);
@@ -1195,11 +1201,11 @@ export default function Warehouse({
         Number.isFinite(qty) && qty > 0 ? Math.floor(qty) : 1;
 
       const body = {
-        title: `Пополнение ТМЦ: ${selectedItem.name}`,
+        title: `Пополнение: ${selectedItem.name}`,
         type: "INCOME",
         comment: requestForm.description?.trim()
-          ? `Автозаявка на пополнение ТМЦ. ${requestForm.description.trim()}`
-          : "Автозаявка на пополнение ТМЦ.",
+          ? `Автозаявка на пополнение. ${requestForm.description.trim()}`
+          : "Автозаявка на пополнение.",
         items: [
           {
             itemId: selectedItem.id,
@@ -1408,19 +1414,19 @@ export default function Warehouse({
 
 
 
-  // Товары, у которых текущий остаток > 0 (для выпадающего списка в заявке)
-
-  const tmcStockItems = useMemo(() => tmcStock || [], [tmcStock]);
-  const filteredTmcItems = useMemo(() => {
+  // Товары для выпадающего списка в заявке
+  const requestStockItems = useMemo(() => requestStock || [], [requestStock]);
+  const filteredRequestItems = useMemo(() => {
     const q = requestItemQuery.trim().toLowerCase();
-    if (!q) return tmcStockItems;
-    return tmcStockItems.filter((item) =>
+    if (!q) return requestStockItems;
+    return requestStockItems.filter((item) =>
       String(item.name || "").toLowerCase().includes(q)
     );
-  }, [tmcStockItems, requestItemQuery]);
-  const selectedTmcItem = useMemo(
-    () => tmcStockItems.find((it) => String(it.id) === String(requestForm.itemId)),
-    [tmcStockItems, requestForm.itemId]
+  }, [requestStockItems, requestItemQuery]);
+  const selectedRequestItem = useMemo(
+    () =>
+      requestStockItems.find((it) => String(it.id) === String(requestForm.itemId)),
+    [requestStockItems, requestForm.itemId]
   );
 
 
@@ -2563,18 +2569,18 @@ export default function Warehouse({
                 >
 
                   <div className="form__group">
-                    <label className="form__label">Товар (ТМЦ)</label>
+                    <label className="form__label">Товар</label>
                     <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
                     <input
                       className="form__input"
-                      placeholder="Поиск по ТМЦ..."
+                      placeholder="Поиск по товару..."
                       value={requestItemQuery}
                       onChange={(e) => setRequestItemQuery(e.target.value)}
                     />
                       <button
                         type="button"
                         className="btn btn--secondary btn--sm"
-                        onClick={loadTmcStock}
+                        onClick={loadRequestStock}
                       >
                         Обновить
                       </button>
@@ -2590,17 +2596,17 @@ export default function Warehouse({
                       }
                     >
                       <option value="">Выберите товар</option>
-                      {filteredTmcItems.map((item) => (
+                      {filteredRequestItems.map((item) => (
                         <option key={item.id} value={item.id}>
                           {item.name} (остаток: {item.currentStock} {item.unit || "шт"})
                           {Number(item.currentStock) <= 0 ? " — нет остатка" : ""}
                         </option>
                       ))}
                     </select>
-                    {selectedTmcItem && (
+                    {selectedRequestItem && (
                       <div className="form__hint">
-                        Остаток: {selectedTmcItem.currentStock}{" "}
-                        {selectedTmcItem.unit || "шт"}
+                        Остаток: {selectedRequestItem.currentStock}{" "}
+                        {selectedRequestItem.unit || "шт"}
                       </div>
                     )}
                   </div>
@@ -2635,14 +2641,14 @@ export default function Warehouse({
 
                     />
 
-                    {selectedTmcItem &&
-                      Number(requestForm.quantity) > Number(selectedTmcItem.currentStock ?? 0) && (
+                    {selectedRequestItem &&
+                      Number(requestForm.quantity) > Number(selectedRequestItem.currentStock ?? 0) && (
                         <div className="form__hint" style={{ color: "#dc2626" }}>
-                          Недостаточно остатка. Доступно {selectedTmcItem.currentStock} {selectedTmcItem.unit || "шт."}.
+                          Недостаточно остатка. Доступно {selectedRequestItem.currentStock} {selectedRequestItem.unit || "шт."}.
                         </div>
                       )}
 
-                    {selectedTmcItem && Number(selectedTmcItem.currentStock ?? 0) <= 0 && (
+                    {selectedRequestItem && Number(selectedRequestItem.currentStock ?? 0) <= 0 && (
                       <div className="form__hint" style={{ color: "#dc2626" }}>
                         На складе нет остатка для выдачи. Можно создать заявку на пополнение.
                       </div>
@@ -2702,9 +2708,9 @@ export default function Warehouse({
                     </button>
 
                   
-                    {(selectedTmcItem && Number(selectedTmcItem.currentStock ?? 0) <= 0) ||
-                    (selectedTmcItem &&
-                      Number(requestForm.quantity) > Number(selectedTmcItem.currentStock ?? 0)) ? (
+                    {(selectedRequestItem && Number(selectedRequestItem.currentStock ?? 0) <= 0) ||
+                    (selectedRequestItem &&
+                      Number(requestForm.quantity) > Number(selectedRequestItem.currentStock ?? 0)) ? (
                       <button
                         type="button"
                         className="btn btn--secondary"
