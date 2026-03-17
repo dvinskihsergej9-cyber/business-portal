@@ -23,6 +23,7 @@ import SupplierTrucksQueueTab from "../components/SupplierTrucksQueueTab";
 import MobileTsdTab from "../components/MobileTsdTab";
 import WarehouseLocationsPanel from "../components/WarehouseLocationsPanel";
 import { WAREHOUSE_EMBEDDED_ICONS } from "../assets/warehouse/embeddedIcons";
+import holdsImage from "../assets/warehouse/holds.png";
 
 
 const API = API_BASE;
@@ -71,7 +72,7 @@ const WAREHOUSE_ICON_FALLBACK = {
 const WAREHOUSE_IMAGE = {
   tasks: WAREHOUSE_EMBEDDED_ICONS.tasks,
   inventory: WAREHOUSE_EMBEDDED_ICONS.inventory,
-  holds: WAREHOUSE_EMBEDDED_ICONS.inventory,
+  holds: holdsImage,
   movement: WAREHOUSE_EMBEDDED_ICONS.movement,
   transactions: WAREHOUSE_EMBEDDED_ICONS.transactions,
   revision: WAREHOUSE_EMBEDDED_ICONS.revision,
