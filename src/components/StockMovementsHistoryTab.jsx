@@ -36,11 +36,11 @@ export default function StockMovementsHistoryTab() {
         try {
           data = await res.json();
         } catch {
-          throw new Error("Ответ сервера не похож на JSON при загрузке движений");
+          throw new Error("Ответ сервера при загрузке движений имеет неверный формат.");
         }
 
         if (!res.ok) {
-          throw new Error(data?.message || "Ошибка загрузки истории движений");
+          throw new Error(data?.message || "Ошибка загрузки истории движений.");
         }
 
         setRows(Array.isArray(data) ? data : []);
@@ -67,8 +67,7 @@ export default function StockMovementsHistoryTab() {
 
     const name = String(m.item?.name || "").toLowerCase();
     const comment = String(m.comment || "").toLowerCase();
-    const author =
-  String(m.createdBy?.name || m.createdBy?.email || "").toLowerCase();
+    const author = String(m.createdBy?.name || m.createdBy?.email || "").toLowerCase();
 
     return (
       name.includes(trimmedSearch) ||
@@ -82,7 +81,6 @@ export default function StockMovementsHistoryTab() {
       <div className="card1c__header">История движения товара</div>
 
       <div className="card1c__body">
-        {/* Фильтры сверху */}
         <div className="movements-history-filters">
           <span className="movements-history-filters__label">Тип операции:</span>
           <select
@@ -319,6 +317,3 @@ export default function StockMovementsHistoryTab() {
     </div>
   );
 }
-
-
-
