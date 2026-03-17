@@ -4825,18 +4825,11 @@ app.post("/api/admin/platform-news/publish", auth, requireAdmin, requireSystemOw
         ? rawLinkUrl
         : "";
 
-    const now = new Date();
-    const adminsWithActiveSubscription = await prisma.user.findMany({
+    const admins = await prisma.user.findMany({
       where: {
         role: "ADMIN",
         isActive: true,
         orgId: { not: null },
-        subscription: {
-          is: {
-            status: "active",
-            paidUntil: { gt: now },
-          },
-        },
         organization: {
           is: {
             isActive: true,
@@ -4853,7 +4846,7 @@ app.post("/api/admin/platform-news/publish", auth, requireAdmin, requireSystemOw
 
     const orgSeen = new Set();
     const recipients = [];
-    for (const user of adminsWithActiveSubscription) {
+    for (const user of admins) {
       if (isOwnerEmail(user.email)) continue;
       const orgId = Number(user.orgId || 0);
       if (!orgId || orgSeen.has(orgId)) continue;
