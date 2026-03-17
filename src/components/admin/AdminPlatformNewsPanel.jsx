@@ -22,7 +22,7 @@ function priorityLabel(value) {
 export default function AdminPlatformNewsPanel() {
   const [title, setTitle] = useState("");
   const [message, setMessage] = useState("");
-  const [linkUrl, setLinkUrl] = useState("/warehouse");
+  const [linkUrl, setLinkUrl] = useState("");
   const [priority, setPriority] = useState("NORMAL");
 
   const [loading, setLoading] = useState(false);
@@ -162,10 +162,10 @@ export default function AdminPlatformNewsPanel() {
               className="admin-input"
               value={linkUrl}
               onChange={(event) => setLinkUrl(event.target.value)}
-              placeholder="/warehouse"
+              placeholder="Необязательно"
             />
             <div className="admin-hint">
-              Можно оставить пустым. Если не указано, откроется раздел склада.
+              Можно оставить пустым.
             </div>
           </div>
           <div>
@@ -199,7 +199,7 @@ export default function AdminPlatformNewsPanel() {
             onClick={() => {
               setTitle("");
               setMessage("");
-              setLinkUrl("/warehouse");
+              setLinkUrl("");
               setPriority("NORMAL");
               setError("");
               setSuccess("");
