@@ -183,9 +183,15 @@ const INVITE_GLOBAL_LIMIT = 20;
 const RESET_TTL_MS = 45 * 60 * 1000;
 const RESET_EMAIL_COOLDOWN_MS = 60 * 1000;
 const RESET_GLOBAL_LIMIT = 30;
+const EMAIL_VERIFY_TTL_MS = 10 * 60 * 1000;
+const EMAIL_VERIFY_RESEND_COOLDOWN_MS = 60 * 1000;
+const EMAIL_VERIFY_GLOBAL_LIMIT = 50;
+const EMAIL_VERIFY_MAX_ATTEMPTS = 5;
 
 const resetEmailRate = new Map();
 const resetGlobalRate = [];
+const emailVerifyResendRate = new Map();
+const emailVerifyGlobalRate = [];
 
 const FRONTEND_URL = process.env.FRONTEND_URL || "http://localhost:5173";
 const OWNER_PRIMARY_EMAIL = "dvinskihsergej9@gmail.com";
@@ -625,6 +631,10 @@ function hashResetToken(token) {
   return crypto.createHash("sha256").update(token).digest("hex");
 }
 
+function hashEmailVerificationCode(code) {
+  return crypto.createHash("sha256").update(String(code || "")).digest("hex");
+}
+
 function hashApiKey(token) {
   return crypto.createHash("sha256").update(token).digest("hex");
 }
@@ -637,6 +647,26 @@ function buildApiKeyHint(token) {
 
 function createInviteToken() {
   return crypto.randomBytes(32).toString("hex");
+}
+
+function createEmailVerificationCode() {
+  return String(crypto.randomInt(0, 1_000_000)).padStart(6, "0");
+}
+
+function getNewClientNotificationRecipients() {
+  const raw = String(
+    process.env.NEW_CLIENT_NOTIFY_EMAILS ||
+      process.env.NEW_CLIENT_NOTIFY_EMAIL ||
+      OWNER_PRIMARY_EMAIL
+  );
+  return Array.from(
+    new Set(
+      raw
+        .split(/[,;\s]+/g)
+        .map((entry) => normalizeEmail(entry))
+        .filter(Boolean)
+    )
+  );
 }
 
 async function sendInviteEmail(email, token) {
@@ -666,6 +696,98 @@ async function sendInviteEmail(email, token) {
     console.error("Invite email send error:", err);
     console.log(`[INVITE] ${email}: ${link}`);
     return { sent: false, link, error: err.message };
+  }
+}
+
+async function sendEmailVerificationCode(email, code) {
+  const transport = getMailTransport();
+  const text = `Код подтверждения регистрации: ${code}. Код действует 10 минут.`;
+
+  if (!transport) {
+    console.log(`[EMAIL_VERIFY] ${email}: ${code}`);
+    return { sent: false };
+  }
+
+  const from = process.env.MAIL_FROM || `СкладОнлайн <${process.env.MAIL_USER}>`;
+  const subject = "Подтверждение регистрации";
+  const html = `
+    <div style="font-family:Arial,sans-serif;font-size:14px;">
+      <p>Код подтверждения регистрации:</p>
+      <p style="font-size:24px;font-weight:700;letter-spacing:3px;">${code}</p>
+      <p>Код действует 10 минут.</p>
+      <p>Если вы не регистрировались, просто игнорируйте это письмо.</p>
+    </div>
+  `;
+
+  try {
+    await sendMailWithTimeout(transport, { from, to: email, subject, text, html });
+    return { sent: true };
+  } catch (err) {
+    console.error("Email verification send error:", err);
+    console.log(`[EMAIL_VERIFY] ${email}: ${code}`);
+    return { sent: false, error: err.message };
+  }
+}
+
+async function sendNewClientNotification({
+  email,
+  name,
+  phone,
+  companyName,
+  note,
+  verifiedAt,
+}) {
+  const recipients = getNewClientNotificationRecipients();
+  if (!recipients.length) {
+    return { sent: false };
+  }
+
+  const verifiedAtText = new Date(verifiedAt || Date.now()).toLocaleString("ru-RU");
+  const lines = [
+    "Новый клиент подтвердил регистрацию.",
+    "",
+    `Почта: ${email || "-"}`,
+    `Имя: ${name || "-"}`,
+    `Телефон: ${phone || "-"}`,
+    `Компания: ${companyName || "-"}`,
+    `Комментарий: ${note || "-"}`,
+    `Время подтверждения: ${verifiedAtText}`,
+  ];
+  const text = lines.join("\n");
+
+  const transport = getMailTransport();
+  if (!transport) {
+    console.log(`[NEW_CLIENT] recipients=${recipients.join(",")} \n${text}`);
+    return { sent: false };
+  }
+
+  const from = process.env.MAIL_FROM || `СкладОнлайн <${process.env.MAIL_USER}>`;
+  const subject = "Новая регистрация клиента";
+  const html = `
+    <div style="font-family:Arial,sans-serif;font-size:14px;">
+      <p><strong>Новый клиент подтвердил регистрацию.</strong></p>
+      <p>Почта: ${email || "-"}</p>
+      <p>Имя: ${name || "-"}</p>
+      <p>Телефон: ${phone || "-"}</p>
+      <p>Компания: ${companyName || "-"}</p>
+      <p>Комментарий: ${note || "-"}</p>
+      <p>Время подтверждения: ${verifiedAtText}</p>
+    </div>
+  `;
+
+  try {
+    await sendMailWithTimeout(transport, {
+      from,
+      to: recipients.join(","),
+      subject,
+      text,
+      html,
+    });
+    return { sent: true };
+  } catch (err) {
+    console.error("New client notification send error:", err);
+    console.log(`[NEW_CLIENT] recipients=${recipients.join(",")} \n${text}`);
+    return { sent: false, error: err.message };
   }
 }
 
@@ -3116,67 +3238,112 @@ app.post("/api/register", async (req, res) => {
 
 
   try {
-    const { email, password, name } = req.body;
+    const { email, password, name, phone, company, companyName, comment, note } = req.body || {};
     const normalizedEmail = normalizeEmail(email);
     const normalizedName = String(name || "").trim();
+    const normalizedPhone = String(phone || "").trim().slice(0, 40);
+    const normalizedCompanyName = String(companyName || company || "")
+      .trim()
+      .slice(0, 120);
+    const normalizedNote = String(note || comment || "").trim().slice(0, 500);
 
     if (!normalizedEmail || !password || !normalizedName) {
       return res
         .status(400)
-        .json({ message: "email, пароль и имя обязательны" });
+        .json({ message: "Почта, пароль и имя обязательны." });
     }
 
-    const existing = await prisma.user.findUnique({
-      where: { email: normalizedEmail },
-    });
-    if (existing) {
-      return res
-        .status(400)
-        .json({ message: "Пользователь с таким email уже существует" });
+    if (String(password).length < 8) {
+      return res.status(400).json({ message: "WEAK_PASSWORD" });
+    }
+
+    if (isOwnerEmail(normalizedEmail)) {
+      return res.status(400).json({ message: "OWNER_EMAIL_RESERVED" });
     }
 
     const hash = await bcrypt.hash(password, 10);
-    const org = await prisma.organization.create({
-      data: {
-        name: normalizedName || normalizedEmail,
-        code: makeTenantCode(normalizedName || normalizedEmail),
-        isActive: true,
-      },
-    });
+    const existing = await prisma.user.findUnique({ where: { email: normalizedEmail } });
 
-    const user = await prisma.user.create({
-      data: {
-        email: normalizedEmail,
-        password: hash,
-        passwordHash: hash,
-        passwordVisible: String(password),
-        name: normalizedName,
-        role: "EMPLOYEE",
-        orgId: org.id,
-      },
-    });
+    if (existing?.emailVerifiedAt) {
+      return res.status(400).json({ message: "EMAIL_ALREADY_EXISTS" });
+    }
 
-    const token = createToken(user);
+    let user = null;
 
-      const userPayload = await getUserPayload(user.id);
+    if (existing) {
+      let orgId = existing.orgId || null;
+      if (!orgId) {
+        const createdOrg = await prisma.organization.create({
+          data: {
+            name: normalizedCompanyName || normalizedName || normalizedEmail,
+            code: makeTenantCode(normalizedCompanyName || normalizedName || normalizedEmail),
+            isActive: true,
+          },
+        });
+        orgId = createdOrg.id;
+      }
 
-      res.status(201).json({
-        message: "??????????? ?????????",
-        token,
-        user: userPayload || {
-          id: user.id,
-          email: user.email,
-          username: user.username || null,
-          login: user.username || user.email,
-          name: user.name,
-          role: user.role,
-          permissions: resolveUserPermissions({ role: user.role, permissionsJson: null }),
-          permissionTemplate: "ROLE_DEFAULT",
-          permissionOverrides: { grants: [], revokes: [] },
-          roles: [user.role],
-          subscription: { isActive: false },
+      user = await prisma.user.update({
+        where: { id: existing.id },
+        data: {
+          name: normalizedName,
+          password: hash,
+          passwordHash: hash,
+          passwordVisible: String(password),
+          role: "EMPLOYEE",
+          orgId,
+          isActive: true,
+          emailVerifiedAt: null,
         },
       });
+    } else {
+      const org = await prisma.organization.create({
+        data: {
+          name: normalizedCompanyName || normalizedName || normalizedEmail,
+          code: makeTenantCode(normalizedCompanyName || normalizedName || normalizedEmail),
+          isActive: true,
+        },
+      });
+
+      user = await prisma.user.create({
+        data: {
+          email: normalizedEmail,
+          password: hash,
+          passwordHash: hash,
+          passwordVisible: String(password),
+          name: normalizedName,
+          role: "EMPLOYEE",
+          orgId: org.id,
+          isActive: true,
+          emailVerifiedAt: null,
+        },
+      });
+    }
+
+    const code = createEmailVerificationCode();
+    const now = new Date();
+    await prisma.emailVerificationCode.updateMany({
+      where: { userId: user.id, usedAt: null },
+      data: { usedAt: now },
+    });
+    await prisma.emailVerificationCode.create({
+      data: {
+        userId: user.id,
+        codeHash: hashEmailVerificationCode(code),
+        expiresAt: new Date(now.getTime() + EMAIL_VERIFY_TTL_MS),
+        phone: normalizedPhone || null,
+        companyName: normalizedCompanyName || null,
+        note: normalizedNote || null,
+      },
+    });
+    await sendEmailVerificationCode(normalizedEmail, code);
+
+    res.status(200).json({
+      ok: true,
+      requiresVerification: true,
+      email: normalizedEmail,
+      message: "Код подтверждения отправлен на почту.",
+    });
   } catch (err) {
     console.error("register error:", err);
     res.status(500).json({ message: "Ошибка сервера при регистрации" });
@@ -3269,6 +3436,12 @@ app.post("/api/login", async (req, res) => {
         .json({ message: "Неверный логин или пароль" });
     }
 
+    if (!user.emailVerifiedAt) {
+      return res.status(403).json({
+        message: "EMAIL_NOT_VERIFIED",
+      });
+    }
+
     const token = createToken(user);
 
       const userPayload = await getUserPayload(user.id);
@@ -3293,6 +3466,167 @@ app.post("/api/login", async (req, res) => {
   } catch (err) {
     console.error("login error:", err);
     res.status(500).json({ message: "Ошибка сервера при входе" });
+  }
+});
+
+app.post("/api/auth/verify-email-code", async (req, res) => {
+  try {
+    const { email, code } = req.body || {};
+    const normalizedEmail = normalizeEmail(email);
+    const normalizedCode = String(code || "").trim();
+
+    if (!normalizedEmail || !/^\d{6}$/.test(normalizedCode)) {
+      return res.status(400).json({ message: "BAD_REQUEST" });
+    }
+
+    const user = await prisma.user.findUnique({
+      where: { email: normalizedEmail },
+      include: { organization: true },
+    });
+    if (!user) {
+      return res.status(400).json({ message: "EMAIL_VERIFY_CODE_INVALID" });
+    }
+    if (user.emailVerifiedAt) {
+      return res.status(400).json({ message: "EMAIL_ALREADY_VERIFIED" });
+    }
+
+    const latestCode = await prisma.emailVerificationCode.findFirst({
+      where: { userId: user.id, usedAt: null },
+      orderBy: { createdAt: "desc" },
+    });
+    const now = new Date();
+
+    if (!latestCode || latestCode.expiresAt <= now) {
+      return res.status(400).json({ message: "EMAIL_VERIFY_CODE_EXPIRED" });
+    }
+    if ((latestCode.attempts || 0) >= EMAIL_VERIFY_MAX_ATTEMPTS) {
+      return res.status(429).json({ message: "EMAIL_VERIFY_TOO_MANY_ATTEMPTS" });
+    }
+
+    const incomingHash = hashEmailVerificationCode(normalizedCode);
+    if (incomingHash !== latestCode.codeHash) {
+      await prisma.emailVerificationCode.update({
+        where: { id: latestCode.id },
+        data: { attempts: { increment: 1 } },
+      });
+      return res.status(400).json({ message: "EMAIL_VERIFY_CODE_INVALID" });
+    }
+
+    await prisma.$transaction(async (tx) => {
+      await tx.emailVerificationCode.update({
+        where: { id: latestCode.id },
+        data: { usedAt: now },
+      });
+      await tx.emailVerificationCode.updateMany({
+        where: { userId: user.id, usedAt: null, id: { not: latestCode.id } },
+        data: { usedAt: now },
+      });
+      await tx.user.update({
+        where: { id: user.id },
+        data: { emailVerifiedAt: now, isActive: true },
+      });
+    });
+
+    await sendNewClientNotification({
+      email: user.email,
+      name: user.name,
+      phone: latestCode.phone,
+      companyName: latestCode.companyName || user.organization?.name || null,
+      note: latestCode.note,
+      verifiedAt: now,
+    }).catch((err) => {
+      console.error("new client notify error:", err);
+    });
+
+    const verifiedUser = await prisma.user.findUnique({ where: { id: user.id } });
+    const token = createToken(verifiedUser);
+    const userPayload = await getUserPayload(user.id);
+
+    return res.json({
+      ok: true,
+      token,
+      user: userPayload || {
+        id: verifiedUser.id,
+        email: verifiedUser.email,
+        username: verifiedUser.username || null,
+        login: verifiedUser.username || verifiedUser.email,
+        name: verifiedUser.name,
+        role: verifiedUser.role,
+        permissions: resolveUserPermissions({
+          role: verifiedUser.role,
+          permissionsJson: null,
+        }),
+        permissionTemplate: "ROLE_DEFAULT",
+        permissionOverrides: { grants: [], revokes: [] },
+        roles: [verifiedUser.role],
+        subscription: { isActive: false },
+      },
+    });
+  } catch (err) {
+    console.error("verify email code error:", err);
+    return res.status(500).json({ message: "EMAIL_VERIFY_ERROR" });
+  }
+});
+
+app.post("/api/auth/resend-email-code", async (req, res) => {
+  const publicMessage = "Если аккаунт ожидает подтверждения, код отправлен.";
+  try {
+    const { email } = req.body || {};
+    const normalizedEmail = normalizeEmail(email);
+    if (!normalizedEmail) {
+      return res.json({ message: publicMessage });
+    }
+
+    const nowMs = Date.now();
+    const lastSendMs = emailVerifyResendRate.get(normalizedEmail) || 0;
+    if (nowMs - lastSendMs < EMAIL_VERIFY_RESEND_COOLDOWN_MS) {
+      return res.status(429).json({ message: "EMAIL_VERIFY_RATE_LIMIT" });
+    }
+
+    const cutoff = nowMs - EMAIL_VERIFY_RESEND_COOLDOWN_MS;
+    while (emailVerifyGlobalRate.length && emailVerifyGlobalRate[0] < cutoff) {
+      emailVerifyGlobalRate.shift();
+    }
+    if (emailVerifyGlobalRate.length >= EMAIL_VERIFY_GLOBAL_LIMIT) {
+      return res.status(429).json({ message: "EMAIL_VERIFY_RATE_LIMIT" });
+    }
+    emailVerifyResendRate.set(normalizedEmail, nowMs);
+    emailVerifyGlobalRate.push(nowMs);
+
+    const user = await prisma.user.findUnique({
+      where: { email: normalizedEmail },
+    });
+    if (!user || user.isActive === false || user.emailVerifiedAt) {
+      return res.json({ message: publicMessage });
+    }
+
+    const lastCode = await prisma.emailVerificationCode.findFirst({
+      where: { userId: user.id, usedAt: null },
+      orderBy: { createdAt: "desc" },
+    });
+
+    const code = createEmailVerificationCode();
+    const now = new Date();
+    await prisma.emailVerificationCode.updateMany({
+      where: { userId: user.id, usedAt: null },
+      data: { usedAt: now },
+    });
+    await prisma.emailVerificationCode.create({
+      data: {
+        userId: user.id,
+        codeHash: hashEmailVerificationCode(code),
+        expiresAt: new Date(now.getTime() + EMAIL_VERIFY_TTL_MS),
+        phone: lastCode?.phone || null,
+        companyName: lastCode?.companyName || null,
+        note: lastCode?.note || null,
+      },
+    });
+    await sendEmailVerificationCode(user.email, code);
+
+    return res.json({ message: "Код подтверждения отправлен повторно." });
+  } catch (err) {
+    console.error("resend email code error:", err);
+    return res.status(500).json({ message: "EMAIL_VERIFY_ERROR" });
   }
 });
 

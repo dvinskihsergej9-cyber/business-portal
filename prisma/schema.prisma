@@ -66,6 +66,7 @@ model User {
   warehouseTasksAssigned       WarehouseTask[]          @relation("WarehouseTaskExecutor")
   warehouseNotifications       WarehouseNotification[]
   pushSubscriptions            PushSubscription[]
+  emailVerificationCodes       EmailVerificationCode[]
 
   @@index([orgId])
 }
@@ -109,6 +110,23 @@ model PasswordResetToken {
   usedAt    DateTime?
   createdAt DateTime  @default(now())
   user      User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+model EmailVerificationCode {
+  id          Int       @id @default(autoincrement())
+  userId      Int
+  codeHash    String
+  expiresAt   DateTime
+  attempts    Int       @default(0)
+  usedAt      DateTime?
+  phone       String?
+  companyName String?
+  note        String?
+  createdAt   DateTime  @default(now())
+  user        User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, createdAt])
+  @@index([userId, usedAt, expiresAt])
 }
 
 // ============ HR ============
