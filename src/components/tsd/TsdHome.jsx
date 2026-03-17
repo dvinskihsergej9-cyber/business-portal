@@ -18,7 +18,6 @@ export default function TsdHome({ modes, onSelect }) {
             className="tsd-tile"
             onClick={() => onSelect(mode.id)}
           >
-            <div className="tsd-tile__icon">{mode.icon}</div>
             <div className="tsd-tile__title">{mode.title}</div>
             <div className="tsd-tile__subtitle">{mode.subtitle}</div>
           </button>
