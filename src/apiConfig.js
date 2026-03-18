@@ -131,6 +131,7 @@ const EXTRA_ERROR_MESSAGES = {
   TRIAL_CONFIG_INVALID: "Некорректная конфигурация пробного периода.",
   USER_INACTIVE: "Пользователь отключен.",
   USER_NOT_FOUND: "Пользователь не найден.",
+  UNSUBSCRIBE_ERROR: "Не удалось обработать отписку. Попробуйте позже.",
   WEAK_PASSWORD: "Пароль слишком короткий (минимум 8 символов).",
   YOOKASSA_CONFIG_MISSING: "Платежи не настроены. Заполните ключи ЮKassa в окружении.",
 };

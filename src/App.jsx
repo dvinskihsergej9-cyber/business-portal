@@ -26,6 +26,7 @@ import Offer from "./pages/Offer";
 import Privacy from "./pages/Privacy";
 import Contacts from "./pages/Contacts";
 import Refund from "./pages/Refund";
+import MarketingUnsubscribe from "./pages/MarketingUnsubscribe";
 import Page403 from "./pages/Page403";
 import AdminConsole from "./pages/AdminConsole";
 import PlatformNews from "./pages/PlatformNews";
@@ -57,7 +58,7 @@ function AppRoutesWithBackground() {
   const disablePublicRegister =
     String(import.meta.env.VITE_DISABLE_PUBLIC_REGISTER || "false") === "true";
 
-  const showBackground = path === "/login" || path === "/register" || path === "/invite" || path === "/forgot-password" || path === "/reset-password";
+  const showBackground = path === "/login" || path === "/register" || path === "/invite" || path === "/forgot-password" || path === "/reset-password" || path === "/unsubscribe";
 
   const allowedWarehouseSections = useMemo(() => {
     const allSections = Object.keys(WAREHOUSE_SECTION_PERMISSION_MAP);
@@ -124,6 +125,7 @@ function AppRoutesWithBackground() {
           <Route path="/invite" element={<InviteAccept />} />
           <Route path="/forgot-password" element={<ForgotPassword />} />
           <Route path="/reset-password" element={<ResetPassword />} />
+          <Route path="/unsubscribe" element={<MarketingUnsubscribe />} />
           <Route
             path="/pricing"
             element={
