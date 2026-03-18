@@ -14673,6 +14673,94 @@ async function ensureLegacyTenantBackfill() {
   }
 }
 
+async function ensureEmailVerificationStorageReady() {
+  const normalizedUrl = String(DATABASE_URL || "").trim().toLowerCase();
+  if (
+    !normalizedUrl.startsWith("postgresql://") &&
+    !normalizedUrl.startsWith("postgres://")
+  ) {
+    console.log(
+      "[EMAIL_VERIFY_BOOTSTRAP] skipped: DATABASE_URL не PostgreSQL, runtime-инициализация не требуется."
+    );
+    return;
+  }
+
+  await prismaBase.$executeRawUnsafe(`
+    CREATE TABLE IF NOT EXISTS "EmailVerificationCode" (
+      "id" SERIAL NOT NULL,
+      "userId" INTEGER NOT NULL,
+      "codeHash" TEXT NOT NULL,
+      "expiresAt" TIMESTAMP(3) NOT NULL,
+      "attempts" INTEGER NOT NULL DEFAULT 0,
+      "usedAt" TIMESTAMP(3),
+      "phone" TEXT,
+      "companyName" TEXT,
+      "note" TEXT,
+      "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+      CONSTRAINT "EmailVerificationCode_pkey" PRIMARY KEY ("id")
+    );
+  `);
+
+  await prismaBase.$executeRawUnsafe(`
+    CREATE INDEX IF NOT EXISTS "EmailVerificationCode_userId_createdAt_idx"
+    ON "EmailVerificationCode"("userId", "createdAt");
+  `);
+
+  await prismaBase.$executeRawUnsafe(`
+    CREATE INDEX IF NOT EXISTS "EmailVerificationCode_userId_usedAt_expiresAt_idx"
+    ON "EmailVerificationCode"("userId", "usedAt", "expiresAt");
+  `);
+
+  await prismaBase.$executeRawUnsafe(`
+    DO $$
+    BEGIN
+      IF NOT EXISTS (
+        SELECT 1
+        FROM pg_constraint
+        WHERE conname = 'EmailVerificationCode_userId_fkey'
+      ) THEN
+        ALTER TABLE "EmailVerificationCode"
+        ADD CONSTRAINT "EmailVerificationCode_userId_fkey"
+        FOREIGN KEY ("userId") REFERENCES "User"("id")
+        ON DELETE CASCADE ON UPDATE CASCADE;
+      END IF;
+    END
+    $$;
+  `);
+
+  console.log("[EMAIL_VERIFY_BOOTSTRAP] EmailVerificationCode table is ready.");
+}
+
+function logMailConfigStatus() {
+  const requiredKeys = [
+    "MAIL_HOST",
+    "MAIL_PORT",
+    "MAIL_USER",
+    "MAIL_PASS",
+    "MAIL_FROM",
+  ];
+  const missing = requiredKeys.filter((key) =>
+    !String(process.env[key] || "").trim()
+  );
+
+  if (missing.length) {
+    console.warn(
+      `[MAIL_CONFIG] не заполнены переменные: ${missing.join(", ")}`
+    );
+  } else {
+    console.log("[MAIL_CONFIG] почтовые переменные заполнены.");
+  }
+
+  const notifyEmail = String(
+    process.env.NEW_CLIENT_NOTIFY_EMAILS ||
+      process.env.NEW_CLIENT_NOTIFY_EMAIL ||
+      OWNER_PRIMARY_EMAIL
+  ).trim();
+  console.log(
+    `[MAIL_CONFIG] получатели уведомлений о новых клиентах: ${notifyEmail || "-"}`
+  );
+}
+
 const DEPLOY_REVISION_KEY =
   process.env.RENDER_GIT_COMMIT ||
   process.env.SOURCE_VERSION ||
@@ -15192,6 +15280,12 @@ const PORT = process.env.PORT || 3001;
 
 async function bootstrapServer() {
   try {
+    await ensureEmailVerificationStorageReady();
+  } catch (err) {
+    console.error("[EMAIL_VERIFY_BOOTSTRAP] error:", err);
+  }
+
+  try {
     await ensureOwnerAdminAccount();
   } catch (err) {
     console.error("[OWNER_RECOVERY] error:", err);
@@ -15208,6 +15302,8 @@ async function bootstrapServer() {
   } catch (err) {
     console.error("[WAREHOUSE_BOOTSTRAP] reset error:", err);
   }
+
+  logMailConfigStatus();
 
   app.listen(PORT, () => {
     console.log(`🚀 API запущен: http://localhost:${PORT}`);
