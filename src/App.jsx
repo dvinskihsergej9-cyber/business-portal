@@ -55,7 +55,7 @@ function AppRoutesWithBackground() {
   }, []);
 
   const disablePublicRegister =
-    String(import.meta.env.VITE_DISABLE_PUBLIC_REGISTER || "true") === "true";
+    String(import.meta.env.VITE_DISABLE_PUBLIC_REGISTER || "false") === "true";
 
   const showBackground = path === "/login" || path === "/register" || path === "/invite" || path === "/forgot-password" || path === "/reset-password";
 

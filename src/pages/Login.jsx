@@ -79,7 +79,7 @@ export default function Login() {
   const navigate = useNavigate();
   const welcomeTimerRef = useRef(null);
   const disablePublicRegister =
-    String(import.meta.env.VITE_DISABLE_PUBLIC_REGISTER || "true") === "true";
+    String(import.meta.env.VITE_DISABLE_PUBLIC_REGISTER || "false") === "true";
 
   const [loginValue, setLoginValue] = useState("");
   const [password, setPassword] = useState("");
