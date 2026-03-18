@@ -230,6 +230,25 @@ a:hover {
   color: #334155;
 }
 
+.legal-section-title {
+  margin: 0 0 8px;
+  color: #0f172a;
+  font-size: 17px;
+  line-height: 1.25;
+}
+
+.legal-list {
+  margin: 0;
+  padding-left: 18px;
+  color: #334155;
+  display: grid;
+  gap: 6px;
+}
+
+.legal-list li {
+  line-height: 1.5;
+}
+
 .legal-links {
   display: flex;
   flex-wrap: wrap;
