@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+﻿import { useEffect, useRef, useState } from "react";
 import { useNavigate, Link } from "react-router-dom";
 import lottie from "lottie-web";
 import { useAuth } from "../context/AuthContext";
@@ -111,21 +111,21 @@ export default function Login() {
     const pushPermission = await requestPushPermissionIfNeeded();
     if (pushPermission?.reason === "IOS_NOT_STANDALONE") {
       setPushHint(
-        "На iPhone push работают из ярлыка «На экран Домой». Откройте приложение с иконки на домашнем экране."
+        "РќР° iPhone push СЂР°Р±РѕС‚Р°СЋС‚ РёР· СЏСЂР»С‹РєР° В«РќР° СЌРєСЂР°РЅ Р”РѕРјРѕР№В». РћС‚РєСЂРѕР№С‚Рµ РїСЂРёР»РѕР¶РµРЅРёРµ СЃ РёРєРѕРЅРєРё РЅР° РґРѕРјР°С€РЅРµРј СЌРєСЂР°РЅРµ."
       );
     } else if (pushPermission?.reason === "DENIED") {
       setPushHint(
-        "Уведомления для сайта запрещены. Разрешите их в настройках браузера и откройте приложение снова."
+        "РЈРІРµРґРѕРјР»РµРЅРёСЏ РґР»СЏ СЃР°Р№С‚Р° Р·Р°РїСЂРµС‰РµРЅС‹. Р Р°Р·СЂРµС€РёС‚Рµ РёС… РІ РЅР°СЃС‚СЂРѕР№РєР°С… Р±СЂР°СѓР·РµСЂР° Рё РѕС‚РєСЂРѕР№С‚Рµ РїСЂРёР»РѕР¶РµРЅРёРµ СЃРЅРѕРІР°."
       );
     } else if (
       pushPermission?.reason === "NO_NOTIFICATION_API" ||
       pushPermission?.reason === "NO_PUSH_MANAGER"
     ) {
-      setPushHint("На этом устройстве push-уведомления не поддерживаются в текущем режиме.");
+      setPushHint("РќР° СЌС‚РѕРј СѓСЃС‚СЂРѕР№СЃС‚РІРµ push-СѓРІРµРґРѕРјР»РµРЅРёСЏ РЅРµ РїРѕРґРґРµСЂР¶РёРІР°СЋС‚СЃСЏ РІ С‚РµРєСѓС‰РµРј СЂРµР¶РёРјРµ.");
     } else if (pushPermission?.reason === "INSECURE_CONTEXT") {
-      setPushHint("Push-уведомления работают только по защищённой ссылке https.");
+      setPushHint("Push-СѓРІРµРґРѕРјР»РµРЅРёСЏ СЂР°Р±РѕС‚Р°СЋС‚ С‚РѕР»СЊРєРѕ РїРѕ Р·Р°С‰РёС‰С‘РЅРЅРѕР№ СЃСЃС‹Р»РєРµ https.");
     } else if (pushPermission?.reason === "PERMISSION_NOT_CHOSEN") {
-      setPushHint("Разрешение на уведомления не выбрано. Запрос можно включить через колокольчик.");
+      setPushHint("Р Р°Р·СЂРµС€РµРЅРёРµ РЅР° СѓРІРµРґРѕРјР»РµРЅРёСЏ РЅРµ РІС‹Р±СЂР°РЅРѕ. Р—Р°РїСЂРѕСЃ РјРѕР¶РЅРѕ РІРєР»СЋС‡РёС‚СЊ С‡РµСЂРµР· РєРѕР»РѕРєРѕР»СЊС‡РёРє.");
     }
 
     setError("");
@@ -136,7 +136,7 @@ export default function Login() {
     setLoading(false);
 
     if (!res.ok) {
-      setError(res.message || "Ошибка входа");
+      setError(res.message || "РћС€РёР±РєР° РІС…РѕРґР°");
       return;
     }
 
@@ -147,10 +147,10 @@ export default function Login() {
   return (
     <div className="login-page">
       <div className="login-card">
-        <div className="login-card__brand">СкладОнлайн</div>
-        <div className="login-card__tagline">Операционный центр вашего склада</div>
+        <div className="login-card__brand">РЎРєР»Р°РґРћРЅР»Р°Р№РЅ</div>
+        <div className="login-card__tagline">РћРїРµСЂР°С†РёРѕРЅРЅС‹Р№ С†РµРЅС‚СЂ РІР°С€РµРіРѕ СЃРєР»Р°РґР°</div>
         <LoginHero />
-        <h1 className="login-card__title">Вход</h1>
+        <h1 className="login-card__title">Р’С…РѕРґ</h1>
 
         {error && <div className="login-card__error">{error}</div>}
         {pushHint && <div className="login-card__notice">{pushHint}</div>}
@@ -159,7 +159,7 @@ export default function Login() {
           <div className="login-form__field">
             <input
               type="text"
-              placeholder="Логин"
+              placeholder="Р›РѕРіРёРЅ"
               value={loginValue}
               onChange={(e) => setLoginValue(normalizeLoginInput(e.target.value))}
               required
@@ -169,7 +169,7 @@ export default function Login() {
           <div className="login-form__field">
             <input
               type="password"
-              placeholder="Пароль"
+              placeholder="РџР°СЂРѕР»СЊ"
               value={password}
               onChange={(e) => setPassword(e.target.value)}
               required
@@ -177,30 +177,26 @@ export default function Login() {
           </div>
 
           <button type="submit" disabled={loading} className="login-form__submit">
-            {loading ? "Входим..." : "Войти"}
+            {loading ? "Р’С…РѕРґРёРј..." : "Р’РѕР№С‚Рё"}
           </button>
         </form>
 
         <p className="login-card__help">
-          <Link to="/forgot-password">Забыли пароль?</Link>
+          <Link to="/forgot-password">Р—Р°Р±С‹Р»Рё РїР°СЂРѕР»СЊ?</Link>
         </p>
         {!disablePublicRegister && (
           <p className="login-card__help">
-            <Link to="/register">Нет аккаунта? Зарегистрироваться</Link>
+            <Link to="/register">РќРµС‚ Р°РєРєР°СѓРЅС‚Р°? Р—Р°СЂРµРіРёСЃС‚СЂРёСЂРѕРІР°С‚СЊСЃСЏ</Link>
           </p>
         )}
-        <p className="login-card__hint">
-          Доступ создаёт администратор в разделе «Пользователи».
-        </p>
-
         <div className="login-card__footer">
-          <div className="login-card__footer-title">Документы и контакты</div>
+          <div className="login-card__footer-title">Р”РѕРєСѓРјРµРЅС‚С‹ Рё РєРѕРЅС‚Р°РєС‚С‹</div>
           <div className="login-card__links">
-            <Link to="/about">О сервисе</Link>
-            <Link to="/offer">Оферта</Link>
-            <Link to="/privacy">Политика</Link>
-            <Link to="/contacts">Контакты</Link>
-            <Link to="/refund">Возврат</Link>
+            <Link to="/about">Рћ СЃРµСЂРІРёСЃРµ</Link>
+            <Link to="/offer">РћС„РµСЂС‚Р°</Link>
+            <Link to="/privacy">РџРѕР»РёС‚РёРєР°</Link>
+            <Link to="/contacts">РљРѕРЅС‚Р°РєС‚С‹</Link>
+            <Link to="/refund">Р’РѕР·РІСЂР°С‚</Link>
           </div>
         </div>
       </div>
@@ -209,15 +205,16 @@ export default function Login() {
         <div className="login-welcome" role="status" aria-live="polite">
           <div className="login-welcome__backdrop" />
           <div className="login-welcome__card">
-            <div className="login-welcome__title">Добро пожаловать на платформу!</div>
+            <div className="login-welcome__title">Р”РѕР±СЂРѕ РїРѕР¶Р°Р»РѕРІР°С‚СЊ РЅР° РїР»Р°С‚С„РѕСЂРјСѓ!</div>
             <button type="button" className="login-welcome__logo" onClick={openDashboard}>
-              <img src="/logo-mark.png" alt="Логотип СкладОнлайн" />
-              <span>СкладОнлайн</span>
+              <img src="/logo-mark.png" alt="Р›РѕРіРѕС‚РёРї РЎРєР»Р°РґРћРЅР»Р°Р№РЅ" />
+              <span>РЎРєР»Р°РґРћРЅР»Р°Р№РЅ</span>
             </button>
-            <div className="login-welcome__hint">Подготовка рабочего пространства...</div>
+            <div className="login-welcome__hint">РџРѕРґРіРѕС‚РѕРІРєР° СЂР°Р±РѕС‡РµРіРѕ РїСЂРѕСЃС‚СЂР°РЅСЃС‚РІР°...</div>
           </div>
         </div>
       )}
     </div>
   );
 }
+

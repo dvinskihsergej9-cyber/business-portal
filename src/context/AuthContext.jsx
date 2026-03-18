@@ -101,7 +101,6 @@ export function AuthProvider({ children }) {
     name,
     phone = "",
     companyName = "",
-    note = "",
   }) => {
     try {
       const normalizedEmail = String(email || "").trim().toLowerCase();
@@ -114,7 +113,6 @@ export function AuthProvider({ children }) {
           name,
           phone,
           companyName,
-          note,
         }),
       });
 

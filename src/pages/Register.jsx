@@ -13,11 +13,45 @@ const ERROR_MESSAGES = {
   EMAIL_ALREADY_VERIFIED: "Почта уже подтверждена. Войдите в систему.",
   EMAIL_VERIFY_ERROR: "Не удалось подтвердить почту. Попробуйте позже.",
   EMAIL_NOT_VERIFIED: "Подтвердите почту кодом из письма.",
+  EMAIL_INVALID: "Укажите корректную почту с доменом, например name@mail.ru.",
+  FULL_NAME_INVALID: "Укажите ФИО полностью (минимум имя и фамилия).",
+  PHONE_INVALID: "Укажите корректный номер телефона.",
+  COMPANY_INVALID: "Укажите корректное название компании.",
 };
+
+const EMAIL_REGEX = /^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/u;
+const PHONE_ALLOWED_REGEX = /^[0-9+\-()\s]+$/u;
 
 function toUiMessage(message, fallback) {
   const key = String(message || "").trim().toUpperCase();
   return ERROR_MESSAGES[key] || message || fallback;
+}
+
+function normalizeFullName(value) {
+  return String(value || "").trim().replace(/\s+/g, " ");
+}
+
+function isValidFullName(value) {
+  const normalized = normalizeFullName(value);
+  if (!normalized) return false;
+  const words = normalized.split(" ").filter(Boolean);
+  return words.length >= 2 && words.every((word) => word.length >= 2);
+}
+
+function isValidEmail(value) {
+  const normalized = String(value || "").trim().toLowerCase();
+  if (!EMAIL_REGEX.test(normalized)) return false;
+  const domain = String(normalized.split("@")[1] || "");
+  if (!domain || domain.startsWith(".") || domain.endsWith(".")) return false;
+  return true;
+}
+
+function isValidPhone(value) {
+  const normalized = String(value || "").trim();
+  if (!normalized) return false;
+  if (!PHONE_ALLOWED_REGEX.test(normalized)) return false;
+  const digits = normalized.replace(/\D+/g, "");
+  return digits.length >= 10 && digits.length <= 15;
 }
 
 const INITIAL_FORM = {
@@ -25,7 +59,6 @@ const INITIAL_FORM = {
   email: "",
   phone: "",
   companyName: "",
-  note: "",
   password: "",
   confirmPassword: "",
 };
@@ -52,7 +85,14 @@ export default function Register() {
   }, [resendCooldown]);
 
   const canSubmitRegister = useMemo(() => {
-    if (!form.name.trim() || !form.email.trim() || !form.password || !form.confirmPassword) {
+    if (
+      !form.name.trim() ||
+      !form.email.trim() ||
+      !form.phone.trim() ||
+      !form.companyName.trim() ||
+      !form.password ||
+      !form.confirmPassword
+    ) {
       return false;
     }
     return true;
@@ -68,10 +108,36 @@ export default function Register() {
     setError("");
     setSuccess("");
 
+    const normalizedName = normalizeFullName(form.name);
+    const normalizedEmail = String(form.email || "").trim().toLowerCase();
+    const normalizedPhone = String(form.phone || "").trim();
+    const normalizedCompanyName = String(form.companyName || "").trim();
+
+    if (!isValidFullName(normalizedName)) {
+      setError("Укажите ФИО полностью (минимум имя и фамилия).");
+      return;
+    }
+
+    if (!isValidEmail(normalizedEmail)) {
+      setError("Укажите корректную почту с доменом, например name@mail.ru.");
+      return;
+    }
+
+    if (!isValidPhone(normalizedPhone)) {
+      setError("Укажите корректный номер телефона.");
+      return;
+    }
+
+    if (normalizedCompanyName.length < 2) {
+      setError("Укажите корректное название компании.");
+      return;
+    }
+
     if (form.password !== form.confirmPassword) {
       setError("Пароли не совпадают.");
       return;
     }
+
     if (String(form.password).length < 8) {
       setError("Пароль должен быть не короче 8 символов.");
       return;
@@ -79,12 +145,11 @@ export default function Register() {
 
     setLoading(true);
     const result = await register({
-      email: form.email,
+      email: normalizedEmail,
       password: form.password,
-      name: form.name,
-      phone: form.phone,
-      companyName: form.companyName,
-      note: form.note,
+      name: normalizedName,
+      phone: normalizedPhone,
+      companyName: normalizedCompanyName,
     });
     setLoading(false);
 
@@ -93,7 +158,7 @@ export default function Register() {
       return;
     }
 
-    setVerificationEmail(String(result.email || form.email || "").trim().toLowerCase());
+    setVerificationEmail(String(result.email || normalizedEmail).trim().toLowerCase());
     setStep("verify");
     setSuccess(result.message || "Мы отправили код подтверждения на почту.");
     setResendCooldown(60);
@@ -151,12 +216,13 @@ export default function Register() {
         {step === "register" ? (
           <form onSubmit={handleRegister} className="register-form" noValidate>
             <label className="register-form__field">
-              <span>Имя</span>
+              <span>ФИО</span>
               <input
                 type="text"
                 value={form.name}
                 onChange={handleChange("name")}
                 autoComplete="name"
+                placeholder="Иванов Иван Иванович"
                 required
               />
             </label>
@@ -168,6 +234,7 @@ export default function Register() {
                 value={form.email}
                 onChange={handleChange("email")}
                 autoComplete="email"
+                placeholder="name@mail.ru"
                 required
               />
             </label>
@@ -179,7 +246,8 @@ export default function Register() {
                 value={form.phone}
                 onChange={handleChange("phone")}
                 autoComplete="tel"
-                placeholder="Необязательно"
+                placeholder="+7 (999) 123-45-67"
+                required
               />
             </label>
 
@@ -189,17 +257,8 @@ export default function Register() {
                 type="text"
                 value={form.companyName}
                 onChange={handleChange("companyName")}
-                placeholder="Необязательно"
-              />
-            </label>
-
-            <label className="register-form__field">
-              <span>Комментарий</span>
-              <textarea
-                value={form.note}
-                onChange={handleChange("note")}
-                placeholder="Кратко опишите ваш запрос (необязательно)"
-                rows={3}
+                placeholder="ООО Пример"
+                required
               />
             </label>
 
@@ -211,6 +270,7 @@ export default function Register() {
                 onChange={handleChange("password")}
                 autoComplete="new-password"
                 minLength={8}
+                placeholder="Минимум 8 символов"
                 required
               />
             </label>

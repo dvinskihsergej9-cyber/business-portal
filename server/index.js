@@ -203,6 +203,33 @@ function normalizeEmail(value) {
   return String(value || "").trim().toLowerCase();
 }
 
+function isValidRegistrationEmail(value) {
+  const normalized = normalizeEmail(value);
+  if (!/^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/u.test(normalized)) return false;
+  const domain = String(normalized.split("@")[1] || "");
+  if (!domain || domain.startsWith(".") || domain.endsWith(".")) return false;
+  return true;
+}
+
+function normalizeFullName(value) {
+  return String(value || "").trim().replace(/\s+/g, " ");
+}
+
+function isValidFullName(value) {
+  const normalized = normalizeFullName(value);
+  if (!normalized) return false;
+  const parts = normalized.split(" ").filter(Boolean);
+  return parts.length >= 2 && parts.every((part) => part.length >= 2);
+}
+
+function isValidPhone(value) {
+  const raw = String(value || "").trim();
+  if (!raw) return false;
+  if (!/^[0-9+\-()\s]+$/u.test(raw)) return false;
+  const digits = raw.replace(/\D+/g, "");
+  return digits.length >= 10 && digits.length <= 15;
+}
+
 function normalizeLogin(value) {
   return String(value || "")
     .trim()
@@ -3238,19 +3265,34 @@ app.post("/api/register", async (req, res) => {
 
 
   try {
-    const { email, password, name, phone, company, companyName, comment, note } = req.body || {};
+    const { email, password, name, phone, company, companyName } = req.body || {};
     const normalizedEmail = normalizeEmail(email);
-    const normalizedName = String(name || "").trim();
+    const normalizedName = normalizeFullName(name);
     const normalizedPhone = String(phone || "").trim().slice(0, 40);
     const normalizedCompanyName = String(companyName || company || "")
       .trim()
       .slice(0, 120);
-    const normalizedNote = String(note || comment || "").trim().slice(0, 500);
 
-    if (!normalizedEmail || !password || !normalizedName) {
+    if (!normalizedEmail || !password || !normalizedName || !normalizedPhone || !normalizedCompanyName) {
       return res
         .status(400)
-        .json({ message: "Почта, пароль и имя обязательны." });
+        .json({ message: "Заполните все обязательные поля." });
+    }
+
+    if (!isValidFullName(normalizedName)) {
+      return res.status(400).json({ message: "FULL_NAME_INVALID" });
+    }
+
+    if (!isValidRegistrationEmail(normalizedEmail)) {
+      return res.status(400).json({ message: "EMAIL_INVALID" });
+    }
+
+    if (!isValidPhone(normalizedPhone)) {
+      return res.status(400).json({ message: "PHONE_INVALID" });
+    }
+
+    if (normalizedCompanyName.length < 2) {
+      return res.status(400).json({ message: "COMPANY_INVALID" });
     }
 
     if (String(password).length < 8) {
@@ -3333,7 +3375,7 @@ app.post("/api/register", async (req, res) => {
         expiresAt: new Date(now.getTime() + EMAIL_VERIFY_TTL_MS),
         phone: normalizedPhone || null,
         companyName: normalizedCompanyName || null,
-        note: normalizedNote || null,
+        note: null,
       },
     });
     await sendEmailVerificationCode(normalizedEmail, code);
