@@ -230,6 +230,62 @@ function isValidPhone(value) {
   return digits.length >= 10 && digits.length <= 15;
 }
 
+function toBoolean(value) {
+  if (typeof value === "boolean") return value;
+  if (typeof value === "number") return value === 1;
+  const normalized = String(value || "").trim().toLowerCase();
+  return normalized === "true" || normalized === "1" || normalized === "yes" || normalized === "on";
+}
+
+function getClientIp(req) {
+  const forwarded = String(req?.headers?.["x-forwarded-for"] || "")
+    .split(",")[0]
+    .trim();
+  const realIp = String(req?.headers?.["x-real-ip"] || "").trim();
+  const raw = forwarded || realIp || String(req?.ip || req?.socket?.remoteAddress || "").trim();
+  return raw.replace(/^::ffff:/, "").slice(0, 64);
+}
+
+function buildRegistrationConsentSnapshot(req, {
+  privacyAccepted = false,
+  marketingAccepted = false,
+  consentVersion = "",
+} = {}) {
+  const now = new Date().toISOString();
+  const normalizedVersion = String(consentVersion || "register-2026-03-18")
+    .trim()
+    .slice(0, 64);
+  return {
+    version: normalizedVersion || "register-2026-03-18",
+    privacyAccepted: Boolean(privacyAccepted),
+    privacyAcceptedAt: privacyAccepted ? now : null,
+    marketingAccepted: Boolean(marketingAccepted),
+    marketingAcceptedAt: marketingAccepted ? now : null,
+    ip: getClientIp(req) || null,
+    userAgent: String(req?.headers?.["user-agent"] || "").slice(0, 255) || null,
+  };
+}
+
+function parseRegistrationConsentSnapshot(rawValue) {
+  const raw = String(rawValue || "").trim();
+  if (!raw) return null;
+  try {
+    const parsed = JSON.parse(raw);
+    if (!parsed || typeof parsed !== "object") return null;
+    return {
+      version: String(parsed.version || "").trim() || null,
+      privacyAccepted: Boolean(parsed.privacyAccepted),
+      privacyAcceptedAt: parsed.privacyAcceptedAt || null,
+      marketingAccepted: Boolean(parsed.marketingAccepted),
+      marketingAcceptedAt: parsed.marketingAcceptedAt || null,
+      ip: String(parsed.ip || "").trim() || null,
+      userAgent: String(parsed.userAgent || "").trim() || null,
+    };
+  } catch {
+    return null;
+  }
+}
+
 function normalizeLogin(value) {
   return String(value || "")
     .trim()
@@ -761,7 +817,7 @@ async function sendNewClientNotification({
   name,
   phone,
   companyName,
-  note,
+  consent,
   verifiedAt,
 }) {
   const recipients = getNewClientNotificationRecipients();
@@ -770,14 +826,31 @@ async function sendNewClientNotification({
   }
 
   const verifiedAtText = new Date(verifiedAt || Date.now()).toLocaleString("ru-RU");
+  const consentVersion = String(consent?.version || "").trim() || "-";
+  const privacyAcceptedText = consent?.privacyAccepted ? "Да" : "Нет";
+  const privacyAcceptedAt = consent?.privacyAcceptedAt
+    ? new Date(consent.privacyAcceptedAt).toLocaleString("ru-RU")
+    : "-";
+  const marketingAcceptedText = consent?.marketingAccepted ? "Да" : "Нет";
+  const marketingAcceptedAt = consent?.marketingAcceptedAt
+    ? new Date(consent.marketingAcceptedAt).toLocaleString("ru-RU")
+    : "-";
+  const consentIp = consent?.ip || "-";
+  const consentUserAgent = consent?.userAgent || "-";
+
   const lines = [
     "Новый клиент подтвердил регистрацию.",
     "",
     `Почта: ${email || "-"}`,
-    `Имя: ${name || "-"}`,
+    `ФИО: ${name || "-"}`,
     `Телефон: ${phone || "-"}`,
     `Компания: ${companyName || "-"}`,
-    `Комментарий: ${note || "-"}`,
+    "",
+    "Согласия:",
+    `- Обработка ПД: ${privacyAcceptedText} (версия: ${consentVersion}, время: ${privacyAcceptedAt})`,
+    `- Рассылка: ${marketingAcceptedText} (время: ${marketingAcceptedAt})`,
+    `IP при регистрации: ${consentIp}`,
+    `User-Agent: ${consentUserAgent}`,
     `Время подтверждения: ${verifiedAtText}`,
   ];
   const text = lines.join("\n");
@@ -794,10 +867,14 @@ async function sendNewClientNotification({
     <div style="font-family:Arial,sans-serif;font-size:14px;">
       <p><strong>Новый клиент подтвердил регистрацию.</strong></p>
       <p>Почта: ${email || "-"}</p>
-      <p>Имя: ${name || "-"}</p>
+      <p>ФИО: ${name || "-"}</p>
       <p>Телефон: ${phone || "-"}</p>
       <p>Компания: ${companyName || "-"}</p>
-      <p>Комментарий: ${note || "-"}</p>
+      <p><strong>Согласия:</strong></p>
+      <p>Обработка ПД: ${privacyAcceptedText} (версия: ${consentVersion}, время: ${privacyAcceptedAt})</p>
+      <p>Рассылка: ${marketingAcceptedText} (время: ${marketingAcceptedAt})</p>
+      <p>IP при регистрации: ${consentIp}</p>
+      <p>User-Agent: ${consentUserAgent}</p>
       <p>Время подтверждения: ${verifiedAtText}</p>
     </div>
   `;
@@ -3265,7 +3342,17 @@ app.post("/api/register", async (req, res) => {
 
 
   try {
-    const { email, password, name, phone, company, companyName } = req.body || {};
+    const {
+      email,
+      password,
+      name,
+      phone,
+      company,
+      companyName,
+      privacyAccepted,
+      marketingAccepted,
+      consentVersion,
+    } = req.body || {};
     const normalizedEmail = normalizeEmail(email);
     const normalizedName = normalizeFullName(name);
     const normalizedPhone = String(phone || "").trim().slice(0, 40);
@@ -3277,6 +3364,12 @@ app.post("/api/register", async (req, res) => {
       return res
         .status(400)
         .json({ message: "Заполните все обязательные поля." });
+    }
+
+    const isPrivacyAccepted = toBoolean(privacyAccepted);
+    const isMarketingAccepted = toBoolean(marketingAccepted);
+    if (!isPrivacyAccepted) {
+      return res.status(400).json({ message: "PRIVACY_CONSENT_REQUIRED" });
     }
 
     if (!isValidFullName(normalizedName)) {
@@ -3364,6 +3457,11 @@ app.post("/api/register", async (req, res) => {
 
     const code = createEmailVerificationCode();
     const now = new Date();
+    const consentSnapshot = buildRegistrationConsentSnapshot(req, {
+      privacyAccepted: isPrivacyAccepted,
+      marketingAccepted: isMarketingAccepted,
+      consentVersion,
+    });
     await prisma.emailVerificationCode.updateMany({
       where: { userId: user.id, usedAt: null },
       data: { usedAt: now },
@@ -3375,7 +3473,7 @@ app.post("/api/register", async (req, res) => {
         expiresAt: new Date(now.getTime() + EMAIL_VERIFY_TTL_MS),
         phone: normalizedPhone || null,
         companyName: normalizedCompanyName || null,
-        note: null,
+        note: JSON.stringify(consentSnapshot),
       },
     });
     await sendEmailVerificationCode(normalizedEmail, code);
@@ -3569,12 +3667,13 @@ app.post("/api/auth/verify-email-code", async (req, res) => {
       });
     });
 
+    const consentSnapshot = parseRegistrationConsentSnapshot(latestCode.note);
     await sendNewClientNotification({
       email: user.email,
       name: user.name,
       phone: latestCode.phone,
       companyName: latestCode.companyName || user.organization?.name || null,
-      note: latestCode.note,
+      consent: consentSnapshot,
       verifiedAt: now,
     }).catch((err) => {
       console.error("new client notify error:", err);
