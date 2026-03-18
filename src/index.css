@@ -3479,6 +3479,28 @@ input[type="number"] {
   box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.14);
 }
 
+.register-form__check {
+  display: grid;
+  grid-template-columns: 18px minmax(0, 1fr);
+  gap: 8px;
+  align-items: flex-start;
+  margin-top: 4px;
+  color: #334155;
+  font-size: 13px;
+  line-height: 1.4;
+}
+
+.register-form__check input[type="checkbox"] {
+  width: 16px;
+  height: 16px;
+  margin-top: 2px;
+  accent-color: #2563eb;
+}
+
+.register-form__check a {
+  color: #1d4ed8;
+}
+
 .register-form__submit,
 .register-form__secondary {
   width: 100%;
@@ -3705,6 +3727,10 @@ input[type="number"] {
 
   .register-form__field textarea {
     min-height: 96px;
+  }
+
+  .register-form__check {
+    font-size: 14px;
   }
 
   .login-card__brand {

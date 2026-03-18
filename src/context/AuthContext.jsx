@@ -101,6 +101,9 @@ export function AuthProvider({ children }) {
     name,
     phone = "",
     companyName = "",
+    privacyAccepted = false,
+    marketingAccepted = false,
+    consentVersion = "",
   }) => {
     try {
       const normalizedEmail = String(email || "").trim().toLowerCase();
@@ -113,6 +116,9 @@ export function AuthProvider({ children }) {
           name,
           phone,
           companyName,
+          privacyAccepted,
+          marketingAccepted,
+          consentVersion,
         }),
       });
 

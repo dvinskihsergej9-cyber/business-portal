@@ -17,6 +17,7 @@ const ERROR_MESSAGES = {
   FULL_NAME_INVALID: "Укажите ФИО полностью (минимум имя и фамилия).",
   PHONE_INVALID: "Укажите корректный номер телефона.",
   COMPANY_INVALID: "Укажите корректное название компании.",
+  PRIVACY_CONSENT_REQUIRED: "Подтвердите согласие с обработкой персональных данных.",
 };
 
 const EMAIL_REGEX = /^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/u;
@@ -61,7 +62,10 @@ const INITIAL_FORM = {
   companyName: "",
   password: "",
   confirmPassword: "",
+  privacyAccepted: false,
+  marketingAccepted: false,
 };
+const CONSENT_VERSION = "register-2026-03-18";
 
 export default function Register() {
   const { register, verifyRegistrationCode, resendRegistrationCode } = useAuth();
@@ -91,7 +95,8 @@ export default function Register() {
       !form.phone.trim() ||
       !form.companyName.trim() ||
       !form.password ||
-      !form.confirmPassword
+      !form.confirmPassword ||
+      !form.privacyAccepted
     ) {
       return false;
     }
@@ -143,6 +148,11 @@ export default function Register() {
       return;
     }
 
+    if (!form.privacyAccepted) {
+      setError("Подтвердите согласие с обработкой персональных данных.");
+      return;
+    }
+
     setLoading(true);
     const result = await register({
       email: normalizedEmail,
@@ -150,6 +160,9 @@ export default function Register() {
       name: normalizedName,
       phone: normalizedPhone,
       companyName: normalizedCompanyName,
+      privacyAccepted: Boolean(form.privacyAccepted),
+      marketingAccepted: Boolean(form.marketingAccepted),
+      consentVersion: CONSENT_VERSION,
     });
     setLoading(false);
 
@@ -285,6 +298,39 @@ export default function Register() {
                 minLength={8}
                 required
               />
+            </label>
+
+            <label className="register-form__check">
+              <input
+                type="checkbox"
+                checked={form.privacyAccepted}
+                onChange={(event) =>
+                  setForm((prev) => ({ ...prev, privacyAccepted: event.target.checked }))
+                }
+                required
+              />
+              <span>
+                Я принимаю{" "}
+                <Link to="/offer" target="_blank" rel="noreferrer">
+                  оферту
+                </Link>{" "}
+                и даю согласие на{" "}
+                <Link to="/privacy" target="_blank" rel="noreferrer">
+                  обработку персональных данных
+                </Link>
+                .
+              </span>
+            </label>
+
+            <label className="register-form__check">
+              <input
+                type="checkbox"
+                checked={form.marketingAccepted}
+                onChange={(event) =>
+                  setForm((prev) => ({ ...prev, marketingAccepted: event.target.checked }))
+                }
+              />
+              <span>Получать новости и полезные материалы сервиса на почту.</span>
             </label>
 
             <button
