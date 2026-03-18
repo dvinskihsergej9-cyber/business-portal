@@ -62,6 +62,8 @@ app.use((req, res, next) => {
 
 const JWT_SECRET = process.env.JWT_SECRET || "super-secret-key"; // в .env в бою
 const JWT_EXPIRES_IN = "7d";
+const MARKETING_UNSUBSCRIBE_SECRET =
+  process.env.MARKETING_UNSUBSCRIBE_SECRET || JWT_SECRET;
 
 function createToken(user) {
   return jwt.sign(
@@ -736,6 +738,39 @@ function createEmailVerificationCode() {
   return String(crypto.randomInt(0, 1_000_000)).padStart(6, "0");
 }
 
+function createMarketingUnsubscribeToken(user) {
+  return jwt.sign(
+    {
+      purpose: "marketing_unsubscribe",
+      userId: Number(user?.id || 0),
+      email: normalizeEmail(user?.email || ""),
+    },
+    MARKETING_UNSUBSCRIBE_SECRET
+  );
+}
+
+function parseMarketingUnsubscribeToken(rawToken) {
+  const token = String(rawToken || "").trim();
+  if (!token) return null;
+  try {
+    const payload = jwt.verify(token, MARKETING_UNSUBSCRIBE_SECRET);
+    if (payload?.purpose !== "marketing_unsubscribe") return null;
+    const userId = Number(payload?.userId || 0);
+    if (!userId) return null;
+    return {
+      userId,
+      email: normalizeEmail(payload?.email || ""),
+    };
+  } catch {
+    return null;
+  }
+}
+
+function buildMarketingUnsubscribeLink(user) {
+  const token = createMarketingUnsubscribeToken(user);
+  return `${FRONTEND_URL}/unsubscribe?token=${encodeURIComponent(token)}`;
+}
+
 function getNewClientNotificationRecipients() {
   const raw = String(
     process.env.NEW_CLIENT_NOTIFY_EMAILS ||
@@ -891,6 +926,65 @@ async function sendNewClientNotification({
   } catch (err) {
     console.error("New client notification send error:", err);
     console.log(`[NEW_CLIENT] recipients=${recipients.join(",")} \n${text}`);
+    return { sent: false, error: err.message };
+  }
+}
+
+async function sendMarketingWelcomeEmail(user) {
+  if (!user?.id || !user?.email || user.marketingEmailsEnabled !== true) {
+    return { sent: false, skipped: true };
+  }
+
+  const unsubscribeLink = buildMarketingUnsubscribeLink(user);
+  const transport = getMailTransport();
+  const subject = "Полезные материалы по работе со складом";
+  const text = [
+    `Здравствуйте, ${user.name || "коллега"}!`,
+    "",
+    "Спасибо за регистрацию в СкладОнлайн.",
+    "Вы подписались на полезные материалы сервиса.",
+    "",
+    "Отписаться от рассылки:",
+    unsubscribeLink,
+  ].join("\n");
+  const html = `
+    <div style="font-family:Arial,sans-serif;font-size:14px;line-height:1.5;">
+      <p>Здравствуйте, ${user.name || "коллега"}!</p>
+      <p>Спасибо за регистрацию в <strong>СкладОнлайн</strong>.</p>
+      <p>Вы подписались на полезные материалы сервиса.</p>
+      <p>
+        <a
+          href="${unsubscribeLink}"
+          style="display:inline-block;padding:10px 14px;border-radius:8px;background:#f1f5f9;color:#0f172a;text-decoration:none;border:1px solid #cbd5e1;"
+        >
+          Отписаться от рассылки
+        </a>
+      </p>
+      <p style="color:#64748b;font-size:12px;">
+        Если кнопка не работает, используйте ссылку:<br />
+        <a href="${unsubscribeLink}">${unsubscribeLink}</a>
+      </p>
+    </div>
+  `;
+
+  if (!transport) {
+    console.log(`[MARKETING_WELCOME] ${user.email}: ${unsubscribeLink}`);
+    return { sent: false };
+  }
+
+  const from = process.env.MAIL_FROM || `СкладОнлайн <${process.env.MAIL_USER}>`;
+  try {
+    await sendMailWithTimeout(transport, {
+      from,
+      to: user.email,
+      subject,
+      text,
+      html,
+    });
+    return { sent: true };
+  } catch (err) {
+    console.error("Marketing welcome email send error:", err);
+    console.log(`[MARKETING_WELCOME] ${user.email}: ${unsubscribeLink}`);
     return { sent: false, error: err.message };
   }
 }
@@ -3368,6 +3462,7 @@ app.post("/api/register", async (req, res) => {
 
     const isPrivacyAccepted = toBoolean(privacyAccepted);
     const isMarketingAccepted = toBoolean(marketingAccepted);
+    const marketingConsentAt = isMarketingAccepted ? new Date() : null;
     if (!isPrivacyAccepted) {
       return res.status(400).json({ message: "PRIVACY_CONSENT_REQUIRED" });
     }
@@ -3429,6 +3524,9 @@ app.post("/api/register", async (req, res) => {
           orgId,
           isActive: true,
           emailVerifiedAt: null,
+          marketingEmailsEnabled: isMarketingAccepted,
+          marketingConsentAt,
+          marketingUnsubscribedAt: null,
         },
       });
     } else {
@@ -3451,6 +3549,9 @@ app.post("/api/register", async (req, res) => {
           orgId: org.id,
           isActive: true,
           emailVerifiedAt: null,
+          marketingEmailsEnabled: isMarketingAccepted,
+          marketingConsentAt,
+          marketingUnsubscribedAt: null,
         },
       });
     }
@@ -3680,6 +3781,9 @@ app.post("/api/auth/verify-email-code", async (req, res) => {
     });
 
     const verifiedUser = await prisma.user.findUnique({ where: { id: user.id } });
+    await sendMarketingWelcomeEmail(verifiedUser).catch((err) => {
+      console.error("marketing welcome email error:", err);
+    });
     const token = createToken(verifiedUser);
     const userPayload = await getUserPayload(user.id);
 
@@ -3768,6 +3872,47 @@ app.post("/api/auth/resend-email-code", async (req, res) => {
   } catch (err) {
     console.error("resend email code error:", err);
     return res.status(500).json({ message: "EMAIL_VERIFY_ERROR" });
+  }
+});
+
+app.post("/api/public/marketing/unsubscribe", async (req, res) => {
+  try {
+    const token = String(req.body?.token || "").trim();
+    const payload = parseMarketingUnsubscribeToken(token);
+    if (!payload?.userId) {
+      return res.status(400).json({ message: "BAD_TOKEN" });
+    }
+
+    const user = await prisma.user.findUnique({
+      where: { id: payload.userId },
+      select: { id: true, email: true, marketingEmailsEnabled: true },
+    });
+    if (!user) {
+      return res.status(400).json({ message: "BAD_TOKEN" });
+    }
+
+    const userEmail = normalizeEmail(user.email);
+    if (payload.email && payload.email !== userEmail) {
+      return res.status(400).json({ message: "BAD_TOKEN" });
+    }
+
+    if (user.marketingEmailsEnabled !== false) {
+      await prisma.user.update({
+        where: { id: user.id },
+        data: {
+          marketingEmailsEnabled: false,
+          marketingUnsubscribedAt: new Date(),
+        },
+      });
+    }
+
+    return res.json({
+      ok: true,
+      message: "Вы успешно отписались от рассылки.",
+    });
+  } catch (err) {
+    console.error("marketing unsubscribe error:", err);
+    return res.status(500).json({ message: "UNSUBSCRIBE_ERROR" });
   }
 });
 

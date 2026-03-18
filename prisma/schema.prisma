@@ -35,6 +35,9 @@ model User {
   orgId           Int?
   organization    Organization? @relation(fields: [orgId], references: [id])
   emailVerifiedAt DateTime?
+  marketingEmailsEnabled Boolean @default(false)
+  marketingConsentAt     DateTime?
+  marketingUnsubscribedAt DateTime?
   createdAt       DateTime      @default(now())
   updatedAt       DateTime      @updatedAt
 
