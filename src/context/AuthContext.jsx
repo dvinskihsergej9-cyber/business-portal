@@ -31,7 +31,7 @@ export function AuthProvider({ children }) {
     }).catch(() => null);
   };
 
-  // Р°РІС‚Рѕ-РїРѕРґС‚СЏРіРёРІР°РЅРёРµ РїРѕР»СЊР·РѕРІР°С‚РµР»СЏ РїРѕ С‚РѕРєРµРЅСѓ
+  // Автоматически подтягиваем пользователя по токену.
   useEffect(() => {
     const token = localStorage.getItem("token");
     if (!token) {
@@ -57,7 +57,7 @@ export function AuthProvider({ children }) {
           localStorage.setItem("user", JSON.stringify(data));
         }
       } catch (e) {
-        console.error("РћС€РёР±РєР° Р°РІС‚РѕР°РІС‚РѕСЂРёР·Р°С†РёРё:", e);
+        console.error("Ошибка автоавторизации:", e);
         localStorage.removeItem("token");
         localStorage.removeItem("user");
         setUser(null);
@@ -79,7 +79,7 @@ export function AuthProvider({ children }) {
       const data = await res.json();
 
       if (!res.ok) {
-        return { ok: false, message: data.message || "РћС€РёР±РєР° РІС…РѕРґР°" };
+        return { ok: false, message: data.message || "Ошибка входа" };
       }
 
       localStorage.setItem("token", data.token);
@@ -90,11 +90,11 @@ export function AuthProvider({ children }) {
       return { ok: true };
     } catch (e) {
       console.error("Login error:", e);
-      return { ok: false, message: "РЎРµС‚РµРІР°СЏ РѕС€РёР±РєР°" };
+      return { ok: false, message: "Сетевая ошибка" };
     }
   };
 
-  // Р Р•Р“РРЎРўР РђР¦РРЇ Р‘Р•Р— ROLE вЂ” СЂРѕР»СЊ СЃС‚Р°РІРёС‚ СЃРµСЂРІРµСЂ
+  // Регистрация без role: роль назначает сервер.
   const register = async ({
     email,
     password,
@@ -211,7 +211,7 @@ export function AuthProvider({ children }) {
       const data = await res.json();
 
       if (!res.ok) {
-        return { ok: false, message: data.message || "РћС€РёР±РєР° СЃРѕС…СЂР°РЅРµРЅРёСЏ" };
+        return { ok: false, message: data.message || "Ошибка сохранения" };
       }
 
       setUser(data.user);
@@ -220,7 +220,7 @@ export function AuthProvider({ children }) {
       return { ok: true };
     } catch (e) {
       console.error("Update profile error:", e);
-      return { ok: false, message: "РЎРµС‚РµРІР°СЏ РѕС€РёР±РєР°" };
+      return { ok: false, message: "Сетевая ошибка" };
     }
   };
 
