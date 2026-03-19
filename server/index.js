@@ -314,6 +314,24 @@ function isOwnerEmail(email) {
   return normalizeEmail(email) === OWNER_PRIMARY_EMAIL;
 }
 
+async function isCompanyOwnerAccount(userId, orgId) {
+  const normalizedUserId = Number(userId || 0);
+  const normalizedOrgId = Number(orgId || 0);
+  if (!normalizedUserId || !normalizedOrgId) return false;
+
+  const owner = await prisma.user.findFirst({
+    where: {
+      orgId: normalizedOrgId,
+      role: "ADMIN",
+      isActive: true,
+    },
+    orderBy: [{ createdAt: "asc" }, { id: "asc" }],
+    select: { id: true },
+  });
+
+  return Number(owner?.id || 0) === normalizedUserId;
+}
+
 function makeTenantCode(name) {
   const stamp = `${Date.now()}${Math.floor(Math.random() * 1000)
     .toString()
@@ -935,7 +953,6 @@ async function sendMarketingWelcomeEmail(user) {
     return { sent: false, skipped: true };
   }
 
-  const unsubscribeLink = buildMarketingUnsubscribeLink(user);
   const transport = getMailTransport();
   const subject = "Полезные материалы по работе со складом";
   const text = [
@@ -944,8 +961,8 @@ async function sendMarketingWelcomeEmail(user) {
     "Спасибо за регистрацию в СкладОнлайн.",
     "Вы подписались на полезные материалы сервиса.",
     "",
-    "Отписаться от рассылки:",
-    unsubscribeLink,
+    "Отключить рассылку можно в приложении:",
+    "Администрирование -> Рассылка.",
   ].join("\n");
   const html = `
     <div style="font-family:Arial,sans-serif;font-size:14px;line-height:1.5;">
@@ -953,22 +970,13 @@ async function sendMarketingWelcomeEmail(user) {
       <p>Спасибо за регистрацию в <strong>СкладОнлайн</strong>.</p>
       <p>Вы подписались на полезные материалы сервиса.</p>
       <p>
-        <a
-          href="${unsubscribeLink}"
-          style="display:inline-block;padding:10px 14px;border-radius:8px;background:#f1f5f9;color:#0f172a;text-decoration:none;border:1px solid #cbd5e1;"
-        >
-          Отписаться от рассылки
-        </a>
-      </p>
-      <p style="color:#64748b;font-size:12px;">
-        Если кнопка не работает, используйте ссылку:<br />
-        <a href="${unsubscribeLink}">${unsubscribeLink}</a>
+        Отключить рассылку можно в разделе <strong>Администрирование -> Рассылка</strong>.
       </p>
     </div>
   `;
 
   if (!transport) {
-    console.log(`[MARKETING_WELCOME] ${user.email}: ${unsubscribeLink}`);
+    console.log(`[MARKETING_WELCOME] ${user.email}: sent-without-unsubscribe-link`);
     return { sent: false };
   }
 
@@ -984,7 +992,7 @@ async function sendMarketingWelcomeEmail(user) {
     return { sent: true };
   } catch (err) {
     console.error("Marketing welcome email send error:", err);
-    console.log(`[MARKETING_WELCOME] ${user.email}: ${unsubscribeLink}`);
+    console.log(`[MARKETING_WELCOME] ${user.email}: failed`);
     return { sent: false, error: err.message };
   }
 }
@@ -4384,6 +4392,93 @@ app.put("/api/settings/org-profile", auth, async (req, res) => {
   } catch (err) {
     console.error("org profile put error:", err);
     res.status(500).json({ message: "ORG_PROFILE_SAVE_ERROR" });
+  }
+});
+
+app.get("/api/settings/marketing-preferences", auth, async (req, res) => {
+  try {
+    if (req.user?.role !== "ADMIN") {
+      return res.status(403).json({ message: "NO_ACCESS" });
+    }
+    if (req.user?.isSystemOwner) {
+      return res.status(403).json({ message: "OWNER_ONLY_COMPANY" });
+    }
+    const targetOrgId = Number(req.user?.orgId || 0);
+    if (!targetOrgId) {
+      return res.status(400).json({ message: "ORG_REQUIRED" });
+    }
+
+    const isOwner = await isCompanyOwnerAccount(req.user.id, targetOrgId);
+    if (!isOwner) {
+      return res.status(403).json({ message: "OWNER_ONLY_COMPANY" });
+    }
+
+    const currentUser = await prisma.user.findUnique({
+      where: { id: req.user.id },
+      select: {
+        marketingEmailsEnabled: true,
+        marketingConsentAt: true,
+        marketingUnsubscribedAt: true,
+      },
+    });
+
+    return res.json({
+      enabled: Boolean(currentUser?.marketingEmailsEnabled),
+      consentAt: currentUser?.marketingConsentAt || null,
+      unsubscribedAt: currentUser?.marketingUnsubscribedAt || null,
+    });
+  } catch (err) {
+    console.error("marketing preferences get error:", err);
+    return res.status(500).json({ message: "MARKETING_SETTINGS_LOAD_ERROR" });
+  }
+});
+
+app.put("/api/settings/marketing-preferences", auth, async (req, res) => {
+  try {
+    if (req.user?.role !== "ADMIN") {
+      return res.status(403).json({ message: "NO_ACCESS" });
+    }
+    if (req.user?.isSystemOwner) {
+      return res.status(403).json({ message: "OWNER_ONLY_COMPANY" });
+    }
+    const targetOrgId = Number(req.user?.orgId || 0);
+    if (!targetOrgId) {
+      return res.status(400).json({ message: "ORG_REQUIRED" });
+    }
+
+    const isOwner = await isCompanyOwnerAccount(req.user.id, targetOrgId);
+    if (!isOwner) {
+      return res.status(403).json({ message: "OWNER_ONLY_COMPANY" });
+    }
+
+    const enabled = toBoolean(req.body?.enabled);
+    const now = new Date();
+    const updatedUser = await prisma.user.update({
+      where: { id: req.user.id },
+      data: {
+        marketingEmailsEnabled: enabled,
+        marketingConsentAt: enabled ? now : null,
+        marketingUnsubscribedAt: enabled ? null : now,
+      },
+      select: {
+        marketingEmailsEnabled: true,
+        marketingConsentAt: true,
+        marketingUnsubscribedAt: true,
+      },
+    });
+
+    return res.json({
+      ok: true,
+      enabled: Boolean(updatedUser?.marketingEmailsEnabled),
+      consentAt: updatedUser?.marketingConsentAt || null,
+      unsubscribedAt: updatedUser?.marketingUnsubscribedAt || null,
+      message: enabled
+        ? "Рассылка включена."
+        : "Рассылка отключена.",
+    });
+  } catch (err) {
+    console.error("marketing preferences put error:", err);
+    return res.status(500).json({ message: "MARKETING_SETTINGS_SAVE_ERROR" });
   }
 });
 
