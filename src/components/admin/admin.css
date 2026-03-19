@@ -344,6 +344,65 @@
   font-size: 12px;
 }
 
+.admin-marketing-toggle {
+  margin-top: 14px;
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  align-items: center;
+  gap: 12px;
+  padding: 12px;
+  border: 1px solid #e2e8f0;
+  border-radius: 12px;
+  background: #f8fafc;
+}
+
+.admin-marketing-toggle__switch {
+  width: 52px;
+  height: 30px;
+  border-radius: 999px;
+  border: 1px solid #cbd5e1;
+  background: #e2e8f0;
+  padding: 2px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: flex-start;
+  transition: background-color 0.2s ease, border-color 0.2s ease;
+}
+
+.admin-marketing-toggle__switch--on {
+  background: #0ea5e9;
+  border-color: #0284c7;
+}
+
+.admin-marketing-toggle__thumb {
+  width: 24px;
+  height: 24px;
+  border-radius: 50%;
+  background: #ffffff;
+  box-shadow: 0 1px 3px rgba(15, 23, 42, 0.25);
+  transition: transform 0.2s ease;
+}
+
+.admin-marketing-toggle__switch--on .admin-marketing-toggle__thumb {
+  transform: translateX(22px);
+}
+
+.admin-marketing-toggle__content {
+  display: grid;
+  gap: 2px;
+}
+
+.admin-marketing-toggle__title {
+  font-size: 14px;
+  font-weight: 700;
+  color: #0f172a;
+}
+
+.admin-marketing-toggle__meta {
+  font-size: 12px;
+  color: #475569;
+}
+
 .admin-alert--error {
   background: rgba(248, 113, 113, 0.12);
   color: #b91c1c;
