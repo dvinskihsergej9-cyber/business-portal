@@ -85,7 +85,7 @@ async function auth(req, res, next) {
   }
   const header = req.headers["authorization"];
   if (!header) {
-    return res.status(401).json({ message: "????????? ????? ???????????." });
+    return res.status(401).json({ message: "Требуется токен авторизации." });
   }
 
   const [type, token] = header.split(" ");
@@ -813,12 +813,12 @@ async function sendInviteEmail(email, token) {
     return { sent: false, link };
   }
 
-  const from = process.env.MAIL_FROM || `����������� <${process.env.MAIL_USER}>`;
-  const subject = "\u041f\u0440\u0438\u0433\u043b\u0430\u0448\u0435\u043d\u0438\u0435 \u0432 �����������";
-  const text = `\u0412\u044b \u043f\u0440\u0438\u0433\u043b\u0430\u0448\u0435\u043d\u044b \u0432 �����������. \u041f\u0435\u0440\u0435\u0439\u0434\u0438\u0442\u0435 \u043f\u043e \u0441\u0441\u044b\u043b\u043a\u0435 \u0434\u043b\u044f \u0437\u0430\u0432\u0435\u0440\u0448\u0435\u043d\u0438\u044f \u0440\u0435\u0433\u0438\u0441\u0442\u0440\u0430\u0446\u0438\u0438: ${link}`;
+  const from = process.env.MAIL_FROM || `СкладОнлайн <${process.env.MAIL_USER}>`;
+  const subject = "Приглашение в СкладОнлайн";
+  const text = `Вы приглашены в СкладОнлайн. Перейдите по ссылке для завершения регистрации: ${link}`;
   const html = `
     <div style="font-family:Arial,sans-serif;font-size:14px;">
-      <p>\u0412\u044b \u043f\u0440\u0438\u0433\u043b\u0430\u0448\u0435\u043d\u044b \u0432 �����������.</p>
+      <p>Вы приглашены в СкладОнлайн.</p>
       <p>\u0421\u0441\u044b\u043b\u043a\u0430 \u0434\u043b\u044f \u0437\u0430\u0432\u0435\u0440\u0448\u0435\u043d\u0438\u044f \u0440\u0435\u0433\u0438\u0441\u0442\u0440\u0430\u0446\u0438\u0438:</p>
       <p><a href="${link}">${link}</a></p>
       <p>\u0415\u0441\u043b\u0438 \u0432\u044b \u043d\u0435 \u043e\u0436\u0438\u0434\u0430\u043b\u0438 \u044d\u0442\u043e \u043f\u0438\u0441\u044c\u043c\u043e, \u043f\u0440\u043e\u0441\u0442\u043e \u0438\u0433\u043d\u043e\u0440\u0438\u0440\u0443\u0439\u0442\u0435 \u0435\u0433\u043e.</p>
@@ -1007,8 +1007,8 @@ async function sendPasswordResetEmail(email, token) {
     return { sent: false, link };
   }
 
-  const from = process.env.MAIL_FROM || `����������� <${process.env.MAIL_USER}>`;
-  const subject = "Сброс пароля в �����������";
+  const from = process.env.MAIL_FROM || `СкладОнлайн <${process.env.MAIL_USER}>`;
+  const subject = "Сброс пароля в СкладОнлайн";
   const text = `Для сброса пароля перейдите по ссылке: ${link}`;
   const html = `
     <div style="font-family:Arial,sans-serif;font-size:14px;">
@@ -1032,9 +1032,9 @@ async function sendPasswordChangedEmail(email) {
   const transport = getMailTransport();
   if (!transport) return { sent: false };
 
-  const from = process.env.MAIL_FROM || `����������� <${process.env.MAIL_USER}>`;
+  const from = process.env.MAIL_FROM || `СкладОнлайн <${process.env.MAIL_USER}>`;
   const subject = "Пароль изменён";
-  const text = "Пароль в ����������� был изменён. Если это были не вы, свяжитесь с администратором.";
+  const text = "Пароль в СкладОнлайн был изменён. Если это были не вы, свяжитесь с администратором.";
   const html = `
     <div style="font-family:Arial,sans-serif;font-size:14px;">
       <p>${text}</p>
@@ -1057,7 +1057,7 @@ async function sendAutoReorderEmail({ to, subject, text }) {
     return { sent: false };
   }
 
-  const from = process.env.MAIL_FROM || `����������� <${process.env.MAIL_USER}>`;
+  const from = process.env.MAIL_FROM || `СкладОнлайн <${process.env.MAIL_USER}>`;
   try {
     await sendMailWithTimeout(transport, { from, to, subject, text });
     return { sent: true };
@@ -1523,7 +1523,7 @@ app.use("/api/purchase-orders", auth, enforceOperationalTenantScope, (req, res, 
     return next();
   }
 
-  // "??????? ???????????" ?????? ?????? ??????? ?????????? ??????????.
+  // "Внутренний мессенджер" скрывает только внешний режим интеграции.
   if (
     hasPermission(req.user, PERMISSION_KEYS.WAREHOUSE_QUEUE) &&
     isReadRequest(req) &&
@@ -1532,7 +1532,7 @@ app.use("/api/purchase-orders", auth, enforceOperationalTenantScope, (req, res, 
     return next();
   }
 
-  // ???-???????: ?????? ? ?????? ???? ??????????? ?? ??????.
+  // SaaS-режим: доступ в раздел даём только по ролям.
   if (
     hasAnyPermission(req.user, [
       PERMISSION_KEYS.TSD_RECEIVING,
@@ -2047,14 +2047,14 @@ app.post("/api/safety/assignments/:id/remind", auth, requireHr, async (req, res)
     }
 
     if (!assignment.employee?.telegramChatId) {
-      return res.status(400).json({ message: "? ?????????? ?? ?????? Telegram ID" });
+      return res.status(400).json({ message: "У сотрудника не указан Telegram ID." });
     }
     if (!assignment.dueDate) {
-      return res.status(400).json({ message: "?? ?????? ???? ???????????" });
+      return res.status(400).json({ message: "Не задан срок инструктажа." });
     }
 
     await sendSafetyReminderForAssignment(assignment, true);
-    return res.json({ message: "??????????? ??????????" });
+    return res.json({ message: "Уведомление отправлено." });
   } catch (err) {
     console.error("manual remind error:", err);
     return res.status(500).json({ message: "Failed to send reminder" });
@@ -2522,7 +2522,7 @@ async function buildOrderPickPlan(orderId) {
         plan.push({
           lineId: line.id,
           itemId: null,
-          itemName: line.requestedName || "??????????? ?????",
+          itemName: line.requestedName || "Неизвестный товар",
           sku: line.requestedSku || null,
           totalQty,
           pickedQty,
@@ -2560,7 +2560,7 @@ async function buildOrderPickPlan(orderId) {
       plan.push({
         lineId: line.id,
         itemId: resolvedItemId,
-        itemName: resolvedItem?.name || line.requestedName || `????? #${resolvedItemId}`,
+        itemName: resolvedItem?.name || line.requestedName || `Товар #${resolvedItemId}`,
         sku: resolvedItem?.sku || line.requestedSku || null,
         barcode: resolvedItem?.barcode || null,
         totalQty,
@@ -2582,7 +2582,7 @@ async function buildOrderPickPlan(orderId) {
       plan.push({
         lineId: line?.id || null,
         itemId: line?.itemId || null,
-        itemName: line?.item?.name || line?.requestedName || "????????",
+        itemName: line?.item?.name || line?.requestedName || "Товар",
         sku: line?.item?.sku || line?.requestedSku || null,
         barcode: line?.item?.barcode || null,
         totalQty,
@@ -2603,7 +2603,7 @@ function buildOrderLabelHtml(order) {
     : "";
   const linesHtml = (order?.lines || [])
     .map((line, idx) => {
-      const name = line.item?.name || line.requestedName || `????? #${line.itemId || "?"}`;
+      const name = line.item?.name || line.requestedName || `Товар #${line.itemId || "?"}`;
       const sku = line.item?.sku || line.requestedSku || "";
       return `
         <tr>
@@ -2620,7 +2620,7 @@ function buildOrderLabelHtml(order) {
 <html lang="ru">
 <head>
   <meta charset="utf-8" />
-  <title>???????? ?????? ${escapeHtml(order.orderNumber)}</title>
+  <title>Этикетка заказа ${escapeHtml(order.orderNumber)}</title>
   <style>
     body { font-family: Arial, sans-serif; margin: 16px; color: #111; }
     .label { border: 1px solid #111; border-radius: 8px; padding: 14px; max-width: 860px; }
@@ -2640,20 +2640,20 @@ function buildOrderLabelHtml(order) {
 </head>
 <body>
   <div class="label">
-    <h1>????? ${escapeHtml(order.orderNumber)}</h1>
-    <div class="meta"><b>??????????:</b> ${escapeHtml(order.customerName)}</div>
-    <div class="meta"><b>???????:</b> ${escapeHtml(order.customerPhone || "")}</div>
-    <div class="meta"><b>?????:</b> ${escapeHtml(order.shippingAddress)}</div>
-    <div class="meta"><b>???????????:</b> ${escapeHtml(order.deliveryComment || "")}</div>
-    <div class="meta"><b>???????:</b> ${escapeHtml(order.boxCode || "-")} (${escapeHtml(order.boxType || "-")})</div>
-    <div class="meta"><b>??????:</b> ${escapeHtml(createdAt)}</div>
+    <h1>Заказ ${escapeHtml(order.orderNumber)}</h1>
+    <div class="meta"><b>Покупатель:</b> ${escapeHtml(order.customerName)}</div>
+    <div class="meta"><b>Телефон:</b> ${escapeHtml(order.customerPhone || "")}</div>
+    <div class="meta"><b>Адрес:</b> ${escapeHtml(order.shippingAddress)}</div>
+    <div class="meta"><b>Комментарий:</b> ${escapeHtml(order.deliveryComment || "")}</div>
+    <div class="meta"><b>Коробка:</b> ${escapeHtml(order.boxCode || "-")} (${escapeHtml(order.boxType || "-")})</div>
+    <div class="meta"><b>Создан:</b> ${escapeHtml(createdAt)}</div>
     <table>
       <thead>
         <tr>
           <th>#</th>
-          <th>?????</th>
+          <th>Товар</th>
           <th>Артикул</th>
-          <th>???-??</th>
+          <th>Кол-во</th>
         </tr>
       </thead>
       <tbody>
@@ -2985,17 +2985,17 @@ async function sendSafetyReminderForAssignment(a, force = false) {
     if (hoursSince < 20) return false;
   }
 
-  const title = a.instruction?.title || "??????????";
+  const title = a.instruction?.title || "Инструкция";
   const dueStr = due.toLocaleDateString("ru-RU");
   const lines = [
-    "??????????? ?? ???????????",
+    "Напоминание по инструктажу",
     "",
-    `??????????: ${title}`,
-    `?????????: ${a.employee.fullName}`,
-    `????: ${dueStr}`,
+    `Инструкция: ${title}`,
+    `Сотрудник: ${a.employee.fullName}`,
+    `Срок: ${dueStr}`,
     diffDays >= 0
-      ? `???????? ????: ${diffDays + 1}`
-      : `?????????? ?? ${Math.abs(diffDays)} ??.`,
+      ? `Осталось дней: ${diffDays + 1}`
+      : `Просрочено на ${Math.abs(diffDays)} дн.`,
   ];
 
   const textMsg = lines.join("\n");
@@ -3939,12 +3939,12 @@ app.get("/api/profile", auth, async (req, res) => {
     try {
       const userPayload = await getUserPayload(req.user.id);
       if (!userPayload) {
-        return res.status(404).json({ message: "???????????? ?? ??????" });
+        return res.status(404).json({ message: "Пользователь не найден." });
       }
       res.json(userPayload);
     } catch (err) {
       console.error("profile error:", err);
-      res.status(500).json({ message: "?? ??????? ????????? ??????? ????????????" });
+      res.status(500).json({ message: "Не удалось загрузить профиль пользователя." });
     }
   });
 
@@ -6100,12 +6100,12 @@ app.post("/api/warehouse/requests", auth, async (req, res) => {
           : null;
 
       if (!name) {
-        return res.status(400).json({ message: "??????? ???????? ??????." });
+        return res.status(400).json({ message: "Укажите название товара." });
       }
 
       if (!Number.isFinite(q) || !Number.isInteger(q) || q <= 0) {
         return res.status(400).json({
-          message: `?????????? ??? ?????? "${name}" ?????? ???? ????????????? ????? ??????.`,
+          message: `Количество для товара "${name}" должно быть положительным целым числом.`,
         });
       }
 
@@ -6141,7 +6141,7 @@ app.post("/api/warehouse/requests", auth, async (req, res) => {
 
         if (current < it.quantity) {
           return res.status(400).json({
-            message: `???????????? ??????? ?? ?????? "${invItem.name}". ???????? ${current} ${invItem.unit || "??."}, ????????? ${it.quantity}.`,
+            message: `Недостаточно остатка по товару "${invItem.name}". Доступно ${current} ${invItem.unit || "шт."}, запрошено ${it.quantity}.`,
           });
         }
       }
@@ -8247,7 +8247,7 @@ app.put("/api/warehouse/discrepancies/:id/close", auth, async (req, res) => {
     const id = Number(req.params.id);
     const { closeNote } = req.body || {};
     if (!id || Number.isNaN(id)) {
-      return res.status(400).json({ message: "???????????? ????????????? ???????????." });
+      return res.status(400).json({ message: "Некорректный идентификатор расхождения." });
     }
 
     const discrepancy = await prisma.stockDiscrepancy.findUnique({
@@ -8255,7 +8255,7 @@ app.put("/api/warehouse/discrepancies/:id/close", auth, async (req, res) => {
       include: { item: true, location: true },
     });
     if (!discrepancy) {
-      return res.status(404).json({ message: "??????????? ?? ???????." });
+      return res.status(404).json({ message: "Расхождение не найдено." });
     }
 
     if (discrepancy.status === "CLOSED") {
@@ -8263,13 +8263,13 @@ app.put("/api/warehouse/discrepancies/:id/close", auth, async (req, res) => {
     }
 
     if (!["ADMIN", "EMPLOYEE"].includes(req.user?.role)) {
-      return res.status(403).json({ message: "???????????? ????." });
+      return res.status(403).json({ message: "Недостаточно прав." });
     }
 
     if (discrepancy.delta < 0 && req.user?.role !== "ADMIN") {
       return res
         .status(403)
-        .json({ message: "?????? ????????????? ????? ??????????? ????????." });
+        .json({ message: "Только администратор может закрывать минусовые расхождения." });
     }
 
     await prisma.$transaction(async (tx) => {
@@ -8285,7 +8285,7 @@ app.put("/api/warehouse/discrepancies/:id/close", auth, async (req, res) => {
           itemId: discrepancy.itemId,
           qty: Math.trunc(discrepancy.delta),
           locationId: discrepancy.locationId,
-          comment: "?????????????? - (???????????? ???????????????)",
+          comment: "Корректировка - (закрытие расхождения)",
           userId: req.user?.id || null,
         });
       }
@@ -8305,9 +8305,9 @@ app.put("/api/warehouse/discrepancies/:id/close", auth, async (req, res) => {
   } catch (err) {
     console.error("discrepancy close error:", err);
     if (err.code === "NO_LOCATION") {
-      return res.status(400).json({ message: "??? ??????????? ?? ??????? ??????." });
+      return res.status(400).json({ message: "Нет привязки к ячейке товара." });
     }
-    res.status(500).json({ message: "?? ??????? ??????? ???????????." });
+    res.status(500).json({ message: "Не удалось закрыть расхождение." });
   }
 });
 
@@ -8567,7 +8567,7 @@ app.post("/api/warehouse/inventory/count", auth, async (req, res) => {
     if (err.code === "COUNT_MINUS_ONLY") {
       return res.status(400).json({ message: "COUNT_MINUS_ONLY", code: "COUNT_MINUS_ONLY" });
     }
-    res.status(500).json({ message: "?????? ??????????????. ????????? ???????." });
+    res.status(500).json({ message: "Ошибка инвентаризации. Проверьте данные." });
   }
 });
 
@@ -8597,9 +8597,9 @@ app.post("/api/warehouse/receiving", auth, async (req, res) => {
     }
 
     const commentParts = [
-      "??????? (???)",
-      locationId ? `??????=${locationId}` : "",
-      supplierName ? `?????????=${String(supplierName).trim()}` : "",
+      "Приход (ТСД)",
+      locationId ? `ячейка=${locationId}` : "",
+      supplierName ? `поставщик=${String(supplierName).trim()}` : "",
       docNo ? `???=${String(docNo).trim()}` : "",
     ].filter(Boolean);
     const baseComment = commentParts.join(" ");
@@ -8718,7 +8718,7 @@ app.post("/api/warehouse/move", auth, async (req, res) => {
         throw err;
       }
 
-      const moveComment = comment || `??????????? (???) ${from} > ${to}`;
+      const moveComment = comment || `Перемещение (ТСД) ${from} > ${to}`;
 
       await stockService.createMovementInTx(tx, {
         opId: opId ? `${opId}:OUT` : null,
@@ -8794,7 +8794,7 @@ app.post("/api/warehouse/putaway", auth, async (req, res) => {
         throw err;
       }
 
-      const moveComment = comment || `?????????? (???) ${from} > ${to}`;
+      const moveComment = comment || `Размещение (ТСД) ${from} > ${to}`;
 
       await stockService.createMovementInTx(tx, {
         opId: opId ? `${opId}:OUT` : null,
@@ -8962,7 +8962,7 @@ app.post("/api/warehouse/putaway/from-receiving", auth, async (req, res) => {
         throw err;
       }
 
-      const moveComment = `?????????? (???) ${receivingLocationId} > ${to}`;
+      const moveComment = `Размещение (ТСД) ${receivingLocationId} > ${to}`;
 
       if (line.sourceType === "INVENTORY_PLUS") {
         await stockService.createMovementInTx(tx, {
@@ -8973,7 +8973,7 @@ app.post("/api/warehouse/putaway/from-receiving", auth, async (req, res) => {
           locationId: to,
           fromLocationId: null,
           toLocationId: to,
-          comment: "?????????????? +",
+          comment: "Инвентаризация +",
           userId: req.user?.id || null,
         });
       } else {
@@ -9097,7 +9097,7 @@ app.post("/api/warehouse/pick", auth, async (req, res) => {
     if (!itemRow) return res.status(404).json({ message: "ITEM_NOT_FOUND" });
     if (!fromLoc) return res.status(404).json({ message: "LOCATION_NOT_FOUND" });
 
-    const pickComment = comment || `????? (???) ?? ${from}`;
+    const pickComment = comment || `Подбор (ТСД) из ${from}`;
     const movement = await prisma.$transaction(async (tx) => {
       const created = await stockService.createMovementInTx(tx, {
         opId: opId || null,
@@ -9186,7 +9186,7 @@ app.post("/api/warehouse/replen/execute", auth, async (req, res) => {
         throw err;
       }
 
-      const replComment = comment || `?????????? (???) ${from} > ${to}`;
+      const replComment = comment || `Пополнение (ТСД) ${from} > ${to}`;
 
       await stockService.createMovementInTx(tx, {
         opId: opId ? `${opId}:OUT` : null,
@@ -11977,7 +11977,7 @@ app.post("/api/warehouse/receiving/:poId/confirm", auth, async (req, res) => {
           itemId,
           qty: qtyInt,
           locationId: location.id,
-          comment: `??????? ?? ?????? ${order.number} [PO#${order.id}]`,
+          comment: `Приход по заказу ${order.number} [PO#${order.id}]`,
           refType: "PO",
           refId: String(order.id),
           userId: req.user?.id || null,
@@ -12608,7 +12608,7 @@ app.post("/api/purchase-orders/excel-file", auth, async (req, res) => {
 app.post("/api/orders/inbound", auth, async (req, res) => {
   try {
     if (!isWarehouseManager(req.user)) {
-      return res.status(403).json({ message: "??? ???????." });
+      return res.status(403).json({ message: "Нет доступа." });
     }
 
     const {
@@ -12623,10 +12623,10 @@ app.post("/api/orders/inbound", auth, async (req, res) => {
     } = req.body || {};
 
     if (!orderNumber || !customerName || !shippingAddress) {
-      return res.status(400).json({ message: "????????? ????? ??????, ?????????? ? ?????." });
+      return res.status(400).json({ message: "Заполните номер заказа, получателя и адрес." });
     }
     if (!Array.isArray(items) || items.length === 0) {
-      return res.status(400).json({ message: "???????? ??????? ??????." });
+      return res.status(400).json({ message: "Добавьте позиции заказа." });
     }
 
     const linesPayload = [];
@@ -12643,7 +12643,7 @@ app.post("/api/orders/inbound", auth, async (req, res) => {
     }
 
     if (linesPayload.length === 0) {
-      return res.status(400).json({ message: "???????? ??????? ??????." });
+      return res.status(400).json({ message: "Добавьте позиции заказа." });
     }
 
     const result = await prisma.$transaction(async (tx) => {
@@ -12715,10 +12715,10 @@ app.post("/api/orders/inbound", auth, async (req, res) => {
     res.status(201).json({ ok: true, order: result });
   } catch (err) {
     if (err.code === "ORDER_LOCKED") {
-      return res.status(409).json({ message: "????? ??? ? ?????? ??? ??????." });
+      return res.status(409).json({ message: "Заказ уже в работе или закрыт." });
     }
     console.error("orders inbound error:", err);
-    res.status(500).json({ message: "?????? ???????? ??????." });
+    res.status(500).json({ message: "Ошибка создания заказа." });
   }
 });
 
@@ -12727,7 +12727,7 @@ app.post("/api/integrations/orders/inbound", async (req, res) => {
   try {
     const apiKey = req.headers["x-api-key"] || req.headers["X-Api-Key"];
     if (!apiKey) {
-      return res.status(401).json({ message: "????????? ???? ??????????." });
+      return res.status(401).json({ message: "Укажите API-ключ интеграции." });
     }
     const hash = hashApiKey(String(apiKey));
     const profile = await prisma.orgProfile.findFirst({
@@ -12740,7 +12740,7 @@ app.post("/api/integrations/orders/inbound", async (req, res) => {
       },
     });
     if (!profile?.orgId) {
-      return res.status(401).json({ message: "???? ?????????? ?? ????????." });
+      return res.status(401).json({ message: "Ключ интеграции не найден." });
     }
     const store = requestContext.getStore();
     if (store) {
@@ -12760,10 +12760,10 @@ app.post("/api/integrations/orders/inbound", async (req, res) => {
     } = req.body || {};
 
     if (!orderNumber || !customerName || !shippingAddress) {
-      return res.status(400).json({ message: "????????? ????? ??????, ?????????? ? ?????." });
+      return res.status(400).json({ message: "Заполните номер заказа, получателя и адрес." });
     }
     if (!Array.isArray(items) || items.length === 0) {
-      return res.status(400).json({ message: "???????? ??????? ??????." });
+      return res.status(400).json({ message: "Добавьте позиции заказа." });
     }
 
     const linesPayload = [];
@@ -12780,7 +12780,7 @@ app.post("/api/integrations/orders/inbound", async (req, res) => {
     }
 
     if (linesPayload.length === 0) {
-      return res.status(400).json({ message: "???????? ??????? ??????." });
+      return res.status(400).json({ message: "Добавьте позиции заказа." });
     }
 
     const result = await prisma.$transaction(async (tx) => {
@@ -12852,10 +12852,10 @@ app.post("/api/integrations/orders/inbound", async (req, res) => {
     res.status(201).json({ ok: true, order: result });
   } catch (err) {
     if (err.code === "ORDER_LOCKED") {
-      return res.status(409).json({ message: "????? ??? ? ?????? ??? ??????." });
+      return res.status(409).json({ message: "Заказ уже в работе или закрыт." });
     }
     console.error("integration inbound error:", err);
-    res.status(500).json({ message: "?????? ???????? ??????." });
+    res.status(500).json({ message: "Ошибка создания заказа." });
   }
 });
 
@@ -12864,7 +12864,7 @@ app.post("/api/orders/import-batch", auth, requireAdmin, async (req, res) => {
   try {
     const { orders } = req.body || {};
     if (!Array.isArray(orders) || orders.length === 0) {
-      return res.status(400).json({ message: "???????? ?????? ??? ???????." });
+      return res.status(400).json({ message: "Передайте массив заказов." });
     }
 
     let created = 0;
@@ -12885,11 +12885,11 @@ app.post("/api/orders/import-batch", auth, requireAdmin, async (req, res) => {
       } = row;
 
       if (!orderNumber || !customerName || !shippingAddress) {
-        errors.push({ row: i + 1, error: "????????? ????? ??????, ?????????? ? ?????." });
+        errors.push({ row: i + 1, error: "Заполните номер заказа, получателя и адрес." });
         continue;
       }
       if (!Array.isArray(items) || items.length === 0) {
-        errors.push({ row: i + 1, error: "???????? ??????? ??????." });
+        errors.push({ row: i + 1, error: "Добавьте позиции заказа." });
         continue;
       }
 
@@ -12907,7 +12907,7 @@ app.post("/api/orders/import-batch", auth, requireAdmin, async (req, res) => {
       }
 
       if (linesPayload.length === 0) {
-        errors.push({ row: i + 1, error: "??? ???????? ????? ??????." });
+        errors.push({ row: i + 1, error: "Не удалось распознать товары заказа." });
         continue;
       }
 
@@ -12976,9 +12976,9 @@ app.post("/api/orders/import-batch", auth, requireAdmin, async (req, res) => {
         if (result.mode === "updated") updated += 1;
       } catch (err) {
         if (err.code === "ORDER_LOCKED") {
-          errors.push({ row: i + 1, error: "????? ??? ? ?????? ??? ??????." });
+          errors.push({ row: i + 1, error: "Заказ уже в работе или закрыт." });
         } else {
-          errors.push({ row: i + 1, error: "?????? ??????? ??????." });
+          errors.push({ row: i + 1, error: "Ошибка обработки заказа." });
           console.error("orders import row error:", err);
         }
       }
@@ -12987,7 +12987,7 @@ app.post("/api/orders/import-batch", auth, requireAdmin, async (req, res) => {
     res.json({ created, updated, errors });
   } catch (err) {
     console.error("orders import error:", err);
-    res.status(500).json({ message: "?????? ??????? ???????." });
+    res.status(500).json({ message: "Ошибка импорта заказов." });
   }
 });
 
@@ -12999,7 +12999,7 @@ app.post("/api/orders/test", auth, requireAdmin, async (req, res) => {
       orderBy: { id: "asc" },
     });
     if (!items.length) {
-      return res.status(400).json({ message: "??? ??????? ??? ????????? ??????." });
+      return res.status(400).json({ message: "Нет товаров для создания теста." });
     }
 
     const orderNumber = `TEST-${Date.now()}`;
@@ -13007,10 +13007,10 @@ app.post("/api/orders/test", auth, requireAdmin, async (req, res) => {
       data: {
         source: "TEST",
         orderNumber,
-        customerName: "???????? ??????????",
+        customerName: "Тестовый покупатель",
         customerPhone: null,
-        shippingAddress: "???????? ?????",
-        deliveryComment: "???????? ?????",
+        shippingAddress: "Тестовый адрес",
+        deliveryComment: "Тестовый заказ",
         lines: {
           create: items.map((item) => ({
             orgId: req.user.orgId || null,
@@ -13030,7 +13030,7 @@ app.post("/api/orders/test", auth, requireAdmin, async (req, res) => {
     res.status(201).json({ ok: true, order: created });
   } catch (err) {
     console.error("orders test error:", err);
-    res.status(500).json({ message: "?????? ???????? ????????? ??????." });
+    res.status(500).json({ message: "Ошибка создания тестового заказа." });
   }
 });
 
@@ -13047,7 +13047,7 @@ app.get("/api/integrations/api-key", auth, requireAdmin, async (req, res) => {
     });
   } catch (err) {
     console.error("get api key error:", err);
-    res.status(500).json({ message: "?????? ????????? ????? ??????????." });
+    res.status(500).json({ message: "Ошибка работы с API-ключом интеграции." });
   }
 });
 
@@ -13096,7 +13096,7 @@ app.post("/api/integrations/api-key/rotate", auth, requireAdmin, async (req, res
     });
   } catch (err) {
     console.error("rotate api key error:", err);
-    res.status(500).json({ message: "?????? ????????? ????? ??????????." });
+    res.status(500).json({ message: "Ошибка работы с API-ключом интеграции." });
   }
 });
 
@@ -13216,7 +13216,7 @@ app.get("/api/orders/queue", auth, async (req, res) => {
     res.json({ items: orders });
   } catch (err) {
     console.error("orders queue error:", err);
-    res.status(500).json({ message: "?????? ???????? ??????? ???????." });
+    res.status(500).json({ message: "Ошибка загрузки очереди заказов." });
   }
 });
 
@@ -13681,7 +13681,7 @@ app.get("/api/orders/:id/pick-skips", auth, async (req, res) => {
   try {
     const orderId = Number(req.params.id);
     if (!orderId || Number.isNaN(orderId)) {
-      return res.status(400).json({ message: "������������ ID ������." });
+      return res.status(400).json({ message: "Некорректный ID заказа." });
     }
 
     const order = await prisma.salesOrder.findUnique({
@@ -13689,7 +13689,7 @@ app.get("/api/orders/:id/pick-skips", auth, async (req, res) => {
       select: { id: true, assignedToUserId: true },
     });
     if (!order) {
-      return res.status(404).json({ message: "����� �� ������." });
+      return res.status(404).json({ message: "Заказ не найден." });
     }
 
     if (
@@ -13697,7 +13697,7 @@ app.get("/api/orders/:id/pick-skips", auth, async (req, res) => {
       order.assignedToUserId !== req.user.id &&
       !isWarehouseManager(req.user)
     ) {
-      return res.status(403).json({ message: "����� ��������� �� ������ �����������." });
+      return res.status(403).json({ message: "Заказ закреплен за другим сотрудником." });
     }
 
     const items = await prisma.salesOrderPickSkip.findMany({
@@ -13714,7 +13714,7 @@ app.get("/api/orders/:id/pick-skips", auth, async (req, res) => {
     res.json({ items });
   } catch (err) {
     console.error("orders pick skips list error:", err);
-    res.status(500).json({ message: "������ �������� ��������� ������." });
+    res.status(500).json({ message: "Ошибка при получении пропусков подбора." });
   }
 });
 
@@ -13729,19 +13729,19 @@ app.post("/api/orders/:id/pick-skips", auth, async (req, res) => {
     const comment = String(req.body?.comment || "").trim();
 
     if (!orderId || Number.isNaN(orderId)) {
-      return res.status(400).json({ message: "������������ ID ������." });
+      return res.status(400).json({ message: "Некорректный ID заказа." });
     }
     if (!lineId || Number.isNaN(lineId)) {
-      return res.status(400).json({ message: "������������ ������ ������." });
+      return res.status(400).json({ message: "Некорректная строка заказа." });
     }
     if (!reason) {
-      return res.status(400).json({ message: "������� ������� ��������." });
+      return res.status(400).json({ message: "Укажите причину пропуска." });
     }
     if (reason.length > 180) {
-      return res.status(400).json({ message: "������� �������� ������� ������� (�������� 180 ��������)." });
+      return res.status(400).json({ message: "Причина слишком длинная (максимум 180 символов)." });
     }
     if (comment.length > 500) {
-      return res.status(400).json({ message: "����������� ������� ������� (�������� 500 ��������)." });
+      return res.status(400).json({ message: "Комментарий слишком длинный (максимум 500 символов)." });
     }
 
     const locationId =
@@ -13754,10 +13754,10 @@ app.post("/api/orders/:id/pick-skips", auth, async (req, res) => {
         : Number(itemRaw);
 
     if (locationId !== null && (!locationId || Number.isNaN(locationId))) {
-      return res.status(400).json({ message: "������������ ������." });
+      return res.status(400).json({ message: "Некорректная ячейка." });
     }
     if (itemId !== null && (!itemId || Number.isNaN(itemId))) {
-      return res.status(400).json({ message: "������������ �����." });
+      return res.status(400).json({ message: "Некорректный товар." });
     }
 
     const item = await prisma.$transaction(async (tx) => {
@@ -13848,22 +13848,22 @@ app.post("/api/orders/:id/pick-skips", auth, async (req, res) => {
     res.json({ ok: true, item });
   } catch (err) {
     if (err.code === "ORDER_NOT_FOUND") {
-      return res.status(404).json({ message: "����� �� ������." });
+      return res.status(404).json({ message: "Заказ не найден." });
     }
     if (err.code === "LINE_NOT_FOUND") {
-      return res.status(404).json({ message: "������ ������ �� �������." });
+      return res.status(404).json({ message: "Строка заказа не найдена." });
     }
     if (err.code === "ITEM_MISMATCH") {
-      return res.status(400).json({ message: "����� �� ��������� �� ������� ������." });
+      return res.status(400).json({ message: "Товар не соответствует строке заказа." });
     }
     if (err.code === "NOT_ASSIGNED_TO_YOU") {
-      return res.status(403).json({ message: "����� ��������� �� ������ �����������." });
+      return res.status(403).json({ message: "Заказ закреплен за другим сотрудником." });
     }
     if (err.code === "BAD_STATUS") {
-      return res.status(400).json({ message: "������� �������� ������ ��� ������� � ������." });
+      return res.status(400).json({ message: "Заказ нельзя менять в текущем статусе." });
     }
     console.error("orders pick skip create error:", err);
-    res.status(500).json({ message: "������ ���������� ��������." });
+    res.status(500).json({ message: "Ошибка сохранения пропуска." });
   }
 });
 
@@ -13872,7 +13872,7 @@ app.post("/api/orders/:id/pick-skips/:skipId/restore", auth, async (req, res) =>
     const orderId = Number(req.params.id);
     const skipId = Number(req.params.skipId);
     if (!orderId || Number.isNaN(orderId) || !skipId || Number.isNaN(skipId)) {
-      return res.status(400).json({ message: "������������ ���������." });
+      return res.status(400).json({ message: "Некорректные параметры." });
     }
 
     const item = await prisma.$transaction(async (tx) => {
@@ -13921,16 +13921,16 @@ app.post("/api/orders/:id/pick-skips/:skipId/restore", auth, async (req, res) =>
     res.json({ ok: true, item });
   } catch (err) {
     if (err.code === "ORDER_NOT_FOUND") {
-      return res.status(404).json({ message: "����� �� ������." });
+      return res.status(404).json({ message: "Заказ не найден." });
     }
     if (err.code === "SKIP_NOT_FOUND") {
-      return res.status(404).json({ message: "������� �� ������." });
+      return res.status(404).json({ message: "Пропуск не найден." });
     }
     if (err.code === "NOT_ASSIGNED_TO_YOU") {
-      return res.status(403).json({ message: "����� ��������� �� ������ �����������." });
+      return res.status(403).json({ message: "Заказ закреплен за другим сотрудником." });
     }
     console.error("orders pick skip restore error:", err);
-    res.status(500).json({ message: "������ �������������� ��������." });
+    res.status(500).json({ message: "Ошибка восстановления пропуска." });
   }
 });
 
@@ -13938,7 +13938,7 @@ app.post("/api/orders/:id/pick-skips/restore-all", auth, async (req, res) => {
   try {
     const orderId = Number(req.params.id);
     if (!orderId || Number.isNaN(orderId)) {
-      return res.status(400).json({ message: "������������ ID ������." });
+      return res.status(400).json({ message: "Некорректный ID заказа." });
     }
 
     const result = await prisma.$transaction(async (tx) => {
@@ -13977,13 +13977,13 @@ app.post("/api/orders/:id/pick-skips/restore-all", auth, async (req, res) => {
     res.json({ ok: true, count: result.count || 0 });
   } catch (err) {
     if (err.code === "ORDER_NOT_FOUND") {
-      return res.status(404).json({ message: "����� �� ������." });
+      return res.status(404).json({ message: "Заказ не найден." });
     }
     if (err.code === "NOT_ASSIGNED_TO_YOU") {
-      return res.status(403).json({ message: "����� ��������� �� ������ �����������." });
+      return res.status(403).json({ message: "Заказ закреплен за другим сотрудником." });
     }
     console.error("orders pick skip restore all error:", err);
-    res.status(500).json({ message: "������ �������������� ���������." });
+    res.status(500).json({ message: "Ошибка восстановления пропусков." });
   }
 });
 
@@ -14138,22 +14138,22 @@ app.get("/api/orders/:id/pick-plan", auth, async (req, res) => {
   try {
     const id = Number(req.params.id);
     if (!id || Number.isNaN(id)) {
-      return res.status(400).json({ message: "???????????? ID ??????." });
+      return res.status(400).json({ message: "Некорректный ID заказа." });
     }
     const order = await prisma.salesOrder.findUnique({
       where: { id },
       include: { assignedToUser: { select: { id: true } } },
     });
-    if (!order) return res.status(404).json({ message: "????? ?? ??????." });
+    if (!order) return res.status(404).json({ message: "Заказ не найден." });
     if (order.assignedToUserId && order.assignedToUserId !== req.user.id) {
-      return res.status(403).json({ message: "????? ????????? ?? ?????? ???????????." });
+      return res.status(403).json({ message: "Заказ закреплен за другим сотрудником." });
     }
 
     const plan = await buildOrderPickPlan(id);
     res.json({ items: plan || [] });
   } catch (err) {
     console.error("orders pick plan error:", err);
-    res.status(500).json({ message: "?????? ?????????? ???????? ??????." });
+    res.status(500).json({ message: "Ошибка формирования плана подбора." });
   }
 });
 
@@ -14166,7 +14166,7 @@ app.post("/api/orders/:id/pick-confirm", auth, async (req, res) => {
     const amount = Math.trunc(Number(qty));
 
     if (!orderId || !line || !location || !Number.isFinite(amount) || amount <= 0) {
-      return res.status(400).json({ message: "������������ ��������� �������������." });
+      return res.status(400).json({ message: "Некорректные параметры подтверждения." });
     }
 
     const updated = await prisma.$transaction(async (tx) => {
@@ -14252,7 +14252,7 @@ app.post("/api/orders/:id/pick-confirm", auth, async (req, res) => {
             itemId: actualItemId,
             qty: syncDelta,
             locationId: location,
-            comment: `������������� �������� ����� ������� ������ ${order.orderNumber}`,
+            comment: `Синхронизация остатка перед подбором заказа ${order.orderNumber}`,
             refType: "ORDER",
             refId: String(orderId),
             userId: req.user?.id || null,
@@ -14288,7 +14288,7 @@ app.post("/api/orders/:id/pick-confirm", auth, async (req, res) => {
         qty: amount,
         locationId: location,
         fromLocationId: location,
-        comment: `����� �� ������ ${order.orderNumber}`,
+        comment: `Подбор по заказу ${order.orderNumber}`,
         refType: "ORDER",
         refId: String(orderId),
         userId: req.user?.id || null,
@@ -14343,16 +14343,16 @@ app.post("/api/orders/:id/pick-confirm", auth, async (req, res) => {
 
     res.json({ ok: true, order: updated });
   } catch (err) {
-    if (err.code === "ORDER_NOT_FOUND") return res.status(404).json({ message: "����� �� ������." });
-    if (err.code === "LINE_NOT_FOUND") return res.status(404).json({ message: "������ ������ �� �������." });
-    if (err.code === "NOT_ASSIGNED_TO_YOU") return res.status(403).json({ message: "����� ��������� �� ������ �����������." });
-    if (err.code === "BAD_STATUS") return res.status(400).json({ message: "����� �� � ������� ������." });
-    if (err.code === "QTY_EXCEEDS_REMAINING") return res.status(400).json({ message: "���������� ��������� ������� �� ������." });
-    if (err.code === "LINE_ITEM_NOT_LINKED") return res.status(400).json({ message: "������ ������ �� ������� � �������." });
+    if (err.code === "ORDER_NOT_FOUND") return res.status(404).json({ message: "Заказ не найден." });
+    if (err.code === "LINE_NOT_FOUND") return res.status(404).json({ message: "Строка заказа не найдена." });
+    if (err.code === "NOT_ASSIGNED_TO_YOU") return res.status(403).json({ message: "Заказ закреплен за другим сотрудником." });
+    if (err.code === "BAD_STATUS") return res.status(400).json({ message: "Заказ не в статусе подбора." });
+    if (err.code === "QTY_EXCEEDS_REMAINING") return res.status(400).json({ message: "Количество превышает остаток по строке." });
+    if (err.code === "LINE_ITEM_NOT_LINKED") return res.status(400).json({ message: "Строка заказа не связана с товаром." });
     if (err.code === "HOLD_QTY_BLOCKED") return res.status(409).json({ message: "\u041a\u043e\u043b\u0438\u0447\u0435\u0441\u0442\u0432\u043e \u0432 \u044f\u0447\u0435\u0439\u043a\u0435 \u0437\u0430\u0431\u043b\u043e\u043a\u0438\u0440\u043e\u0432\u0430\u043d\u043e (Hold).", detail: err.detail || null });
-    if (err.code === "INSUFFICIENT_QTY") return res.status(400).json({ message: "������������ ������� � ������." });
+    if (err.code === "INSUFFICIENT_QTY") return res.status(400).json({ message: "Недостаточно товара в ячейке." });
     console.error("orders pick confirm error:", err);
-    res.status(500).json({ message: "������ ������������� ������." });
+    res.status(500).json({ message: "Ошибка подтверждения подбора." });
   }
 });
 
@@ -14407,7 +14407,7 @@ app.get("/api/orders/:id/label", auth, async (req, res) => {
   try {
     const id = Number(req.params.id);
     if (!id || Number.isNaN(id)) {
-      return res.status(400).json({ message: "???????????? ID ??????." });
+      return res.status(400).json({ message: "Некорректный ID заказа." });
     }
     const order = await prisma.salesOrder.findUnique({
       where: { id },
@@ -14415,9 +14415,9 @@ app.get("/api/orders/:id/label", auth, async (req, res) => {
         lines: { include: { item: true }, orderBy: { id: "asc" } },
       },
     });
-    if (!order) return res.status(404).json({ message: "????? ?? ??????." });
+    if (!order) return res.status(404).json({ message: "Заказ не найден." });
     if (order.assignedToUserId && order.assignedToUserId !== req.user.id && !isWarehouseManager(req.user)) {
-      return res.status(403).json({ message: "????? ????????? ?? ?????? ???????????." });
+      return res.status(403).json({ message: "Заказ закреплен за другим сотрудником." });
     }
 
     const html = buildOrderLabelHtml(order);
@@ -14430,7 +14430,7 @@ app.get("/api/orders/:id/label", auth, async (req, res) => {
     res.send(html);
   } catch (err) {
     console.error("orders label error:", err);
-    res.status(500).json({ message: "?????? ?????? ????????." });
+    res.status(500).json({ message: "Ошибка печати этикетки." });
   }
 });
 
@@ -14606,18 +14606,18 @@ app.post("/api/orders/:id/passport-printed", auth, async (req, res) => {
   try {
     const id = Number(req.params.id);
     if (!id || Number.isNaN(id)) {
-      return res.status(400).json({ message: "������������ ID ������." });
+      return res.status(400).json({ message: "Некорректный ID заказа." });
     }
 
     const order = await prisma.salesOrder.findUnique({
       where: { id },
     });
-    if (!order) return res.status(404).json({ message: "����� �� ������." });
+    if (!order) return res.status(404).json({ message: "Заказ не найден." });
     if (order.assignedToUserId && order.assignedToUserId !== req.user.id && !isWarehouseManager(req.user)) {
-      return res.status(403).json({ message: "����� ��������� �� ������ �����������." });
+      return res.status(403).json({ message: "Заказ закреплен за другим сотрудником." });
     }
     if (!["PICKED", "PACKED", "READY_TO_SHIP", "SHIPPED"].includes(order.status)) {
-      return res.status(400).json({ message: "������ �������� �������� ����� ������." });
+      return res.status(400).json({ message: "Нельзя печатать паспорт в этом статусе заказа." });
     }
 
     const now = new Date();
@@ -14638,7 +14638,7 @@ app.post("/api/orders/:id/passport-printed", auth, async (req, res) => {
     res.json({ ok: true, order: updated });
   } catch (err) {
     console.error("orders passport printed error:", err);
-    res.status(500).json({ message: "������ �������� ������ ��������." });
+    res.status(500).json({ message: "Ошибка отметки печати паспорта." });
   }
 });
 
@@ -14812,7 +14812,7 @@ async function checkDbReadyForBackground() {
     await prisma.$queryRaw`SELECT "orgId" FROM "WarehouseTask" LIMIT 1`;
     return true;
   } catch (err) {
-    console.error("[DB ready check] ??????:", err?.message || err);
+    console.error("[DB ready check] ошибка:", err?.message || err);
     return false;
   }
 }
@@ -15477,27 +15477,27 @@ async function startBackgroundTasks() {
   const ready = await checkDbReadyForBackground();
   if (!ready) {
     console.error(
-      "[DB ready check] ???? ?? ??????, ??????? ?????? ?? ??????????? (????????? db:deploy)."
+      "[DB ready check] БД не готова, фоновые задачи не запущены (выполните db:deploy)."
     );
     return;
   }
 
   backgroundTasksStarted = true;
-  console.log("[DB ready check] OK, ???? ??????.");
+  console.log("[DB ready check] OK, БД готова.");
 
-  setInterval(sendSafetyReminders, 1000 * 60 * 60); // ??? ? ???
+  setInterval(sendSafetyReminders, 1000 * 60 * 60); // раз в час
   sendSafetyReminders();
 
   setInterval(checkAutoReorders, AUTO_REORDER_INTERVAL_MS);
   checkAutoReorders();
 
   setInterval(() => {
-    // 1) ??????????? ?? ??????? ??????
+    // 1) Уведомления по задачам склада
     checkWarehouseTaskNotifications().catch((err) =>
-      console.error("?????? ? checkWarehouseTaskNotifications:", err)
+      console.error("ошибка в checkWarehouseTaskNotifications:", err)
     );
 
-    // 2) ? 09:00 ? 18:00 ?????????? ?????? ?? ?????? ????????
+    // 2) В 18:00 отправляем сводку по остаткам
     const now = new Date();
     const hours = now.getHours(); // 0..23
     const minutes = now.getMinutes(); // 0..59
@@ -15507,7 +15507,7 @@ async function startBackgroundTasks() {
       lastLowStockReportDate = todayKey;
 
       sendDailyLowStockSummary().catch((err) =>
-        console.error("?????? ? sendDailyLowStockSummary:", err)
+        console.error("ошибка в sendDailyLowStockSummary:", err)
       );
     }
   }, 60 * 1000);
