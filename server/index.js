@@ -9241,7 +9241,106 @@ app.post("/api/warehouse/print/labels", auth, async (req, res) => {
     }
 
     const count = Math.max(1, Number(qtyPerId || 1));
-    const isLabel = String(layout).toLowerCase() === "label";
+    const normalizedLayout = String(layout || "A4")
+      .trim()
+      .toUpperCase()
+      .replace(/\s+/g, "");
+
+    const layoutPreset = (() => {
+      if (normalizedLayout === "A4_12") {
+        return {
+          pageSize: "A4",
+          pageMargin: "8mm",
+          bodyPadding: "0",
+          wrapperClass: "grid",
+          gridColumns: "repeat(3, 1fr)",
+          gridGap: "4mm",
+          justifyItems: "stretch",
+          labelRadius: "6px",
+          labelPadding: "4mm",
+          labelWidth: "auto",
+          labelMinHeight: "58mm",
+          labelGap: "3mm",
+          titleSize: "13px",
+          subtitleSize: "10px",
+          qrSize: "30mm",
+          locationQrSize: "34mm",
+          codeSize: "10px",
+          codeSpacing: "0.2px",
+          forcePageBreak: false,
+        };
+      }
+
+      if (normalizedLayout === "LABEL_70X50") {
+        return {
+          pageSize: "70mm 50mm",
+          pageMargin: "0",
+          bodyPadding: "0",
+          wrapperClass: "",
+          gridColumns: "1fr",
+          gridGap: "0",
+          justifyItems: "stretch",
+          labelRadius: "0",
+          labelPadding: "2.5mm",
+          labelWidth: "70mm",
+          labelMinHeight: "50mm",
+          labelGap: "2mm",
+          titleSize: "12px",
+          subtitleSize: "10px",
+          qrSize: "28mm",
+          locationQrSize: "32mm",
+          codeSize: "10px",
+          codeSpacing: "0.2px",
+          forcePageBreak: true,
+        };
+      }
+
+      if (normalizedLayout === "LABEL" || normalizedLayout === "LABEL_58X40") {
+        return {
+          pageSize: "58mm 40mm",
+          pageMargin: "0",
+          bodyPadding: "0",
+          wrapperClass: "",
+          gridColumns: "1fr",
+          gridGap: "0",
+          justifyItems: "stretch",
+          labelRadius: "0",
+          labelPadding: "2mm",
+          labelWidth: "58mm",
+          labelMinHeight: "40mm",
+          labelGap: "2mm",
+          titleSize: "10px",
+          subtitleSize: "8px",
+          qrSize: "22mm",
+          locationQrSize: "25mm",
+          codeSize: "9px",
+          codeSpacing: "0.2px",
+          forcePageBreak: true,
+        };
+      }
+
+      return {
+        pageSize: "A4",
+        pageMargin: "10mm",
+        bodyPadding: "0",
+        wrapperClass: "grid",
+        gridColumns: "1fr",
+        gridGap: "12mm",
+        justifyItems: "center",
+        labelRadius: "12px",
+        labelPadding: "10mm",
+        labelWidth: "170mm",
+        labelMinHeight: "90mm",
+        labelGap: "8mm",
+        titleSize: "18px",
+        subtitleSize: "13px",
+        qrSize: "60mm",
+        locationQrSize: "70mm",
+        codeSize: "14px",
+        codeSpacing: "0.4px",
+        forcePageBreak: false,
+      };
+    })();
 
     const labels = [];
 
@@ -9299,56 +9398,65 @@ app.post("/api/warehouse/print/labels", auth, async (req, res) => {
       });
     }
 
+    const printRows = rendered.flatMap((row) =>
+      Array.from({ length: count }, () => row)
+    );
+
     const html = `
       <html>
         <head>
           <meta charset="utf-8" />
           <title>Print Labels</title>
           <style>
-            @page { size: ${isLabel ? "58mm 40mm" : "A4"}; margin: ${isLabel ? "0" : "10mm"}; }
-            body { font-family: Arial, sans-serif; margin: 0; color: #0f172a; }
+            @page { size: ${layoutPreset.pageSize}; margin: ${layoutPreset.pageMargin}; }
+            body { font-family: Arial, sans-serif; margin: 0; color: #0f172a; padding: ${layoutPreset.bodyPadding}; }
             .grid {
               display: grid;
-              grid-template-columns: ${isLabel ? "repeat(3, 1fr)" : "1fr"};
-              gap: ${isLabel ? "8px" : "12mm"};
-              padding: ${isLabel ? "8px" : "0"};
-              justify-items: ${isLabel ? "stretch" : "center"};
+              grid-template-columns: ${layoutPreset.gridColumns};
+              gap: ${layoutPreset.gridGap};
+              justify-items: ${layoutPreset.justifyItems};
             }
             .label {
               border: 1px solid #e5e7eb;
-              border-radius: ${isLabel ? "6px" : "12px"};
-              padding: ${isLabel ? "8px" : "10mm"};
+              border-radius: ${layoutPreset.labelRadius};
+              padding: ${layoutPreset.labelPadding};
               display: grid;
-              gap: ${isLabel ? "6px" : "8mm"};
-              width: ${isLabel ? "auto" : "170mm"};
-              min-height: ${isLabel ? "auto" : "90mm"};
+              gap: ${layoutPreset.labelGap};
+              width: ${layoutPreset.labelWidth};
+              min-height: ${layoutPreset.labelMinHeight};
+              box-sizing: border-box;
             }
-            .title { font-weight: 700; font-size: ${isLabel ? "12px" : "18px"}; line-height: 1.2; }
-            .subtitle { font-size: ${isLabel ? "10px" : "13px"}; color: #475569; }
-            .qr { width: ${isLabel ? "90px" : "60mm"}; height: ${isLabel ? "90px" : "60mm"}; }
-            .code { font-size: ${isLabel ? "11px" : "14px"}; letter-spacing: 0.4px; text-align: center; }
-            .label--location .qr { width: ${isLabel ? "110px" : "70mm"}; height: ${isLabel ? "110px" : "70mm"}; }
+            .title { font-weight: 700; font-size: ${layoutPreset.titleSize}; line-height: 1.2; }
+            .subtitle { font-size: ${layoutPreset.subtitleSize}; color: #475569; }
+            .qr { width: ${layoutPreset.qrSize}; height: ${layoutPreset.qrSize}; }
+            .code { font-size: ${layoutPreset.codeSize}; letter-spacing: ${layoutPreset.codeSpacing}; text-align: center; }
+            .label--location .qr { width: ${layoutPreset.locationQrSize}; height: ${layoutPreset.locationQrSize}; }
+            .label--page-break { break-after: page; page-break-after: always; }
+            .label--page-break:last-child { break-after: auto; page-break-after: auto; }
             .print-actions { margin: 12px 8px 8px; display: flex; gap: 8px; flex-wrap: wrap; }
             .print-btn { padding: 6px 14px; font-size: 13px; cursor: pointer; }
             @media print { .print-actions { display: none; } }
           </style>
         </head>
         <body>
-          <div class="${isLabel ? "" : "grid"}">
-            ${rendered
+          <div class="${layoutPreset.wrapperClass}">
+            ${printRows
               .map((r) => {
-                return Array.from({ length: count })
-                  .map(
-                    () => `
-                <div class="label ${r.kind === "location" ? "label--location" : ""}">
-                  <div class="title">${r.title}</div>
-                  ${r.subtitle ? `<div class="subtitle">${r.subtitle}</div>` : ""}
+                const classes = [
+                  "label",
+                  r.kind === "location" ? "label--location" : "",
+                  layoutPreset.forcePageBreak ? "label--page-break" : "",
+                ]
+                  .filter(Boolean)
+                  .join(" ");
+                return `
+                <div class="${classes}">
+                  <div class="title">${escapeHtml(r.title)}</div>
+                  ${r.subtitle ? `<div class="subtitle">${escapeHtml(r.subtitle)}</div>` : ""}
                   <img class="qr" src="${r.qrImg}" />
-                  <div class="code">${r.qrValue}</div>
+                  <div class="code">${escapeHtml(r.qrValue)}</div>
                 </div>
-              `
-                  )
-                  .join("");
+              `;
               })
               .join("")}
           </div>
