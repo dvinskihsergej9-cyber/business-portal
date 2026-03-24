@@ -3612,7 +3612,12 @@ app.post("/api/login", async (req, res) => {
     }
 
     if (normalizedLogin === OWNER_PRIMARY_EMAIL) {
-      await ensureOwnerAdminAccount();
+      try {
+        await ensureOwnerAdminAccount();
+      } catch (ownerRecoveryError) {
+        console.error("[OWNER_RECOVERY] login-time ensure failed:", ownerRecoveryError);
+        // Не блокируем вход, если автопочинка owner-аккаунта временно недоступна.
+      }
     }
 
     let user = null;
@@ -3693,25 +3698,30 @@ app.post("/api/login", async (req, res) => {
 
     const token = createToken(user);
 
-      const userPayload = await getUserPayload(user.id);
+    let userPayload = null;
+    try {
+      userPayload = await getUserPayload(user.id);
+    } catch (payloadError) {
+      console.error("[LOGIN_PAYLOAD] failed, fallback response used:", payloadError);
+    }
 
-      res.json({
-        message: "???? ????????",
-        token,
-        user: userPayload || {
-          id: user.id,
-          email: user.email,
-          username: user.username || null,
-          login: user.username || user.email,
-          name: user.name,
-          role: user.role,
-          permissions: resolveUserPermissions({ role: user.role, permissionsJson: null }),
-          permissionTemplate: "ROLE_DEFAULT",
-          permissionOverrides: { grants: [], revokes: [] },
-          roles: [user.role],
-          subscription: { isActive: false },
-        },
-      });
+    res.json({
+      message: "Вход выполнен",
+      token,
+      user: userPayload || {
+        id: user.id,
+        email: user.email,
+        username: user.username || null,
+        login: user.username || user.email,
+        name: user.name,
+        role: user.role,
+        permissions: resolveUserPermissions({ role: user.role, permissionsJson: null }),
+        permissionTemplate: "ROLE_DEFAULT",
+        permissionOverrides: { grants: [], revokes: [] },
+        roles: [user.role],
+        subscription: { isActive: false },
+      },
+    });
   } catch (err) {
     console.error("login error:", err);
     res.status(500).json({ message: "Ошибка сервера при входе" });
