@@ -374,6 +374,7 @@ export const WAREHOUSE_SECTION_PERMISSION_MAP = Object.freeze(
         entry.key,
       ])
     ),
+    items: PERMISSION_KEYS.WAREHOUSE_LOCATIONS,
     holds: PERMISSION_KEYS.WAREHOUSE_MANAGE,
   }
 );

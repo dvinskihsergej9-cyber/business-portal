@@ -38,6 +38,7 @@ const WAREHOUSE_EMOJI = {
   transactions: "\uD83D\uDD01",
   revision: "\uD83E\uDDFE",
   locations: "📍",
+  items: "📦",
   queue: "🚚",
   tsd: "📱",
   qr: "🏷️",
@@ -57,6 +58,7 @@ const WAREHOUSE_ICON_FALLBACK = {
   movement: "\uD83D\uDCE6",
   transactions: "\uD83D\uDD01",
   locations: "LOC",
+  items: "\u0422\u041e\u0412",
   queue: "QUEUE",
   tsd: "TSD",
   qr: "QR",
@@ -78,6 +80,7 @@ const WAREHOUSE_IMAGE = {
   revision: WAREHOUSE_EMBEDDED_ICONS.revision,
   suppliers: WAREHOUSE_EMBEDDED_ICONS.suppliers,
   locations: WAREHOUSE_EMBEDDED_ICONS.locations,
+  items: WAREHOUSE_EMBEDDED_ICONS.inventory,
   queue: WAREHOUSE_EMBEDDED_ICONS.queue,
   tsd: WAREHOUSE_EMBEDDED_ICONS.tsd,
 };
@@ -229,6 +232,7 @@ export default function Warehouse({
     "revision",
     "suppliers",
     "locations",
+    "items",
     "queue",
     "tsd",
   ];
@@ -2409,6 +2413,7 @@ export default function Warehouse({
       { key: "revision", title: "\u0420\u0435\u0432\u0438\u0437\u0438\u044f", subtitle: "\u0421\u043d\u0438\u043c\u043e\u043a \u0440\u0430\u0441\u0445\u043e\u0436\u0434\u0435\u043d\u0438\u0439 \u043f\u043e \u043a\u043e\u043d\u0442\u0440\u043e\u043b\u044e \u044f\u0447\u0435\u0435\u043a." },
       { key: "suppliers", title: "\u041f\u043e\u0441\u0442\u0430\u0432\u0449\u0438\u043a\u0438", subtitle: "\u041f\u043e\u0441\u0442\u0430\u0432\u0449\u0438\u043a\u0438 \u0438 \u0437\u0430\u043a\u0430\u0437\u044b \u043f\u043e\u0441\u0442\u0430\u0432\u0449\u0438\u043a\u0443." },
       { key: "locations", title: "\u0421\u043f\u0440\u0430\u0432\u043e\u0447\u043d\u0438\u043a \u044f\u0447\u0435\u0435\u043a", subtitle: "\u0421\u043e\u0437\u0434\u0430\u043d\u0438\u0435 \u044f\u0447\u0435\u0435\u043a \u0438 \u043f\u0435\u0447\u0430\u0442\u044c QR-\u044d\u0442\u0438\u043a\u0435\u0442\u043e\u043a." },
+      { key: "items", title: "\u0421\u043f\u0440\u0430\u0432\u043e\u0447\u043d\u0438\u043a \u0442\u043e\u0432\u0430\u0440\u043e\u0432", subtitle: "\u0412\u044b\u0431\u043e\u0440 \u0442\u043e\u0432\u0430\u0440\u043e\u0432 \u0438 \u043f\u0435\u0447\u0430\u0442\u044c QR-\u044d\u0442\u0438\u043a\u0435\u0442\u043e\u043a." },
       { key: "queue", title: "\u041c\u0430\u0448\u0438\u043d\u044b \u043f\u043e\u0441\u0442\u0430\u0432\u0449\u0438\u043a\u043e\u0432 \u0432 \u043e\u0447\u0435\u0440\u0435\u0434\u0438", subtitle: "\u041e\u0447\u0435\u0440\u0435\u0434\u044c \u043d\u0430 \u0440\u0430\u0437\u0433\u0440\u0443\u0437\u043a\u0443, \u0432\u043e\u0440\u043e\u0442\u0430 \u0438 \u0432\u0440\u0435\u043c\u044f." },
       { key: "tsd", title: "\u041c\u043e\u0431\u0438\u043b\u044c\u043d\u044b\u0439 \u0422\u0421\u0414", subtitle: "\u0421\u043a\u0430\u043d\u0438\u0440\u043e\u0432\u0430\u043d\u0438\u0435 \u0448\u0442\u0440\u0438\u0445\u043a\u043e\u0434\u043e\u0432 \u0438 \u0431\u044b\u0441\u0442\u0440\u044b\u0435 \u043e\u043f\u0435\u0440\u0430\u0446\u0438\u0438." },
     ],
@@ -3549,10 +3554,16 @@ export default function Warehouse({
 
         <div className="locations-section" ref={locationsRef}>
 
-          <WarehouseLocationsPanel />
+          <WarehouseLocationsPanel mode="locations" />
 
         </div>
 
+      )}
+
+      {sectionSet.has("items") && section === "items" && (
+        <div className="locations-section">
+          <WarehouseLocationsPanel mode="items" />
+        </div>
       )}
 
 

@@ -14,7 +14,7 @@ const LAYOUT_OPTIONS = [
   { value: "LABEL_70X50", label: "Стикер 70x50 мм" },
 ];
 
-export default function WarehouseLocationsPanel() {
+export default function WarehouseLocationsPanel({ mode = "both" }) {
   const [locations, setLocations] = useState([]);
   const [loading, setLoading] = useState(true);
   const [items, setItems] = useState([]);
@@ -23,7 +23,9 @@ export default function WarehouseLocationsPanel() {
   const [message, setMessage] = useState("");
   const [createLoading, setCreateLoading] = useState(false);
   const [actionLoading, setActionLoading] = useState(false);
-  const [subtab, setSubtab] = useState("location");
+  const [subtab, setSubtab] = useState(
+    mode === "items" ? "item" : "location"
+  );
   const [editLoading, setEditLoading] = useState(false);
   const [deleteLoading, setDeleteLoading] = useState(false);
   const [qrResetLoading, setQrResetLoading] = useState(false);
@@ -49,6 +51,16 @@ export default function WarehouseLocationsPanel() {
     rack: "",
     level: "",
   });
+
+  useEffect(() => {
+    if (mode === "items") {
+      setSubtab("item");
+      return;
+    }
+    if (mode === "locations") {
+      setSubtab("location");
+    }
+  }, [mode]);
 
   const authHeaders = useMemo(() => {
     const token = localStorage.getItem("token");
@@ -436,6 +448,7 @@ export default function WarehouseLocationsPanel() {
 
   return (
     <div className="warehouse-locations">
+      {mode !== "items" && (
       <div style={{ display: "grid", gap: 6 }}>
         <div style={{ fontSize: 18, fontWeight: 700 }}>
           {"Справочник ячеек"}
@@ -444,9 +457,11 @@ export default function WarehouseLocationsPanel() {
           {"Создайте ячейку, создайте QR-этикетку и используйте её в ТСД."}
         </div>
       </div>
+      )}
       {error && <div className="alert alert--error">{error}</div>}
       {message && <div className="alert alert--success">{message}</div>}
 
+      {mode === "both" && (
       <div className="tabs tabs--sm">
         <button
           type="button"
@@ -468,8 +483,9 @@ export default function WarehouseLocationsPanel() {
           {"Товары / QR"}
         </button>
       </div>
+      )}
 
-      {subtab === "location" && (
+      {(mode === "locations" || subtab === "location") && (
         <div className="warehouse-locations__grid">
           <div className="card">
             <h3 className="card__title">{`Создать ячейку`}</h3>
@@ -792,7 +808,7 @@ export default function WarehouseLocationsPanel() {
         </div>
       )}
 
-      {subtab === "item" && (
+      {(mode === "items" || subtab === "item") && (
         <div className="warehouse-locations__grid warehouse-locations__grid--single">
           <div className="card">
             <h3 className="card__title">{`QR для товара`}</h3>
@@ -898,12 +914,12 @@ export default function WarehouseLocationsPanel() {
         </div>
       )}
 
-      {loading && (
+      {loading && (mode !== "items") && (
         <div className="text-muted">
           {`Загрузка ячеек...`}
         </div>
       )}
-      {itemsLoading && (
+      {itemsLoading && (mode !== "locations") && (
         <div className="text-muted">
           {`Загрузка товаров...`}
         </div>
