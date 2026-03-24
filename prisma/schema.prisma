@@ -284,12 +284,18 @@ model WarehouseTask {
   updatedAt      DateTime  @updatedAt
   title          String
   description    String?
+  taskPhotosJson String?
   dueDate        DateTime?
   status         String    @default("NEW") // NEW / IN_PROGRESS / DONE / CANCELLED
   executorUserId Int?
   executorUser   User?     @relation("WarehouseTaskExecutor", fields: [executorUserId], references: [id])
   executorName   String?
   executorChatId String?
+  responseText         String?
+  responsePhotosJson   String?
+  responseUpdatedAt    DateTime?
+  responseAuthorUserId Int?
+  responseAuthorName   String?
   assignerId     Int
   assigner       User      @relation(fields: [assignerId], references: [id])
   lastReminderAt DateTime?

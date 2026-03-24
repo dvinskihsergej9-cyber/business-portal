@@ -197,6 +197,77 @@ const TASK_STATUS_OPTIONS = [
 
 ];
 
+const TASK_ATTACHMENT_MAX_COUNT = 5;
+const TASK_ATTACHMENT_MAX_BYTES = 2 * 1024 * 1024;
+const TASK_ATTACHMENT_MAX_SIDE = 1400;
+const TASK_ATTACHMENT_ALLOWED_TYPES = new Set([
+  "image/jpeg",
+  "image/png",
+  "image/webp",
+]);
+
+async function fileToDataUrl(file) {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => resolve(String(reader.result || ""));
+    reader.onerror = () => reject(new Error("Не удалось прочитать фото."));
+    reader.readAsDataURL(file);
+  });
+}
+
+async function prepareTaskAttachmentDataUrl(file) {
+  const initialDataUrl = await fileToDataUrl(file);
+  const image = await new Promise((resolve, reject) => {
+    const img = new Image();
+    img.onload = () => resolve(img);
+    img.onerror = () => reject(new Error("Не удалось обработать фото."));
+    img.src = initialDataUrl;
+  });
+  const srcW = Number(image.width) || 0;
+  const srcH = Number(image.height) || 0;
+  if (!srcW || !srcH) return initialDataUrl;
+
+  const scale = Math.min(1, TASK_ATTACHMENT_MAX_SIDE / Math.max(srcW, srcH));
+  const canvas = document.createElement("canvas");
+  canvas.width = Math.max(1, Math.round(srcW * scale));
+  canvas.height = Math.max(1, Math.round(srcH * scale));
+  const ctx = canvas.getContext("2d");
+  if (!ctx) return initialDataUrl;
+  ctx.drawImage(image, 0, 0, canvas.width, canvas.height);
+
+  const preferredType =
+    TASK_ATTACHMENT_ALLOWED_TYPES.has(String(file?.type || "").toLowerCase()) &&
+    String(file?.type || "").toLowerCase() !== "image/png"
+      ? String(file.type).toLowerCase()
+      : "image/jpeg";
+
+  const qualitySteps = [0.9, 0.82, 0.74, 0.66, 0.58];
+  for (const quality of qualitySteps) {
+    const dataUrl = canvas.toDataURL(preferredType, quality);
+    const estimatedBytes = Math.floor((dataUrl.length * 3) / 4);
+    if (estimatedBytes <= TASK_ATTACHMENT_MAX_BYTES) return dataUrl;
+  }
+  return canvas.toDataURL("image/jpeg", 0.55);
+}
+
+async function buildTaskAttachmentPayload(file) {
+  const mimeType = String(file?.type || "").toLowerCase();
+  if (!TASK_ATTACHMENT_ALLOWED_TYPES.has(mimeType)) {
+    throw new Error("Допустимы только фото JPG, PNG или WEBP.");
+  }
+  const dataUrl = await prepareTaskAttachmentDataUrl(file);
+  const sizeBytes = Math.floor((dataUrl.length * 3) / 4);
+  if (sizeBytes > TASK_ATTACHMENT_MAX_BYTES) {
+    throw new Error("Одно фото слишком большое. Максимум 2 МБ.");
+  }
+  return {
+    fileName: String(file?.name || "photo.jpg"),
+    mimeType: mimeType || "image/jpeg",
+    sizeBytes,
+    dataUrl,
+  };
+}
+
 
 
 const PO_STATUS_LABELS = {
@@ -388,8 +459,12 @@ export default function Warehouse({
   const [taskSaving, setTaskSaving] = useState(false);
 
   const [taskStatusSavingId, setTaskStatusSavingId] = useState(null);
+  const [taskResponseSavingId, setTaskResponseSavingId] = useState(null);
 
   const [taskError, setTaskError] = useState("");
+  const [taskPhotoFiles, setTaskPhotoFiles] = useState([]);
+  const [taskResponseDrafts, setTaskResponseDrafts] = useState({});
+  const [taskResponsePhotoFiles, setTaskResponsePhotoFiles] = useState({});
 
 
 
@@ -1444,6 +1519,73 @@ export default function Warehouse({
 
   // ===== ХЕЛПЕРЫ ДЛЯ ЗАДАЧ =====
 
+  const handleTaskPhotoPick = (event) => {
+    const picked = Array.from(event.target.files || []);
+    event.target.value = "";
+    if (!picked.length) return;
+    setTaskError("");
+    setTaskPhotoFiles((prev) => {
+      const existingKeys = new Set(
+        prev.map((file) => `${file.name}-${file.size}-${file.lastModified}`)
+      );
+      const next = [...prev];
+      for (const file of picked) {
+        const key = `${file.name}-${file.size}-${file.lastModified}`;
+        if (!existingKeys.has(key)) {
+          next.push(file);
+          existingKeys.add(key);
+        }
+      }
+      if (next.length > TASK_ATTACHMENT_MAX_COUNT) {
+        setTaskError(`Можно прикрепить не более ${TASK_ATTACHMENT_MAX_COUNT} фото.`);
+        return next.slice(0, TASK_ATTACHMENT_MAX_COUNT);
+      }
+      return next;
+    });
+  };
+
+  const removeTaskPhoto = (indexToRemove) => {
+    setTaskPhotoFiles((prev) => prev.filter((_, index) => index !== indexToRemove));
+  };
+
+  const handleTaskResponsePhotoPick = (taskId, event) => {
+    const picked = Array.from(event.target.files || []);
+    event.target.value = "";
+    if (!picked.length) return;
+    setTaskError("");
+    setTaskResponsePhotoFiles((prev) => {
+      const current = Array.isArray(prev[taskId]) ? prev[taskId] : [];
+      const existingKeys = new Set(
+        current.map((file) => `${file.name}-${file.size}-${file.lastModified}`)
+      );
+      const next = [...current];
+      for (const file of picked) {
+        const key = `${file.name}-${file.size}-${file.lastModified}`;
+        if (!existingKeys.has(key)) {
+          next.push(file);
+          existingKeys.add(key);
+        }
+      }
+      if (next.length > TASK_ATTACHMENT_MAX_COUNT) {
+        setTaskError(`Можно прикрепить не более ${TASK_ATTACHMENT_MAX_COUNT} фото.`);
+      }
+      return {
+        ...prev,
+        [taskId]: next.slice(0, TASK_ATTACHMENT_MAX_COUNT),
+      };
+    });
+  };
+
+  const removeTaskResponsePhoto = (taskId, indexToRemove) => {
+    setTaskResponsePhotoFiles((prev) => {
+      const current = Array.isArray(prev[taskId]) ? prev[taskId] : [];
+      return {
+        ...prev,
+        [taskId]: current.filter((_, index) => index !== indexToRemove),
+      };
+    });
+  };
+
   const handleCreateTask = async (e) => {
 
     e.preventDefault();
@@ -1456,11 +1598,18 @@ export default function Warehouse({
 
     try {
 
+      const taskPhotos = [];
+      for (const file of taskPhotoFiles) {
+        taskPhotos.push(await buildTaskAttachmentPayload(file));
+      }
+
       const body = {
 
         title: taskForm.title.trim(),
 
         description: taskForm.description?.trim() || null,
+
+        taskPhotos,
 
         dueDate: taskForm.dueDate
           ? new Date(taskForm.dueDate).toISOString()
@@ -1507,6 +1656,7 @@ export default function Warehouse({
         executorUserId: "",
 
       });
+      setTaskPhotoFiles([]);
 
 
 
@@ -1524,6 +1674,41 @@ export default function Warehouse({
 
     }
 
+  };
+
+  const handleTaskResponseSave = async (taskId) => {
+    setTaskResponseSavingId(taskId);
+    setTaskError("");
+    try {
+      const responseText = String(taskResponseDrafts[taskId] || "").trim();
+      const responseFiles = Array.isArray(taskResponsePhotoFiles[taskId])
+        ? taskResponsePhotoFiles[taskId]
+        : [];
+      const responsePhotos = [];
+      for (const file of responseFiles) {
+        responsePhotos.push(await buildTaskAttachmentPayload(file));
+      }
+      const res = await fetch(`${API}/warehouse/tasks/${taskId}/response`, {
+        method: "PUT",
+        headers: authHeaders,
+        body: JSON.stringify({
+          responseText: responseText || null,
+          responsePhotos,
+        }),
+      });
+      const data = await readResponsePayload(res);
+      if (!res.ok) {
+        throw new Error(data?.message || "Ошибка сохранения ответа по задаче.");
+      }
+      setTaskResponseDrafts((prev) => ({ ...prev, [taskId]: "" }));
+      setTaskResponsePhotoFiles((prev) => ({ ...prev, [taskId]: [] }));
+      await loadTasks();
+    } catch (e) {
+      console.error(e);
+      setTaskError(e.message || "Ошибка сохранения ответа по задаче.");
+    } finally {
+      setTaskResponseSavingId(null);
+    }
   };
 
 
@@ -1624,6 +1809,10 @@ export default function Warehouse({
           t.title,
 
           t.description,
+
+          t.responseText,
+
+          t.responseAuthorName,
 
           t.executorUser?.name,
 
@@ -3194,6 +3383,52 @@ export default function Warehouse({
                     </select>
                   </div>
 
+                  <div className="form__group">
+                    <label className="form__label">
+                      Фото к задаче (до {TASK_ATTACHMENT_MAX_COUNT} шт.)
+                    </label>
+                    <input
+                      type="file"
+                      className="form__input"
+                      accept="image/jpeg,image/png,image/webp"
+                      multiple
+                      onChange={handleTaskPhotoPick}
+                    />
+                    <div className="form__hint">
+                      Поддерживаются JPG, PNG, WEBP. Максимум 2 МБ на фото.
+                    </div>
+                    {taskPhotoFiles.length > 0 && (
+                      <div style={{ marginTop: 8, display: "grid", gap: 6 }}>
+                        {taskPhotoFiles.map((file, index) => (
+                          <div
+                            key={`${file.name}-${file.lastModified}-${index}`}
+                            style={{
+                              display: "flex",
+                              justifyContent: "space-between",
+                              alignItems: "center",
+                              gap: 12,
+                              border: "1px solid #dbe4ee",
+                              borderRadius: 10,
+                              padding: "8px 10px",
+                              background: "#f8fafc",
+                            }}
+                          >
+                            <span style={{ fontSize: 13, color: "#0f172a" }}>
+                              {file.name}
+                            </span>
+                            <button
+                              type="button"
+                              className="btn btn--ghost btn--sm"
+                              onClick={() => removeTaskPhoto(index)}
+                            >
+                              Убрать
+                            </button>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+
 
 
                   <div className="request-form-1c__actions">
@@ -3373,6 +3608,8 @@ export default function Warehouse({
 
                           <th style={{ width: 260 }}>Описание</th>
 
+                          <th style={{ width: 360 }}>Ответ исполнителя</th>
+
                           <th style={{ width: 190 }}>Изменить статус</th>
 
                         </tr>
@@ -3385,6 +3622,19 @@ export default function Warehouse({
 
                           const overdue = isTaskOverdue(t);
                           const canEdit = canEditTaskStatus(t);
+                          const responsePhotos = Array.isArray(t.responsePhotos)
+                            ? t.responsePhotos
+                            : [];
+                          const hasResponseDraft = Object.prototype.hasOwnProperty.call(
+                            taskResponseDrafts,
+                            t.id
+                          );
+                          const responseDraft = hasResponseDraft
+                            ? taskResponseDrafts[t.id]
+                            : t.responseText || "";
+                          const responseFiles = Array.isArray(taskResponsePhotoFiles[t.id])
+                            ? taskResponsePhotoFiles[t.id]
+                            : [];
 
                           return (
 
@@ -3498,7 +3748,182 @@ export default function Warehouse({
 
                               </td>
 
-                              <td data-label="Описание">{t.description || "-"}</td>
+                              <td data-label="Описание">
+                                <div style={{ display: "grid", gap: 8 }}>
+                                  <div>{t.description || "-"}</div>
+                                  {Array.isArray(t.taskPhotos) && t.taskPhotos.length > 0 && (
+                                    <div
+                                      style={{
+                                        display: "grid",
+                                        gridTemplateColumns: "repeat(auto-fill, minmax(80px, 1fr))",
+                                        gap: 8,
+                                      }}
+                                    >
+                                      {t.taskPhotos.map((photo, photoIndex) => (
+                                        <a
+                                          key={`${t.id}-task-photo-${photoIndex}`}
+                                          href={photo.dataUrl}
+                                          target="_blank"
+                                          rel="noreferrer"
+                                          title={photo.fileName || "Фото"}
+                                          style={{ display: "block" }}
+                                        >
+                                          <img
+                                            src={photo.dataUrl}
+                                            alt={photo.fileName || `Фото ${photoIndex + 1}`}
+                                            style={{
+                                              width: "100%",
+                                              height: 80,
+                                              objectFit: "cover",
+                                              borderRadius: 8,
+                                              border: "1px solid #dbe4ee",
+                                            }}
+                                          />
+                                        </a>
+                                      ))}
+                                    </div>
+                                  )}
+                                </div>
+                              </td>
+
+                              <td data-label="Ответ исполнителя">
+                                <div style={{ display: "grid", gap: 8 }}>
+                                  {t.responseText ? (
+                                    <div
+                                      style={{
+                                        fontSize: 13,
+                                        lineHeight: 1.45,
+                                        background: "#f8fafc",
+                                        border: "1px solid #e2e8f0",
+                                        borderRadius: 10,
+                                        padding: "8px 10px",
+                                        whiteSpace: "pre-wrap",
+                                      }}
+                                    >
+                                      {t.responseText}
+                                    </div>
+                                  ) : (
+                                    <span className="text-muted">Ответ не добавлен</span>
+                                  )}
+
+                                  {responsePhotos.length > 0 && (
+                                    <div
+                                      style={{
+                                        display: "grid",
+                                        gridTemplateColumns: "repeat(auto-fill, minmax(80px, 1fr))",
+                                        gap: 8,
+                                      }}
+                                    >
+                                      {responsePhotos.map((photo, photoIndex) => (
+                                        <a
+                                          key={`${t.id}-response-photo-${photoIndex}`}
+                                          href={photo.dataUrl}
+                                          target="_blank"
+                                          rel="noreferrer"
+                                          title={photo.fileName || "Фото"}
+                                          style={{ display: "block" }}
+                                        >
+                                          <img
+                                            src={photo.dataUrl}
+                                            alt={photo.fileName || `Фото ${photoIndex + 1}`}
+                                            style={{
+                                              width: "100%",
+                                              height: 80,
+                                              objectFit: "cover",
+                                              borderRadius: 8,
+                                              border: "1px solid #dbe4ee",
+                                            }}
+                                          />
+                                        </a>
+                                      ))}
+                                    </div>
+                                  )}
+
+                                  {t.responseUpdatedAt && (
+                                    <div className="text-muted" style={{ fontSize: 12 }}>
+                                      Обновлено:{" "}
+                                      {new Date(t.responseUpdatedAt).toLocaleString("ru-RU", {
+                                        day: "2-digit",
+                                        month: "2-digit",
+                                        year: "numeric",
+                                        hour: "2-digit",
+                                        minute: "2-digit",
+                                      })}
+                                      {t.responseAuthorName ? `, ${t.responseAuthorName}` : ""}
+                                    </div>
+                                  )}
+
+                                  {canEdit && (
+                                    <div
+                                      style={{
+                                        display: "grid",
+                                        gap: 8,
+                                        marginTop: 4,
+                                        paddingTop: 8,
+                                        borderTop: "1px solid #e2e8f0",
+                                      }}
+                                    >
+                                      <textarea
+                                        className="form__textarea"
+                                        rows={3}
+                                        placeholder="Комментарий по выполнению задачи..."
+                                        value={responseDraft}
+                                        onChange={(e) =>
+                                          setTaskResponseDrafts((prev) => ({
+                                            ...prev,
+                                            [t.id]: e.target.value,
+                                          }))
+                                        }
+                                      />
+                                      <input
+                                        type="file"
+                                        className="form__input"
+                                        accept="image/jpeg,image/png,image/webp"
+                                        multiple
+                                        onChange={(event) => handleTaskResponsePhotoPick(t.id, event)}
+                                      />
+                                      {responseFiles.length > 0 && (
+                                        <div style={{ display: "grid", gap: 6 }}>
+                                          {responseFiles.map((file, fileIndex) => (
+                                            <div
+                                              key={`${t.id}-response-file-${file.name}-${file.lastModified}-${fileIndex}`}
+                                              style={{
+                                                display: "flex",
+                                                justifyContent: "space-between",
+                                                alignItems: "center",
+                                                gap: 10,
+                                                border: "1px solid #dbe4ee",
+                                                borderRadius: 8,
+                                                padding: "6px 8px",
+                                                background: "#f8fafc",
+                                              }}
+                                            >
+                                              <span style={{ fontSize: 12 }}>{file.name}</span>
+                                              <button
+                                                type="button"
+                                                className="btn btn--ghost btn--sm"
+                                                onClick={() => removeTaskResponsePhoto(t.id, fileIndex)}
+                                              >
+                                                Убрать
+                                              </button>
+                                            </div>
+                                          ))}
+                                        </div>
+                                      )}
+                                      <button
+                                        type="button"
+                                        className="btn btn--secondary btn--sm"
+                                        onClick={() => handleTaskResponseSave(t.id)}
+                                        disabled={taskResponseSavingId === t.id}
+                                      >
+                                        {taskResponseSavingId === t.id
+                                          ? "Сохранение..."
+                                          : "Сохранить ответ"}
+                                      </button>
+                                    </div>
+                                  )}
+                                </div>
+                              </td>
 
                               <td data-label="Изменить статус">
                                 {canEdit ? (

@@ -1584,8 +1584,10 @@ app.use("/api/warehouse", (req, res, next) => {
         isReadRequest(req) && req.path === "/tasks/my";
       const isOwnTaskStatusUpdate =
         req.method === "PUT" && /^\/tasks\/\d+\/status$/.test(req.path);
+      const isOwnTaskResponseUpdate =
+        req.method === "PUT" && /^\/tasks\/\d+\/response$/.test(req.path);
       const canUseOwnTaskEndpointsWithoutPermission =
-        (isOwnTasksRead || isOwnTaskStatusUpdate) &&
+        (isOwnTasksRead || isOwnTaskStatusUpdate || isOwnTaskResponseUpdate) &&
         !hasPermission(req.user, PERMISSION_KEYS.WAREHOUSE_TASKS);
       if (canUseOwnTaskEndpointsWithoutPermission) {
         return next();
@@ -6481,6 +6483,71 @@ const WAREHOUSE_TASK_STATUS_LABELS = {
   CANCELLED: "Отменена",
 };
 
+const TASK_PHOTO_MAX_COUNT = 5;
+const TASK_PHOTO_MAX_BYTES = 2 * 1024 * 1024;
+const TASK_PHOTO_ALLOWED_MIME = new Set([
+  "image/jpeg",
+  "image/png",
+  "image/webp",
+]);
+
+function normalizeTaskPhotoEntry(entry, index) {
+  const fallbackName = `photo-${index + 1}.jpg`;
+  const fileNameRaw = String(entry?.fileName || fallbackName).trim();
+  const fileName = fileNameRaw.replace(/[^\w.\-()+\u0400-\u04FF ]/g, "_").slice(0, 120) || fallbackName;
+  const mimeType = String(entry?.mimeType || "image/jpeg").trim().toLowerCase();
+  if (!TASK_PHOTO_ALLOWED_MIME.has(mimeType)) {
+    throw new Error("Разрешены только фото JPG, PNG или WEBP.");
+  }
+  const sizeBytes = Number(entry?.sizeBytes || 0);
+  if (!Number.isFinite(sizeBytes) || sizeBytes <= 0 || sizeBytes > TASK_PHOTO_MAX_BYTES) {
+    throw new Error("Размер одного фото не должен превышать 2 МБ.");
+  }
+  const dataUrl = String(entry?.dataUrl || "").trim();
+  const mimeForRegex = mimeType.replace("/", "\\/");
+  const base64Regex = new RegExp(`^data:${mimeForRegex};base64,[A-Za-z0-9+/=]+$`, "i");
+  if (!base64Regex.test(dataUrl)) {
+    throw new Error("Некорректный формат вложенного фото.");
+  }
+  return { fileName, mimeType, sizeBytes, dataUrl };
+}
+
+function normalizeTaskPhotosPayload(rawPhotos) {
+  if (!Array.isArray(rawPhotos) || !rawPhotos.length) return [];
+  if (rawPhotos.length > TASK_PHOTO_MAX_COUNT) {
+    throw new Error(`Можно прикрепить не более ${TASK_PHOTO_MAX_COUNT} фото.`);
+  }
+  return rawPhotos.map((entry, index) => normalizeTaskPhotoEntry(entry, index));
+}
+
+function parseTaskPhotosJson(rawValue) {
+  if (!rawValue) return [];
+  try {
+    const parsed = JSON.parse(rawValue);
+    if (!Array.isArray(parsed)) return [];
+    return parsed
+      .map((entry, index) => {
+        try {
+          return normalizeTaskPhotoEntry(entry, index);
+        } catch {
+          return null;
+        }
+      })
+      .filter(Boolean);
+  } catch {
+    return [];
+  }
+}
+
+function mapWarehouseTaskForResponse(task) {
+  if (!task) return task;
+  return {
+    ...task,
+    taskPhotos: parseTaskPhotosJson(task.taskPhotosJson),
+    responsePhotos: parseTaskPhotosJson(task.responsePhotosJson),
+  };
+}
+
 function canManageWarehouseTasks(user) {
   return Boolean(
     user?.role === "ADMIN" || hasPermission(user, PERMISSION_KEYS.WAREHOUSE_MANAGE)
@@ -6493,7 +6560,7 @@ app.post("/api/warehouse/tasks", auth, async (req, res) => {
       return res.status(403).json({ message: "Только администратор может создавать задачи." });
     }
 
-    const { title, description, dueDate, executorUserId } = req.body;
+    const { title, description, dueDate, executorUserId, taskPhotos } = req.body;
 
     if (!title) {
       return res
@@ -6519,11 +6586,16 @@ app.post("/api/warehouse/tasks", auth, async (req, res) => {
       }
     }
 
+    const normalizedTaskPhotos = normalizeTaskPhotosPayload(taskPhotos);
+
     const task = await prisma.warehouseTask.create({
       data: {
         orgId: req.user.orgId || null,
         title,
         description: description || null,
+        taskPhotosJson: normalizedTaskPhotos.length
+          ? JSON.stringify(normalizedTaskPhotos)
+          : null,
         dueDate: dueDate ? new Date(dueDate) : null,
         executorUserId: executor?.id || null,
         executorName: executor?.name || null,
@@ -6545,9 +6617,18 @@ app.post("/api/warehouse/tasks", auth, async (req, res) => {
       });
     }
 
-    res.status(201).json(task);
+    res.status(201).json(mapWarehouseTaskForResponse(task));
   } catch (err) {
     console.error("warehouse task create error:", err);
+    const message = String(err?.message || "");
+    if (
+      message.includes("Можно прикрепить не более") ||
+      message.includes("Разрешены только фото") ||
+      message.includes("Размер одного фото") ||
+      message.includes("Некорректный формат вложенного фото")
+    ) {
+      return res.status(400).json({ message });
+    }
     res
       .status(500)
       .json({ message: "\u041e\u0448\u0438\u0431\u043a\u0430 \u0441\u043e\u0437\u0434\u0430\u043d\u0438\u044f \u0437\u0430\u0434\u0430\u0447\u0438 \u0441\u043a\u043b\u0430\u0434\u0430." });
@@ -6593,7 +6674,7 @@ app.get("/api/warehouse/tasks/my", auth, async (req, res) => {
       include: WAREHOUSE_TASK_INCLUDE,
     });
 
-    res.json(tasks);
+    res.json(tasks.map(mapWarehouseTaskForResponse));
   } catch (err) {
     console.error("warehouse tasks my error:", err);
     res
@@ -6614,7 +6695,7 @@ app.get("/api/warehouse/tasks", auth, async (req, res) => {
       include: WAREHOUSE_TASK_INCLUDE,
     });
 
-    res.json(tasks);
+    res.json(tasks.map(mapWarehouseTaskForResponse));
   } catch (err) {
     console.error("warehouse tasks list error:", err);
     res
@@ -6718,12 +6799,84 @@ app.put("/api/warehouse/tasks/:id/status", auth, async (req, res) => {
       }
     }
 
-    res.json(updated);
+    res.json(mapWarehouseTaskForResponse(updated));
   } catch (err) {
     console.error("warehouse task status error:", err);
     res
       .status(500)
       .json({ message: "Ошибка сервера при обновлении статуса задачи" });
+  }
+});
+
+app.put("/api/warehouse/tasks/:id/response", auth, async (req, res) => {
+  try {
+    const id = Number(req.params.id);
+    if (!id) {
+      return res.status(400).json({ message: "Некорректный идентификатор задачи." });
+    }
+
+    const responseTextRaw = req.body?.responseText;
+    const responseText =
+      responseTextRaw == null ? null : String(responseTextRaw).trim().slice(0, 5000);
+    const normalizedResponsePhotos = normalizeTaskPhotosPayload(req.body?.responsePhotos);
+
+    if (!responseText && normalizedResponsePhotos.length === 0) {
+      return res.status(400).json({ message: "Добавьте текст ответа или фото." });
+    }
+
+    const existing = await prisma.warehouseTask.findUnique({
+      where: { id },
+      include: WAREHOUSE_TASK_INCLUDE,
+    });
+    if (!existing) {
+      return res.status(404).json({ message: "Задача не найдена." });
+    }
+
+    const manager = canManageWarehouseTasks(req.user);
+    const isExecutor = Number(existing.executorUserId) === Number(req.user.id);
+    if (!manager && !isExecutor) {
+      return res.status(403).json({ message: "Можно отвечать только по назначенным вам задачам." });
+    }
+
+    const updated = await prisma.warehouseTask.update({
+      where: { id },
+      data: {
+        responseText: responseText || null,
+        responsePhotosJson: normalizedResponsePhotos.length
+          ? JSON.stringify(normalizedResponsePhotos)
+          : null,
+        responseUpdatedAt: new Date(),
+        responseAuthorUserId: req.user.id,
+        responseAuthorName: req.user.name || req.user.email || null,
+      },
+      include: WAREHOUSE_TASK_INCLUDE,
+    });
+
+    if (updated.assignerId && updated.assignerId !== req.user.id) {
+      await createWarehouseNotification({
+        orgId: req.user.orgId || null,
+        userId: updated.assignerId,
+        type: "TASK_RESPONSE_UPDATED",
+        title: "Новый ответ по задаче",
+        message: `По задаче "${updated.title}" добавлен ответ.`,
+        linkUrl: TASKS_JOURNAL_LINK,
+        payloadJson: { taskId: updated.id },
+      });
+    }
+
+    res.json(mapWarehouseTaskForResponse(updated));
+  } catch (err) {
+    console.error("warehouse task response error:", err);
+    const message = String(err?.message || "");
+    if (
+      message.includes("Можно прикрепить не более") ||
+      message.includes("Разрешены только фото") ||
+      message.includes("Размер одного фото") ||
+      message.includes("Некорректный формат вложенного фото")
+    ) {
+      return res.status(400).json({ message });
+    }
+    res.status(500).json({ message: "Ошибка сервера при сохранении ответа по задаче." });
   }
 });
 
