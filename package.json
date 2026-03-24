@@ -9,7 +9,7 @@
     "seed": "node tools/seed-employee.mjs",
     "build": "vite build",
     "preview": "vite preview",
-    "db:deploy": "prisma db execute --schema prisma/schema.prisma --file prisma/sql/cleanup_tmc_category.sql && prisma db push --accept-data-loss && prisma generate",
+    "db:deploy": "node dbDeployWithRetry.mjs",
     "reset:items": "node tools/reset-items.mjs",
     "smoke": "node tools/smoke-check.mjs",
     "e2e": "playwright test",
