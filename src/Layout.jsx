@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { NavLink, Outlet, useLocation } from "react-router-dom";
+import { NavLink, Outlet } from "react-router-dom";
 import { useAuth } from "./context/AuthContext";
 import { hasPermission, PERMISSION_KEYS } from "./utils/permissions";
 import { APP_LOGO_DATA_URL } from "./assets/appLogoDataUrl";
@@ -35,9 +35,7 @@ function openDatePicker(input) {
 
 export default function Layout() {
   const { user, logout } = useAuth();
-  const location = useLocation();
   const [isMobile, setIsMobile] = useState(false);
-  const [drawerOpen, setDrawerOpen] = useState(false);
   const menu = [
     {
       label: "\u0421\u043a\u043b\u0430\u0434",
@@ -45,7 +43,7 @@ export default function Layout() {
       permission: PERMISSION_KEYS.APP_WAREHOUSE,
     },
     {
-      label: "Новости платформы",
+      label: "\u041d\u043e\u0432\u043e\u0441\u0442\u0438 \u043f\u043b\u0430\u0442\u0444\u043e\u0440\u043c\u044b",
       to: "/news",
     },
     {
@@ -65,22 +63,6 @@ export default function Layout() {
     media.addEventListener("change", onChange);
     return () => media.removeEventListener("change", onChange);
   }, []);
-
-  useEffect(() => {
-    if (drawerOpen) {
-      setDrawerOpen(false);
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [location.pathname]);
-
-  useEffect(() => {
-    if (!drawerOpen) return;
-    const onKeyDown = (e) => {
-      if (e.key === "Escape") setDrawerOpen(false);
-    };
-    window.addEventListener("keydown", onKeyDown);
-    return () => window.removeEventListener("keydown", onKeyDown);
-  }, [drawerOpen]);
 
   useEffect(() => {
     const onDocumentClick = (event) => {
@@ -131,24 +113,24 @@ export default function Layout() {
     : styles.sidebar;
   return (
     <div style={rootStyle}>
-      {/* Сайдбар */}
+      {/* РЎР°Р№РґР±Р°СЂ */}
       <aside style={sidebarStyle}>
-        {/* Лого / название */}
+        {/* Р›РѕРіРѕ / РЅР°Р·РІР°РЅРёРµ */}
         <div style={styles.logoBlock}>
           <img
             src={APP_LOGO_SRC}
-            alt="Логотип"
+            alt={"\u041b\u043e\u0433\u043e\u0442\u0438\u043f"}
             style={styles.logoMarkImage}
             loading="eager"
             decoding="sync"
           />
           <div>
-            <div style={styles.logoTitle}>СкладОнлайн</div>
-            <div style={styles.logoSubtitle}>Внутренний сервис компании</div>
+            <div style={styles.logoTitle}>{"\u0421\u043a\u043b\u0430\u0434\u041e\u043d\u043b\u0430\u0439\u043d"}</div>
+            <div style={styles.logoSubtitle}>{"\u0412\u043d\u0443\u0442\u0440\u0435\u043d\u043d\u0438\u0439 \u0441\u0435\u0440\u0432\u0438\u0441 \u043a\u043e\u043c\u043f\u0430\u043d\u0438\u0438"}</div>
           </div>
         </div>
 
-        {/* Карточка пользователя */}
+        {/* РљР°СЂС‚РѕС‡РєР° РїРѕР»СЊР·РѕРІР°С‚РµР»СЏ */}
         {user && (
           <div style={styles.userCard}>
             <div style={styles.userName}>{user.name}</div>
@@ -157,13 +139,12 @@ export default function Layout() {
           </div>
         )}
 
-        {/* Навигация */}
+        {/* РќР°РІРёРіР°С†РёСЏ */}
         <nav style={styles.nav} className="sidebar-nav">
           {allowedMenu.map((item) => (
             <NavLink
               key={item.to}
               to={item.to}
-              onClick={() => setDrawerOpen(false)}
               style={({ isActive }) =>
                 isActive
                   ? { ...styles.navItem, ...styles.navItemActive }
@@ -177,7 +158,7 @@ export default function Layout() {
 
       </aside>
 
-      {/* Правая часть: шапка + контент */}
+      {/* РџСЂР°РІР°СЏ С‡Р°СЃС‚СЊ: С€Р°РїРєР° + РєРѕРЅС‚РµРЅС‚ */}
       <div style={styles.main}>
         <div
           style={isMobile ? styles.floatingActionsMobile : styles.floatingActions}
@@ -189,62 +170,35 @@ export default function Layout() {
             style={styles.headerLogoutBtn}
             onClick={handleLogout}
           >
-            Выйти
+            {"\u0412\u044b\u0439\u0442\u0438"}
           </button>
         </div>
 
-        <main style={styles.content} className="portal-surface">
+        <main
+          style={isMobile ? { ...styles.content, ...styles.contentMobile } : styles.content}
+          className="portal-surface"
+        >
           <Outlet />
         </main>
       </div>
 
-      {/* Мобильное меню (drawer) */}
-      {isMobile && drawerOpen && (
-        <div
-          style={styles.drawerOverlay}
-          onClick={() => setDrawerOpen(false)}
-          role="presentation"
-        >
-          <aside
-            style={styles.drawerPanel}
-            onClick={(e) => e.stopPropagation()}
-            role="dialog"
-            aria-modal="true"
-            aria-label="Навигация"
-          >
-            <div style={styles.drawerHeader}>
-              <img
-                src={APP_LOGO_SRC}
-                alt="Логотип"
-                style={styles.logoMarkImage}
-                loading="eager"
-                decoding="sync"
-              />
-              <div>
-                <div style={styles.logoTitle}>СкладОнлайн</div>
-                <div style={styles.logoSubtitle}>Меню</div>
-              </div>
-            </div>
-
-            <nav style={styles.drawerNav} className="sidebar-nav">
-              {allowedMenu.map((item) => (
-                <NavLink
-                  key={`drawer-${item.to}`}
-                  to={item.to}
-                  onClick={() => setDrawerOpen(false)}
-                  style={({ isActive }) =>
-                    isActive
-                      ? { ...styles.navItem, ...styles.navItemActive }
-                      : styles.navItem
-                  }
-                >
-                  <span>{item.label}</span>
-                </NavLink>
-              ))}
-            </nav>
-
-          </aside>
-        </div>
+      {/* РњРѕР±РёР»СЊРЅРѕРµ РјРµРЅСЋ (drawer) */}
+      {isMobile && (
+        <nav style={styles.mobileBottomNav} className="mobile-bottom-nav">
+          {allowedMenu.map((item) => (
+            <NavLink
+              key={`mobile-bottom-${item.to}`}
+              to={item.to}
+              style={({ isActive }) =>
+                isActive
+                  ? { ...styles.mobileBottomNavItem, ...styles.mobileBottomNavItemActive }
+                  : styles.mobileBottomNavItem
+              }
+            >
+              <span>{item.label}</span>
+            </NavLink>
+          ))}
+        </nav>
       )}
     </div>
   );
@@ -344,14 +298,14 @@ const styles = {
     fontSize: 14,
     gap: 8,
     background: "transparent",
-    border: "1px solid #111827", // чёрная рамка всегда
+    border: "1px solid #111827", // С‡С‘СЂРЅР°СЏ СЂР°РјРєР° РІСЃРµРіРґР°
     transition:
       "background 0.15s ease, color 0.15s ease, border 0.15s ease, box-shadow 0.15s ease",
   },
   navItemActive: {
     background: "#ffffff",
     color: "#1d4ed8",
-    borderColor: "#2563eb", // активный — синяя рамка
+    borderColor: "#2563eb", // Р°РєС‚РёРІРЅС‹Р№ вЂ” СЃРёРЅСЏСЏ СЂР°РјРєР°
     boxShadow: "0 0 0 1px rgba(37, 99, 235, 0.12)",
     fontWeight: 600,
   },
@@ -372,9 +326,9 @@ const styles = {
   },
   floatingActionsMobile: {
     position: "fixed",
-    top: 10,
+    top: "calc(env(safe-area-inset-top, 0px) + 8px)",
     right: 10,
-    zIndex: 45,
+    zIndex: 120,
     display: "inline-flex",
     alignItems: "center",
     gap: 8,
@@ -395,40 +349,43 @@ const styles = {
     flex: 1,
     boxSizing: "border-box",
   },
-  drawerOverlay: {
+  contentMobile: {
+    paddingBottom: "calc(env(safe-area-inset-bottom, 0px) + 74px)",
+  },
+  mobileBottomNav: {
     position: "fixed",
-    inset: 0,
-    background: "rgba(15, 23, 42, 0.45)",
-    zIndex: 60,
-    display: "flex",
-    alignItems: "stretch",
-  },
-  drawerPanel: {
-    width: "min(84vw, 320px)",
-    background: "#ffffff",
-    borderRight: "1px solid #e5e7eb",
-    boxShadow: "8px 0 24px rgba(15, 23, 42, 0.18)",
-    padding: "16px 14px 20px",
-    display: "flex",
-    flexDirection: "column",
-    gap: 12,
-    animation: "portal-rise 0.18s ease-out",
-  },
-  drawerHeader: {
-    display: "flex",
-    alignItems: "center",
-    gap: 10,
-    padding: "6px 8px",
-    borderRadius: 12,
-    background: "#eff6ff",
+    left: 10,
+    right: 10,
+    bottom: "calc(env(safe-area-inset-bottom, 0px) + 8px)",
+    zIndex: 120,
+    display: "grid",
+    gridTemplateColumns: "repeat(3, minmax(0, 1fr))",
+    gap: 8,
+    padding: "8px",
+    borderRadius: 14,
     border: "1px solid #dbeafe",
-    marginBottom: 6,
+    background: "rgba(255, 255, 255, 0.96)",
+    boxShadow: "0 12px 24px rgba(15, 23, 42, 0.14)",
+    backdropFilter: "blur(10px)",
   },
-  drawerNav: {
-    flex: 1,
-    display: "flex",
-    flexDirection: "column",
-    gap: 6,
-    marginTop: 2,
+  mobileBottomNavItem: {
+    display: "inline-flex",
+    alignItems: "center",
+    justifyContent: "center",
+    minHeight: 38,
+    padding: "8px 6px",
+    borderRadius: 10,
+    border: "1px solid transparent",
+    fontSize: 12,
+    fontWeight: 600,
+    textAlign: "center",
+    textDecoration: "none",
+    color: "#334155",
+    background: "transparent",
+  },
+  mobileBottomNavItemActive: {
+    color: "#0b67c0",
+    borderColor: "#bfdbfe",
+    background: "#eff6ff",
   },
 };
