@@ -173,13 +173,10 @@ const STATUS_OPTIONS = [
 
 const TASK_STATUS_LABELS = {
 
-  NEW: "Не выполнена",
-
-  IN_PROGRESS: "В работе",
-
-  DONE: "Выполнена",
-
-  CANCELLED: "Отменена",
+  NEW: "Не выполнено",
+  IN_PROGRESS: "Не выполнено",
+  DONE: "Выполнено",
+  CANCELLED: "Не выполнено",
 
 };
 
@@ -187,13 +184,8 @@ const TASK_STATUS_LABELS = {
 
 const TASK_STATUS_OPTIONS = [
 
-  { value: "NEW", label: "Не выполнена" },
-
-  { value: "IN_PROGRESS", label: "В работе" },
-
-  { value: "DONE", label: "Выполнена" },
-
-  { value: "CANCELLED", label: "Отменена" },
+  { value: "NEW", label: "Не выполнено" },
+  { value: "DONE", label: "Выполнено" },
 
 ];
 
@@ -1684,101 +1676,85 @@ export default function Warehouse({
 
   };
 
-  const handleTaskResponseSave = async (taskId) => {
+  const handleTaskApplyStatus = async (task, nextStatusRaw) => {
+    const taskId = Number(task?.id);
+    const nextStatus = normalizeTaskStatus(nextStatusRaw);
+    if (!taskId) return;
+
+    setTaskStatusSavingId(taskId);
     setTaskResponseSavingId(taskId);
     setTaskError("");
+
     try {
-      const responseText = String(taskResponseDrafts[taskId] || "").trim();
+      const hasDraft = Object.prototype.hasOwnProperty.call(taskResponseDrafts, taskId);
+      const responseText = String(
+        hasDraft ? taskResponseDrafts[taskId] || "" : task?.responseText || ""
+      )
+        .trim()
+        .slice(0, 5000);
       const responseFiles = Array.isArray(taskResponsePhotoFiles[taskId])
         ? taskResponsePhotoFiles[taskId]
         : [];
-      const responsePhotos = [];
-      for (const file of responseFiles) {
-        responsePhotos.push(await buildTaskAttachmentPayload(file));
+      const shouldSaveResponse =
+        responseFiles.length > 0 || (hasDraft && responseText.length > 0);
+
+      if (shouldSaveResponse) {
+        const responsePhotos = [];
+        for (const file of responseFiles) {
+          responsePhotos.push(await buildTaskAttachmentPayload(file));
+        }
+        const responseRes = await fetch(`${API}/warehouse/tasks/${taskId}/response`, {
+          method: "PUT",
+          headers: authHeaders,
+          body: JSON.stringify({
+            responseText: responseText || null,
+            responsePhotos,
+          }),
+        });
+        const responseData = await readResponsePayload(responseRes);
+        if (!responseRes.ok) {
+          throw new Error(
+            responseData?.message || "Ошибка сохранения ответа по задаче."
+          );
+        }
       }
-      const res = await fetch(`${API}/warehouse/tasks/${taskId}/response`, {
+
+      const statusRes = await fetch(`${API}/warehouse/tasks/${taskId}/status`, {
         method: "PUT",
         headers: authHeaders,
-        body: JSON.stringify({
-          responseText: responseText || null,
-          responsePhotos,
-        }),
+        body: JSON.stringify({ status: nextStatus }),
       });
-      const data = await readResponsePayload(res);
-      if (!res.ok) {
-        throw new Error(data?.message || "Ошибка сохранения ответа по задаче.");
+      const statusData = await readResponsePayload(statusRes);
+      if (!statusRes.ok) {
+        throw new Error(
+          statusData?.message || "Ошибка обновления статуса задачи."
+        );
       }
+
       setTaskResponseDrafts((prev) => ({ ...prev, [taskId]: "" }));
       setTaskResponsePhotoFiles((prev) => ({ ...prev, [taskId]: [] }));
       await loadTasks();
     } catch (e) {
       console.error(e);
-      setTaskError(e.message || "Ошибка сохранения ответа по задаче.");
+      setTaskError(e.message || "Ошибка обновления задачи.");
     } finally {
       setTaskResponseSavingId(null);
-    }
-  };
-
-
-
-  const handleTaskStatusSave = async (id, nextStatus) => {
-    setTaskStatusSavingId(id);
-    setTaskError("");
-
-    try {
-      const res = await fetch(`${API}/warehouse/tasks/${id}/status`, {
-        method: "PUT",
-        headers: authHeaders,
-        body: JSON.stringify({ status: nextStatus }),
-      });
-
-
-
-      const data = await res.json();
-
-      if (!res.ok) {
-
-        throw new Error(data.message || "Ошибка обновления статуса задачи");
-
-      }
-
-
-
-      await loadTasks();
-
-    } catch (e) {
-
-      console.error(e);
-
-      setTaskError(e.message);
-
-    } finally {
-
       setTaskStatusSavingId(null);
-
     }
-
   };
 
 
 
-  const taskStatusBadgeClass = (status) => {
-
-    if (status === "CANCELLED") return "badge badge--rejected";
-
-    if (status === "DONE") return "badge badge--approved";
-
-    if (status === "IN_PROGRESS") return "badge badge--pending";
-
-    return "badge badge--pending";
-
-  };
+  const taskStatusBadgeClass = (status) =>
+    normalizeTaskStatus(status) === "DONE"
+      ? "badge badge--approved"
+      : "badge badge--pending";
 
 
 
   const isTaskOverdue = (t) => {
 
-    if (t.status === "DONE" || t.status === "CANCELLED") return false;
+    if (normalizeTaskStatus(t.status) === "DONE") return false;
 
     if (!t.dueDate) return false;
 
@@ -1800,7 +1776,9 @@ export default function Warehouse({
 
     if (taskFilterStatus !== "ALL") {
 
-      res = res.filter((t) => t.status === taskFilterStatus);
+      res = res.filter(
+        (t) => normalizeTaskStatus(t.status) === taskFilterStatus
+      );
 
     }
 
@@ -1897,6 +1875,18 @@ export default function Warehouse({
   const taskDetailsAuthor = taskDetails
     ? taskDetails.assigner?.name || taskDetails.assigner?.email || "-"
     : "-";
+  const normalizeTaskStatus = (status) =>
+    String(status || "").toUpperCase() === "DONE" ? "DONE" : "NEW";
+  const taskDetailsUiStatus = normalizeTaskStatus(taskDetails?.status);
+
+  useEffect(() => {
+    if (!taskDetails) return undefined;
+    const prevOverflow = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+    return () => {
+      document.body.style.overflow = prevOverflow;
+    };
+  }, [taskDetails]);
 
 
 
@@ -2722,7 +2712,9 @@ export default function Warehouse({
         </div>
       )}
 
-      {section && selectedSectionCard && (
+      {section &&
+        selectedSectionCard &&
+        !(section === "tasks" && taskDetails) && (
         <div className="card" style={{ marginBottom: 12 }}>
           <div
             className="card1c__body"
@@ -3781,7 +3773,8 @@ export default function Warehouse({
 
                               <td data-label="Статус">
                                 <span className={taskStatusBadgeClass(t.status)}>
-                                  {TASK_STATUS_LABELS[t.status] || t.status}
+                                  {TASK_STATUS_LABELS[normalizeTaskStatus(t.status)] ||
+                                    normalizeTaskStatus(t.status)}
                                 </span>
                               </td>
 
@@ -3871,7 +3864,7 @@ export default function Warehouse({
                             <div className="task-details-label">Статус</div>
                             <div>
                               <span className={taskStatusBadgeClass(taskDetails.status)}>
-                                {TASK_STATUS_LABELS[taskDetails.status] || taskDetails.status}
+                                {TASK_STATUS_LABELS[taskDetailsUiStatus] || taskDetailsUiStatus}
                               </span>
                             </div>
                           </div>
@@ -4036,25 +4029,17 @@ export default function Warehouse({
                             )}
 
                             <div className="task-details-actions">
-                              <button
-                                type="button"
-                                className="btn btn--secondary btn--sm"
-                                onClick={() => handleTaskResponseSave(taskDetails.id)}
-                                disabled={taskResponseSavingId === taskDetails.id}
-                              >
-                                {taskResponseSavingId === taskDetails.id
-                                  ? "Сохранение..."
-                                  : "Сохранить ответ"}
-                              </button>
-
                               <select
                                 className="form__select form__select--sm"
                                 style={{ minWidth: 190 }}
-                                value={taskDetails.status}
+                                value={taskDetailsUiStatus}
                                 onChange={(e) =>
-                                  handleTaskStatusSave(taskDetails.id, e.target.value)
+                                  handleTaskApplyStatus(taskDetails, e.target.value)
                                 }
-                                disabled={taskStatusSavingId === taskDetails.id}
+                                disabled={
+                                  taskStatusSavingId === taskDetails.id ||
+                                  taskResponseSavingId === taskDetails.id
+                                }
                               >
                                 {TASK_STATUS_OPTIONS.map((option) => (
                                   <option key={option.value} value={option.value}>
@@ -4062,6 +4047,9 @@ export default function Warehouse({
                                   </option>
                                 ))}
                               </select>
+                              <span className="text-muted" style={{ fontSize: 12 }}>
+                                При смене статуса сохраняются комментарий и фото.
+                              </span>
                             </div>
                           </div>
                         )}
