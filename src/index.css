@@ -1119,6 +1119,39 @@ input[type="number"] {
   padding: 12px 12px 14px;
 }
 
+.task-photo-preview__modal {
+  width: min(980px, 96vw);
+}
+
+.task-photo-preview__body {
+  padding-top: 12px;
+  padding-bottom: 8px;
+}
+
+.task-photo-preview__image-wrap {
+  width: 100%;
+  max-height: 76vh;
+  overflow: auto;
+  border-radius: 12px;
+  border: 1px solid #e5e7eb;
+  background: #f8fafc;
+  padding: 8px;
+}
+
+.task-photo-preview__image {
+  width: 100%;
+  max-height: 72vh;
+  object-fit: contain;
+  display: block;
+  border-radius: 10px;
+}
+
+.task-photo-preview__actions {
+  display: flex;
+  justify-content: flex-end;
+  padding: 0 12px 14px;
+}
+
 @media (max-width: 900px) {
   .modal--wide {
     width: min(100vw - 20px, 1100px);

@@ -465,6 +465,7 @@ export default function Warehouse({
   const [taskPhotoFiles, setTaskPhotoFiles] = useState([]);
   const [taskResponseDrafts, setTaskResponseDrafts] = useState({});
   const [taskResponsePhotoFiles, setTaskResponsePhotoFiles] = useState({});
+  const [taskPhotoPreview, setTaskPhotoPreview] = useState(null);
 
 
 
@@ -1584,6 +1585,20 @@ export default function Warehouse({
         [taskId]: current.filter((_, index) => index !== indexToRemove),
       };
     });
+  };
+
+  const openTaskPhotoPreview = (event, photo, fallbackTitle) => {
+    event.preventDefault();
+    const url = String(photo?.dataUrl || "").trim();
+    if (!url) return;
+    setTaskPhotoPreview({
+      url,
+      title: String(photo?.fileName || fallbackTitle || "Фото").trim() || "Фото",
+    });
+  };
+
+  const closeTaskPhotoPreview = () => {
+    setTaskPhotoPreview(null);
   };
 
   const handleCreateTask = async (e) => {
@@ -3763,10 +3778,15 @@ export default function Warehouse({
                                         <a
                                           key={`${t.id}-task-photo-${photoIndex}`}
                                           href={photo.dataUrl}
-                                          target="_blank"
-                                          rel="noreferrer"
                                           title={photo.fileName || "Фото"}
                                           style={{ display: "block" }}
+                                          onClick={(event) =>
+                                            openTaskPhotoPreview(
+                                              event,
+                                              photo,
+                                              `Фото ${photoIndex + 1}`
+                                            )
+                                          }
                                         >
                                           <img
                                             src={photo.dataUrl}
@@ -3818,10 +3838,15 @@ export default function Warehouse({
                                         <a
                                           key={`${t.id}-response-photo-${photoIndex}`}
                                           href={photo.dataUrl}
-                                          target="_blank"
-                                          rel="noreferrer"
                                           title={photo.fileName || "Фото"}
                                           style={{ display: "block" }}
+                                          onClick={(event) =>
+                                            openTaskPhotoPreview(
+                                              event,
+                                              photo,
+                                              `Фото ${photoIndex + 1}`
+                                            )
+                                          }
                                         >
                                           <img
                                             src={photo.dataUrl}
@@ -4785,6 +4810,41 @@ export default function Warehouse({
 
 
 
+
+      {taskPhotoPreview?.url && (
+        <div className="modal-backdrop task-photo-preview" onClick={closeTaskPhotoPreview}>
+          <div
+            className="modal modal--wide task-photo-preview__modal"
+            onClick={(event) => event.stopPropagation()}
+          >
+            <div className="modal__header">
+              <h2 className="modal__title">{taskPhotoPreview.title}</h2>
+              <button
+                type="button"
+                className="modal__close"
+                aria-label="Закрыть просмотр фото"
+                onClick={closeTaskPhotoPreview}
+              >
+                ×
+              </button>
+            </div>
+            <div className="modal__body task-photo-preview__body">
+              <div className="task-photo-preview__image-wrap">
+                <img
+                  src={taskPhotoPreview.url}
+                  alt={taskPhotoPreview.title || "Фото"}
+                  className="task-photo-preview__image"
+                />
+              </div>
+            </div>
+            <div className="task-photo-preview__actions">
+              <button type="button" className="btn btn--ghost" onClick={closeTaskPhotoPreview}>
+                Закрыть
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {showReceiveModal && (
 
