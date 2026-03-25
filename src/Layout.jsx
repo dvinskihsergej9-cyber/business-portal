@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useState } from "react";
 import { NavLink, Outlet, useLocation } from "react-router-dom";
 import { useAuth } from "./context/AuthContext";
 import { hasPermission, PERMISSION_KEYS } from "./utils/permissions";
@@ -58,14 +58,6 @@ export default function Layout() {
   const allowedMenu = user
     ? menu.filter((item) => hasPermission(user, item.permission))
     : [];
-
-  const pageTitle = useMemo(() => {
-    if (location.pathname.startsWith("/admin")) return "\u0410\u0434\u043c\u0438\u043d\u0438\u0441\u0442\u0440\u0438\u0440\u043e\u0432\u0430\u043d\u0438\u0435";
-    if (location.pathname.startsWith("/news")) return "Новости платформы";
-    if (location.pathname.startsWith("/warehouse")) return "\u0421\u043a\u043b\u0430\u0434";
-    return "\u0421\u043a\u043b\u0430\u0434\u041e\u043d\u043b\u0430\u0439\u043d";
-  }, [location.pathname]);
-
   useEffect(() => {
     const media = window.matchMedia("(max-width: 768px)");
     const onChange = () => setIsMobile(media.matches);
@@ -137,10 +129,6 @@ export default function Layout() {
   const sidebarStyle = isMobile
     ? { ...styles.sidebar, display: "none" }
     : styles.sidebar;
-  const headerStyle = isMobile
-    ? { ...styles.header, ...styles.headerMobile }
-    : styles.header;
-
   return (
     <div style={rootStyle}>
       {/* Сайдбар */}
@@ -191,46 +179,19 @@ export default function Layout() {
 
       {/* Правая часть: шапка + контент */}
       <div style={styles.main}>
-        <header style={headerStyle} className="portal-header">
-          <div style={styles.headerRow}>
-            <div style={styles.headerLeft}>
-              {isMobile && (
-                <button
-                  type="button"
-                  onClick={() => setDrawerOpen(true)}
-                  style={styles.burgerBtn}
-                  aria-label="Открыть меню"
-                  aria-expanded={drawerOpen}
-                >
-                  ☰
-                </button>
-              )}
-              <div>
-                <div style={styles.headerTitle}>{pageTitle}</div>
-                <div style={styles.headerSubtitle}>
-                  {user
-                    ? `Пользователь: ${user.name} (${user.role})`
-                    : "Вы не авторизованы"}
-                </div>
-              </div>
-            </div>
-            <div style={styles.headerActions}>
-              {!isMobile && (
-                <div style={styles.headerUserInfo}>
-                  {user?.name || "Пользователь"}
-                </div>
-              )}
-              {user && <NotificationBell />}
-              <button
-                type="button"
-                style={styles.headerLogoutBtn}
-                onClick={handleLogout}
-              >
-                Выйти
-              </button>
-            </div>
-          </div>
-        </header>
+        <div
+          style={isMobile ? styles.floatingActionsMobile : styles.floatingActions}
+          className="portal-floating-actions"
+        >
+          {user && <NotificationBell />}
+          <button
+            type="button"
+            style={styles.headerLogoutBtn}
+            onClick={handleLogout}
+          >
+            Выйти
+          </button>
+        </div>
 
         <main style={styles.content} className="portal-surface">
           <Outlet />
@@ -400,42 +361,23 @@ const styles = {
     flexDirection: "column",
     minWidth: 0,
   },
-  header: {
-    padding: "14px 26px",
-    background: "rgba(255,255,255,0.9)",
-    borderBottom: "1px solid #e5e7eb",
-    boxShadow: "0 1px 4px rgba(15, 23, 42, 0.04)",
-    backdropFilter: "blur(6px)",
-    position: "sticky",
-    top: 0,
-    zIndex: 5,
-  },
-  headerMobile: {
-    padding: "12px 14px",
-  },
-  headerRow: {
-    display: "flex",
-    alignItems: "center",
-    justifyContent: "space-between",
-    gap: 12,
-  },
-  headerLeft: {
-    display: "flex",
-    alignItems: "center",
-    gap: 10,
-    minWidth: 0,
-  },
-  headerActions: {
+  floatingActions: {
+    position: "fixed",
+    top: 14,
+    right: 16,
+    zIndex: 45,
     display: "inline-flex",
     alignItems: "center",
     gap: 10,
-    marginLeft: 12,
-    flexShrink: 0,
   },
-  headerUserInfo: {
-    fontSize: 13,
-    color: "#4b5563",
-    whiteSpace: "nowrap",
+  floatingActionsMobile: {
+    position: "fixed",
+    top: 10,
+    right: 10,
+    zIndex: 45,
+    display: "inline-flex",
+    alignItems: "center",
+    gap: 8,
   },
   headerLogoutBtn: {
     padding: "7px 12px",
@@ -447,29 +389,6 @@ const styles = {
     cursor: "pointer",
     textAlign: "center",
     whiteSpace: "nowrap",
-  },
-  burgerBtn: {
-    width: 40,
-    height: 40,
-    borderRadius: 10,
-    border: "1px solid #e5e7eb",
-    background: "#ffffff",
-    color: "#0f172a",
-    fontSize: 20,
-    lineHeight: 1,
-    display: "inline-flex",
-    alignItems: "center",
-    justifyContent: "center",
-    cursor: "pointer",
-  },
-  headerTitle: {
-    fontSize: 20,
-    fontWeight: 600,
-  },
-  headerSubtitle: {
-    fontSize: 13,
-    color: "#6b7280",
-    marginTop: 2,
   },
   content: {
     padding: "0",
