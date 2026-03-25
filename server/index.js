@@ -5143,14 +5143,35 @@ app.get("/api/admin/tenants", auth, requireAdmin, requireSystemOwner, async (req
         },
       },
     });
-    const items = tenants.map(({ users, ...tenant }) => {
+    const subscriptions = await Promise.all(
+      tenants.map((tenant) => getOrgSubscription(tenant.id, null))
+    );
+
+    const items = tenants.map(({ users, ...tenant }, index) => {
       const admin = Array.isArray(users) ? users[0] : null;
+      const subscription = subscriptions[index] || null;
+      const paidUntil = subscription?.paidUntil || null;
+      const isActive =
+        Boolean(subscription) &&
+        ["active", "trialing"].includes(String(subscription?.status || "")) &&
+        paidUntil &&
+        new Date(paidUntil) > new Date();
       return {
         ...tenant,
         adminUserId: admin?.id || null,
         adminName: admin?.name || null,
         adminLogin: admin?.username || admin?.email || null,
         adminPassword: admin?.passwordVisible || null,
+        subscription: subscription
+          ? {
+              plan: subscription.plan,
+              status: subscription.status,
+              paidUntil: subscription.paidUntil,
+              trialStartedAt: subscription.trialStartedAt,
+              trialUsed: subscription.trialUsed,
+              isActive: Boolean(isActive),
+            }
+          : null,
       };
     });
     res.json({ items });
@@ -5341,6 +5362,96 @@ app.post("/api/admin/tenants", auth, requireAdmin, requireSystemOwner, async (re
     res.status(500).json({ message: "TENANT_CREATE_ERROR" });
   }
 });
+
+app.post(
+  "/api/admin/tenants/:id/grant-free-access",
+  auth,
+  requireAdmin,
+  requireSystemOwner,
+  async (req, res) => {
+    try {
+      if (!hasPermission(req.user, PERMISSION_KEYS.ADMIN_TENANTS)) {
+        return res.status(403).json({ message: "Нет доступа к разделу." });
+      }
+
+      const tenantId = Number(req.params.id);
+      if (!tenantId || Number.isNaN(tenantId)) {
+        return res.status(400).json({ message: "BAD_TENANT_ID" });
+      }
+
+      const daysRaw = Number(req.body?.days || 30);
+      const days = Math.max(1, Math.min(3650, Math.trunc(daysRaw)));
+      if (!days || Number.isNaN(days)) {
+        return res.status(400).json({ message: "BAD_DAYS" });
+      }
+
+      const tenant = await prisma.organization.findUnique({
+        where: { id: tenantId },
+        select: { id: true, name: true, code: true, isActive: true },
+      });
+      if (!tenant || tenant.isActive === false) {
+        return res.status(404).json({ message: "TENANT_NOT_FOUND" });
+      }
+      if (tenant.code === "platform-owner") {
+        return res.status(400).json({ message: "OWNER_TENANT_FORBIDDEN" });
+      }
+
+      const billingUserId = await getBillingUserIdForOrg(tenant.id, null);
+      if (!billingUserId) {
+        return res.status(400).json({ message: "BILLING_USER_REQUIRED" });
+      }
+
+      const now = new Date();
+      const current = await prisma.subscription.findFirst({
+        where: { userId: billingUserId },
+      });
+      const baseDate =
+        current?.paidUntil && new Date(current.paidUntil) > now
+          ? new Date(current.paidUntil)
+          : now;
+      const paidUntil = addDays(baseDate, days);
+
+      const next = await prisma.subscription.upsert({
+        where: { userId: billingUserId },
+        update: {
+          plan: "manual-free",
+          status: "active",
+          paidUntil,
+          trialStartedAt: current?.trialStartedAt || null,
+          trialUsed: Boolean(current?.trialUsed),
+        },
+        create: {
+          userId: billingUserId,
+          plan: "manual-free",
+          status: "active",
+          paidUntil,
+          trialStartedAt: null,
+          trialUsed: true,
+        },
+      });
+
+      return res.json({
+        ok: true,
+        tenant: {
+          id: tenant.id,
+          name: tenant.name,
+          code: tenant.code,
+        },
+        subscription: {
+          plan: next.plan,
+          status: next.status,
+          paidUntil: next.paidUntil,
+          trialStartedAt: next.trialStartedAt,
+          trialUsed: next.trialUsed,
+          isActive: true,
+        },
+      });
+    } catch (err) {
+      console.error("tenant grant free access error:", err);
+      return res.status(500).json({ message: "TENANT_GRANT_FREE_ACCESS_ERROR" });
+    }
+  }
+);
 
 app.get("/api/admin/platform-news/history", auth, requireAdmin, requireSystemOwner, async (req, res) => {
   try {
