@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+﻿import { useEffect, useMemo, useRef, useState } from "react";
 import { apiFetch, normalizeErrorMessage } from "../apiConfig";
 import { useAuth } from "../context/AuthContext";
 
@@ -48,10 +48,19 @@ function readTenantCredentials() {
 }
 
 function formatDateTime(value) {
-  if (!value) return "—";
+  if (!value) return "-";
   const date = new Date(value);
-  if (Number.isNaN(date.getTime())) return "—";
+  if (Number.isNaN(date.getTime())) return "-";
   return date.toLocaleString("ru-RU");
+}
+
+function getAccessStateLabel(subscription) {
+  if (!subscription) return "нет подписки";
+  if (String(subscription.status || "").toLowerCase() === "paused") {
+    return "приостановлен";
+  }
+  if (subscription.isActive) return "активен";
+  return "не активен";
 }
 
 async function copyText(value) {
@@ -82,6 +91,7 @@ export default function TenantManagement() {
   const [submitting, setSubmitting] = useState(false);
   const [deletingTenantId, setDeletingTenantId] = useState(null);
   const [grantingTenantId, setGrantingTenantId] = useState(null);
+  const [togglingAccessTenantId, setTogglingAccessTenantId] = useState(null);
   const [error, setError] = useState("");
   const [success, setSuccess] = useState("");
   const [tenantSearch, setTenantSearch] = useState("");
@@ -288,6 +298,44 @@ export default function TenantManagement() {
     }
   };
 
+  const handleToggleAccess = async (tenant, nextEnabled) => {
+    const tenantId = Number(tenant?.id || 0);
+    if (!tenantId) return;
+    if (String(tenant?.code || "") === "platform-owner") return;
+    if (!tenant?.subscription) return;
+
+    const tenantName = String(tenant?.name || `ID ${tenantId}`);
+    const actionText = nextEnabled ? "возобновить" : "приостановить";
+    const confirmed = window.confirm(
+      `Вы точно хотите ${actionText} доступ клиенту "${tenantName}"?`
+    );
+    if (!confirmed) return;
+
+    setTogglingAccessTenantId(tenantId);
+    setError("");
+    setSuccess("");
+    try {
+      const res = await apiFetch(`/admin/tenants/${tenantId}/toggle-access`, {
+        method: "POST",
+        headers,
+        body: JSON.stringify({ enabled: Boolean(nextEnabled) }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        throw new Error(data.message || "TENANT_TOGGLE_ACCESS_ERROR");
+      }
+      const stateText = data?.accessEnabled ? "включен" : "приостановлен";
+      setSuccess(`Доступ клиента "${tenantName}" ${stateText}.`);
+      await loadTenants();
+    } catch (err) {
+      setError(
+        normalizeErrorMessage(err, "Не удалось изменить состояние доступа клиента.")
+      );
+    } finally {
+      setTogglingAccessTenantId(null);
+    }
+  };
+
   const handleCopyTenantCredentials = async (tenant) => {
     const login = String(
       tenantCredentials[tenant.id]?.login || tenant.adminLogin || ""
@@ -375,6 +423,7 @@ export default function TenantManagement() {
               />
             </div>
           </div>
+
           <div className="admin-form__row">
             <div>
               <label className="admin-label">Логин администратора</label>
@@ -450,6 +499,7 @@ export default function TenantManagement() {
             onChange={(event) => setTenantSearch(event.target.value)}
           />
         </div>
+
         {loading ? (
           <div className="admin-muted">Загрузка...</div>
         ) : items.length === 0 ? (
@@ -480,6 +530,8 @@ export default function TenantManagement() {
                   const adminPassword =
                     tenantCredentials[item.id]?.password || item.adminPassword || "-";
                   const isOwnerTenant = String(item.code || "") === "platform-owner";
+                  const accessEnabled = Boolean(item?.subscription?.isActive);
+                  const canToggleAccess = !isOwnerTenant && Boolean(item?.subscription);
 
                   return (
                     <tr
@@ -495,6 +547,9 @@ export default function TenantManagement() {
                       <td data-label="Пароль">{adminPassword}</td>
                       <td data-label="Доступ до">
                         {formatDateTime(item?.subscription?.paidUntil)}
+                        <div className="admin-muted" style={{ marginTop: 4 }}>
+                          {getAccessStateLabel(item?.subscription)}
+                        </div>
                       </td>
                       <td data-label="Пользователей">{item?._count?.users || 0}</td>
                       <td data-label="Инвайтов">{item?._count?.invites || 0}</td>
@@ -522,6 +577,7 @@ export default function TenantManagement() {
                             </span>
                           ) : null}
                         </div>
+
                         <button
                           type="button"
                           className="admin-btn admin-btn--ghost"
@@ -532,6 +588,26 @@ export default function TenantManagement() {
                             ? "Продление..."
                             : "Бесплатно +30 дней"}
                         </button>
+
+                        <button
+                          type="button"
+                          className="admin-btn admin-btn--ghost"
+                          onClick={() => handleToggleAccess(item, !accessEnabled)}
+                          disabled={
+                            togglingAccessTenantId === item.id ||
+                            grantingTenantId === item.id ||
+                            !canToggleAccess
+                          }
+                        >
+                          {togglingAccessTenantId === item.id
+                            ? "Смена..."
+                            : !canToggleAccess
+                            ? "Нет подписки"
+                            : accessEnabled
+                            ? "Приостановить доступ"
+                            : "Возобновить доступ"}
+                        </button>
+
                         <button
                           type="button"
                           className="admin-btn admin-btn--secondary"

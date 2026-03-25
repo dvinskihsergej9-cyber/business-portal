@@ -5453,6 +5453,88 @@ app.post(
   }
 );
 
+app.post(
+  "/api/admin/tenants/:id/toggle-access",
+  auth,
+  requireAdmin,
+  requireSystemOwner,
+  async (req, res) => {
+    try {
+      if (!hasPermission(req.user, PERMISSION_KEYS.ADMIN_TENANTS)) {
+        return res.status(403).json({ message: "Нет доступа к разделу." });
+      }
+
+      const tenantId = Number(req.params.id);
+      if (!tenantId || Number.isNaN(tenantId)) {
+        return res.status(400).json({ message: "BAD_TENANT_ID" });
+      }
+
+      const enabled = req.body?.enabled === true;
+
+      const tenant = await prisma.organization.findUnique({
+        where: { id: tenantId },
+        select: { id: true, name: true, code: true, isActive: true },
+      });
+      if (!tenant || tenant.isActive === false) {
+        return res.status(404).json({ message: "TENANT_NOT_FOUND" });
+      }
+      if (tenant.code === "platform-owner") {
+        return res.status(400).json({ message: "OWNER_TENANT_FORBIDDEN" });
+      }
+
+      const orgSubscriptions = await prisma.subscription.findMany({
+        where: { user: { orgId: tenant.id } },
+        select: { id: true, userId: true },
+      });
+
+      if (!orgSubscriptions.length) {
+        if (!enabled) {
+          return res.json({
+            ok: true,
+            tenant: { id: tenant.id, name: tenant.name, code: tenant.code },
+            subscription: null,
+            accessEnabled: false,
+          });
+        }
+        return res.status(400).json({ message: "TENANT_SUBSCRIPTION_NOT_FOUND" });
+      }
+
+      const subscriptionIds = orgSubscriptions.map((row) => row.id);
+      await prisma.subscription.updateMany({
+        where: { id: { in: subscriptionIds } },
+        data: { status: enabled ? "active" : "paused" },
+      });
+
+      const subscription = await getOrgSubscription(tenant.id, null);
+      const paidUntil = subscription?.paidUntil || null;
+      const isEnabled =
+        Boolean(subscription) &&
+        ["active", "trialing"].includes(String(subscription?.status || "")) &&
+        paidUntil &&
+        new Date(paidUntil) > new Date();
+
+      return res.json({
+        ok: true,
+        tenant: { id: tenant.id, name: tenant.name, code: tenant.code },
+        subscription: subscription
+          ? {
+              plan: subscription.plan,
+              status: subscription.status,
+              paidUntil: subscription.paidUntil,
+              trialStartedAt: subscription.trialStartedAt,
+              trialUsed: subscription.trialUsed,
+              isActive: Boolean(isEnabled),
+            }
+          : null,
+        accessEnabled: Boolean(isEnabled),
+      });
+    } catch (err) {
+      console.error("tenant toggle access error:", err);
+      return res.status(500).json({ message: "TENANT_TOGGLE_ACCESS_ERROR" });
+    }
+  }
+);
+
 app.get("/api/admin/platform-news/history", auth, requireAdmin, requireSystemOwner, async (req, res) => {
   try {
     if (!hasPermission(req.user, PERMISSION_KEYS.ADMIN_TENANTS)) {

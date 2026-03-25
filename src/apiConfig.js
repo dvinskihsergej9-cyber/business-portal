@@ -136,6 +136,9 @@ const EXTRA_ERROR_MESSAGES = {
   USER_INACTIVE: "Пользователь отключен.",
   USER_NOT_FOUND: "Пользователь не найден.",
   TENANT_GRANT_FREE_ACCESS_ERROR: "Не удалось продлить бесплатный доступ клиенту.",
+  TENANT_TOGGLE_ACCESS_ERROR: "Не удалось изменить состояние доступа клиента.",
+  TENANT_SUBSCRIPTION_NOT_FOUND:
+    "У клиента нет активной подписки. Для возобновления используйте бесплатное продление.",
   MARKETING_SETTINGS_LOAD_ERROR: "Не удалось загрузить настройки рассылки.",
   MARKETING_SETTINGS_SAVE_ERROR: "Не удалось сохранить настройки рассылки.",
   UNSUBSCRIBE_ERROR: "Не удалось обработать отписку. Попробуйте позже.",
