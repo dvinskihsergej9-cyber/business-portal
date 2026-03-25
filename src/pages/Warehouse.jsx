@@ -466,6 +466,7 @@ export default function Warehouse({
   const [taskResponseDrafts, setTaskResponseDrafts] = useState({});
   const [taskResponsePhotoFiles, setTaskResponsePhotoFiles] = useState({});
   const [taskPhotoPreview, setTaskPhotoPreview] = useState(null);
+  const [taskDetailsId, setTaskDetailsId] = useState(null);
 
 
 
@@ -1103,14 +1104,6 @@ export default function Warehouse({
 
     loadTasks();
     loadTaskExecutors();
-
-    const intervalId = setInterval(() => {
-
-      loadTasks();
-
-    }, 30000);
-
-    return () => clearInterval(intervalId);
 
     // eslint-disable-next-line react-hooks/exhaustive-deps
 
@@ -1862,6 +1855,48 @@ export default function Warehouse({
       isWarehouseManager ||
         (task && Number(task.executorUserId) === Number(user?.id))
     );
+
+  const openTaskDetails = (taskId) => {
+    setTaskDetailsId(Number(taskId));
+  };
+
+  const closeTaskDetails = () => {
+    setTaskDetailsId(null);
+  };
+
+  const taskDetails = useMemo(() => {
+    if (!taskDetailsId) return null;
+    const merged = [...(taskMyList || []), ...(taskAllList || [])];
+    return (
+      merged.find((task) => Number(task.id) === Number(taskDetailsId)) || null
+    );
+  }, [taskDetailsId, taskMyList, taskAllList]);
+
+  const taskDetailsCanEdit = canEditTaskStatus(taskDetails);
+  const taskDetailsTaskPhotos = Array.isArray(taskDetails?.taskPhotos)
+    ? taskDetails.taskPhotos
+    : [];
+  const taskDetailsResponsePhotos = Array.isArray(taskDetails?.responsePhotos)
+    ? taskDetails.responsePhotos
+    : [];
+  const taskDetailsResponseFiles =
+    taskDetails && Array.isArray(taskResponsePhotoFiles[taskDetails.id])
+      ? taskResponsePhotoFiles[taskDetails.id]
+      : [];
+  const taskDetailsHasResponseDraft = taskDetails
+    ? Object.prototype.hasOwnProperty.call(taskResponseDrafts, taskDetails.id)
+    : false;
+  const taskDetailsResponseDraft = taskDetails
+    ? taskDetailsHasResponseDraft
+      ? taskResponseDrafts[taskDetails.id]
+      : taskDetails.responseText || ""
+    : "";
+  const taskDetailsExecutor = taskDetails
+    ? taskDetails.executorUser?.name || taskDetails.executorName || "-"
+    : "-";
+  const taskDetailsAuthor = taskDetails
+    ? taskDetails.assigner?.name || taskDetails.assigner?.email || "-"
+    : "-";
 
 
 
@@ -3481,7 +3516,26 @@ export default function Warehouse({
 
             <div className="card card--1c">
 
-              <div className="card1c__header">Журнал задач</div>
+              <div
+                className="card1c__header"
+                style={{
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: "space-between",
+                  gap: 12,
+                  flexWrap: "wrap",
+                }}
+              >
+                <span>Журнал задач</span>
+                <button
+                  type="button"
+                  className="btn btn--secondary btn--sm"
+                  onClick={() => loadTasks()}
+                  disabled={tasksLoading}
+                >
+                  {tasksLoading ? "Обновление..." : "Обновить"}
+                </button>
+              </div>
 
               <div className="card1c__body">
 
@@ -3611,21 +3665,15 @@ export default function Warehouse({
 
                           <th style={{ width: 170 }}>Дата</th>
 
-                          <th style={{ width: 110 }}>Статус</th>
-
                           <th style={{ width: 170 }}>Срок</th>
+
+                          <th style={{ width: 130 }}>Статус</th>
 
                           <th>Задача</th>
 
                           <th style={{ width: 180 }}>Исполнитель</th>
 
-                          <th style={{ width: 200 }}>Автор</th>
-
-                          <th style={{ width: 260 }}>Описание</th>
-
-                          <th style={{ width: 360 }}>Ответ исполнителя</th>
-
-                          <th style={{ width: 190 }}>Изменить статус</th>
+                          <th style={{ width: 150 }}>Действия</th>
 
                         </tr>
 
@@ -3634,22 +3682,22 @@ export default function Warehouse({
                       <tbody>
 
                         {filteredTasks.map((t, index) => {
-
                           const overdue = isTaskOverdue(t);
-                          const canEdit = canEditTaskStatus(t);
-                          const responsePhotos = Array.isArray(t.responsePhotos)
-                            ? t.responsePhotos
-                            : [];
-                          const hasResponseDraft = Object.prototype.hasOwnProperty.call(
-                            taskResponseDrafts,
-                            t.id
+                          const taskPhotoCount = Array.isArray(t.taskPhotos)
+                            ? t.taskPhotos.length
+                            : 0;
+                          const responsePhotoCount = Array.isArray(t.responsePhotos)
+                            ? t.responsePhotos.length
+                            : 0;
+                          const hasResponseText = Boolean(
+                            String(t.responseText || "").trim()
                           );
-                          const responseDraft = hasResponseDraft
-                            ? taskResponseDrafts[t.id]
-                            : t.responseText || "";
-                          const responseFiles = Array.isArray(taskResponsePhotoFiles[t.id])
-                            ? taskResponsePhotoFiles[t.id]
-                            : [];
+                          const authorLabel =
+                            t.assigner?.name || t.assigner?.email || "-";
+                          const attachmentsSummary =
+                            taskPhotoCount || responsePhotoCount
+                              ? `Фото: к задаче ${taskPhotoCount}, в ответе ${responsePhotoCount}`
+                              : "Фото нет";
 
                           return (
 
@@ -3680,20 +3728,6 @@ export default function Warehouse({
                                     })
 
                                   : "-"}
-
-                              </td>
-
-                              <td data-label="Статус">
-
-                                <span
-
-                                  className={taskStatusBadgeClass(t.status)}
-
-                                >
-
-                                  {TASK_STATUS_LABELS[t.status] || t.status}
-
-                                </span>
 
                               </td>
 
@@ -3741,11 +3775,38 @@ export default function Warehouse({
 
                                   </span>
 
-                                )}
+                                  )}
 
                               </td>
 
-                              <td data-label="Задача">{t.title}</td>
+                              <td data-label="Статус">
+                                <span className={taskStatusBadgeClass(t.status)}>
+                                  {TASK_STATUS_LABELS[t.status] || t.status}
+                                </span>
+                              </td>
+
+                              <td data-label="Задача">
+                                <div
+                                  style={{
+                                    fontWeight: 700,
+                                    lineHeight: 1.35,
+                                    color: "#0f172a",
+                                  }}
+                                >
+                                  {t.title || "-"}
+                                </div>
+                                <div
+                                  style={{
+                                    marginTop: 4,
+                                    fontSize: 12,
+                                    lineHeight: 1.35,
+                                    color: "#64748b",
+                                  }}
+                                >
+                                  {authorLabel} • {attachmentsSummary} •{" "}
+                                  {hasResponseText ? "Ответ добавлен" : "Ответ не добавлен"}
+                                </div>
+                              </td>
 
                               <td data-label="Исполнитель">
 
@@ -3753,223 +3814,21 @@ export default function Warehouse({
 
                               </td>
 
-                              <td data-label="Автор">
-
-                                {t.assigner?.name ||
-
-                                  t.assigner?.email ||
-
-                                  "-"}
-
-                              </td>
-
-                              <td data-label="Описание">
-                                <div style={{ display: "grid", gap: 8 }}>
-                                  <div>{t.description || "-"}</div>
-                                  {Array.isArray(t.taskPhotos) && t.taskPhotos.length > 0 && (
-                                    <div
-                                      style={{
-                                        display: "grid",
-                                        gridTemplateColumns: "repeat(auto-fill, minmax(80px, 1fr))",
-                                        gap: 8,
-                                      }}
-                                    >
-                                      {t.taskPhotos.map((photo, photoIndex) => (
-                                        <a
-                                          key={`${t.id}-task-photo-${photoIndex}`}
-                                          href={photo.dataUrl}
-                                          title={photo.fileName || "Фото"}
-                                          style={{ display: "block" }}
-                                          onClick={(event) =>
-                                            openTaskPhotoPreview(
-                                              event,
-                                              photo,
-                                              `Фото ${photoIndex + 1}`
-                                            )
-                                          }
-                                        >
-                                          <img
-                                            src={photo.dataUrl}
-                                            alt={photo.fileName || `Фото ${photoIndex + 1}`}
-                                            style={{
-                                              width: "100%",
-                                              height: 80,
-                                              objectFit: "cover",
-                                              borderRadius: 8,
-                                              border: "1px solid #dbe4ee",
-                                            }}
-                                          />
-                                        </a>
-                                      ))}
-                                    </div>
-                                  )}
-                                </div>
-                              </td>
-
-                              <td data-label="Ответ исполнителя">
-                                <div style={{ display: "grid", gap: 8 }}>
-                                  {t.responseText ? (
-                                    <div
-                                      style={{
-                                        fontSize: 13,
-                                        lineHeight: 1.45,
-                                        background: "#f8fafc",
-                                        border: "1px solid #e2e8f0",
-                                        borderRadius: 10,
-                                        padding: "8px 10px",
-                                        whiteSpace: "pre-wrap",
-                                      }}
-                                    >
-                                      {t.responseText}
-                                    </div>
-                                  ) : (
-                                    <span className="text-muted">Ответ не добавлен</span>
-                                  )}
-
-                                  {responsePhotos.length > 0 && (
-                                    <div
-                                      style={{
-                                        display: "grid",
-                                        gridTemplateColumns: "repeat(auto-fill, minmax(80px, 1fr))",
-                                        gap: 8,
-                                      }}
-                                    >
-                                      {responsePhotos.map((photo, photoIndex) => (
-                                        <a
-                                          key={`${t.id}-response-photo-${photoIndex}`}
-                                          href={photo.dataUrl}
-                                          title={photo.fileName || "Фото"}
-                                          style={{ display: "block" }}
-                                          onClick={(event) =>
-                                            openTaskPhotoPreview(
-                                              event,
-                                              photo,
-                                              `Фото ${photoIndex + 1}`
-                                            )
-                                          }
-                                        >
-                                          <img
-                                            src={photo.dataUrl}
-                                            alt={photo.fileName || `Фото ${photoIndex + 1}`}
-                                            style={{
-                                              width: "100%",
-                                              height: 80,
-                                              objectFit: "cover",
-                                              borderRadius: 8,
-                                              border: "1px solid #dbe4ee",
-                                            }}
-                                          />
-                                        </a>
-                                      ))}
-                                    </div>
-                                  )}
-
-                                  {t.responseUpdatedAt && (
-                                    <div className="text-muted" style={{ fontSize: 12 }}>
-                                      Обновлено:{" "}
-                                      {new Date(t.responseUpdatedAt).toLocaleString("ru-RU", {
-                                        day: "2-digit",
-                                        month: "2-digit",
-                                        year: "numeric",
-                                        hour: "2-digit",
-                                        minute: "2-digit",
-                                      })}
-                                      {t.responseAuthorName ? `, ${t.responseAuthorName}` : ""}
-                                    </div>
-                                  )}
-
-                                  {canEdit && (
-                                    <div
-                                      style={{
-                                        display: "grid",
-                                        gap: 8,
-                                        marginTop: 4,
-                                        paddingTop: 8,
-                                        borderTop: "1px solid #e2e8f0",
-                                      }}
-                                    >
-                                      <textarea
-                                        className="form__textarea"
-                                        rows={3}
-                                        placeholder="Комментарий по выполнению задачи..."
-                                        value={responseDraft}
-                                        onChange={(e) =>
-                                          setTaskResponseDrafts((prev) => ({
-                                            ...prev,
-                                            [t.id]: e.target.value,
-                                          }))
-                                        }
-                                      />
-                                      <input
-                                        type="file"
-                                        className="form__input"
-                                        accept="image/jpeg,image/png,image/webp"
-                                        multiple
-                                        onChange={(event) => handleTaskResponsePhotoPick(t.id, event)}
-                                      />
-                                      {responseFiles.length > 0 && (
-                                        <div style={{ display: "grid", gap: 6 }}>
-                                          {responseFiles.map((file, fileIndex) => (
-                                            <div
-                                              key={`${t.id}-response-file-${file.name}-${file.lastModified}-${fileIndex}`}
-                                              style={{
-                                                display: "flex",
-                                                justifyContent: "space-between",
-                                                alignItems: "center",
-                                                gap: 10,
-                                                border: "1px solid #dbe4ee",
-                                                borderRadius: 8,
-                                                padding: "6px 8px",
-                                                background: "#f8fafc",
-                                              }}
-                                            >
-                                              <span style={{ fontSize: 12 }}>{file.name}</span>
-                                              <button
-                                                type="button"
-                                                className="btn btn--ghost btn--sm"
-                                                onClick={() => removeTaskResponsePhoto(t.id, fileIndex)}
-                                              >
-                                                Убрать
-                                              </button>
-                                            </div>
-                                          ))}
-                                        </div>
-                                      )}
-                                      <button
-                                        type="button"
-                                        className="btn btn--secondary btn--sm"
-                                        onClick={() => handleTaskResponseSave(t.id)}
-                                        disabled={taskResponseSavingId === t.id}
-                                      >
-                                        {taskResponseSavingId === t.id
-                                          ? "Сохранение..."
-                                          : "Сохранить ответ"}
-                                      </button>
-                                    </div>
-                                  )}
-                                </div>
-                              </td>
-
-                              <td data-label="Изменить статус">
-                                {canEdit ? (
-                                  <select
-                                    className="form__select form__select--sm"
-                                    style={{ minWidth: 170 }}
-                                    value={t.status}
-                                    onChange={(e) =>
-                                      handleTaskStatusSave(t.id, e.target.value)
-                                    }
-                                    disabled={taskStatusSavingId === t.id}
+                              <td data-label="Действия">
+                                <div
+                                  style={{
+                                    display: "flex",
+                                    justifyContent: "flex-end",
+                                  }}
+                                >
+                                  <button
+                                    type="button"
+                                    className="btn btn--ghost btn--sm"
+                                    onClick={() => openTaskDetails(t.id)}
                                   >
-                                    {TASK_STATUS_OPTIONS.map((o) => (
-                                      <option key={o.value} value={o.value}>
-                                        {o.label}
-                                      </option>
-                                    ))}
-                                  </select>
-                                ) : (
-                                  <span className="text-muted">Нет прав</span>
-                                )}
+                                    Подробнее
+                                  </button>
+                                </div>
                               </td>
 
                             </tr>
@@ -3984,6 +3843,241 @@ export default function Warehouse({
 
                   </div>
 
+                )}
+
+                {taskDetails && (
+                  <div className="modal-backdrop" onClick={closeTaskDetails}>
+                    <div
+                      className="modal modal--wide task-details-modal"
+                      onClick={(event) => event.stopPropagation()}
+                    >
+                      <div className="modal__header">
+                        <h2 className="modal__title">
+                          Задача №{taskDetails.id}: {taskDetails.title || "Без названия"}
+                        </h2>
+                        <button
+                          type="button"
+                          className="modal__close"
+                          aria-label="Закрыть детали задачи"
+                          onClick={closeTaskDetails}
+                        >
+                          ×
+                        </button>
+                      </div>
+
+                      <div className="modal__body task-details-modal__body">
+                        <div className="task-details-grid">
+                          <div>
+                            <div className="task-details-label">Статус</div>
+                            <div>
+                              <span className={taskStatusBadgeClass(taskDetails.status)}>
+                                {TASK_STATUS_LABELS[taskDetails.status] || taskDetails.status}
+                              </span>
+                            </div>
+                          </div>
+                          <div>
+                            <div className="task-details-label">Срок</div>
+                            <div>
+                              {taskDetails.dueDate
+                                ? new Date(taskDetails.dueDate).toLocaleString("ru-RU", {
+                                    day: "2-digit",
+                                    month: "2-digit",
+                                    year: "numeric",
+                                    hour: "2-digit",
+                                    minute: "2-digit",
+                                  })
+                                : "-"}
+                            </div>
+                          </div>
+                          <div>
+                            <div className="task-details-label">Исполнитель</div>
+                            <div>{taskDetailsExecutor}</div>
+                          </div>
+                          <div>
+                            <div className="task-details-label">Автор</div>
+                            <div>{taskDetailsAuthor}</div>
+                          </div>
+                        </div>
+
+                        <div className="task-details-section">
+                          <div className="task-details-label">Описание</div>
+                          <div className="task-details-text">
+                            {taskDetails.description || "Описание не добавлено"}
+                          </div>
+                        </div>
+
+                        <div className="task-details-section">
+                          <div className="task-details-label">Фото к задаче</div>
+                          {taskDetailsTaskPhotos.length === 0 ? (
+                            <div className="text-muted">Фото не добавлены</div>
+                          ) : (
+                            <div className="task-details-photos">
+                              {taskDetailsTaskPhotos.map((photo, photoIndex) => (
+                                <a
+                                  key={`${taskDetails.id}-task-photo-${photoIndex}`}
+                                  href={photo.dataUrl}
+                                  title={photo.fileName || "Фото"}
+                                  onClick={(event) =>
+                                    openTaskPhotoPreview(
+                                      event,
+                                      photo,
+                                      `Фото ${photoIndex + 1}`
+                                    )
+                                  }
+                                >
+                                  <img
+                                    src={photo.dataUrl}
+                                    alt={photo.fileName || `Фото ${photoIndex + 1}`}
+                                  />
+                                </a>
+                              ))}
+                            </div>
+                          )}
+                        </div>
+
+                        <div className="task-details-section">
+                          <div className="task-details-label">Ответ исполнителя</div>
+                          {taskDetails.responseText ? (
+                            <div className="task-details-text">{taskDetails.responseText}</div>
+                          ) : (
+                            <div className="text-muted">Ответ не добавлен</div>
+                          )}
+
+                          {taskDetailsResponsePhotos.length > 0 && (
+                            <div className="task-details-photos">
+                              {taskDetailsResponsePhotos.map((photo, photoIndex) => (
+                                <a
+                                  key={`${taskDetails.id}-response-photo-${photoIndex}`}
+                                  href={photo.dataUrl}
+                                  title={photo.fileName || "Фото"}
+                                  onClick={(event) =>
+                                    openTaskPhotoPreview(
+                                      event,
+                                      photo,
+                                      `Фото ${photoIndex + 1}`
+                                    )
+                                  }
+                                >
+                                  <img
+                                    src={photo.dataUrl}
+                                    alt={photo.fileName || `Фото ${photoIndex + 1}`}
+                                  />
+                                </a>
+                              ))}
+                            </div>
+                          )}
+
+                          {taskDetails.responseUpdatedAt && (
+                            <div className="text-muted" style={{ fontSize: 12 }}>
+                              Ответ обновлён:{" "}
+                              {new Date(taskDetails.responseUpdatedAt).toLocaleString(
+                                "ru-RU",
+                                {
+                                  day: "2-digit",
+                                  month: "2-digit",
+                                  year: "numeric",
+                                  hour: "2-digit",
+                                  minute: "2-digit",
+                                }
+                              )}
+                              {taskDetails.responseAuthorName
+                                ? `, ${taskDetails.responseAuthorName}`
+                                : ""}
+                            </div>
+                          )}
+                        </div>
+
+                        {taskDetailsCanEdit && (
+                          <div className="task-details-section">
+                            <div className="task-details-label">Комментарий по выполнению</div>
+                            <textarea
+                              className="form__textarea"
+                              rows={3}
+                              placeholder="Комментарий по выполнению задачи..."
+                              value={taskDetailsResponseDraft}
+                              onChange={(e) =>
+                                setTaskResponseDrafts((prev) => ({
+                                  ...prev,
+                                  [taskDetails.id]: e.target.value,
+                                }))
+                              }
+                            />
+
+                            <input
+                              type="file"
+                              className="form__input"
+                              accept="image/jpeg,image/png,image/webp"
+                              multiple
+                              onChange={(event) =>
+                                handleTaskResponsePhotoPick(taskDetails.id, event)
+                              }
+                            />
+
+                            {taskDetailsResponseFiles.length > 0 && (
+                              <div className="task-details-files">
+                                {taskDetailsResponseFiles.map((file, fileIndex) => (
+                                  <div
+                                    key={`${taskDetails.id}-response-file-${file.name}-${file.lastModified}-${fileIndex}`}
+                                    className="task-details-file-row"
+                                  >
+                                    <span>{file.name}</span>
+                                    <button
+                                      type="button"
+                                      className="btn btn--ghost btn--sm"
+                                      onClick={() =>
+                                        removeTaskResponsePhoto(taskDetails.id, fileIndex)
+                                      }
+                                    >
+                                      Убрать
+                                    </button>
+                                  </div>
+                                ))}
+                              </div>
+                            )}
+
+                            <div className="task-details-actions">
+                              <button
+                                type="button"
+                                className="btn btn--secondary btn--sm"
+                                onClick={() => handleTaskResponseSave(taskDetails.id)}
+                                disabled={taskResponseSavingId === taskDetails.id}
+                              >
+                                {taskResponseSavingId === taskDetails.id
+                                  ? "Сохранение..."
+                                  : "Сохранить ответ"}
+                              </button>
+
+                              <select
+                                className="form__select form__select--sm"
+                                style={{ minWidth: 190 }}
+                                value={taskDetails.status}
+                                onChange={(e) =>
+                                  handleTaskStatusSave(taskDetails.id, e.target.value)
+                                }
+                                disabled={taskStatusSavingId === taskDetails.id}
+                              >
+                                {TASK_STATUS_OPTIONS.map((option) => (
+                                  <option key={option.value} value={option.value}>
+                                    {option.label}
+                                  </option>
+                                ))}
+                              </select>
+                            </div>
+                          </div>
+                        )}
+                      </div>
+
+                      <div className="task-details-footer">
+                        <button
+                          type="button"
+                          className="btn btn--ghost"
+                          onClick={closeTaskDetails}
+                        >
+                          Закрыть
+                        </button>
+                      </div>
+                    </div>
+                  </div>
                 )}
 
               </div>
