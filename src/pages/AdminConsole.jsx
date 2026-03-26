@@ -1,4 +1,4 @@
-﻿import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useAuth } from "../context/AuthContext";
 import UserManagement from "./UserManagement";
 import TenantManagement from "./TenantManagement";
@@ -74,7 +74,7 @@ export default function AdminConsole({ initialTab = "users" }) {
       <div className="admin-console">
         <div className="admin-console__header">
           <div>
-            <div className="admin-console__title">Администрирование</div>
+            <div className="admin-console__title">Управление</div>
             <div className="admin-console__subtitle">
               Нет доступа, нужна роль ADMIN.
             </div>
@@ -95,9 +95,9 @@ export default function AdminConsole({ initialTab = "users" }) {
       <div className="admin-console">
         <div className="admin-console__header">
           <div>
-            <div className="admin-console__title">Администрирование</div>
+            <div className="admin-console__title">Управление</div>
             <div className="admin-console__subtitle">
-              Нет доступных разделов админки для этого пользователя.
+              Нет доступных разделов управления для этого пользователя.
             </div>
           </div>
         </div>
@@ -137,3 +137,4 @@ export default function AdminConsole({ initialTab = "users" }) {
     </div>
   );
 }
+

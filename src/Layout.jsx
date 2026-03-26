@@ -33,21 +33,67 @@ function openDatePicker(input) {
   }
 }
 
+function MenuIcon({ type, active = false }) {
+  const stroke = active ? "#0b67c0" : "#64748b";
+  const fill = active ? "rgba(14, 165, 233, 0.14)" : "transparent";
+
+  if (type === "warehouse") {
+    return (
+      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+        <path d="M3 9.5L12 4l9 5.5v10L12 20 3 19.5v-10Z" stroke={stroke} strokeWidth="1.8" fill={fill} />
+        <path d="M3 9.5 12 15l9-5.5" stroke={stroke} strokeWidth="1.6" />
+      </svg>
+    );
+  }
+
+  if (type === "news") {
+    return (
+      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+        <rect x="3.5" y="4.5" width="17" height="15" rx="2.5" stroke={stroke} strokeWidth="1.8" fill={fill} />
+        <path d="M7.5 9h9M7.5 12.5h9M7.5 16h6" stroke={stroke} strokeWidth="1.6" strokeLinecap="round" />
+      </svg>
+    );
+  }
+
+  return (
+    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+      <path d="M12 3.5 4 7.5v5c0 4.2 3.1 7.5 8 8.5 4.9-1 8-4.3 8-8.5v-5l-8-4Z" stroke={stroke} strokeWidth="1.8" fill={fill} />
+      <path d="M8.5 12.2 11 14.7l4.7-4.7" stroke={stroke} strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" />
+    </svg>
+  );
+}
+
+function BurgerIcon() {
+  return (
+    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+      <path d="M4 6.5h16M4 12h16M4 17.5h16" stroke="#334155" strokeWidth="1.8" strokeLinecap="round" />
+    </svg>
+  );
+}
+
 export default function Layout() {
   const { user, logout } = useAuth();
   const [isMobile, setIsMobile] = useState(false);
+  const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
+
   const menu = [
     {
-      label: "\u0421\u043a\u043b\u0430\u0434",
+      label: "Склад",
+      shortLabel: "Склад",
+      icon: "warehouse",
       to: "/warehouse",
       permission: PERMISSION_KEYS.APP_WAREHOUSE,
     },
     {
-      label: "\u041d\u043e\u0432\u043e\u0441\u0442\u0438 \u043f\u043b\u0430\u0442\u0444\u043e\u0440\u043c\u044b",
+      label: "Новости платформы",
+      shortLabel: "Новости",
+      icon: "news",
       to: "/news",
     },
     {
-      label: "\u0410\u0434\u043c\u0438\u043d\u0438\u0441\u0442\u0440\u0438\u0440\u043e\u0432\u0430\u043d\u0438\u0435",
+      label: "Управление",
+      shortLabel: "Управление",
+      icon: "admin",
       to: "/admin",
       permission: PERMISSION_KEYS.APP_ADMIN,
     },
@@ -56,6 +102,7 @@ export default function Layout() {
   const allowedMenu = user
     ? menu.filter((item) => hasPermission(user, item.permission))
     : [];
+
   useEffect(() => {
     const media = window.matchMedia("(max-width: 768px)");
     const onChange = () => setIsMobile(media.matches);
@@ -63,6 +110,12 @@ export default function Layout() {
     media.addEventListener("change", onChange);
     return () => media.removeEventListener("change", onChange);
   }, []);
+
+  useEffect(() => {
+    if (!isMobile) {
+      setMobileMenuOpen(false);
+    }
+  }, [isMobile]);
 
   useEffect(() => {
     const onDocumentClick = (event) => {
@@ -111,26 +164,24 @@ export default function Layout() {
   const sidebarStyle = isMobile
     ? { ...styles.sidebar, display: "none" }
     : styles.sidebar;
+
   return (
     <div style={rootStyle}>
-      {/* РЎР°Р№РґР±Р°СЂ */}
       <aside style={sidebarStyle}>
-        {/* Р›РѕРіРѕ / РЅР°Р·РІР°РЅРёРµ */}
         <div style={styles.logoBlock}>
           <img
             src={APP_LOGO_SRC}
-            alt={"\u041b\u043e\u0433\u043e\u0442\u0438\u043f"}
+            alt="Логотип"
             style={styles.logoMarkImage}
             loading="eager"
             decoding="sync"
           />
           <div>
-            <div style={styles.logoTitle}>{"\u0421\u043a\u043b\u0430\u0434\u041e\u043d\u043b\u0430\u0439\u043d"}</div>
-            <div style={styles.logoSubtitle}>{"\u0412\u043d\u0443\u0442\u0440\u0435\u043d\u043d\u0438\u0439 \u0441\u0435\u0440\u0432\u0438\u0441 \u043a\u043e\u043c\u043f\u0430\u043d\u0438\u0438"}</div>
+            <div style={styles.logoTitle}>СкладОнлайн</div>
+            <div style={styles.logoSubtitle}>Внутренний сервис компании</div>
           </div>
         </div>
 
-        {/* РљР°СЂС‚РѕС‡РєР° РїРѕР»СЊР·РѕРІР°С‚РµР»СЏ */}
         {user && (
           <div style={styles.userCard}>
             <div style={styles.userName}>{user.name}</div>
@@ -139,7 +190,6 @@ export default function Layout() {
           </div>
         )}
 
-        {/* РќР°РІРёРіР°С†РёСЏ */}
         <nav style={styles.nav} className="sidebar-nav">
           {allowedMenu.map((item) => (
             <NavLink
@@ -151,28 +201,35 @@ export default function Layout() {
                   : styles.navItem
               }
             >
+              <MenuIcon type={item.icon} active={false} />
               <span>{item.label}</span>
             </NavLink>
           ))}
         </nav>
-
       </aside>
 
-      {/* РџСЂР°РІР°СЏ С‡Р°СЃС‚СЊ: С€Р°РїРєР° + РєРѕРЅС‚РµРЅС‚ */}
       <div style={styles.main}>
-        <div
-          style={isMobile ? styles.floatingActionsMobile : styles.floatingActions}
-          className="portal-floating-actions"
-        >
-          {user && <NotificationBell />}
-          <button
-            type="button"
-            style={styles.headerLogoutBtn}
-            onClick={handleLogout}
-          >
-            {"\u0412\u044b\u0439\u0442\u0438"}
-          </button>
-        </div>
+        <header style={isMobile ? styles.topBarMobile : styles.topBar} className="portal-topbar">
+          {isMobile ? (
+            <button
+              type="button"
+              style={styles.topBarMenuButton}
+              onClick={() => setMobileMenuOpen(true)}
+              aria-label="Открыть меню"
+            >
+              <BurgerIcon />
+            </button>
+          ) : (
+            <div />
+          )}
+
+          <div style={styles.topBarActions}>
+            {user && <NotificationBell />}
+            <button type="button" style={styles.headerLogoutBtn} onClick={handleLogout}>
+              Выйти
+            </button>
+          </div>
+        </header>
 
         <main
           style={isMobile ? { ...styles.content, ...styles.contentMobile } : styles.content}
@@ -182,7 +239,56 @@ export default function Layout() {
         </main>
       </div>
 
-      {/* РњРѕР±РёР»СЊРЅРѕРµ РјРµРЅСЋ (drawer) */}
+      {isMobile && mobileMenuOpen && (
+        <>
+          <button
+            type="button"
+            style={styles.mobileMenuBackdrop}
+            onClick={() => setMobileMenuOpen(false)}
+            aria-label="Закрыть меню"
+          />
+          <aside style={styles.mobileMenuPanel}>
+            <div style={styles.mobileMenuHeader}>
+              <div style={styles.mobileMenuTitle}>Меню</div>
+              <button
+                type="button"
+                style={styles.mobileMenuCloseButton}
+                onClick={() => setMobileMenuOpen(false)}
+                aria-label="Закрыть"
+              >
+                ✕
+              </button>
+            </div>
+
+            {user && (
+              <div style={{ ...styles.userCard, marginBottom: 12 }}>
+                <div style={styles.userName}>{user.name}</div>
+                <div style={styles.userEmail}>{user.login || user.username || user.email}</div>
+                <div style={styles.userRole}>{user.role}</div>
+              </div>
+            )}
+
+            <nav style={styles.mobileMenuNav}>
+              {allowedMenu.map((item) => (
+                <NavLink
+                  key={`mobile-drawer-${item.to}`}
+                  to={item.to}
+                  onClick={() => setMobileMenuOpen(false)}
+                  style={({ isActive }) =>
+                    isActive
+                      ? { ...styles.mobileMenuNavItem, ...styles.mobileMenuNavItemActive }
+                      : styles.mobileMenuNavItem
+                  }
+                >
+                  <MenuIcon type={item.icon} active={false} />
+                  <span>{item.label}</span>
+                </NavLink>
+              ))}
+            </nav>
+          </aside>
+        </>
+      )}
+
       {isMobile && (
         <nav style={styles.mobileBottomNav} className="mobile-bottom-nav">
           {allowedMenu.map((item) => (
@@ -195,7 +301,14 @@ export default function Layout() {
                   : styles.mobileBottomNavItem
               }
             >
-              <span>{item.label}</span>
+              {({ isActive }) => (
+                <>
+                  <span style={styles.mobileBottomNavIconWrap}>
+                    <MenuIcon type={item.icon} active={isActive} />
+                  </span>
+                  <span style={styles.mobileBottomNavLabel}>{item.shortLabel}</span>
+                </>
+              )}
             </NavLink>
           ))}
         </nav>
@@ -234,13 +347,6 @@ const styles = {
     background: "#eff6ff",
     border: "1px solid #dbeafe",
     gap: 14,
-  },
-  logoMark: {
-    width: 28,
-    height: 28,
-    borderRadius: 8,
-    background:
-      "linear-gradient(135deg, #2563eb 0%, #1e40af 40%, #93c5fd 100%)",
   },
   logoMarkImage: {
     width: 68,
@@ -291,23 +397,23 @@ const styles = {
   navItem: {
     display: "flex",
     alignItems: "center",
-    padding: "8px 10px",
-    borderRadius: 8,
+    padding: "9px 11px",
+    borderRadius: 10,
     textDecoration: "none",
-    color: "#374151",
+    color: "#334155",
     fontSize: 14,
+    fontWeight: 600,
     gap: 8,
     background: "transparent",
-    border: "1px solid #111827", // С‡С‘СЂРЅР°СЏ СЂР°РјРєР° РІСЃРµРіРґР°
+    border: "1px solid #d1d5db",
     transition:
       "background 0.15s ease, color 0.15s ease, border 0.15s ease, box-shadow 0.15s ease",
   },
   navItemActive: {
-    background: "#ffffff",
-    color: "#1d4ed8",
-    borderColor: "#2563eb", // Р°РєС‚РёРІРЅС‹Р№ вЂ” СЃРёРЅСЏСЏ СЂР°РјРєР°
+    background: "#eff6ff",
+    color: "#0b67c0",
+    borderColor: "#bfdbfe",
     boxShadow: "0 0 0 1px rgba(37, 99, 235, 0.12)",
-    fontWeight: 600,
   },
   main: {
     flex: 1,
@@ -315,77 +421,194 @@ const styles = {
     flexDirection: "column",
     minWidth: 0,
   },
-  floatingActions: {
-    position: "fixed",
-    top: 14,
-    right: 16,
+  topBar: {
+    position: "sticky",
+    top: 0,
     zIndex: 45,
+    minHeight: 52,
+    display: "flex",
+    alignItems: "center",
+    justifyContent: "space-between",
+    padding: "6px 16px",
+    borderBottom: "1px solid rgba(15, 23, 42, 0.08)",
+    background: "rgba(248, 250, 252, 0.9)",
+    backdropFilter: "blur(8px)",
+  },
+  topBarMobile: {
+    position: "sticky",
+    top: 0,
+    zIndex: 120,
+    minHeight: "calc(env(safe-area-inset-top, 0px) + 52px)",
+    display: "flex",
+    alignItems: "flex-end",
+    justifyContent: "space-between",
+    padding: "calc(env(safe-area-inset-top, 0px) + 6px) 10px 6px",
+    borderBottom: "1px solid rgba(15, 23, 42, 0.08)",
+    background: "rgba(248, 250, 252, 0.92)",
+    backdropFilter: "blur(10px)",
+  },
+  topBarMenuButton: {
+    width: 36,
+    height: 36,
+    borderRadius: 10,
+    border: "1px solid #d1d5db",
+    background: "#ffffff",
+    color: "#334155",
     display: "inline-flex",
     alignItems: "center",
-    gap: 10,
+    justifyContent: "center",
+    padding: 0,
+    boxShadow: "none",
   },
-  floatingActionsMobile: {
-    position: "fixed",
-    top: "calc(env(safe-area-inset-top, 0px) + 8px)",
-    right: 10,
-    zIndex: 120,
+  topBarActions: {
     display: "inline-flex",
     alignItems: "center",
     gap: 8,
   },
   headerLogoutBtn: {
     padding: "7px 12px",
-    borderRadius: 8,
+    borderRadius: 10,
     border: "1px solid #d1d5db",
     background: "#ffffff",
     color: "#111827",
     fontSize: 13,
+    fontWeight: 600,
     cursor: "pointer",
     textAlign: "center",
     whiteSpace: "nowrap",
+    boxShadow: "none",
   },
   content: {
-    padding: "0",
+    padding: 0,
     flex: 1,
     boxSizing: "border-box",
   },
   contentMobile: {
-    paddingBottom: "calc(env(safe-area-inset-bottom, 0px) + 74px)",
+    paddingBottom: "calc(env(safe-area-inset-bottom, 0px) + 90px)",
+  },
+  mobileMenuBackdrop: {
+    position: "fixed",
+    inset: 0,
+    border: "none",
+    background: "rgba(15, 23, 42, 0.35)",
+    zIndex: 129,
+    padding: 0,
+    margin: 0,
+  },
+  mobileMenuPanel: {
+    position: "fixed",
+    top: 0,
+    left: 0,
+    bottom: 0,
+    width: "min(300px, 86vw)",
+    background: "#ffffff",
+    borderRight: "1px solid #dbe4ee",
+    boxShadow: "0 14px 32px rgba(15, 23, 42, 0.2)",
+    padding: "calc(env(safe-area-inset-top, 0px) + 10px) 12px calc(env(safe-area-inset-bottom, 0px) + 12px)",
+    display: "grid",
+    gridTemplateRows: "auto auto 1fr",
+    gap: 10,
+    zIndex: 130,
+    overflowY: "auto",
+  },
+  mobileMenuHeader: {
+    display: "flex",
+    alignItems: "center",
+    justifyContent: "space-between",
+    gap: 10,
+  },
+  mobileMenuTitle: {
+    fontSize: 17,
+    fontWeight: 700,
+    color: "#0f172a",
+  },
+  mobileMenuCloseButton: {
+    width: 34,
+    height: 34,
+    borderRadius: 10,
+    border: "1px solid #d1d5db",
+    background: "#ffffff",
+    color: "#111827",
+    display: "inline-flex",
+    alignItems: "center",
+    justifyContent: "center",
+    padding: 0,
+    fontSize: 20,
+    lineHeight: 1,
+    boxShadow: "none",
+  },
+  mobileMenuNav: {
+    display: "grid",
+    gap: 8,
+  },
+  mobileMenuNavItem: {
+    display: "flex",
+    alignItems: "center",
+    gap: 10,
+    minHeight: 42,
+    borderRadius: 11,
+    border: "1px solid #d1d5db",
+    padding: "8px 10px",
+    textDecoration: "none",
+    color: "#334155",
+    fontWeight: 600,
+    fontSize: 14,
+    background: "#ffffff",
+  },
+  mobileMenuNavItemActive: {
+    color: "#0b67c0",
+    background: "#eff6ff",
+    borderColor: "#bfdbfe",
   },
   mobileBottomNav: {
     position: "fixed",
-    left: 10,
-    right: 10,
+    left: 8,
+    right: 8,
     bottom: "calc(env(safe-area-inset-bottom, 0px) + 8px)",
     zIndex: 120,
     display: "grid",
     gridTemplateColumns: "repeat(3, minmax(0, 1fr))",
-    gap: 8,
-    padding: "8px",
-    borderRadius: 14,
-    border: "1px solid #dbeafe",
-    background: "rgba(255, 255, 255, 0.96)",
-    boxShadow: "0 12px 24px rgba(15, 23, 42, 0.14)",
-    backdropFilter: "blur(10px)",
+    gap: 6,
+    padding: "6px",
+    borderRadius: 16,
+    border: "1px solid rgba(191, 219, 254, 0.95)",
+    background: "rgba(255, 255, 255, 0.95)",
+    boxShadow: "0 12px 28px rgba(15, 23, 42, 0.16)",
+    backdropFilter: "blur(12px)",
   },
   mobileBottomNavItem: {
     display: "inline-flex",
+    flexDirection: "column",
     alignItems: "center",
     justifyContent: "center",
-    minHeight: 38,
-    padding: "8px 6px",
-    borderRadius: 10,
+    gap: 3,
+    minHeight: 48,
+    borderRadius: 11,
     border: "1px solid transparent",
-    fontSize: 12,
-    fontWeight: 600,
-    textAlign: "center",
     textDecoration: "none",
-    color: "#334155",
+    color: "#64748b",
     background: "transparent",
+    padding: "5px 2px",
   },
   mobileBottomNavItemActive: {
     color: "#0b67c0",
     borderColor: "#bfdbfe",
     background: "#eff6ff",
+  },
+  mobileBottomNavIconWrap: {
+    height: 18,
+    display: "inline-flex",
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  mobileBottomNavLabel: {
+    display: "block",
+    fontSize: 10,
+    fontWeight: 600,
+    lineHeight: 1.1,
+    letterSpacing: 0,
+    textAlign: "center",
+    whiteSpace: "normal",
+    overflowWrap: "anywhere",
   },
 };
