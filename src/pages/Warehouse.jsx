@@ -2655,11 +2655,6 @@ export default function Warehouse({
     [sectionCards, sectionSet]
   );
 
-  const selectedSectionCard = useMemo(
-    () => sectionCards.find((card) => card.key === section) || null,
-    [sectionCards, section]
-  );
-
   const openSection = useCallback((sectionKey) => {
     setSection(sectionKey);
     const params = new URLSearchParams(location.search || "");
@@ -2742,37 +2737,6 @@ export default function Warehouse({
                 </div>
               </button>
             ))}
-          </div>
-        </div>
-      )}
-
-      {section &&
-        selectedSectionCard &&
-        !(section === "tasks" && taskDetails) && (
-        <div className="card" style={{ marginBottom: 12 }}>
-          <div
-            className="card1c__body"
-            style={{
-              display: "flex",
-              alignItems: "center",
-              justifyContent: "flex-start",
-              gap: 12,
-              flexWrap: "wrap",
-            }}
-          >
-            <div style={{ minWidth: 0, display: "flex", alignItems: "center", gap: 10 }}>
-              <div className="warehouse-card__icon" style={{ width: 52, height: 52 }}>
-                <WarehouseTileIcon name={selectedSectionCard.key} />
-              </div>
-              <div style={{ minWidth: 0 }}>
-                <div style={{ fontSize: 20, fontWeight: 700, lineHeight: 1.2 }}>
-                  {selectedSectionCard.title}
-                </div>
-                <div style={{ marginTop: 4, fontSize: 13, color: "#64748b" }}>
-                  {selectedSectionCard.subtitle}
-                </div>
-              </div>
-            </div>
           </div>
         </div>
       )}

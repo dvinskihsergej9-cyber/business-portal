@@ -8,6 +8,19 @@ import NotificationBell from "./components/NotificationBell";
 const DATE_INPUT_SELECTOR =
   'input[type="date"], input[type="datetime-local"], input[type="month"]';
 const APP_LOGO_SRC = APP_LOGO_DATA_URL;
+const WAREHOUSE_SECTION_TITLE_MAP = {
+  tasks: "\u0417\u0430\u0434\u0430\u0447\u0438 \u0441\u043a\u043b\u0430\u0434\u0430",
+  inventory: "\u041e\u0441\u0442\u0430\u0442\u043a\u0438",
+  holds: "\u0411\u043b\u043e\u043a\u0438\u0440\u043e\u0432\u043a\u0430 \u043e\u0441\u0442\u0430\u0442\u043a\u043e\u0432",
+  movement: "\u0418\u0441\u0442\u043e\u0440\u0438\u044f \u0434\u0432\u0438\u0436\u0435\u043d\u0438\u0439",
+  transactions: "\u0422\u0440\u0430\u043d\u0437\u0430\u043a\u0446\u0438\u0438",
+  revision: "\u0420\u0435\u0432\u0438\u0437\u0438\u044f",
+  suppliers: "\u041f\u043e\u0441\u0442\u0430\u0432\u0449\u0438\u043a\u0438",
+  locations: "\u0421\u043f\u0440\u0430\u0432\u043e\u0447\u043d\u0438\u043a \u044f\u0447\u0435\u0435\u043a",
+  items: "\u0421\u043f\u0440\u0430\u0432\u043e\u0447\u043d\u0438\u043a \u0442\u043e\u0432\u0430\u0440\u043e\u0432",
+  queue: "\u041c\u0430\u0448\u0438\u043d\u044b \u043f\u043e\u0441\u0442\u0430\u0432\u0449\u0438\u043a\u043e\u0432",
+  tsd: "\u041c\u043e\u0431\u0438\u043b\u044c\u043d\u044b\u0439 \u0422\u0421\u0414",
+};
 
 function openDatePicker(input) {
   if (!input) return;
@@ -146,6 +159,11 @@ export default function Layout() {
   const isWarehouseNested = location.pathname === "/warehouse" && Boolean(sectionParam);
   const isTopLevelMenuRoute = allowedMenu.some((item) => item.to === location.pathname);
   const showBack = isWarehouseNested || !isTopLevelMenuRoute;
+  const activeMenuItem = allowedMenu.find((item) => item.to === location.pathname) || null;
+  const currentPageTitle =
+    location.pathname === "/warehouse" && sectionParam
+      ? WAREHOUSE_SECTION_TITLE_MAP[sectionParam] || activeMenuItem?.label || "\u0421\u043a\u043b\u0430\u0434"
+      : activeMenuItem?.label || "\u0420\u0430\u0437\u0434\u0435\u043b";
 
   useEffect(() => {
     const media = window.matchMedia("(max-width: 768px)");
@@ -227,9 +245,6 @@ export default function Layout() {
   const sidebarStyle = isMobile
     ? { ...styles.sidebar, display: "none" }
     : styles.sidebar;
-  const headerStyle = showBack
-    ? (isMobile ? styles.topBarMobile : styles.topBar)
-    : { ...(isMobile ? styles.topBarMobile : styles.topBar), justifyContent: "flex-end" };
 
   return (
     <div style={rootStyle}>
@@ -276,10 +291,11 @@ export default function Layout() {
 
       <div style={styles.main}>
         <header
-          style={headerStyle}
+          style={isMobile ? styles.topBarMobile : styles.topBar}
           className="portal-topbar"
         >
-          {showBack && (
+          <div style={styles.topBarLeft}>
+            {showBack && (
             <button
               type="button"
               style={styles.backBtn}
@@ -289,7 +305,12 @@ export default function Layout() {
               <BackIcon />
               <span>Назад</span>
             </button>
-          )}
+            )}
+          </div>
+
+          <div style={styles.topBarTitle} title={currentPageTitle}>
+            {currentPageTitle}
+          </div>
 
           <div style={styles.topBarActions}>
             {user && <NotificationBell />}
@@ -444,9 +465,9 @@ const styles = {
     top: 0,
     zIndex: 45,
     minHeight: 52,
-    display: "flex",
+    display: "grid",
+    gridTemplateColumns: "minmax(0, 1fr) auto minmax(0, 1fr)",
     alignItems: "center",
-    justifyContent: "space-between",
     padding: "6px 16px",
     borderBottom: "1px solid rgba(15, 23, 42, 0.08)",
     background: "rgba(248, 250, 252, 0.9)",
@@ -457,9 +478,9 @@ const styles = {
     top: 0,
     zIndex: 120,
     minHeight: "calc(env(safe-area-inset-top, 0px) + 52px)",
-    display: "flex",
+    display: "grid",
+    gridTemplateColumns: "minmax(0, 1fr) auto minmax(0, 1fr)",
     alignItems: "flex-end",
-    justifyContent: "space-between",
     padding: "calc(env(safe-area-inset-top, 0px) + 6px) 10px 6px",
     borderBottom: "1px solid rgba(15, 23, 42, 0.08)",
     background: "rgba(248, 250, 252, 0.92)",
@@ -479,7 +500,28 @@ const styles = {
     gap: 6,
     boxShadow: "none",
   },
+  topBarLeft: {
+    justifySelf: "start",
+    display: "inline-flex",
+    alignItems: "center",
+    minHeight: 34,
+    minWidth: 72,
+  },
+  topBarTitle: {
+    justifySelf: "center",
+    maxWidth: "min(64vw, 460px)",
+    textAlign: "center",
+    fontSize: 16,
+    fontWeight: 700,
+    lineHeight: 1.2,
+    color: "#0f172a",
+    whiteSpace: "nowrap",
+    overflow: "hidden",
+    textOverflow: "ellipsis",
+    pointerEvents: "none",
+  },
   topBarActions: {
+    justifySelf: "end",
     display: "inline-flex",
     alignItems: "center",
     gap: 8,
