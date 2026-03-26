@@ -41,12 +41,18 @@ function MenuIcon({ type, active = false }) {
     return (
       <svg width="18" height="18" viewBox="0 0 24 24" fill="none" aria-hidden="true">
         <path
-          d="M3 9.5L12 4l9 5.5v10L12 20 3 19.5v-10Z"
+          d="M4.5 10.5 12 6l7.5 4.5v8L12 21l-7.5-2.5v-8Z"
           stroke={stroke}
           strokeWidth="1.8"
           fill={fill}
         />
-        <path d="M3 9.5 12 15l9-5.5" stroke={stroke} strokeWidth="1.6" />
+        <path d="M4.5 10.5 12 15l7.5-4.5" stroke={stroke} strokeWidth="1.6" />
+        <path
+          d="M8.6 12.5h6.8M8.6 15.2h4.4"
+          stroke={stroke}
+          strokeWidth="1.4"
+          strokeLinecap="round"
+        />
       </svg>
     );
   }
@@ -136,6 +142,10 @@ export default function Layout() {
   const allowedMenu = user
     ? menu.filter((item) => hasPermission(user, item.permission))
     : [];
+  const sectionParam = new URLSearchParams(location.search || "").get("section");
+  const isWarehouseNested = location.pathname === "/warehouse" && Boolean(sectionParam);
+  const isTopLevelMenuRoute = allowedMenu.some((item) => item.to === location.pathname);
+  const showBack = isWarehouseNested || !isTopLevelMenuRoute;
 
   useEffect(() => {
     const media = window.matchMedia("(max-width: 768px)");
@@ -192,6 +202,8 @@ export default function Layout() {
   };
 
   const handleBack = () => {
+    if (!showBack) return;
+
     if (location.pathname === "/warehouse") {
       const event = new CustomEvent("portal:warehouse-back", { cancelable: true });
       window.dispatchEvent(event);
@@ -215,6 +227,9 @@ export default function Layout() {
   const sidebarStyle = isMobile
     ? { ...styles.sidebar, display: "none" }
     : styles.sidebar;
+  const headerStyle = showBack
+    ? (isMobile ? styles.topBarMobile : styles.topBar)
+    : { ...(isMobile ? styles.topBarMobile : styles.topBar), justifyContent: "flex-end" };
 
   return (
     <div style={rootStyle}>
@@ -261,18 +276,20 @@ export default function Layout() {
 
       <div style={styles.main}>
         <header
-          style={isMobile ? styles.topBarMobile : styles.topBar}
+          style={headerStyle}
           className="portal-topbar"
         >
-          <button
-            type="button"
-            style={styles.backBtn}
-            onClick={handleBack}
-            aria-label="Назад"
-          >
-            <BackIcon />
-            <span>Назад</span>
-          </button>
+          {showBack && (
+            <button
+              type="button"
+              style={styles.backBtn}
+              onClick={handleBack}
+              aria-label="Назад"
+            >
+              <BackIcon />
+              <span>Назад</span>
+            </button>
+          )}
 
           <div style={styles.topBarActions}>
             {user && <NotificationBell />}

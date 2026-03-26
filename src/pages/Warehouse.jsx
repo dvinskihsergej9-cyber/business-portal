@@ -1,7 +1,7 @@
 ﻿
 
 import { useCallback, useEffect, useMemo, useRef, useState, Fragment } from "react";
-import { useLocation } from "react-router-dom";
+import { useLocation, useNavigate } from "react-router-dom";
 
 import { API_BASE, normalizeErrorMessage } from "../apiConfig";
 import { useAuth } from "../context/AuthContext";
@@ -279,6 +279,7 @@ export default function Warehouse({
 
   const { user } = useAuth();
   const location = useLocation();
+  const navigate = useNavigate();
 
   const isWarehouseManager =
     user?.role === "ADMIN" ||
@@ -2661,13 +2662,33 @@ export default function Warehouse({
 
   const openSection = useCallback((sectionKey) => {
     setSection(sectionKey);
+    const params = new URLSearchParams(location.search || "");
+    params.set("section", sectionKey);
+    navigate(
+      {
+        pathname: location.pathname,
+        search: `?${params.toString()}`,
+      },
+      { replace: true }
+    );
     window.scrollTo({ top: 0, left: 0, behavior: "auto" });
-  }, []);
+  }, [location.pathname, location.search, navigate]);
 
   const closeSection = useCallback(() => {
     setSection("");
+    const params = new URLSearchParams(location.search || "");
+    params.delete("section");
+    params.delete("taskView");
+    const search = params.toString();
+    navigate(
+      {
+        pathname: location.pathname,
+        search: search ? `?${search}` : "",
+      },
+      { replace: true }
+    );
     window.scrollTo({ top: 0, left: 0, behavior: "auto" });
-  }, []);
+  }, [location.pathname, location.search, navigate]);
 
   useEffect(() => {
     const handleTopBack = (event) => {
