@@ -1,5 +1,5 @@
-import { useEffect, useState } from "react";
-import { NavLink, Outlet } from "react-router-dom";
+import { useEffect, useMemo, useState } from "react";
+import { NavLink, Outlet, useLocation, useNavigate } from "react-router-dom";
 import { useAuth } from "./context/AuthContext";
 import { hasPermission, PERMISSION_KEYS } from "./utils/permissions";
 import { APP_LOGO_DATA_URL } from "./assets/appLogoDataUrl";
@@ -93,32 +93,45 @@ function MenuIcon({ type, active = false }) {
   );
 }
 
+function BackIcon() {
+  return (
+    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+      <path d="M15.5 4.5 8 12l7.5 7.5" stroke="#334155" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
+    </svg>
+  );
+}
+
 export default function Layout() {
   const { user, logout } = useAuth();
+  const navigate = useNavigate();
+  const location = useLocation();
   const [isMobile, setIsMobile] = useState(false);
 
-  const menu = [
-    {
-      label: "Склад",
-      shortLabel: "Склад",
-      icon: "warehouse",
-      to: "/warehouse",
-      permission: PERMISSION_KEYS.APP_WAREHOUSE,
-    },
-    {
-      label: "Новости платформы",
-      shortLabel: "Новости",
-      icon: "news",
-      to: "/news",
-    },
-    {
-      label: "Управление",
-      shortLabel: "Управление",
-      icon: "admin",
-      to: "/admin",
-      permission: PERMISSION_KEYS.APP_ADMIN,
-    },
-  ];
+  const menu = useMemo(
+    () => [
+      {
+        label: "\u0421\u043a\u043b\u0430\u0434",
+        shortLabel: "\u0421\u043a\u043b\u0430\u0434",
+        icon: "warehouse",
+        to: "/warehouse",
+        permission: PERMISSION_KEYS.APP_WAREHOUSE,
+      },
+      {
+        label: "\u041d\u043e\u0432\u043e\u0441\u0442\u0438 \u043f\u043b\u0430\u0442\u0444\u043e\u0440\u043c\u044b",
+        shortLabel: "\u041d\u043e\u0432\u043e\u0441\u0442\u0438",
+        icon: "news",
+        to: "/news",
+      },
+      {
+        label: "\u0423\u043f\u0440\u0430\u0432\u043b\u0435\u043d\u0438\u0435",
+        shortLabel: "\u0423\u043f\u0440\u0430\u0432\u043b\u0435\u043d\u0438\u0435",
+        icon: "admin",
+        to: "/admin",
+        permission: PERMISSION_KEYS.APP_ADMIN,
+      },
+    ],
+    []
+  );
 
   const allowedMenu = user
     ? menu.filter((item) => hasPermission(user, item.permission))
@@ -178,6 +191,26 @@ export default function Layout() {
     logout();
   };
 
+  const handleBack = () => {
+    if (location.pathname === "/warehouse") {
+      const event = new CustomEvent("portal:warehouse-back", { cancelable: true });
+      window.dispatchEvent(event);
+      if (event.defaultPrevented) {
+        return;
+      }
+    }
+
+    if (window.history.length > 1) {
+      navigate(-1);
+      return;
+    }
+
+    const fallbackRoute = allowedMenu[0]?.to || "/warehouse";
+    if (location.pathname !== fallbackRoute) {
+      navigate(fallbackRoute);
+    }
+  };
+
   const rootStyle = isMobile ? styles.rootMobile : styles.root;
   const sidebarStyle = isMobile
     ? { ...styles.sidebar, display: "none" }
@@ -189,14 +222,14 @@ export default function Layout() {
         <div style={styles.logoBlock}>
           <img
             src={APP_LOGO_SRC}
-            alt="Логотип"
+            alt="\u041b\u043e\u0433\u043e\u0442\u0438\u043f"
             style={styles.logoMarkImage}
             loading="eager"
             decoding="sync"
           />
           <div>
-            <div style={styles.logoTitle}>СкладОнлайн</div>
-            <div style={styles.logoSubtitle}>Внутренний сервис компании</div>
+            <div style={styles.logoTitle}>\u0421\u043a\u043b\u0430\u0434\u041e\u043d\u043b\u0430\u0439\u043d</div>
+            <div style={styles.logoSubtitle}>\u0412\u043d\u0443\u0442\u0440\u0435\u043d\u043d\u0438\u0439 \u0441\u0435\u0440\u0432\u0438\u0441 \u043a\u043e\u043c\u043f\u0430\u043d\u0438\u0438</div>
           </div>
         </div>
 
@@ -231,10 +264,20 @@ export default function Layout() {
           style={isMobile ? styles.topBarMobile : styles.topBar}
           className="portal-topbar"
         >
+          <button
+            type="button"
+            style={styles.backBtn}
+            onClick={handleBack}
+            aria-label="\u041d\u0430\u0437\u0430\u0434"
+          >
+            <BackIcon />
+            <span>\u041d\u0430\u0437\u0430\u0434</span>
+          </button>
+
           <div style={styles.topBarActions}>
             {user && <NotificationBell />}
             <button type="button" style={styles.headerLogoutBtn} onClick={handleLogout}>
-              Выйти
+              \u0412\u044b\u0439\u0442\u0438
             </button>
           </div>
         </header>
@@ -386,7 +429,7 @@ const styles = {
     minHeight: 52,
     display: "flex",
     alignItems: "center",
-    justifyContent: "flex-end",
+    justifyContent: "space-between",
     padding: "6px 16px",
     borderBottom: "1px solid rgba(15, 23, 42, 0.08)",
     background: "rgba(248, 250, 252, 0.9)",
@@ -399,11 +442,25 @@ const styles = {
     minHeight: "calc(env(safe-area-inset-top, 0px) + 52px)",
     display: "flex",
     alignItems: "flex-end",
-    justifyContent: "flex-end",
+    justifyContent: "space-between",
     padding: "calc(env(safe-area-inset-top, 0px) + 6px) 10px 6px",
     borderBottom: "1px solid rgba(15, 23, 42, 0.08)",
     background: "rgba(248, 250, 252, 0.92)",
     backdropFilter: "blur(10px)",
+  },
+  backBtn: {
+    minHeight: 34,
+    padding: "7px 10px",
+    borderRadius: 10,
+    border: "1px solid #d1d5db",
+    background: "#ffffff",
+    color: "#334155",
+    fontSize: 13,
+    fontWeight: 600,
+    display: "inline-flex",
+    alignItems: "center",
+    gap: 6,
+    boxShadow: "none",
   },
   topBarActions: {
     display: "inline-flex",
@@ -455,7 +512,6 @@ const styles = {
     gap: 3,
     minHeight: 48,
     borderRadius: 11,
-    border: "1px solid transparent",
     textDecoration: "none",
     color: "#64748b",
     background: "transparent",
@@ -463,7 +519,6 @@ const styles = {
   },
   mobileBottomNavItemActive: {
     color: "#0b67c0",
-    borderColor: "#bfdbfe",
     background: "#eff6ff",
   },
   mobileBottomNavIconWrap: {

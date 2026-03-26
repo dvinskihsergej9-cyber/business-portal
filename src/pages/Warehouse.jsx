@@ -1,6 +1,6 @@
 ﻿
 
-import { useEffect, useMemo, useRef, useState, Fragment } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, Fragment } from "react";
 import { useLocation } from "react-router-dom";
 
 import { API_BASE, normalizeErrorMessage } from "../apiConfig";
@@ -2659,15 +2659,28 @@ export default function Warehouse({
     [sectionCards, section]
   );
 
-  const openSection = (sectionKey) => {
+  const openSection = useCallback((sectionKey) => {
     setSection(sectionKey);
     window.scrollTo({ top: 0, left: 0, behavior: "auto" });
-  };
+  }, []);
 
-  const closeSection = () => {
+  const closeSection = useCallback(() => {
     setSection("");
     window.scrollTo({ top: 0, left: 0, behavior: "auto" });
-  };
+  }, []);
+
+  useEffect(() => {
+    const handleTopBack = (event) => {
+      if (!section) return;
+      closeSection();
+      if (typeof event?.preventDefault === "function") {
+        event.preventDefault();
+      }
+    };
+
+    window.addEventListener("portal:warehouse-back", handleTopBack);
+    return () => window.removeEventListener("portal:warehouse-back", handleTopBack);
+  }, [section, closeSection]);
 
 
 
@@ -2721,7 +2734,7 @@ export default function Warehouse({
             style={{
               display: "flex",
               alignItems: "center",
-              justifyContent: "space-between",
+              justifyContent: "flex-start",
               gap: 12,
               flexWrap: "wrap",
             }}
@@ -2739,9 +2752,6 @@ export default function Warehouse({
                 </div>
               </div>
             </div>
-            <button type="button" className="btn btn--secondary" onClick={closeSection}>
-              Назад к разделам
-            </button>
           </div>
         </div>
       )}
