@@ -110,21 +110,21 @@ export default function Layout() {
   const menu = useMemo(
     () => [
       {
-        label: "\u0421\u043a\u043b\u0430\u0434",
-        shortLabel: "\u0421\u043a\u043b\u0430\u0434",
+        label: "Склад",
+        shortLabel: "Склад",
         icon: "warehouse",
         to: "/warehouse",
         permission: PERMISSION_KEYS.APP_WAREHOUSE,
       },
       {
-        label: "\u041d\u043e\u0432\u043e\u0441\u0442\u0438 \u043f\u043b\u0430\u0442\u0444\u043e\u0440\u043c\u044b",
-        shortLabel: "\u041d\u043e\u0432\u043e\u0441\u0442\u0438",
+        label: "Новости платформы",
+        shortLabel: "Новости",
         icon: "news",
         to: "/news",
       },
       {
-        label: "\u0423\u043f\u0440\u0430\u0432\u043b\u0435\u043d\u0438\u0435",
-        shortLabel: "\u0423\u043f\u0440\u0430\u0432\u043b\u0435\u043d\u0438\u0435",
+        label: "Управление",
+        shortLabel: "Управление",
         icon: "admin",
         to: "/admin",
         permission: PERMISSION_KEYS.APP_ADMIN,
@@ -222,14 +222,14 @@ export default function Layout() {
         <div style={styles.logoBlock}>
           <img
             src={APP_LOGO_SRC}
-            alt="\u041b\u043e\u0433\u043e\u0442\u0438\u043f"
+            alt="Логотип"
             style={styles.logoMarkImage}
             loading="eager"
             decoding="sync"
           />
           <div>
-            <div style={styles.logoTitle}>\u0421\u043a\u043b\u0430\u0434\u041e\u043d\u043b\u0430\u0439\u043d</div>
-            <div style={styles.logoSubtitle}>\u0412\u043d\u0443\u0442\u0440\u0435\u043d\u043d\u0438\u0439 \u0441\u0435\u0440\u0432\u0438\u0441 \u043a\u043e\u043c\u043f\u0430\u043d\u0438\u0438</div>
+            <div style={styles.logoTitle}>СкладОнлайн</div>
+            <div style={styles.logoSubtitle}>Внутренний сервис компании</div>
           </div>
         </div>
 
@@ -268,16 +268,16 @@ export default function Layout() {
             type="button"
             style={styles.backBtn}
             onClick={handleBack}
-            aria-label="\u041d\u0430\u0437\u0430\u0434"
+            aria-label="Назад"
           >
             <BackIcon />
-            <span>\u041d\u0430\u0437\u0430\u0434</span>
+            <span>Назад</span>
           </button>
 
           <div style={styles.topBarActions}>
             {user && <NotificationBell />}
             <button type="button" style={styles.headerLogoutBtn} onClick={handleLogout}>
-              \u0412\u044b\u0439\u0442\u0438
+              Выйти
             </button>
           </div>
         </header>
