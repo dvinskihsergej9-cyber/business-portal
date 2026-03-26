@@ -16114,10 +16114,19 @@ app.post("/api/warehouse/stock/adjustment", requireAdmin, async (req, res) => {
   }
 });
 
-// запуск long polling Telegram (один экземпляр)
-startTelegramPolling().catch((err) =>
-  console.error("Ошибка при запуске startTelegramPolling:", err)
-);
+// запуск long polling Telegram (только при явном включении)
+const TELEGRAM_POLLING_ENABLED =
+  String(process.env.TELEGRAM_POLLING_ENABLED || "").toLowerCase() === "true";
+
+if (TELEGRAM_POLLING_ENABLED) {
+  startTelegramPolling().catch((err) =>
+    console.error("Ошибка при запуске startTelegramPolling:", err)
+  );
+} else {
+  console.log(
+    "[Telegram] long polling отключен (установите TELEGRAM_POLLING_ENABLED=true для включения)."
+  );
+}
 
 // ================== ЗАПУСК СЕРВЕРА ==================
 
