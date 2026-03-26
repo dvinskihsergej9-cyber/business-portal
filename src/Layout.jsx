@@ -40,7 +40,12 @@ function MenuIcon({ type, active = false }) {
   if (type === "warehouse") {
     return (
       <svg width="18" height="18" viewBox="0 0 24 24" fill="none" aria-hidden="true">
-        <path d="M3 9.5L12 4l9 5.5v10L12 20 3 19.5v-10Z" stroke={stroke} strokeWidth="1.8" fill={fill} />
+        <path
+          d="M3 9.5L12 4l9 5.5v10L12 20 3 19.5v-10Z"
+          stroke={stroke}
+          strokeWidth="1.8"
+          fill={fill}
+        />
         <path d="M3 9.5 12 15l9-5.5" stroke={stroke} strokeWidth="1.6" />
       </svg>
     );
@@ -49,24 +54,41 @@ function MenuIcon({ type, active = false }) {
   if (type === "news") {
     return (
       <svg width="18" height="18" viewBox="0 0 24 24" fill="none" aria-hidden="true">
-        <rect x="3.5" y="4.5" width="17" height="15" rx="2.5" stroke={stroke} strokeWidth="1.8" fill={fill} />
-        <path d="M7.5 9h9M7.5 12.5h9M7.5 16h6" stroke={stroke} strokeWidth="1.6" strokeLinecap="round" />
+        <rect
+          x="3.5"
+          y="4.5"
+          width="17"
+          height="15"
+          rx="2.5"
+          stroke={stroke}
+          strokeWidth="1.8"
+          fill={fill}
+        />
+        <path
+          d="M7.5 9h9M7.5 12.5h9M7.5 16h6"
+          stroke={stroke}
+          strokeWidth="1.6"
+          strokeLinecap="round"
+        />
       </svg>
     );
   }
 
   return (
     <svg width="18" height="18" viewBox="0 0 24 24" fill="none" aria-hidden="true">
-      <path d="M12 3.5 4 7.5v5c0 4.2 3.1 7.5 8 8.5 4.9-1 8-4.3 8-8.5v-5l-8-4Z" stroke={stroke} strokeWidth="1.8" fill={fill} />
-      <path d="M8.5 12.2 11 14.7l4.7-4.7" stroke={stroke} strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" />
-    </svg>
-  );
-}
-
-function BurgerIcon() {
-  return (
-    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" aria-hidden="true">
-      <path d="M4 6.5h16M4 12h16M4 17.5h16" stroke="#334155" strokeWidth="1.8" strokeLinecap="round" />
+      <path
+        d="M12 3.5 4 7.5v5c0 4.2 3.1 7.5 8 8.5 4.9-1 8-4.3 8-8.5v-5l-8-4Z"
+        stroke={stroke}
+        strokeWidth="1.8"
+        fill={fill}
+      />
+      <path
+        d="M8.5 12.2 11 14.7l4.7-4.7"
+        stroke={stroke}
+        strokeWidth="1.8"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
     </svg>
   );
 }
@@ -74,7 +96,6 @@ function BurgerIcon() {
 export default function Layout() {
   const { user, logout } = useAuth();
   const [isMobile, setIsMobile] = useState(false);
-  const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
 
   const menu = [
     {
@@ -112,12 +133,6 @@ export default function Layout() {
   }, []);
 
   useEffect(() => {
-    if (!isMobile) {
-      setMobileMenuOpen(false);
-    }
-  }, [isMobile]);
-
-  useEffect(() => {
     const onDocumentClick = (event) => {
       const target = event.target;
       if (!(target instanceof Element)) return;
@@ -134,7 +149,10 @@ export default function Layout() {
       let node = target;
       for (let depth = 0; node && depth < 8; depth += 1) {
         const dateInputs = node.querySelectorAll(DATE_INPUT_SELECTOR);
-        if (dateInputs.length === 1 && dateInputs[0] instanceof HTMLInputElement) {
+        if (
+          dateInputs.length === 1 &&
+          dateInputs[0] instanceof HTMLInputElement
+        ) {
           const dateInput = dateInputs[0];
           const rowRect = node.getBoundingClientRect();
           const inputRect = dateInput.getBoundingClientRect();
@@ -209,20 +227,10 @@ export default function Layout() {
       </aside>
 
       <div style={styles.main}>
-        <header style={isMobile ? styles.topBarMobile : styles.topBar} className="portal-topbar">
-          {isMobile ? (
-            <button
-              type="button"
-              style={styles.topBarMenuButton}
-              onClick={() => setMobileMenuOpen(true)}
-              aria-label="Открыть меню"
-            >
-              <BurgerIcon />
-            </button>
-          ) : (
-            <div />
-          )}
-
+        <header
+          style={isMobile ? styles.topBarMobile : styles.topBar}
+          className="portal-topbar"
+        >
           <div style={styles.topBarActions}>
             {user && <NotificationBell />}
             <button type="button" style={styles.headerLogoutBtn} onClick={handleLogout}>
@@ -238,56 +246,6 @@ export default function Layout() {
           <Outlet />
         </main>
       </div>
-
-      {isMobile && mobileMenuOpen && (
-        <>
-          <button
-            type="button"
-            style={styles.mobileMenuBackdrop}
-            onClick={() => setMobileMenuOpen(false)}
-            aria-label="Закрыть меню"
-          />
-          <aside style={styles.mobileMenuPanel}>
-            <div style={styles.mobileMenuHeader}>
-              <div style={styles.mobileMenuTitle}>Меню</div>
-              <button
-                type="button"
-                style={styles.mobileMenuCloseButton}
-                onClick={() => setMobileMenuOpen(false)}
-                aria-label="Закрыть"
-              >
-                ✕
-              </button>
-            </div>
-
-            {user && (
-              <div style={{ ...styles.userCard, marginBottom: 12 }}>
-                <div style={styles.userName}>{user.name}</div>
-                <div style={styles.userEmail}>{user.login || user.username || user.email}</div>
-                <div style={styles.userRole}>{user.role}</div>
-              </div>
-            )}
-
-            <nav style={styles.mobileMenuNav}>
-              {allowedMenu.map((item) => (
-                <NavLink
-                  key={`mobile-drawer-${item.to}`}
-                  to={item.to}
-                  onClick={() => setMobileMenuOpen(false)}
-                  style={({ isActive }) =>
-                    isActive
-                      ? { ...styles.mobileMenuNavItem, ...styles.mobileMenuNavItemActive }
-                      : styles.mobileMenuNavItem
-                  }
-                >
-                  <MenuIcon type={item.icon} active={false} />
-                  <span>{item.label}</span>
-                </NavLink>
-              ))}
-            </nav>
-          </aside>
-        </>
-      )}
 
       {isMobile && (
         <nav style={styles.mobileBottomNav} className="mobile-bottom-nav">
@@ -428,7 +386,7 @@ const styles = {
     minHeight: 52,
     display: "flex",
     alignItems: "center",
-    justifyContent: "space-between",
+    justifyContent: "flex-end",
     padding: "6px 16px",
     borderBottom: "1px solid rgba(15, 23, 42, 0.08)",
     background: "rgba(248, 250, 252, 0.9)",
@@ -441,24 +399,11 @@ const styles = {
     minHeight: "calc(env(safe-area-inset-top, 0px) + 52px)",
     display: "flex",
     alignItems: "flex-end",
-    justifyContent: "space-between",
+    justifyContent: "flex-end",
     padding: "calc(env(safe-area-inset-top, 0px) + 6px) 10px 6px",
     borderBottom: "1px solid rgba(15, 23, 42, 0.08)",
     background: "rgba(248, 250, 252, 0.92)",
     backdropFilter: "blur(10px)",
-  },
-  topBarMenuButton: {
-    width: 36,
-    height: 36,
-    borderRadius: 10,
-    border: "1px solid #d1d5db",
-    background: "#ffffff",
-    color: "#334155",
-    display: "inline-flex",
-    alignItems: "center",
-    justifyContent: "center",
-    padding: 0,
-    boxShadow: "none",
   },
   topBarActions: {
     display: "inline-flex",
@@ -484,96 +429,22 @@ const styles = {
     boxSizing: "border-box",
   },
   contentMobile: {
-    paddingBottom: "calc(env(safe-area-inset-bottom, 0px) + 90px)",
-  },
-  mobileMenuBackdrop: {
-    position: "fixed",
-    inset: 0,
-    border: "none",
-    background: "rgba(15, 23, 42, 0.35)",
-    zIndex: 129,
-    padding: 0,
-    margin: 0,
-  },
-  mobileMenuPanel: {
-    position: "fixed",
-    top: 0,
-    left: 0,
-    bottom: 0,
-    width: "min(300px, 86vw)",
-    background: "#ffffff",
-    borderRight: "1px solid #dbe4ee",
-    boxShadow: "0 14px 32px rgba(15, 23, 42, 0.2)",
-    padding: "calc(env(safe-area-inset-top, 0px) + 10px) 12px calc(env(safe-area-inset-bottom, 0px) + 12px)",
-    display: "grid",
-    gridTemplateRows: "auto auto 1fr",
-    gap: 10,
-    zIndex: 130,
-    overflowY: "auto",
-  },
-  mobileMenuHeader: {
-    display: "flex",
-    alignItems: "center",
-    justifyContent: "space-between",
-    gap: 10,
-  },
-  mobileMenuTitle: {
-    fontSize: 17,
-    fontWeight: 700,
-    color: "#0f172a",
-  },
-  mobileMenuCloseButton: {
-    width: 34,
-    height: 34,
-    borderRadius: 10,
-    border: "1px solid #d1d5db",
-    background: "#ffffff",
-    color: "#111827",
-    display: "inline-flex",
-    alignItems: "center",
-    justifyContent: "center",
-    padding: 0,
-    fontSize: 20,
-    lineHeight: 1,
-    boxShadow: "none",
-  },
-  mobileMenuNav: {
-    display: "grid",
-    gap: 8,
-  },
-  mobileMenuNavItem: {
-    display: "flex",
-    alignItems: "center",
-    gap: 10,
-    minHeight: 42,
-    borderRadius: 11,
-    border: "1px solid #d1d5db",
-    padding: "8px 10px",
-    textDecoration: "none",
-    color: "#334155",
-    fontWeight: 600,
-    fontSize: 14,
-    background: "#ffffff",
-  },
-  mobileMenuNavItemActive: {
-    color: "#0b67c0",
-    background: "#eff6ff",
-    borderColor: "#bfdbfe",
+    paddingBottom: "calc(env(safe-area-inset-bottom, 0px) + 108px)",
   },
   mobileBottomNav: {
     position: "fixed",
-    left: 8,
-    right: 8,
-    bottom: "calc(env(safe-area-inset-bottom, 0px) + 8px)",
+    left: 0,
+    right: 0,
+    bottom: 0,
     zIndex: 120,
     display: "grid",
     gridTemplateColumns: "repeat(3, minmax(0, 1fr))",
-    gap: 6,
-    padding: "6px",
-    borderRadius: 16,
-    border: "1px solid rgba(191, 219, 254, 0.95)",
-    background: "rgba(255, 255, 255, 0.95)",
-    boxShadow: "0 12px 28px rgba(15, 23, 42, 0.16)",
+    gap: 4,
+    padding: "8px 8px calc(env(safe-area-inset-bottom, 0px) + 8px)",
+    borderTop: "1px solid rgba(191, 219, 254, 0.95)",
+    borderRadius: "16px 16px 0 0",
+    background: "rgba(255, 255, 255, 0.97)",
+    boxShadow: "0 -10px 24px rgba(15, 23, 42, 0.16)",
     backdropFilter: "blur(12px)",
   },
   mobileBottomNavItem: {
