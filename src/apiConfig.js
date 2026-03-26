@@ -7,7 +7,7 @@ const prodFallbackBase = "https://business-portal-8nba.onrender.com";
 const prodFallbackOrigin = prodFallbackBase.replace(/\/+$/, "");
 export const FALLBACK_API_BASE = `${prodFallbackOrigin}/api`;
 
-const rawBase = import.meta.env.PROD ? (envBase || "/api") : (envBase || devFallbackBase);
+const rawBase = import.meta.env.PROD ? (envBase || FALLBACK_API_BASE) : (envBase || devFallbackBase);
 const cleanedBase = String(rawBase || "").trim().replace(/\s+/g, "");
 const needsProtocol =
   cleanedBase &&
@@ -40,7 +40,7 @@ if (import.meta.env.DEV && normalizedBase.includes("/api/api")) {
 
 if (!envBase && import.meta.env.PROD) {
   console.warn(
-    "[apiConfig] VITE_API_BASE is not set. Using /api (requires Vercel rewrite to backend):",
+    "[apiConfig] VITE_API_BASE is not set. Using fallback backend API URL:",
     normalizedBase
   );
 }

@@ -1,5 +1,5 @@
 ﻿import { createContext, useContext, useEffect, useState } from "react";
-import { apiFetch } from "../apiConfig";
+import { apiFetch, normalizeErrorMessage } from "../apiConfig";
 import { ensurePushSubscription } from "../utils/pushSubscription";
 
 export const AuthContext = createContext(null);
@@ -76,10 +76,21 @@ export function AuthProvider({ children }) {
         body: JSON.stringify({ login: normalizedLogin, password }),
       });
 
-      const data = await res.json();
+      const data = await res.json().catch(() => ({}));
 
       if (!res.ok) {
-        return { ok: false, message: data.message || "Ошибка входа" };
+        const fallbackByStatus =
+          res.status === 429
+            ? "Слишком много попыток входа. Подождите 10 минут."
+            : "Ошибка сервера при входе";
+        return { ok: false, message: data.message || fallbackByStatus };
+      }
+
+      if (!data?.token || !data?.user) {
+        return {
+          ok: false,
+          message: "Сервер вернул некорректный ответ. Повторите вход.",
+        };
       }
 
       localStorage.setItem("token", data.token);
@@ -90,7 +101,7 @@ export function AuthProvider({ children }) {
       return { ok: true };
     } catch (e) {
       console.error("Login error:", e);
-      return { ok: false, message: "Сетевая ошибка" };
+      return { ok: false, message: normalizeErrorMessage(e, "Не удалось выполнить вход.") };
     }
   };
 
