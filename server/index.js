@@ -16130,7 +16130,8 @@ if (TELEGRAM_POLLING_ENABLED) {
 
 // ================== ЗАПУСК СЕРВЕРА ==================
 
-const PORT = process.env.PORT || 3001;
+const PORT = Number(process.env.PORT || 3001);
+const HOST = process.env.HOST || "0.0.0.0";
 
 async function bootstrapServer() {
   try {
@@ -16159,8 +16160,8 @@ async function bootstrapServer() {
 
   logMailConfigStatus();
 
-  app.listen(PORT, () => {
-    console.log(`🚀 API запущен: http://localhost:${PORT}`);
+  app.listen(PORT, HOST, () => {
+    console.log(`🚀 API запущен: http://${HOST}:${PORT}`);
   });
 
   startBackgroundTasks().catch((err) =>
