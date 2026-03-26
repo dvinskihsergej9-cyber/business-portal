@@ -818,7 +818,7 @@ export default function ReceivingByPo({ authHeaders, makeOpId, onBack }) {
                       {row.item?.name || `Товар #${row.itemId}`}
                     </div>
                     <div className="tsd-card__meta">
-                      {[row.item?.sku && `SKU: ${row.item.sku}`, row.item?.barcode]
+                      {[row.item?.sku && `Артикул: ${row.item.sku}`, row.item?.barcode]
                         .filter(Boolean)
                         .join(" ? ")}
                     </div>

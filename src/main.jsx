@@ -42,7 +42,7 @@ if (typeof window !== "undefined" && !window.__fetchWrapped) {
             if (data && typeof data.message === "string") {
               const normalized = normalizeErrorMessage(
                 data.message,
-                "Ошибка запроса."
+                "Не удалось выполнить запрос."
               );
               if (normalized !== data.message) {
                 const patched = { ...data, message: normalized };
@@ -70,12 +70,12 @@ if (typeof window !== "undefined" && !window.__fetchWrapped) {
           return retryRes;
         } catch (retryErr) {
           throw new Error(
-            normalizeErrorMessage(retryErr, "Ошибка подключения к серверу.")
+            normalizeErrorMessage(retryErr, "Не удалось подключиться к серверу.")
           );
         }
       }
       throw new Error(
-        normalizeErrorMessage(err, "Ошибка подключения к серверу.")
+        normalizeErrorMessage(err, "Не удалось подключиться к серверу.")
       );
     }
   };

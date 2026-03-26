@@ -1,12 +1,14 @@
-﻿import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useAuth } from "../context/AuthContext";
 import UserManagement from "./UserManagement";
 import TenantManagement from "./TenantManagement";
 import PickingReport from "./PickingReport";
 import AdminWarehousePanel from "../components/admin/AdminWarehousePanel";
 import AdminOrgProfilePanel from "../components/admin/AdminOrgProfilePanel";
+import AdminMarketingSettingsPanel from "../components/admin/AdminMarketingSettingsPanel";
 import AdminPickingShortagePanel from "../components/admin/AdminPickingShortagePanel";
 import AdminOrderStatusHistoryPanel from "../components/admin/AdminOrderStatusHistoryPanel";
+import AdminPlatformNewsPanel from "../components/admin/AdminPlatformNewsPanel";
 import "../components/admin/admin.css";
 import { hasPermission, PERMISSION_KEYS } from "../utils/permissions";
 
@@ -20,6 +22,8 @@ const BASE_TABS = [
 ];
 
 const OWNER_TAB = { id: "tenants", label: "Клиенты" };
+const OWNER_PLATFORM_NEWS_TAB = { id: "platform-news", label: "Новости платформы" };
+const COMPANY_OWNER_MARKETING_TAB = { id: "marketing-settings", label: "Рассылка" };
 
 export default function AdminConsole({ initialTab = "users" }) {
   const { user } = useAuth();
@@ -29,11 +33,13 @@ export default function AdminConsole({ initialTab = "users" }) {
   const canWarehouse = hasPermission(user, PERMISSION_KEYS.ADMIN_WAREHOUSE);
   const canTenants =
     isSystemOwner && hasPermission(user, PERMISSION_KEYS.ADMIN_TENANTS);
+  const canCompanyOwnerMarketing = isAdmin && !isSystemOwner;
 
   const tabs = useMemo(
     () =>
       [
         canTenants ? OWNER_TAB : null,
+        canTenants ? OWNER_PLATFORM_NEWS_TAB : null,
         canUsers ? BASE_TABS.find((item) => item.id === "users") : null,
         canWarehouse ? BASE_TABS.find((item) => item.id === "warehouse") : null,
         canWarehouse
@@ -45,11 +51,12 @@ export default function AdminConsole({ initialTab = "users" }) {
         canWarehouse
           ? BASE_TABS.find((item) => item.id === "org-profile")
           : null,
+        canCompanyOwnerMarketing ? COMPANY_OWNER_MARKETING_TAB : null,
         canWarehouse
           ? BASE_TABS.find((item) => item.id === "picking-report")
           : null,
       ].filter(Boolean),
-    [canUsers, canWarehouse, canTenants]
+    [canUsers, canWarehouse, canTenants, canCompanyOwnerMarketing]
   );
 
   const initialTabId = tabs.some((tab) => tab.id === initialTab)
@@ -67,7 +74,7 @@ export default function AdminConsole({ initialTab = "users" }) {
       <div className="admin-console">
         <div className="admin-console__header">
           <div>
-            <div className="admin-console__title">Администрирование</div>
+            <div className="admin-console__title">Управление</div>
             <div className="admin-console__subtitle">
               Нет доступа, нужна роль ADMIN.
             </div>
@@ -88,9 +95,9 @@ export default function AdminConsole({ initialTab = "users" }) {
       <div className="admin-console">
         <div className="admin-console__header">
           <div>
-            <div className="admin-console__title">Администрирование</div>
+            <div className="admin-console__title">Управление</div>
             <div className="admin-console__subtitle">
-              Нет доступных разделов админки для этого пользователя.
+              Нет доступных разделов управления для этого пользователя.
             </div>
           </div>
         </div>
@@ -118,13 +125,16 @@ export default function AdminConsole({ initialTab = "users" }) {
 
       <div className="admin-console__body">
         {activeTab === "tenants" && <TenantManagement />}
+        {activeTab === "platform-news" && <AdminPlatformNewsPanel />}
         {activeTab === "users" && <UserManagement />}
         {activeTab === "warehouse" && <AdminWarehousePanel />}
         {activeTab === "picking-shortage" && <AdminPickingShortagePanel />}
         {activeTab === "order-status-history" && <AdminOrderStatusHistoryPanel />}
         {activeTab === "org-profile" && <AdminOrgProfilePanel />}
+        {activeTab === "marketing-settings" && <AdminMarketingSettingsPanel />}
         {activeTab === "picking-report" && <PickingReport />}
       </div>
     </div>
   );
 }
+

@@ -1,5 +1,6 @@
-import { createContext, useContext, useEffect, useState } from "react";
-import { apiFetch } from "../apiConfig";
+﻿import { createContext, useContext, useEffect, useState } from "react";
+import { apiFetch, normalizeErrorMessage } from "../apiConfig";
+import { ensurePushSubscription } from "../utils/pushSubscription";
 
 export const AuthContext = createContext(null);
 export const useAuth = () => useContext(AuthContext);
@@ -17,7 +18,20 @@ export function AuthProvider({ children }) {
   });
   const [loading, setLoading] = useState(true);
 
-  // авто-подтягивание пользователя по токену
+  const bindPushForSession = (token, interactive = false, forceRebind = false) => {
+    if (!token) return;
+    ensurePushSubscription({ token, interactive, forceRebind }).then((result) => {
+      if (result?.subscribed) return;
+      setTimeout(() => {
+        ensurePushSubscription({ token, interactive: false, forceRebind: false }).catch(() => null);
+      }, 1800);
+      setTimeout(() => {
+        ensurePushSubscription({ token, interactive: false, forceRebind: false }).catch(() => null);
+      }, 5000);
+    }).catch(() => null);
+  };
+
+  // Автоматически подтягиваем пользователя по токену.
   useEffect(() => {
     const token = localStorage.getItem("token");
     if (!token) {
@@ -62,31 +76,61 @@ export function AuthProvider({ children }) {
         body: JSON.stringify({ login: normalizedLogin, password }),
       });
 
-      const data = await res.json();
+      const data = await res.json().catch(() => ({}));
 
       if (!res.ok) {
-        return { ok: false, message: data.message || "Ошибка входа" };
+        const fallbackByStatus =
+          res.status === 429
+            ? "Слишком много попыток входа. Подождите 10 минут."
+            : "Ошибка сервера при входе";
+        return { ok: false, message: data.message || fallbackByStatus };
+      }
+
+      if (!data?.token || !data?.user) {
+        return {
+          ok: false,
+          message: "Сервер вернул некорректный ответ. Повторите вход.",
+        };
       }
 
       localStorage.setItem("token", data.token);
       localStorage.setItem("user", JSON.stringify(data.user));
       setUser(data.user);
+      bindPushForSession(data.token, true, true);
 
       return { ok: true };
     } catch (e) {
       console.error("Login error:", e);
-      return { ok: false, message: "Сетевая ошибка" };
+      return { ok: false, message: normalizeErrorMessage(e, "Не удалось выполнить вход.") };
     }
   };
 
-  // РЕГИСТРАЦИЯ БЕЗ ROLE — роль ставит сервер
-  const register = async (email, password, name) => {
+  // Регистрация без role: роль назначает сервер.
+  const register = async ({
+    email,
+    password,
+    name,
+    phone = "",
+    companyName = "",
+    privacyAccepted = false,
+    marketingAccepted = false,
+    consentVersion = "",
+  }) => {
     try {
       const normalizedEmail = String(email || "").trim().toLowerCase();
       const res = await apiFetch("/register", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ email: normalizedEmail, password, name }),
+        body: JSON.stringify({
+          email: normalizedEmail,
+          password,
+          name,
+          phone,
+          companyName,
+          privacyAccepted,
+          marketingAccepted,
+          consentVersion,
+        }),
       });
 
       const data = await res.json();
@@ -95,13 +139,70 @@ export function AuthProvider({ children }) {
         return { ok: false, message: data.message || "Ошибка регистрации" };
       }
 
+      return {
+        ok: true,
+        requiresVerification: Boolean(data?.requiresVerification),
+        email: data?.email || normalizedEmail,
+        message: data?.message || "Код подтверждения отправлен на почту.",
+      };
+    } catch (e) {
+      console.error("Register error:", e);
+      return { ok: false, message: "Сетевая ошибка" };
+    }
+  };
+
+  const verifyRegistrationCode = async (email, code) => {
+    try {
+      const normalizedEmail = String(email || "").trim().toLowerCase();
+      const normalizedCode = String(code || "").replace(/\s+/g, "");
+      const res = await apiFetch("/auth/verify-email-code", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          email: normalizedEmail,
+          code: normalizedCode,
+        }),
+      });
+
+      const data = await res.json();
+
+      if (!res.ok) {
+        return { ok: false, message: data.message || "Код подтверждения неверный." };
+      }
+
       localStorage.setItem("token", data.token);
       localStorage.setItem("user", JSON.stringify(data.user));
       setUser(data.user);
+      bindPushForSession(data.token, true, true);
 
       return { ok: true };
     } catch (e) {
-      console.error("Register error:", e);
+      console.error("Verify registration code error:", e);
+      return { ok: false, message: "Сетевая ошибка" };
+    }
+  };
+
+  const resendRegistrationCode = async (email) => {
+    try {
+      const normalizedEmail = String(email || "").trim().toLowerCase();
+      const res = await apiFetch("/auth/resend-email-code", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ email: normalizedEmail }),
+      });
+
+      const data = await res.json();
+
+      if (!res.ok) {
+        return { ok: false, message: data.message || "Не удалось отправить код повторно." };
+      }
+
+      return {
+        ok: true,
+        message: data?.message || "Код подтверждения отправлен повторно.",
+      };
+    } catch (e) {
+      console.error("Resend registration code error:", e);
       return { ok: false, message: "Сетевая ошибка" };
     }
   };
@@ -153,16 +254,26 @@ export function AuthProvider({ children }) {
       const data = await res.json();
       setUser(data);
       localStorage.setItem("user", JSON.stringify(data));
+      bindPushForSession(token, false, false);
     } catch (err) {
       console.error("Refresh user error:", err);
     }
   };
+
+  useEffect(() => {
+    if (!user?.id) return;
+    const token = localStorage.getItem("token");
+    bindPushForSession(token, false, false);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [user?.id]);
 
   const value = {
     user,
     loading,
     login,
     register,
+    verifyRegistrationCode,
+    resendRegistrationCode,
     updateProfile,
     logout,
     refreshUser,
@@ -170,3 +281,5 @@ export function AuthProvider({ children }) {
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
 }
+
+

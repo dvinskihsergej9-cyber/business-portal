@@ -9,7 +9,7 @@
     "seed": "node tools/seed-employee.mjs",
     "build": "vite build",
     "preview": "vite preview",
-    "db:deploy": "prisma db push --accept-data-loss && prisma generate",
+    "db:deploy": "node dbDeployWithRetry.mjs",
     "reset:items": "node tools/reset-items.mjs",
     "smoke": "node tools/smoke-check.mjs",
     "e2e": "playwright test",
@@ -39,6 +39,7 @@
     "react-dom": "^18.3.1",
     "react-pdf": "^6.2.2",
     "react-router-dom": "^6.28.0",
+    "web-push": "^3.6.7",
     "xlsx": "^0.18.5"
   },
   "devDependencies": {

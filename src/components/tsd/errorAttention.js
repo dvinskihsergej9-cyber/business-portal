@@ -53,20 +53,11 @@ export function focusTsdError(message, element) {
 
   const now = Date.now();
   if (message === lastSignalMessage && now - lastSignalAt < MIN_REPEAT_MS) {
-    if (element?.scrollIntoView) {
-      element.scrollIntoView({ behavior: "smooth", block: "center" });
-    }
     return;
   }
 
   lastSignalMessage = message;
   lastSignalAt = now;
-
-  if (element?.scrollIntoView) {
-    element.scrollIntoView({ behavior: "smooth", block: "center" });
-  } else if (typeof window !== "undefined") {
-    window.scrollTo({ top: 0, behavior: "smooth" });
-  }
 
   playErrorTone();
   if (typeof navigator !== "undefined" && navigator?.vibrate) {

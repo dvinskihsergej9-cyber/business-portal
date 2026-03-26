@@ -100,7 +100,7 @@ export default function ImportItemsModal({ onClose, onImportSuccess }) {
                     item.validationError = "Нет названия";
                 } else if (!item.sku || !String(item.sku).trim()) {
                     item.isValid = false;
-                    item.validationError = "Нет артикула (SKU)";
+                    item.validationError = "Нет артикула";
                 }
 
                 return item;
@@ -160,7 +160,7 @@ export default function ImportItemsModal({ onClose, onImportSuccess }) {
                         <div style={{ textAlign: "center", padding: 40, border: "2px dashed #ccc", borderRadius: 8 }}>
                             <p>Загрузите Excel файл (.xlsx)</p>
                             <p style={{ fontSize: 12, color: "#666", marginBottom: 20 }}>
-                                Колонки: Наименование, Артикул, Штрихкод, Ед.изм., Мин.остаток, Макс.остаток, Цена
+                                Колонки: Наименование, Артикул, Штрихкод, Ед.изм., Мин.остаток, Макс.остаток, Цена (необязательно)
                             </p>
                             <input
                                 type="file"
@@ -201,7 +201,7 @@ export default function ImportItemsModal({ onClose, onImportSuccess }) {
                                             <th style={{ padding: 8, borderBottom: "1px solid #ddd" }}>№</th>
                                             <th style={{ padding: 8, borderBottom: "1px solid #ddd" }}>Статус</th>
                                             <th style={{ padding: 8, borderBottom: "1px solid #ddd" }}>Название</th>
-                                            <th style={{ padding: 8, borderBottom: "1px solid #ddd" }}>SKU</th>
+                                            <th style={{ padding: 8, borderBottom: "1px solid #ddd" }}>Артикул</th>
                                             <th style={{ padding: 8, borderBottom: "1px solid #ddd" }}>Штрихкод</th>
                                             <th style={{ padding: 8, borderBottom: "1px solid #ddd" }}>Ед.</th>
                                             <th style={{ padding: 8, borderBottom: "1px solid #ddd" }}>Цена</th>

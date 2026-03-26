@@ -32,7 +32,7 @@ export default function ItemCard({ item, qty, onRemove }) {
           <div className="tsd-card__body">
             <div className="tsd-card__title">{item?.name || "\u0422\u043e\u0432\u0430\u0440"}</div>
             <div className="tsd-card__meta">
-              {[item?.sku && `SKU: ${item.sku}`, item?.barcode && `\u0428\u041a: ${item.barcode}`]
+              {[item?.sku && `Артикул: ${item.sku}`, item?.barcode && `\u0428\u041a: ${item.barcode}`]
                 .filter(Boolean)
                 .join(" | ")}
             </div>

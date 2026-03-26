@@ -290,9 +290,7 @@ export default function UserManagement() {
 
   useEffect(() => {
     if (!createError) return;
-    const node = createErrorRef.current;
-    if (!node) return;
-    node.scrollIntoView({ behavior: "smooth", block: "center" });
+    // Ошибки выводятся через глобальное модальное окно, без автоскролла.
   }, [createError]);
 
   useEffect(() => {

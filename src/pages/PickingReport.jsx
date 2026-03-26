@@ -21,6 +21,21 @@ const EMPTY_REPORT = {
   users: [],
 };
 
+const ORDER_STATUS_LABELS = {
+  NEW: "Новый",
+  IN_PICKING: "В отборе",
+  PICKED: "Отобран",
+  PACKED: "Упакован",
+  READY_TO_SHIP: "Готов к отгрузке",
+  SHIPPED: "Отгружен",
+  CANCELLED: "Отменён",
+};
+
+function formatOrderStatus(status) {
+  if (!status) return "-";
+  return ORDER_STATUS_LABELS[status] || status;
+}
+
 export default function PickingReport() {
   const [from, setFrom] = useState(() =>
     toLocalDateTimeInputValue(Date.now() - 7 * 24 * 60 * 60 * 1000)
@@ -205,7 +220,9 @@ export default function PickingReport() {
                                     <td data-label="Клиент">
                                       {order.customerName || "-"}
                                     </td>
-                                    <td data-label="Статус">{order.status || "-"}</td>
+                                    <td data-label="Статус">
+                                      {formatOrderStatus(order.status)}
+                                    </td>
                                     <td data-label="К отбору">
                                       {order.qtyOrdered || 0}
                                     </td>

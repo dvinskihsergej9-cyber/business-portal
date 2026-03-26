@@ -1,4 +1,4 @@
-import express from "express";
+﻿import express from "express";
 import cors from "cors";
 import bcrypt from "bcryptjs";
 import jwt from "jsonwebtoken";
@@ -7,6 +7,7 @@ import ExcelJS from "exceljs";
 import multer from "multer";
 import crypto from "crypto";
 import nodemailer from "nodemailer";
+import webpush from "web-push";
 import QRCode from "qrcode";
 import bwipjs from "bwip-js";
 import { AsyncLocalStorage } from "node:async_hooks";
@@ -61,6 +62,8 @@ app.use((req, res, next) => {
 
 const JWT_SECRET = process.env.JWT_SECRET || "super-secret-key"; // в .env в бою
 const JWT_EXPIRES_IN = "7d";
+const MARKETING_UNSUBSCRIBE_SECRET =
+  process.env.MARKETING_UNSUBSCRIBE_SECRET || JWT_SECRET;
 
 function createToken(user) {
   return jwt.sign(
@@ -82,7 +85,7 @@ async function auth(req, res, next) {
   }
   const header = req.headers["authorization"];
   if (!header) {
-    return res.status(401).json({ message: "????????? ????? ???????????." });
+    return res.status(401).json({ message: "Требуется токен авторизации." });
   }
 
   const [type, token] = header.split(" ");
@@ -182,9 +185,15 @@ const INVITE_GLOBAL_LIMIT = 20;
 const RESET_TTL_MS = 45 * 60 * 1000;
 const RESET_EMAIL_COOLDOWN_MS = 60 * 1000;
 const RESET_GLOBAL_LIMIT = 30;
+const EMAIL_VERIFY_TTL_MS = 10 * 60 * 1000;
+const EMAIL_VERIFY_RESEND_COOLDOWN_MS = 60 * 1000;
+const EMAIL_VERIFY_GLOBAL_LIMIT = 50;
+const EMAIL_VERIFY_MAX_ATTEMPTS = 5;
 
 const resetEmailRate = new Map();
 const resetGlobalRate = [];
+const emailVerifyResendRate = new Map();
+const emailVerifyGlobalRate = [];
 
 const FRONTEND_URL = process.env.FRONTEND_URL || "http://localhost:5173";
 const OWNER_PRIMARY_EMAIL = "dvinskihsergej9@gmail.com";
@@ -194,6 +203,89 @@ const OWNER_PRIMARY_NAME = "Сергей Двинских";
 
 function normalizeEmail(value) {
   return String(value || "").trim().toLowerCase();
+}
+
+function isValidRegistrationEmail(value) {
+  const normalized = normalizeEmail(value);
+  if (!/^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/u.test(normalized)) return false;
+  const domain = String(normalized.split("@")[1] || "");
+  if (!domain || domain.startsWith(".") || domain.endsWith(".")) return false;
+  return true;
+}
+
+function normalizeFullName(value) {
+  return String(value || "").trim().replace(/\s+/g, " ");
+}
+
+function isValidFullName(value) {
+  const normalized = normalizeFullName(value);
+  if (!normalized) return false;
+  const parts = normalized.split(" ").filter(Boolean);
+  return parts.length >= 2 && parts.every((part) => part.length >= 2);
+}
+
+function isValidPhone(value) {
+  const raw = String(value || "").trim();
+  if (!raw) return false;
+  if (!/^[0-9+\-()\s]+$/u.test(raw)) return false;
+  const digits = raw.replace(/\D+/g, "");
+  return digits.length >= 10 && digits.length <= 15;
+}
+
+function toBoolean(value) {
+  if (typeof value === "boolean") return value;
+  if (typeof value === "number") return value === 1;
+  const normalized = String(value || "").trim().toLowerCase();
+  return normalized === "true" || normalized === "1" || normalized === "yes" || normalized === "on";
+}
+
+function getClientIp(req) {
+  const forwarded = String(req?.headers?.["x-forwarded-for"] || "")
+    .split(",")[0]
+    .trim();
+  const realIp = String(req?.headers?.["x-real-ip"] || "").trim();
+  const raw = forwarded || realIp || String(req?.ip || req?.socket?.remoteAddress || "").trim();
+  return raw.replace(/^::ffff:/, "").slice(0, 64);
+}
+
+function buildRegistrationConsentSnapshot(req, {
+  privacyAccepted = false,
+  marketingAccepted = false,
+  consentVersion = "",
+} = {}) {
+  const now = new Date().toISOString();
+  const normalizedVersion = String(consentVersion || "register-2026-03-18")
+    .trim()
+    .slice(0, 64);
+  return {
+    version: normalizedVersion || "register-2026-03-18",
+    privacyAccepted: Boolean(privacyAccepted),
+    privacyAcceptedAt: privacyAccepted ? now : null,
+    marketingAccepted: Boolean(marketingAccepted),
+    marketingAcceptedAt: marketingAccepted ? now : null,
+    ip: getClientIp(req) || null,
+    userAgent: String(req?.headers?.["user-agent"] || "").slice(0, 255) || null,
+  };
+}
+
+function parseRegistrationConsentSnapshot(rawValue) {
+  const raw = String(rawValue || "").trim();
+  if (!raw) return null;
+  try {
+    const parsed = JSON.parse(raw);
+    if (!parsed || typeof parsed !== "object") return null;
+    return {
+      version: String(parsed.version || "").trim() || null,
+      privacyAccepted: Boolean(parsed.privacyAccepted),
+      privacyAcceptedAt: parsed.privacyAcceptedAt || null,
+      marketingAccepted: Boolean(parsed.marketingAccepted),
+      marketingAcceptedAt: parsed.marketingAcceptedAt || null,
+      ip: String(parsed.ip || "").trim() || null,
+      userAgent: String(parsed.userAgent || "").trim() || null,
+    };
+  } catch {
+    return null;
+  }
 }
 
 function normalizeLogin(value) {
@@ -220,6 +312,24 @@ function buildTechnicalEmailByUsername(username) {
 
 function isOwnerEmail(email) {
   return normalizeEmail(email) === OWNER_PRIMARY_EMAIL;
+}
+
+async function isCompanyOwnerAccount(userId, orgId) {
+  const normalizedUserId = Number(userId || 0);
+  const normalizedOrgId = Number(orgId || 0);
+  if (!normalizedUserId || !normalizedOrgId) return false;
+
+  const owner = await prisma.user.findFirst({
+    where: {
+      orgId: normalizedOrgId,
+      role: "ADMIN",
+      isActive: true,
+    },
+    orderBy: [{ createdAt: "asc" }, { id: "asc" }],
+    select: { id: true },
+  });
+
+  return Number(owner?.id || 0) === normalizedUserId;
 }
 
 function makeTenantCode(name) {
@@ -283,6 +393,8 @@ const TENANT_SCOPED_MODELS = new Set([
   "WarehouseRequest",
   "WarehouseRequestItem",
   "WarehouseTask",
+  "WarehouseNotification",
+  "PushSubscription",
   "PurchaseOrder",
   "PurchaseOrderItem",
   "Item",
@@ -454,9 +566,32 @@ prisma = prismaBase.$extends({
   },
 });
 
-const stockService = createWarehouseStockService(prisma);
+const stockService = createWarehouseStockService(prisma, {
+  onMovementCreated: ({ itemId }) => {
+    scheduleAutoReorderCheck(itemId);
+  },
+});
 
 let mailTransport = null;
+const MAIL_SEND_TIMEOUT_MS = Number(process.env.MAIL_SEND_TIMEOUT_MS || 12000);
+const WEB_PUSH_PUBLIC_KEY = String(process.env.WEB_PUSH_PUBLIC_KEY || "").trim();
+const WEB_PUSH_PRIVATE_KEY = String(process.env.WEB_PUSH_PRIVATE_KEY || "").trim();
+const WEB_PUSH_SUBJECT = String(
+  process.env.WEB_PUSH_SUBJECT || process.env.APP_URL || "mailto:noreply@sklad-online.local"
+).trim();
+const WEB_PUSH_ENABLED = Boolean(WEB_PUSH_PUBLIC_KEY && WEB_PUSH_PRIVATE_KEY);
+
+if (WEB_PUSH_ENABLED) {
+  try {
+    webpush.setVapidDetails(
+      WEB_PUSH_SUBJECT,
+      WEB_PUSH_PUBLIC_KEY,
+      WEB_PUSH_PRIVATE_KEY
+    );
+  } catch (err) {
+    console.error("[PUSH] Невозможно инициализировать VAPID:", err);
+  }
+}
 
 function getMailTransport() {
   if (mailTransport) return mailTransport;
@@ -471,10 +606,125 @@ function getMailTransport() {
     host,
     port,
     secure,
+    connectionTimeout: MAIL_SEND_TIMEOUT_MS,
+    greetingTimeout: MAIL_SEND_TIMEOUT_MS,
+    socketTimeout: MAIL_SEND_TIMEOUT_MS,
     auth: { user, pass },
   });
   return mailTransport;
 }
+
+async function sendMailWithTimeout(transport, payload) {
+  return Promise.race([
+    transport.sendMail(payload),
+    new Promise((_, reject) =>
+      setTimeout(() => reject(new Error("MAIL_TIMEOUT")), MAIL_SEND_TIMEOUT_MS)
+    ),
+  ]);
+}
+
+function parsePushSubscription(input) {
+  const endpoint = String(input?.endpoint || "").trim();
+  const p256dh = String(input?.keys?.p256dh || "").trim();
+  const auth = String(input?.keys?.auth || "").trim();
+  if (!endpoint || !p256dh || !auth) {
+    return null;
+  }
+  return { endpoint, p256dh, auth };
+}
+
+async function sendWebPushToUser(orgId, userId, payload) {
+  if (!WEB_PUSH_ENABLED) return;
+  if (!orgId || !userId) return;
+
+  const subscriptions = await prisma.pushSubscription.findMany({
+    where: { orgId, userId },
+    select: { id: true, endpoint: true, p256dh: true, auth: true },
+    take: 20,
+  });
+  if (!subscriptions.length) return;
+
+  const message = JSON.stringify(payload || {});
+  for (const sub of subscriptions) {
+    try {
+      await webpush.sendNotification(
+        {
+          endpoint: sub.endpoint,
+          keys: {
+            p256dh: sub.p256dh,
+            auth: sub.auth,
+          },
+        },
+        message,
+        { TTL: 60 * 60 }
+      );
+      await prisma.pushSubscription.update({
+        where: { id: sub.id },
+        data: {
+          lastSuccessAt: new Date(),
+          lastErrorAt: null,
+          lastErrorMessage: null,
+        },
+      });
+    } catch (err) {
+      const statusCode = Number(err?.statusCode || 0);
+      const messageText = String(err?.message || "PUSH_SEND_FAILED");
+      if (statusCode === 404 || statusCode === 410) {
+        await prisma.pushSubscription.delete({ where: { id: sub.id } }).catch(() => null);
+      } else {
+        await prisma.pushSubscription.update({
+          where: { id: sub.id },
+          data: {
+            lastErrorAt: new Date(),
+            lastErrorMessage: messageText.slice(0, 500),
+          },
+        }).catch(() => null);
+      }
+    }
+  }
+}
+
+async function createWarehouseNotification({
+  orgId,
+  userId,
+  type = "TASK",
+  title,
+  message,
+  linkUrl = null,
+  payloadJson = null,
+}) {
+  if (!orgId || !userId || !title || !message) return null;
+
+  const notification = await prisma.warehouseNotification.create({
+    data: {
+      orgId,
+      userId,
+      type,
+      title,
+      message,
+      linkUrl,
+      payloadJson,
+      isRead: false,
+    },
+  });
+
+  await sendWebPushToUser(orgId, userId, {
+    title,
+    body: message,
+    url: linkUrl || "/warehouse",
+    notificationId: notification.id,
+    type,
+  }).catch((err) => {
+    console.error("[PUSH] Ошибка отправки:", err);
+  });
+
+  return notification;
+}
+
+const TASKS_JOURNAL_LINK = "/warehouse?section=tasks&taskView=journal";
+const PLATFORM_NEWS_ADMIN_LINK = "/admin/platform-news";
+const PLATFORM_NEWS_TYPE = "PLATFORM_NEWS";
+const PLATFORM_NEWS_BROADCAST_TYPE = "PLATFORM_NEWS_BROADCAST";
 
 function hashInviteToken(token) {
   return crypto.createHash("sha256").update(token).digest("hex");
@@ -482,6 +732,10 @@ function hashInviteToken(token) {
 
 function hashResetToken(token) {
   return crypto.createHash("sha256").update(token).digest("hex");
+}
+
+function hashEmailVerificationCode(code) {
+  return crypto.createHash("sha256").update(String(code || "")).digest("hex");
 }
 
 function hashApiKey(token) {
@@ -498,6 +752,59 @@ function createInviteToken() {
   return crypto.randomBytes(32).toString("hex");
 }
 
+function createEmailVerificationCode() {
+  return String(crypto.randomInt(0, 1_000_000)).padStart(6, "0");
+}
+
+function createMarketingUnsubscribeToken(user) {
+  return jwt.sign(
+    {
+      purpose: "marketing_unsubscribe",
+      userId: Number(user?.id || 0),
+      email: normalizeEmail(user?.email || ""),
+    },
+    MARKETING_UNSUBSCRIBE_SECRET
+  );
+}
+
+function parseMarketingUnsubscribeToken(rawToken) {
+  const token = String(rawToken || "").trim();
+  if (!token) return null;
+  try {
+    const payload = jwt.verify(token, MARKETING_UNSUBSCRIBE_SECRET);
+    if (payload?.purpose !== "marketing_unsubscribe") return null;
+    const userId = Number(payload?.userId || 0);
+    if (!userId) return null;
+    return {
+      userId,
+      email: normalizeEmail(payload?.email || ""),
+    };
+  } catch {
+    return null;
+  }
+}
+
+function buildMarketingUnsubscribeLink(user) {
+  const token = createMarketingUnsubscribeToken(user);
+  return `${FRONTEND_URL}/unsubscribe?token=${encodeURIComponent(token)}`;
+}
+
+function getNewClientNotificationRecipients() {
+  const raw = String(
+    process.env.NEW_CLIENT_NOTIFY_EMAILS ||
+      process.env.NEW_CLIENT_NOTIFY_EMAIL ||
+      OWNER_PRIMARY_EMAIL
+  );
+  return Array.from(
+    new Set(
+      raw
+        .split(/[,;\s]+/g)
+        .map((entry) => normalizeEmail(entry))
+        .filter(Boolean)
+    )
+  );
+}
+
 async function sendInviteEmail(email, token) {
   const link = `${FRONTEND_URL}/invite?token=${token}`;
   const transport = getMailTransport();
@@ -506,12 +813,12 @@ async function sendInviteEmail(email, token) {
     return { sent: false, link };
   }
 
-  const from = process.env.MAIL_FROM || `����������� <${process.env.MAIL_USER}>`;
-  const subject = "\u041f\u0440\u0438\u0433\u043b\u0430\u0448\u0435\u043d\u0438\u0435 \u0432 �����������";
-  const text = `\u0412\u044b \u043f\u0440\u0438\u0433\u043b\u0430\u0448\u0435\u043d\u044b \u0432 �����������. \u041f\u0435\u0440\u0435\u0439\u0434\u0438\u0442\u0435 \u043f\u043e \u0441\u0441\u044b\u043b\u043a\u0435 \u0434\u043b\u044f \u0437\u0430\u0432\u0435\u0440\u0448\u0435\u043d\u0438\u044f \u0440\u0435\u0433\u0438\u0441\u0442\u0440\u0430\u0446\u0438\u0438: ${link}`;
+  const from = process.env.MAIL_FROM || `СкладОнлайн <${process.env.MAIL_USER}>`;
+  const subject = "Приглашение в СкладОнлайн";
+  const text = `Вы приглашены в СкладОнлайн. Перейдите по ссылке для завершения регистрации: ${link}`;
   const html = `
     <div style="font-family:Arial,sans-serif;font-size:14px;">
-      <p>\u0412\u044b \u043f\u0440\u0438\u0433\u043b\u0430\u0448\u0435\u043d\u044b \u0432 �����������.</p>
+      <p>Вы приглашены в СкладОнлайн.</p>
       <p>\u0421\u0441\u044b\u043b\u043a\u0430 \u0434\u043b\u044f \u0437\u0430\u0432\u0435\u0440\u0448\u0435\u043d\u0438\u044f \u0440\u0435\u0433\u0438\u0441\u0442\u0440\u0430\u0446\u0438\u0438:</p>
       <p><a href="${link}">${link}</a></p>
       <p>\u0415\u0441\u043b\u0438 \u0432\u044b \u043d\u0435 \u043e\u0436\u0438\u0434\u0430\u043b\u0438 \u044d\u0442\u043e \u043f\u0438\u0441\u044c\u043c\u043e, \u043f\u0440\u043e\u0441\u0442\u043e \u0438\u0433\u043d\u043e\u0440\u0438\u0440\u0443\u0439\u0442\u0435 \u0435\u0433\u043e.</p>
@@ -519,12 +826,174 @@ async function sendInviteEmail(email, token) {
   `;
 
   try {
-    await transport.sendMail({ from, to: email, subject, text, html });
+    await sendMailWithTimeout(transport, { from, to: email, subject, text, html });
     return { sent: true, link };
   } catch (err) {
     console.error("Invite email send error:", err);
     console.log(`[INVITE] ${email}: ${link}`);
     return { sent: false, link, error: err.message };
+  }
+}
+
+async function sendEmailVerificationCode(email, code) {
+  const transport = getMailTransport();
+  const text = `Код подтверждения регистрации: ${code}. Код действует 10 минут.`;
+
+  if (!transport) {
+    console.log(`[EMAIL_VERIFY] ${email}: ${code}`);
+    return { sent: false };
+  }
+
+  const from = process.env.MAIL_FROM || `СкладОнлайн <${process.env.MAIL_USER}>`;
+  const subject = "Подтверждение регистрации";
+  const html = `
+    <div style="font-family:Arial,sans-serif;font-size:14px;">
+      <p>Код подтверждения регистрации:</p>
+      <p style="font-size:24px;font-weight:700;letter-spacing:3px;">${code}</p>
+      <p>Код действует 10 минут.</p>
+      <p>Если вы не регистрировались, просто игнорируйте это письмо.</p>
+    </div>
+  `;
+
+  try {
+    await sendMailWithTimeout(transport, { from, to: email, subject, text, html });
+    return { sent: true };
+  } catch (err) {
+    console.error("Email verification send error:", err);
+    console.log(`[EMAIL_VERIFY] ${email}: ${code}`);
+    return { sent: false, error: err.message };
+  }
+}
+
+async function sendNewClientNotification({
+  email,
+  name,
+  phone,
+  companyName,
+  consent,
+  verifiedAt,
+}) {
+  const recipients = getNewClientNotificationRecipients();
+  if (!recipients.length) {
+    return { sent: false };
+  }
+
+  const verifiedAtText = new Date(verifiedAt || Date.now()).toLocaleString("ru-RU");
+  const consentVersion = String(consent?.version || "").trim() || "-";
+  const privacyAcceptedText = consent?.privacyAccepted ? "Да" : "Нет";
+  const privacyAcceptedAt = consent?.privacyAcceptedAt
+    ? new Date(consent.privacyAcceptedAt).toLocaleString("ru-RU")
+    : "-";
+  const marketingAcceptedText = consent?.marketingAccepted ? "Да" : "Нет";
+  const marketingAcceptedAt = consent?.marketingAcceptedAt
+    ? new Date(consent.marketingAcceptedAt).toLocaleString("ru-RU")
+    : "-";
+  const consentIp = consent?.ip || "-";
+  const consentUserAgent = consent?.userAgent || "-";
+
+  const lines = [
+    "Новый клиент подтвердил регистрацию.",
+    "",
+    `Почта: ${email || "-"}`,
+    `ФИО: ${name || "-"}`,
+    `Телефон: ${phone || "-"}`,
+    `Компания: ${companyName || "-"}`,
+    "",
+    "Согласия:",
+    `- Обработка ПД: ${privacyAcceptedText} (версия: ${consentVersion}, время: ${privacyAcceptedAt})`,
+    `- Рассылка: ${marketingAcceptedText} (время: ${marketingAcceptedAt})`,
+    `IP при регистрации: ${consentIp}`,
+    `User-Agent: ${consentUserAgent}`,
+    `Время подтверждения: ${verifiedAtText}`,
+  ];
+  const text = lines.join("\n");
+
+  const transport = getMailTransport();
+  if (!transport) {
+    console.log(`[NEW_CLIENT] recipients=${recipients.join(",")} \n${text}`);
+    return { sent: false };
+  }
+
+  const from = process.env.MAIL_FROM || `СкладОнлайн <${process.env.MAIL_USER}>`;
+  const subject = "Новая регистрация клиента";
+  const html = `
+    <div style="font-family:Arial,sans-serif;font-size:14px;">
+      <p><strong>Новый клиент подтвердил регистрацию.</strong></p>
+      <p>Почта: ${email || "-"}</p>
+      <p>ФИО: ${name || "-"}</p>
+      <p>Телефон: ${phone || "-"}</p>
+      <p>Компания: ${companyName || "-"}</p>
+      <p><strong>Согласия:</strong></p>
+      <p>Обработка ПД: ${privacyAcceptedText} (версия: ${consentVersion}, время: ${privacyAcceptedAt})</p>
+      <p>Рассылка: ${marketingAcceptedText} (время: ${marketingAcceptedAt})</p>
+      <p>IP при регистрации: ${consentIp}</p>
+      <p>User-Agent: ${consentUserAgent}</p>
+      <p>Время подтверждения: ${verifiedAtText}</p>
+    </div>
+  `;
+
+  try {
+    await sendMailWithTimeout(transport, {
+      from,
+      to: recipients.join(","),
+      subject,
+      text,
+      html,
+    });
+    return { sent: true };
+  } catch (err) {
+    console.error("New client notification send error:", err);
+    console.log(`[NEW_CLIENT] recipients=${recipients.join(",")} \n${text}`);
+    return { sent: false, error: err.message };
+  }
+}
+
+async function sendMarketingWelcomeEmail(user) {
+  if (!user?.id || !user?.email || user.marketingEmailsEnabled !== true) {
+    return { sent: false, skipped: true };
+  }
+
+  const transport = getMailTransport();
+  const subject = "Полезные материалы по работе со складом";
+  const text = [
+    `Здравствуйте, ${user.name || "коллега"}!`,
+    "",
+    "Спасибо за регистрацию в СкладОнлайн.",
+    "Вы подписались на полезные материалы сервиса.",
+    "",
+    "Отключить рассылку можно в приложении:",
+    "Администрирование -> Рассылка.",
+  ].join("\n");
+  const html = `
+    <div style="font-family:Arial,sans-serif;font-size:14px;line-height:1.5;">
+      <p>Здравствуйте, ${user.name || "коллега"}!</p>
+      <p>Спасибо за регистрацию в <strong>СкладОнлайн</strong>.</p>
+      <p>Вы подписались на полезные материалы сервиса.</p>
+      <p>
+        Отключить рассылку можно в разделе <strong>Администрирование -> Рассылка</strong>.
+      </p>
+    </div>
+  `;
+
+  if (!transport) {
+    console.log(`[MARKETING_WELCOME] ${user.email}: sent-without-unsubscribe-link`);
+    return { sent: false };
+  }
+
+  const from = process.env.MAIL_FROM || `СкладОнлайн <${process.env.MAIL_USER}>`;
+  try {
+    await sendMailWithTimeout(transport, {
+      from,
+      to: user.email,
+      subject,
+      text,
+      html,
+    });
+    return { sent: true };
+  } catch (err) {
+    console.error("Marketing welcome email send error:", err);
+    console.log(`[MARKETING_WELCOME] ${user.email}: failed`);
+    return { sent: false, error: err.message };
   }
 }
 
@@ -538,8 +1007,8 @@ async function sendPasswordResetEmail(email, token) {
     return { sent: false, link };
   }
 
-  const from = process.env.MAIL_FROM || `����������� <${process.env.MAIL_USER}>`;
-  const subject = "Сброс пароля в �����������";
+  const from = process.env.MAIL_FROM || `СкладОнлайн <${process.env.MAIL_USER}>`;
+  const subject = "Сброс пароля в СкладОнлайн";
   const text = `Для сброса пароля перейдите по ссылке: ${link}`;
   const html = `
     <div style="font-family:Arial,sans-serif;font-size:14px;">
@@ -550,7 +1019,7 @@ async function sendPasswordResetEmail(email, token) {
   `;
 
   try {
-    await transport.sendMail({ from, to: email, subject, text, html });
+    await sendMailWithTimeout(transport, { from, to: email, subject, text, html });
     return { sent: true, link };
   } catch (err) {
     console.error("Reset email send error:", err);
@@ -563,9 +1032,9 @@ async function sendPasswordChangedEmail(email) {
   const transport = getMailTransport();
   if (!transport) return { sent: false };
 
-  const from = process.env.MAIL_FROM || `����������� <${process.env.MAIL_USER}>`;
+  const from = process.env.MAIL_FROM || `СкладОнлайн <${process.env.MAIL_USER}>`;
   const subject = "Пароль изменён";
-  const text = "Пароль в ����������� был изменён. Если это были не вы, свяжитесь с администратором.";
+  const text = "Пароль в СкладОнлайн был изменён. Если это были не вы, свяжитесь с администратором.";
   const html = `
     <div style="font-family:Arial,sans-serif;font-size:14px;">
       <p>${text}</p>
@@ -573,7 +1042,7 @@ async function sendPasswordChangedEmail(email) {
   `;
 
   try {
-    await transport.sendMail({ from, to: email, subject, text, html });
+    await sendMailWithTimeout(transport, { from, to: email, subject, text, html });
     return { sent: true };
   } catch (err) {
     console.error("Password changed email error:", err);
@@ -588,9 +1057,9 @@ async function sendAutoReorderEmail({ to, subject, text }) {
     return { sent: false };
   }
 
-  const from = process.env.MAIL_FROM || `����������� <${process.env.MAIL_USER}>`;
+  const from = process.env.MAIL_FROM || `СкладОнлайн <${process.env.MAIL_USER}>`;
   try {
-    await transport.sendMail({ from, to, subject, text });
+    await sendMailWithTimeout(transport, { from, to, subject, text });
     return { sent: true };
   } catch (err) {
     console.error("Auto reorder email send error:", err);
@@ -598,6 +1067,81 @@ async function sendAutoReorderEmail({ to, subject, text }) {
   }
 }
 
+function buildPurchaseOrderEmailText(order, templateText = null) {
+  const number = order?.number || `PO-${order?.id || "?"}`;
+  const date = order?.date
+    ? new Date(order.date).toLocaleDateString("ru-RU")
+    : new Date().toLocaleDateString("ru-RU");
+  const supplierName = order?.supplier?.name || "поставщик";
+
+  const lines = Array.isArray(order?.items) ? order.items : [];
+  const linesText = lines
+    .map((row, index) => {
+      const name = row?.item?.name || "Товар";
+      const sku = row?.item?.sku ? ` (Артикул: ${row.item.sku})` : "";
+      const qty = Number(row?.quantity) || 0;
+      const unit = row?.item?.unit || "шт";
+      const price = Number(row?.price) || 0;
+      return `${index + 1}. ${name}${sku} - ${qty} ${unit}, цена ${price.toLocaleString("ru-RU")} ₽`;
+    })
+    .join("\n");
+
+  const totalAmount = lines.reduce((sum, row) => {
+    const qty = Number(row?.quantity) || 0;
+    const price = Number(row?.price) || 0;
+    return sum + qty * price;
+  }, 0);
+
+  const cleanTemplate = String(templateText || "").trim();
+  if (cleanTemplate) {
+    const hasLinesToken =
+      /\{\{\s*lines\s*\}\}/i.test(cleanTemplate) ||
+      /\{\{\s*позиции\s*\}\}/i.test(cleanTemplate);
+    const placeholders = {
+      supplierName,
+      orderNumber: number,
+      orderDate: date,
+      lines: linesText || "-",
+      totalAmount: totalAmount.toLocaleString("ru-RU"),
+      поставщик: supplierName,
+      номерЗаказа: number,
+      датаЗаказа: date,
+      позиции: linesText || "-",
+      итого: totalAmount.toLocaleString("ru-RU"),
+    };
+
+    let rendered = cleanTemplate.replace(/\{\{\s*([^{}\s]+)\s*\}\}/g, (_, key) => {
+      return placeholders[key] ?? "";
+    });
+
+    if (!hasLinesToken) {
+      rendered = [
+        rendered.trim(),
+        "",
+        "Позиции заказа:",
+        linesText || "-",
+      ]
+        .filter(Boolean)
+        .join("\n");
+    }
+
+    return rendered.trim();
+  }
+
+  return [
+    `Здравствуйте, ${supplierName}!`,
+    "",
+    `Просим обработать заказ поставщику № ${number} от ${date}.`,
+    "",
+    "Позиции заказа:",
+    linesText || "-",
+    "",
+    "Просим подтвердить получение заказа и плановую дату поставки.",
+    "",
+    "С уважением,",
+    "СкладОнлайн",
+  ].join("\n");
+}
 
 const APP_URL = process.env.APP_URL || FRONTEND_URL;
 const YOOKASSA_SHOP_ID = process.env.YOOKASSA_SHOP_ID;
@@ -979,7 +1523,7 @@ app.use("/api/purchase-orders", auth, enforceOperationalTenantScope, (req, res, 
     return next();
   }
 
-  // "??????? ???????????" ?????? ?????? ??????? ?????????? ??????????.
+  // "Внутренний мессенджер" скрывает только внешний режим интеграции.
   if (
     hasPermission(req.user, PERMISSION_KEYS.WAREHOUSE_QUEUE) &&
     isReadRequest(req) &&
@@ -988,7 +1532,7 @@ app.use("/api/purchase-orders", auth, enforceOperationalTenantScope, (req, res, 
     return next();
   }
 
-  // ???-???????: ?????? ? ?????? ???? ??????????? ?? ??????.
+  // SaaS-режим: доступ в раздел даём только по ролям.
   if (
     hasAnyPermission(req.user, [
       PERMISSION_KEYS.TSD_RECEIVING,
@@ -1033,6 +1577,19 @@ app.use("/api/warehouse", (req, res, next) => {
         req.path.startsWith(rule.prefix)
       );
       if (!match) {
+        return next();
+      }
+
+      const isOwnTasksRead =
+        isReadRequest(req) && req.path === "/tasks/my";
+      const isOwnTaskStatusUpdate =
+        req.method === "PUT" && /^\/tasks\/\d+\/status$/.test(req.path);
+      const isOwnTaskResponseUpdate =
+        req.method === "PUT" && /^\/tasks\/\d+\/response$/.test(req.path);
+      const canUseOwnTaskEndpointsWithoutPermission =
+        (isOwnTasksRead || isOwnTaskStatusUpdate || isOwnTaskResponseUpdate) &&
+        !hasPermission(req.user, PERMISSION_KEYS.WAREHOUSE_TASKS);
+      if (canUseOwnTaskEndpointsWithoutPermission) {
         return next();
       }
 
@@ -1492,14 +2049,14 @@ app.post("/api/safety/assignments/:id/remind", auth, requireHr, async (req, res)
     }
 
     if (!assignment.employee?.telegramChatId) {
-      return res.status(400).json({ message: "? ?????????? ?? ?????? Telegram ID" });
+      return res.status(400).json({ message: "У сотрудника не указан Telegram ID." });
     }
     if (!assignment.dueDate) {
-      return res.status(400).json({ message: "?? ?????? ???? ???????????" });
+      return res.status(400).json({ message: "Не задан срок инструктажа." });
     }
 
     await sendSafetyReminderForAssignment(assignment, true);
-    return res.json({ message: "??????????? ??????????" });
+    return res.json({ message: "Уведомление отправлено." });
   } catch (err) {
     console.error("manual remind error:", err);
     return res.status(500).json({ message: "Failed to send reminder" });
@@ -1967,7 +2524,7 @@ async function buildOrderPickPlan(orderId) {
         plan.push({
           lineId: line.id,
           itemId: null,
-          itemName: line.requestedName || "??????????? ?????",
+          itemName: line.requestedName || "Неизвестный товар",
           sku: line.requestedSku || null,
           totalQty,
           pickedQty,
@@ -2005,7 +2562,7 @@ async function buildOrderPickPlan(orderId) {
       plan.push({
         lineId: line.id,
         itemId: resolvedItemId,
-        itemName: resolvedItem?.name || line.requestedName || `????? #${resolvedItemId}`,
+        itemName: resolvedItem?.name || line.requestedName || `Товар #${resolvedItemId}`,
         sku: resolvedItem?.sku || line.requestedSku || null,
         barcode: resolvedItem?.barcode || null,
         totalQty,
@@ -2027,7 +2584,7 @@ async function buildOrderPickPlan(orderId) {
       plan.push({
         lineId: line?.id || null,
         itemId: line?.itemId || null,
-        itemName: line?.item?.name || line?.requestedName || "????????",
+        itemName: line?.item?.name || line?.requestedName || "Товар",
         sku: line?.item?.sku || line?.requestedSku || null,
         barcode: line?.item?.barcode || null,
         totalQty,
@@ -2048,7 +2605,7 @@ function buildOrderLabelHtml(order) {
     : "";
   const linesHtml = (order?.lines || [])
     .map((line, idx) => {
-      const name = line.item?.name || line.requestedName || `????? #${line.itemId || "?"}`;
+      const name = line.item?.name || line.requestedName || `Товар #${line.itemId || "?"}`;
       const sku = line.item?.sku || line.requestedSku || "";
       return `
         <tr>
@@ -2065,7 +2622,7 @@ function buildOrderLabelHtml(order) {
 <html lang="ru">
 <head>
   <meta charset="utf-8" />
-  <title>???????? ?????? ${escapeHtml(order.orderNumber)}</title>
+  <title>Этикетка заказа ${escapeHtml(order.orderNumber)}</title>
   <style>
     body { font-family: Arial, sans-serif; margin: 16px; color: #111; }
     .label { border: 1px solid #111; border-radius: 8px; padding: 14px; max-width: 860px; }
@@ -2074,25 +2631,31 @@ function buildOrderLabelHtml(order) {
     table { width: 100%; border-collapse: collapse; margin-top: 12px; }
     th, td { border: 1px solid #c7c7c7; padding: 6px; font-size: 13px; text-align: left; }
     .barcode { margin-top: 12px; font-family: monospace; font-size: 18px; font-weight: 700; }
-    @media print { body { margin: 0; } .label { border: none; } }
+    .print-actions { margin-top: 14px; display: flex; gap: 8px; flex-wrap: wrap; }
+    .print-btn { padding: 6px 14px; font-size: 13px; cursor: pointer; }
+    @media print {
+      body { margin: 0; }
+      .label { border: none; }
+      .print-actions { display: none; }
+    }
   </style>
 </head>
 <body>
   <div class="label">
-    <h1>????? ${escapeHtml(order.orderNumber)}</h1>
-    <div class="meta"><b>??????????:</b> ${escapeHtml(order.customerName)}</div>
-    <div class="meta"><b>???????:</b> ${escapeHtml(order.customerPhone || "")}</div>
-    <div class="meta"><b>?????:</b> ${escapeHtml(order.shippingAddress)}</div>
-    <div class="meta"><b>???????????:</b> ${escapeHtml(order.deliveryComment || "")}</div>
-    <div class="meta"><b>???????:</b> ${escapeHtml(order.boxCode || "-")} (${escapeHtml(order.boxType || "-")})</div>
-    <div class="meta"><b>??????:</b> ${escapeHtml(createdAt)}</div>
+    <h1>Заказ ${escapeHtml(order.orderNumber)}</h1>
+    <div class="meta"><b>Покупатель:</b> ${escapeHtml(order.customerName)}</div>
+    <div class="meta"><b>Телефон:</b> ${escapeHtml(order.customerPhone || "")}</div>
+    <div class="meta"><b>Адрес:</b> ${escapeHtml(order.shippingAddress)}</div>
+    <div class="meta"><b>Комментарий:</b> ${escapeHtml(order.deliveryComment || "")}</div>
+    <div class="meta"><b>Коробка:</b> ${escapeHtml(order.boxCode || "-")} (${escapeHtml(order.boxType || "-")})</div>
+    <div class="meta"><b>Создан:</b> ${escapeHtml(createdAt)}</div>
     <table>
       <thead>
         <tr>
           <th>#</th>
-          <th>?????</th>
-          <th>SKU</th>
-          <th>???-??</th>
+          <th>Товар</th>
+          <th>Артикул</th>
+          <th>Кол-во</th>
         </tr>
       </thead>
       <tbody>
@@ -2100,8 +2663,27 @@ function buildOrderLabelHtml(order) {
       </tbody>
     </table>
     <div class="barcode">ORDER: ${escapeHtml(order.orderNumber)}</div>
+    <div class="print-actions">
+      <button class="print-btn" onclick="window.print()">Печать</button>
+      <button class="print-btn" onclick="returnToApp()">Назад</button>
+    </div>
   </div>
-  <script>window.onload = () => window.print();</script>
+  <script>
+    function returnToApp() {
+      try {
+        if (window.opener && !window.opener.closed) {
+          window.close();
+          return;
+        }
+      } catch (e) {}
+      if (window.history.length > 1) {
+        window.history.back();
+        return;
+      }
+      window.location.href = "/warehouse";
+    }
+    window.onload = () => window.print();
+  </script>
 </body>
 </html>`;
 }
@@ -2293,10 +2875,24 @@ function buildReceiveActHtml(order, rows, orgInfo) {
     <div style="margin-top:24px; display:flex; gap:8px; flex-wrap:wrap;">
       <button class="print-btn" onclick="window.print()">&#1055;&#1077;&#1095;&#1072;&#1090;&#1100;</button>
       <button class="print-btn" onclick="handleShareAct()">&#1055;&#1086;&#1076;&#1077;&#1083;&#1080;&#1090;&#1100;&#1089;&#1103;</button>
-      <button class="print-btn" onclick="if (window.history.length > 1) { window.history.back(); } else { window.location.href = \"/warehouse/tsd\"; }">&#1042;&#1077;&#1088;&#1085;&#1091;&#1090;&#1100;&#1089;&#1103; &#1074; &#1087;&#1088;&#1080;&#1083;&#1086;&#1078;&#1077;&#1085;&#1080;&#1077;</button>
+      <button class="print-btn" onclick="returnToApp()">&#1053;&#1072;&#1079;&#1072;&#1076;</button>
     </div>
   </div>
 <script>
+  function returnToApp() {
+    try {
+      if (window.opener && !window.opener.closed) {
+        window.close();
+        return;
+      }
+    } catch (e) {}
+    if (window.history.length > 1) {
+      window.history.back();
+      return;
+    }
+    window.location.href = "/warehouse/tsd";
+  }
+
   async function handleShareAct() {
     if (!navigator.share) {
       alert("\u0424\u0443\u043d\u043a\u0446\u0438\u044f \"\u041f\u043e\u0434\u0435\u043b\u0438\u0442\u044c\u0441\u044f\" \u0434\u043e\u0441\u0442\u0443\u043f\u043d\u0430 \u0442\u043e\u043b\u044c\u043a\u043e \u043d\u0430 \u043c\u043e\u0431\u0438\u043b\u044c\u043d\u044b\u0445 \u0443\u0441\u0442\u0440\u043e\u0439\u0441\u0442\u0432\u0430\u0445.");
@@ -2391,17 +2987,17 @@ async function sendSafetyReminderForAssignment(a, force = false) {
     if (hoursSince < 20) return false;
   }
 
-  const title = a.instruction?.title || "??????????";
+  const title = a.instruction?.title || "Инструкция";
   const dueStr = due.toLocaleDateString("ru-RU");
   const lines = [
-    "??????????? ?? ???????????",
+    "Напоминание по инструктажу",
     "",
-    `??????????: ${title}`,
-    `?????????: ${a.employee.fullName}`,
-    `????: ${dueStr}`,
+    `Инструкция: ${title}`,
+    `Сотрудник: ${a.employee.fullName}`,
+    `Срок: ${dueStr}`,
     diffDays >= 0
-      ? `???????? ????: ${diffDays + 1}`
-      : `?????????? ?? ${Math.abs(diffDays)} ??.`,
+      ? `Осталось дней: ${diffDays + 1}`
+      : `Просрочено на ${Math.abs(diffDays)} дн.`,
   ];
 
   const textMsg = lines.join("\n");
@@ -2432,27 +3028,6 @@ async function sendSafetyReminders() {
 // старт фоновых задач переносим после проверки готовности БД
 
 // обработка callback_query (кнопка "✅ Выполнено")
-async function isTmcIssueRequest(request) {
-  if (!request || request.type !== "ISSUE") return false;
-  const items = request.items || [];
-  if (!items.length) return false;
-
-  for (const it of items) {
-    if (it.itemId) {
-      const item = await prisma.item.findUnique({ where: { id: it.itemId } });
-      if (item?.category === "TMC") return true;
-      continue;
-    }
-    if (it.name) {
-      const item = await prisma.item.findFirst({
-        where: { name: it.name, category: "TMC" },
-      });
-      if (item) return true;
-    }
-  }
-
-  return false;
-}
 
 function extractRequestIdFromTitle(title) {
   if (!title) return null;
@@ -2468,84 +3043,6 @@ async function handleTelegramUpdate(update) {
   const { id: callbackId, data, from } = update.callback_query;
 
   if (!data) return;
-
-  // admin approval for TMC issue
-  if (data.startsWith("approve_issue:") || data.startsWith("reject_issue:")) {
-    const reqId = Number(data.split(":")[1]);
-    if (!reqId) return;
-
-    try {
-      const request = await prisma.warehouseRequest.findUnique({
-        where: { id: reqId },
-        include: { items: true },
-      });
-
-      if (!request) {
-        await fetch(`${TELEGRAM_API}/answerCallbackQuery`, {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            callback_query_id: callbackId,
-            text: "\u0417\u0430\u044f\u0432\u043a\u0430 \u043d\u0435 \u043d\u0430\u0439\u0434\u0435\u043d\u0430.",
-            show_alert: true,
-          }),
-        });
-        return;
-      }
-
-      if (data.startsWith("reject_issue:")) {
-        await prisma.warehouseRequest.update({
-          where: { id: reqId },
-          data: {
-            status: "REJECTED",
-            statusComment: "\u041e\u0442\u043a\u043b\u043e\u043d\u0435\u043d\u043e \u0430\u0434\u043c\u0438\u043d\u0438\u0441\u0442\u0440\u0430\u0442\u043e\u0440\u043e\u043c",
-          },
-        });
-        await fetch(`${TELEGRAM_API}/answerCallbackQuery`, {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            callback_query_id: callbackId,
-            text: "\u041e\u0442\u043a\u043b\u043e\u043d\u0435\u043d\u043e. \u0421\u043f\u0438\u0441\u0430\u043d\u0438\u0435 \u043d\u0435 \u0432\u044b\u043f\u043e\u043b\u043d\u0435\u043d\u043e.",
-            show_alert: false,
-          }),
-        });
-        return;
-      }
-
-      await autoPostRequestToStock(reqId, request.createdById);
-      await prisma.warehouseRequest.update({
-        where: { id: reqId },
-        data: {
-          status: "DONE",
-          statusComment: "\u0421\u043f\u0438\u0441\u0430\u043d\u043e \u043f\u043e \u043f\u043e\u0434\u0442\u0432\u0435\u0440\u0436\u0434\u0435\u043d\u0438\u044e \u0430\u0434\u043c\u0438\u043d\u0430",
-        },
-      });
-
-      await fetch(`${TELEGRAM_API}/answerCallbackQuery`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          callback_query_id: callbackId,
-          text: "\u0421\u043f\u0438\u0441\u0430\u043d\u0438\u0435 \u043f\u043e\u0434\u0442\u0432\u0435\u0440\u0436\u0434\u0435\u043d\u043e. \u041e\u0441\u0442\u0430\u0442\u043a\u0438 \u043e\u0431\u043d\u043e\u0432\u043b\u0435\u043d\u044b.",
-          show_alert: false,
-        }),
-      });
-      return;
-    } catch (err) {
-      console.error("[Telegram] approve_issue error:", err);
-      await fetch(`${TELEGRAM_API}/answerCallbackQuery`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          callback_query_id: callbackId,
-          text: "\u041e\u0448\u0438\u0431\u043a\u0430. \u041d\u0435 \u0443\u0434\u0430\u043b\u043e\u0441\u044c \u043e\u0431\u0440\u0430\u0431\u043e\u0442\u0430\u0442\u044c \u0437\u0430\u043f\u0440\u043e\u0441.",
-          show_alert: true,
-        }),
-      });
-      return;
-    }
-  }
 
   const isIssueDone = data.startsWith("issue_done:");
   const isDone = data.startsWith("done:");
@@ -2606,38 +3103,7 @@ async function handleTelegramUpdate(update) {
           include: { items: true },
         });
 
-        if (isIssueDone && (await isTmcIssueRequest(request))) {
-          const lines = [];
-          lines.push("\u{1F9FE} \u0417\u0430\u043f\u0440\u043e\u0441 \u043d\u0430 \u0441\u043f\u0438\u0441\u0430\u043d\u0438\u0435 \u0422\u041c\u0426");
-          lines.push(`\u0417\u0430\u044f\u0432\u043a\u0430 #${requestId}`);
-          if (request?.items?.length) {
-            lines.push("");
-            lines.push("\u041f\u043e\u0437\u0438\u0446\u0438\u0438:");
-            for (const it of request.items) {
-              lines.push(`- ${it.name} \u2014 ${it.quantity} ${it.unit || ""}`.trim());
-            }
-          }
-          const approvalText = lines.join("\n");
-
-          await sendWarehouseGroupMessage(approvalText, {
-            reply_markup: {
-              inline_keyboard: [
-                [
-                  {
-                    text: "\u0421\u043f\u0438\u0441\u0430\u0442\u044c",
-                    callback_data: `approve_issue:${requestId}`,
-                  },
-                  {
-                    text: "\u041e\u0442\u043a\u043b\u043e\u043d\u0438\u0442\u044c",
-                    callback_data: `reject_issue:${requestId}`,
-                  },
-                ],
-              ],
-            },
-          });
-        } else {
-          await autoPostRequestToStock(requestId, task.assignerId);
-        }
+        await autoPostRequestToStock(requestId, task.assignerId);
       }
     } catch (e) {
       console.error("[Telegram] autoPostRequestFromTask error:", e);
@@ -2649,7 +3115,7 @@ async function handleTelegramUpdate(update) {
       body: JSON.stringify({
         callback_query_id: callbackId,
         text: isIssueDone
-          ? "\u041e\u0442\u043c\u0435\u0447\u0435\u043d\u043e \u00ab\u0412\u044b\u0434\u0430\u043d\u043e\u00bb. \u041e\u0436\u0438\u0434\u0430\u0435\u0442 \u043f\u043e\u0434\u0442\u0432\u0435\u0440\u0436\u0434\u0435\u043d\u0438\u044f \u0430\u0434\u043c\u0438\u043d\u0430."
+          ? "\u041e\u0442\u043c\u0435\u0447\u0435\u043d\u043e \u00ab\u0412\u044b\u0434\u0430\u043d\u043e\u00bb. \u0417\u0430\u044f\u0432\u043a\u0430 \u043e\u0431\u043d\u043e\u0432\u043b\u0435\u043d\u0430."
           : "\u0417\u0430\u0434\u0430\u0447\u0430 \u043e\u0442\u043c\u0435\u0447\u0435\u043d\u0430 \u043a\u0430\u043a \u0432\u044b\u043f\u043e\u043b\u043d\u0435\u043d\u043d\u0430\u044f.",
         show_alert: false,
       }),
@@ -2795,9 +3261,19 @@ async function checkWarehouseTaskNotifications() {
         dueDate: { not: null },
         status: { in: ["NEW", "IN_PROGRESS"] },
       },
+      select: {
+        id: true,
+        orgId: true,
+        title: true,
+        dueDate: true,
+        lastReminderAt: true,
+        executorUserId: true,
+        assignerId: true,
+      },
     });
 
     for (const task of tasks) {
+      if (!task.orgId) continue;
       const due = new Date(task.dueDate);
       if (Number.isNaN(due.getTime())) continue;
 
@@ -2811,50 +3287,67 @@ async function checkWarehouseTaskNotifications() {
         ? (now.getTime() - last.getTime()) / (1000 * 60)
         : Infinity;
 
-      // 1) За 5 минут до срока — одно напоминание
-      if (diffMinutes <= 5 && diffMinutes > 0 && !task.lastReminderAt) {
-        const dueStr = due.toLocaleString("ru-RU", {
-          day: "2-digit",
-          month: "2-digit",
-          year: "numeric",
-          hour: "2-digit",
-          minute: "2-digit",
-        });
+      const dueStr = due.toLocaleString("ru-RU", {
+        day: "2-digit",
+        month: "2-digit",
+        year: "numeric",
+        hour: "2-digit",
+        minute: "2-digit",
+      });
 
-        const baseText = buildWarehouseTaskTelegramText({ task, dueStr, kind: "due_soon", isExecutor: false });
-
-        await sendWarehouseGroupMessage(baseText);
-
-        if (task.executorChatId) {
-          const execText = buildWarehouseTaskTelegramText({ task, dueStr, kind: "due_soon", isExecutor: true });
-          await sendTelegramMessage(task.executorChatId, execText);
+      // 1) За 10 минут до срока — одно напоминание (только исполнителю).
+      if (diffMinutes <= 10 && diffMinutes > 0 && !task.lastReminderAt) {
+        if (task.executorUserId) {
+          await createWarehouseNotification({
+            orgId: task.orgId,
+            userId: task.executorUserId,
+            type: "TASK_DUE_SOON",
+            title: "Срок задачи скоро истекает",
+            message: `Задача "${task.title}" до ${dueStr}.`,
+            linkUrl: TASKS_JOURNAL_LINK,
+            payloadJson: { taskId: task.id, dueDate: task.dueDate },
+          });
         }
 
         await prisma.warehouseTask.update({
           where: { id: task.id },
           data: { lastReminderAt: now },
         });
-
         continue;
       }
 
-      // 2) Срок уже прошёл — напоминание раз в час
-      if (diffMinutes < 0 && minutesSinceLast >= 60) {
-        const dueStr = due.toLocaleString("ru-RU", {
-          day: "2-digit",
-          month: "2-digit",
-          year: "numeric",
-          hour: "2-digit",
-          minute: "2-digit",
-        });
+      // 2) Просрочка:
+      // - первое уведомление сразу после наступления срока;
+      // - затем повтор раз в час;
+      // - исполнителю и руководителю (назначившему), если это разные люди.
+      const hadDueSoonReminder = Boolean(last && last.getTime() < due.getTime());
+      const shouldSendOverdue =
+        diffMinutes < 0 &&
+        (!last || hadDueSoonReminder || minutesSinceLast >= 60);
 
-        const baseText = buildWarehouseTaskTelegramText({ task, dueStr, kind: "overdue", isExecutor: false });
+      if (shouldSendOverdue) {
+        if (task.executorUserId) {
+          await createWarehouseNotification({
+            orgId: task.orgId,
+            userId: task.executorUserId,
+            type: "TASK_OVERDUE",
+            title: "Задача просрочена",
+            message: `Задача "${task.title}" просрочена (срок: ${dueStr}).`,
+            linkUrl: TASKS_JOURNAL_LINK,
+            payloadJson: { taskId: task.id, dueDate: task.dueDate },
+          });
+        }
 
-        await sendWarehouseGroupMessage(baseText);
-
-        if (task.executorChatId) {
-          const execText = buildWarehouseTaskTelegramText({ task, dueStr, kind: "overdue", isExecutor: true });
-          await sendTelegramMessage(task.executorChatId, execText);
+        if (task.assignerId && task.assignerId !== task.executorUserId) {
+          await createWarehouseNotification({
+            orgId: task.orgId,
+            userId: task.assignerId,
+            type: "TASK_OVERDUE",
+            title: "Просрочена назначенная задача",
+            message: `Задача "${task.title}" просрочена (срок: ${dueStr}).`,
+            linkUrl: TASKS_JOURNAL_LINK,
+            payloadJson: { taskId: task.id, dueDate: task.dueDate },
+          });
         }
 
         await prisma.warehouseTask.update({
@@ -2945,7 +3438,7 @@ async function sendDailyLowStockSummary() {
 // регистрация
 app.post("/api/register", async (req, res) => {
 
-  if (process.env.DISABLE_PUBLIC_REGISTER !== "false") {
+  if (String(process.env.DISABLE_PUBLIC_REGISTER || "false") === "true") {
     return res.status(403).json({
       message: "\u041f\u0443\u0431\u043b\u0438\u0447\u043d\u0430\u044f \u0440\u0435\u0433\u0438\u0441\u0442\u0440\u0430\u0446\u0438\u044f \u043e\u0442\u043a\u043b\u044e\u0447\u0435\u043d\u0430. \u0420\u0435\u0433\u0438\u0441\u0442\u0440\u0430\u0446\u0438\u044f \u0434\u043e\u0441\u0442\u0443\u043f\u043d\u0430 \u0442\u043e\u043b\u044c\u043a\u043e \u043f\u043e \u043f\u0440\u0438\u0433\u043b\u0430\u0448\u0435\u043d\u0438\u044e \u0430\u0434\u043c\u0438\u043d\u0438\u0441\u0442\u0440\u0430\u0442\u043e\u0440\u0430."
     });
@@ -2953,67 +3446,155 @@ app.post("/api/register", async (req, res) => {
 
 
   try {
-    const { email, password, name } = req.body;
+    const {
+      email,
+      password,
+      name,
+      phone,
+      company,
+      companyName,
+      privacyAccepted,
+      marketingAccepted,
+      consentVersion,
+    } = req.body || {};
     const normalizedEmail = normalizeEmail(email);
-    const normalizedName = String(name || "").trim();
+    const normalizedName = normalizeFullName(name);
+    const normalizedPhone = String(phone || "").trim().slice(0, 40);
+    const normalizedCompanyName = String(companyName || company || "")
+      .trim()
+      .slice(0, 120);
 
-    if (!normalizedEmail || !password || !normalizedName) {
+    if (!normalizedEmail || !password || !normalizedName || !normalizedPhone || !normalizedCompanyName) {
       return res
         .status(400)
-        .json({ message: "email, пароль и имя обязательны" });
+        .json({ message: "Заполните все обязательные поля." });
     }
 
-    const existing = await prisma.user.findUnique({
-      where: { email: normalizedEmail },
-    });
-    if (existing) {
-      return res
-        .status(400)
-        .json({ message: "Пользователь с таким email уже существует" });
+    const isPrivacyAccepted = toBoolean(privacyAccepted);
+    const isMarketingAccepted = toBoolean(marketingAccepted);
+    const marketingConsentAt = isMarketingAccepted ? new Date() : null;
+    if (!isPrivacyAccepted) {
+      return res.status(400).json({ message: "PRIVACY_CONSENT_REQUIRED" });
+    }
+
+    if (!isValidFullName(normalizedName)) {
+      return res.status(400).json({ message: "FULL_NAME_INVALID" });
+    }
+
+    if (!isValidRegistrationEmail(normalizedEmail)) {
+      return res.status(400).json({ message: "EMAIL_INVALID" });
+    }
+
+    if (!isValidPhone(normalizedPhone)) {
+      return res.status(400).json({ message: "PHONE_INVALID" });
+    }
+
+    if (normalizedCompanyName.length < 2) {
+      return res.status(400).json({ message: "COMPANY_INVALID" });
+    }
+
+    if (String(password).length < 8) {
+      return res.status(400).json({ message: "WEAK_PASSWORD" });
+    }
+
+    if (isOwnerEmail(normalizedEmail)) {
+      return res.status(400).json({ message: "OWNER_EMAIL_RESERVED" });
     }
 
     const hash = await bcrypt.hash(password, 10);
-    const org = await prisma.organization.create({
-      data: {
-        name: normalizedName || normalizedEmail,
-        code: makeTenantCode(normalizedName || normalizedEmail),
-        isActive: true,
-      },
-    });
+    const existing = await prisma.user.findUnique({ where: { email: normalizedEmail } });
 
-    const user = await prisma.user.create({
-      data: {
-        email: normalizedEmail,
-        password: hash,
-        passwordHash: hash,
-        passwordVisible: String(password),
-        name: normalizedName,
-        role: "EMPLOYEE",
-        orgId: org.id,
-      },
-    });
+    if (existing?.emailVerifiedAt) {
+      return res.status(400).json({ message: "EMAIL_ALREADY_EXISTS" });
+    }
 
-    const token = createToken(user);
+    let user = null;
 
-      const userPayload = await getUserPayload(user.id);
+    if (existing) {
+      let orgId = existing.orgId || null;
+      if (!orgId) {
+        const createdOrg = await prisma.organization.create({
+          data: {
+            name: normalizedCompanyName || normalizedName || normalizedEmail,
+            code: makeTenantCode(normalizedCompanyName || normalizedName || normalizedEmail),
+            isActive: true,
+          },
+        });
+        orgId = createdOrg.id;
+      }
 
-      res.status(201).json({
-        message: "??????????? ?????????",
-        token,
-        user: userPayload || {
-          id: user.id,
-          email: user.email,
-          username: user.username || null,
-          login: user.username || user.email,
-          name: user.name,
-          role: user.role,
-          permissions: resolveUserPermissions({ role: user.role, permissionsJson: null }),
-          permissionTemplate: "ROLE_DEFAULT",
-          permissionOverrides: { grants: [], revokes: [] },
-          roles: [user.role],
-          subscription: { isActive: false },
+      user = await prisma.user.update({
+        where: { id: existing.id },
+        data: {
+          name: normalizedName,
+          password: hash,
+          passwordHash: hash,
+          passwordVisible: String(password),
+          role: "EMPLOYEE",
+          orgId,
+          isActive: true,
+          emailVerifiedAt: null,
+          marketingEmailsEnabled: isMarketingAccepted,
+          marketingConsentAt,
+          marketingUnsubscribedAt: null,
         },
       });
+    } else {
+      const org = await prisma.organization.create({
+        data: {
+          name: normalizedCompanyName || normalizedName || normalizedEmail,
+          code: makeTenantCode(normalizedCompanyName || normalizedName || normalizedEmail),
+          isActive: true,
+        },
+      });
+
+      user = await prisma.user.create({
+        data: {
+          email: normalizedEmail,
+          password: hash,
+          passwordHash: hash,
+          passwordVisible: String(password),
+          name: normalizedName,
+          role: "EMPLOYEE",
+          orgId: org.id,
+          isActive: true,
+          emailVerifiedAt: null,
+          marketingEmailsEnabled: isMarketingAccepted,
+          marketingConsentAt,
+          marketingUnsubscribedAt: null,
+        },
+      });
+    }
+
+    const code = createEmailVerificationCode();
+    const now = new Date();
+    const consentSnapshot = buildRegistrationConsentSnapshot(req, {
+      privacyAccepted: isPrivacyAccepted,
+      marketingAccepted: isMarketingAccepted,
+      consentVersion,
+    });
+    await prisma.emailVerificationCode.updateMany({
+      where: { userId: user.id, usedAt: null },
+      data: { usedAt: now },
+    });
+    await prisma.emailVerificationCode.create({
+      data: {
+        userId: user.id,
+        codeHash: hashEmailVerificationCode(code),
+        expiresAt: new Date(now.getTime() + EMAIL_VERIFY_TTL_MS),
+        phone: normalizedPhone || null,
+        companyName: normalizedCompanyName || null,
+        note: JSON.stringify(consentSnapshot),
+      },
+    });
+    await sendEmailVerificationCode(normalizedEmail, code);
+
+    res.status(200).json({
+      ok: true,
+      requiresVerification: true,
+      email: normalizedEmail,
+      message: "Код подтверждения отправлен на почту.",
+    });
   } catch (err) {
     console.error("register error:", err);
     res.status(500).json({ message: "Ошибка сервера при регистрации" });
@@ -3033,7 +3614,12 @@ app.post("/api/login", async (req, res) => {
     }
 
     if (normalizedLogin === OWNER_PRIMARY_EMAIL) {
-      await ensureOwnerAdminAccount();
+      try {
+        await ensureOwnerAdminAccount();
+      } catch (ownerRecoveryError) {
+        console.error("[OWNER_RECOVERY] login-time ensure failed:", ownerRecoveryError);
+        // Не блокируем вход, если автопочинка owner-аккаунта временно недоступна.
+      }
     }
 
     let user = null;
@@ -3106,30 +3692,247 @@ app.post("/api/login", async (req, res) => {
         .json({ message: "Неверный логин или пароль" });
     }
 
+    if (!user.emailVerifiedAt) {
+      return res.status(403).json({
+        message: "EMAIL_NOT_VERIFIED",
+      });
+    }
+
     const token = createToken(user);
 
-      const userPayload = await getUserPayload(user.id);
+    let userPayload = null;
+    try {
+      userPayload = await getUserPayload(user.id);
+    } catch (payloadError) {
+      console.error("[LOGIN_PAYLOAD] failed, fallback response used:", payloadError);
+    }
 
-      res.json({
-        message: "???? ????????",
-        token,
-        user: userPayload || {
-          id: user.id,
-          email: user.email,
-          username: user.username || null,
-          login: user.username || user.email,
-          name: user.name,
-          role: user.role,
-          permissions: resolveUserPermissions({ role: user.role, permissionsJson: null }),
-          permissionTemplate: "ROLE_DEFAULT",
-          permissionOverrides: { grants: [], revokes: [] },
-          roles: [user.role],
-          subscription: { isActive: false },
-        },
-      });
+    res.json({
+      message: "Вход выполнен",
+      token,
+      user: userPayload || {
+        id: user.id,
+        email: user.email,
+        username: user.username || null,
+        login: user.username || user.email,
+        name: user.name,
+        role: user.role,
+        permissions: resolveUserPermissions({ role: user.role, permissionsJson: null }),
+        permissionTemplate: "ROLE_DEFAULT",
+        permissionOverrides: { grants: [], revokes: [] },
+        roles: [user.role],
+        subscription: { isActive: false },
+      },
+    });
   } catch (err) {
     console.error("login error:", err);
     res.status(500).json({ message: "Ошибка сервера при входе" });
+  }
+});
+
+app.post("/api/auth/verify-email-code", async (req, res) => {
+  try {
+    const { email, code } = req.body || {};
+    const normalizedEmail = normalizeEmail(email);
+    const normalizedCode = String(code || "").trim();
+
+    if (!normalizedEmail || !/^\d{6}$/.test(normalizedCode)) {
+      return res.status(400).json({ message: "BAD_REQUEST" });
+    }
+
+    const user = await prisma.user.findUnique({
+      where: { email: normalizedEmail },
+      include: { organization: true },
+    });
+    if (!user) {
+      return res.status(400).json({ message: "EMAIL_VERIFY_CODE_INVALID" });
+    }
+    if (user.emailVerifiedAt) {
+      return res.status(400).json({ message: "EMAIL_ALREADY_VERIFIED" });
+    }
+
+    const latestCode = await prisma.emailVerificationCode.findFirst({
+      where: { userId: user.id, usedAt: null },
+      orderBy: { createdAt: "desc" },
+    });
+    const now = new Date();
+
+    if (!latestCode || latestCode.expiresAt <= now) {
+      return res.status(400).json({ message: "EMAIL_VERIFY_CODE_EXPIRED" });
+    }
+    if ((latestCode.attempts || 0) >= EMAIL_VERIFY_MAX_ATTEMPTS) {
+      return res.status(429).json({ message: "EMAIL_VERIFY_TOO_MANY_ATTEMPTS" });
+    }
+
+    const incomingHash = hashEmailVerificationCode(normalizedCode);
+    if (incomingHash !== latestCode.codeHash) {
+      await prisma.emailVerificationCode.update({
+        where: { id: latestCode.id },
+        data: { attempts: { increment: 1 } },
+      });
+      return res.status(400).json({ message: "EMAIL_VERIFY_CODE_INVALID" });
+    }
+
+    await prisma.$transaction(async (tx) => {
+      await tx.emailVerificationCode.update({
+        where: { id: latestCode.id },
+        data: { usedAt: now },
+      });
+      await tx.emailVerificationCode.updateMany({
+        where: { userId: user.id, usedAt: null, id: { not: latestCode.id } },
+        data: { usedAt: now },
+      });
+      await tx.user.update({
+        where: { id: user.id },
+        data: { emailVerifiedAt: now, isActive: true },
+      });
+    });
+
+    const consentSnapshot = parseRegistrationConsentSnapshot(latestCode.note);
+    await sendNewClientNotification({
+      email: user.email,
+      name: user.name,
+      phone: latestCode.phone,
+      companyName: latestCode.companyName || user.organization?.name || null,
+      consent: consentSnapshot,
+      verifiedAt: now,
+    }).catch((err) => {
+      console.error("new client notify error:", err);
+    });
+
+    const verifiedUser = await prisma.user.findUnique({ where: { id: user.id } });
+    await sendMarketingWelcomeEmail(verifiedUser).catch((err) => {
+      console.error("marketing welcome email error:", err);
+    });
+    const token = createToken(verifiedUser);
+    const userPayload = await getUserPayload(user.id);
+
+    return res.json({
+      ok: true,
+      token,
+      user: userPayload || {
+        id: verifiedUser.id,
+        email: verifiedUser.email,
+        username: verifiedUser.username || null,
+        login: verifiedUser.username || verifiedUser.email,
+        name: verifiedUser.name,
+        role: verifiedUser.role,
+        permissions: resolveUserPermissions({
+          role: verifiedUser.role,
+          permissionsJson: null,
+        }),
+        permissionTemplate: "ROLE_DEFAULT",
+        permissionOverrides: { grants: [], revokes: [] },
+        roles: [verifiedUser.role],
+        subscription: { isActive: false },
+      },
+    });
+  } catch (err) {
+    console.error("verify email code error:", err);
+    return res.status(500).json({ message: "EMAIL_VERIFY_ERROR" });
+  }
+});
+
+app.post("/api/auth/resend-email-code", async (req, res) => {
+  const publicMessage = "Если аккаунт ожидает подтверждения, код отправлен.";
+  try {
+    const { email } = req.body || {};
+    const normalizedEmail = normalizeEmail(email);
+    if (!normalizedEmail) {
+      return res.json({ message: publicMessage });
+    }
+
+    const nowMs = Date.now();
+    const lastSendMs = emailVerifyResendRate.get(normalizedEmail) || 0;
+    if (nowMs - lastSendMs < EMAIL_VERIFY_RESEND_COOLDOWN_MS) {
+      return res.status(429).json({ message: "EMAIL_VERIFY_RATE_LIMIT" });
+    }
+
+    const cutoff = nowMs - EMAIL_VERIFY_RESEND_COOLDOWN_MS;
+    while (emailVerifyGlobalRate.length && emailVerifyGlobalRate[0] < cutoff) {
+      emailVerifyGlobalRate.shift();
+    }
+    if (emailVerifyGlobalRate.length >= EMAIL_VERIFY_GLOBAL_LIMIT) {
+      return res.status(429).json({ message: "EMAIL_VERIFY_RATE_LIMIT" });
+    }
+    emailVerifyResendRate.set(normalizedEmail, nowMs);
+    emailVerifyGlobalRate.push(nowMs);
+
+    const user = await prisma.user.findUnique({
+      where: { email: normalizedEmail },
+    });
+    if (!user || user.isActive === false || user.emailVerifiedAt) {
+      return res.json({ message: publicMessage });
+    }
+
+    const lastCode = await prisma.emailVerificationCode.findFirst({
+      where: { userId: user.id, usedAt: null },
+      orderBy: { createdAt: "desc" },
+    });
+
+    const code = createEmailVerificationCode();
+    const now = new Date();
+    await prisma.emailVerificationCode.updateMany({
+      where: { userId: user.id, usedAt: null },
+      data: { usedAt: now },
+    });
+    await prisma.emailVerificationCode.create({
+      data: {
+        userId: user.id,
+        codeHash: hashEmailVerificationCode(code),
+        expiresAt: new Date(now.getTime() + EMAIL_VERIFY_TTL_MS),
+        phone: lastCode?.phone || null,
+        companyName: lastCode?.companyName || null,
+        note: lastCode?.note || null,
+      },
+    });
+    await sendEmailVerificationCode(user.email, code);
+
+    return res.json({ message: "Код подтверждения отправлен повторно." });
+  } catch (err) {
+    console.error("resend email code error:", err);
+    return res.status(500).json({ message: "EMAIL_VERIFY_ERROR" });
+  }
+});
+
+app.post("/api/public/marketing/unsubscribe", async (req, res) => {
+  try {
+    const token = String(req.body?.token || "").trim();
+    const payload = parseMarketingUnsubscribeToken(token);
+    if (!payload?.userId) {
+      return res.status(400).json({ message: "BAD_TOKEN" });
+    }
+
+    const user = await prisma.user.findUnique({
+      where: { id: payload.userId },
+      select: { id: true, email: true, marketingEmailsEnabled: true },
+    });
+    if (!user) {
+      return res.status(400).json({ message: "BAD_TOKEN" });
+    }
+
+    const userEmail = normalizeEmail(user.email);
+    if (payload.email && payload.email !== userEmail) {
+      return res.status(400).json({ message: "BAD_TOKEN" });
+    }
+
+    if (user.marketingEmailsEnabled !== false) {
+      await prisma.user.update({
+        where: { id: user.id },
+        data: {
+          marketingEmailsEnabled: false,
+          marketingUnsubscribedAt: new Date(),
+        },
+      });
+    }
+
+    return res.json({
+      ok: true,
+      message: "Вы успешно отписались от рассылки.",
+    });
+  } catch (err) {
+    console.error("marketing unsubscribe error:", err);
+    return res.status(500).json({ message: "UNSUBSCRIBE_ERROR" });
   }
 });
 
@@ -3138,12 +3941,12 @@ app.get("/api/profile", auth, async (req, res) => {
     try {
       const userPayload = await getUserPayload(req.user.id);
       if (!userPayload) {
-        return res.status(404).json({ message: "???????????? ?? ??????" });
+        return res.status(404).json({ message: "Пользователь не найден." });
       }
       res.json(userPayload);
     } catch (err) {
       console.error("profile error:", err);
-      res.status(500).json({ message: "?? ??????? ????????? ??????? ????????????" });
+      res.status(500).json({ message: "Не удалось загрузить профиль пользователя." });
     }
   });
 
@@ -3558,6 +4361,7 @@ app.put("/api/settings/org-profile", auth, async (req, res) => {
       inn,
       kpp,
       phone,
+      purchaseOrderEmailTemplate,
     } = req.body || {};
 
     if (!orgName || !legalAddress || !actualAddress || !inn || !kpp) {
@@ -3583,6 +4387,8 @@ app.put("/api/settings/org-profile", auth, async (req, res) => {
       inn,
       kpp,
       phone: phone || "",
+      purchaseOrderEmailTemplate:
+        String(purchaseOrderEmailTemplate || "").trim() || null,
     };
 
     const profile = existing
@@ -3598,6 +4404,93 @@ app.put("/api/settings/org-profile", auth, async (req, res) => {
   } catch (err) {
     console.error("org profile put error:", err);
     res.status(500).json({ message: "ORG_PROFILE_SAVE_ERROR" });
+  }
+});
+
+app.get("/api/settings/marketing-preferences", auth, async (req, res) => {
+  try {
+    if (req.user?.role !== "ADMIN") {
+      return res.status(403).json({ message: "NO_ACCESS" });
+    }
+    if (req.user?.isSystemOwner) {
+      return res.status(403).json({ message: "OWNER_ONLY_COMPANY" });
+    }
+    const targetOrgId = Number(req.user?.orgId || 0);
+    if (!targetOrgId) {
+      return res.status(400).json({ message: "ORG_REQUIRED" });
+    }
+
+    const isOwner = await isCompanyOwnerAccount(req.user.id, targetOrgId);
+    if (!isOwner) {
+      return res.status(403).json({ message: "OWNER_ONLY_COMPANY" });
+    }
+
+    const currentUser = await prisma.user.findUnique({
+      where: { id: req.user.id },
+      select: {
+        marketingEmailsEnabled: true,
+        marketingConsentAt: true,
+        marketingUnsubscribedAt: true,
+      },
+    });
+
+    return res.json({
+      enabled: Boolean(currentUser?.marketingEmailsEnabled),
+      consentAt: currentUser?.marketingConsentAt || null,
+      unsubscribedAt: currentUser?.marketingUnsubscribedAt || null,
+    });
+  } catch (err) {
+    console.error("marketing preferences get error:", err);
+    return res.status(500).json({ message: "MARKETING_SETTINGS_LOAD_ERROR" });
+  }
+});
+
+app.put("/api/settings/marketing-preferences", auth, async (req, res) => {
+  try {
+    if (req.user?.role !== "ADMIN") {
+      return res.status(403).json({ message: "NO_ACCESS" });
+    }
+    if (req.user?.isSystemOwner) {
+      return res.status(403).json({ message: "OWNER_ONLY_COMPANY" });
+    }
+    const targetOrgId = Number(req.user?.orgId || 0);
+    if (!targetOrgId) {
+      return res.status(400).json({ message: "ORG_REQUIRED" });
+    }
+
+    const isOwner = await isCompanyOwnerAccount(req.user.id, targetOrgId);
+    if (!isOwner) {
+      return res.status(403).json({ message: "OWNER_ONLY_COMPANY" });
+    }
+
+    const enabled = toBoolean(req.body?.enabled);
+    const now = new Date();
+    const updatedUser = await prisma.user.update({
+      where: { id: req.user.id },
+      data: {
+        marketingEmailsEnabled: enabled,
+        marketingConsentAt: enabled ? now : null,
+        marketingUnsubscribedAt: enabled ? null : now,
+      },
+      select: {
+        marketingEmailsEnabled: true,
+        marketingConsentAt: true,
+        marketingUnsubscribedAt: true,
+      },
+    });
+
+    return res.json({
+      ok: true,
+      enabled: Boolean(updatedUser?.marketingEmailsEnabled),
+      consentAt: updatedUser?.marketingConsentAt || null,
+      unsubscribedAt: updatedUser?.marketingUnsubscribedAt || null,
+      message: enabled
+        ? "Рассылка включена."
+        : "Рассылка отключена.",
+    });
+  } catch (err) {
+    console.error("marketing preferences put error:", err);
+    return res.status(500).json({ message: "MARKETING_SETTINGS_SAVE_ERROR" });
   }
 });
 
@@ -3748,6 +4641,29 @@ app.post("/api/users", auth, requireAdmin, async (req, res) => {
     });
     if (!targetOrg) {
       return res.status(404).json({ message: "ORG_NOT_FOUND" });
+    }
+
+    
+    const orgSubscription = await getOrgSubscription(targetOrgId, req.user.id);
+    const currentPlanId = String(orgSubscription?.plan || "start-30");
+    const planUserLimits = {
+      "start-30": 2,
+      "basic-30": 5,
+      "pro-30": 20,
+    };
+    const maxActiveUsers = Number(planUserLimits[currentPlanId] || 20);
+    const activeUsersCount = await prisma.user.count({
+      where: {
+        orgId: targetOrgId,
+        isActive: true,
+      },
+    });
+    if (activeUsersCount >= maxActiveUsers) {
+      return res.status(409).json({
+        message: "PLAN_USER_LIMIT_REACHED",
+        limit: maxActiveUsers,
+        plan: currentPlanId,
+      });
     }
 
     const existingByUsername = await prisma.user.findUnique({
@@ -4227,14 +5143,35 @@ app.get("/api/admin/tenants", auth, requireAdmin, requireSystemOwner, async (req
         },
       },
     });
-    const items = tenants.map(({ users, ...tenant }) => {
+    const subscriptions = await Promise.all(
+      tenants.map((tenant) => getOrgSubscription(tenant.id, null))
+    );
+
+    const items = tenants.map(({ users, ...tenant }, index) => {
       const admin = Array.isArray(users) ? users[0] : null;
+      const subscription = subscriptions[index] || null;
+      const paidUntil = subscription?.paidUntil || null;
+      const isActive =
+        Boolean(subscription) &&
+        ["active", "trialing"].includes(String(subscription?.status || "")) &&
+        paidUntil &&
+        new Date(paidUntil) > new Date();
       return {
         ...tenant,
         adminUserId: admin?.id || null,
         adminName: admin?.name || null,
         adminLogin: admin?.username || admin?.email || null,
         adminPassword: admin?.passwordVisible || null,
+        subscription: subscription
+          ? {
+              plan: subscription.plan,
+              status: subscription.status,
+              paidUntil: subscription.paidUntil,
+              trialStartedAt: subscription.trialStartedAt,
+              trialUsed: subscription.trialUsed,
+              isActive: Boolean(isActive),
+            }
+          : null,
       };
     });
     res.json({ items });
@@ -4423,6 +5360,410 @@ app.post("/api/admin/tenants", auth, requireAdmin, requireSystemOwner, async (re
     }
     console.error("tenant create error:", err);
     res.status(500).json({ message: "TENANT_CREATE_ERROR" });
+  }
+});
+
+app.post(
+  "/api/admin/tenants/:id/grant-free-access",
+  auth,
+  requireAdmin,
+  requireSystemOwner,
+  async (req, res) => {
+    try {
+      if (!hasPermission(req.user, PERMISSION_KEYS.ADMIN_TENANTS)) {
+        return res.status(403).json({ message: "Нет доступа к разделу." });
+      }
+
+      const tenantId = Number(req.params.id);
+      if (!tenantId || Number.isNaN(tenantId)) {
+        return res.status(400).json({ message: "BAD_TENANT_ID" });
+      }
+
+      const daysRaw = Number(req.body?.days || 30);
+      const days = Math.max(1, Math.min(3650, Math.trunc(daysRaw)));
+      if (!days || Number.isNaN(days)) {
+        return res.status(400).json({ message: "BAD_DAYS" });
+      }
+
+      const tenant = await prisma.organization.findUnique({
+        where: { id: tenantId },
+        select: { id: true, name: true, code: true, isActive: true },
+      });
+      if (!tenant || tenant.isActive === false) {
+        return res.status(404).json({ message: "TENANT_NOT_FOUND" });
+      }
+      if (tenant.code === "platform-owner") {
+        return res.status(400).json({ message: "OWNER_TENANT_FORBIDDEN" });
+      }
+
+      const billingUserId = await getBillingUserIdForOrg(tenant.id, null);
+      if (!billingUserId) {
+        return res.status(400).json({ message: "BILLING_USER_REQUIRED" });
+      }
+
+      const now = new Date();
+      const current = await prisma.subscription.findFirst({
+        where: { userId: billingUserId },
+      });
+      const baseDate =
+        current?.paidUntil && new Date(current.paidUntil) > now
+          ? new Date(current.paidUntil)
+          : now;
+      const paidUntil = addDays(baseDate, days);
+
+      const next = await prisma.subscription.upsert({
+        where: { userId: billingUserId },
+        update: {
+          plan: "manual-free",
+          status: "active",
+          paidUntil,
+          trialStartedAt: current?.trialStartedAt || null,
+          trialUsed: Boolean(current?.trialUsed),
+        },
+        create: {
+          userId: billingUserId,
+          plan: "manual-free",
+          status: "active",
+          paidUntil,
+          trialStartedAt: null,
+          trialUsed: true,
+        },
+      });
+
+      return res.json({
+        ok: true,
+        tenant: {
+          id: tenant.id,
+          name: tenant.name,
+          code: tenant.code,
+        },
+        subscription: {
+          plan: next.plan,
+          status: next.status,
+          paidUntil: next.paidUntil,
+          trialStartedAt: next.trialStartedAt,
+          trialUsed: next.trialUsed,
+          isActive: true,
+        },
+      });
+    } catch (err) {
+      console.error("tenant grant free access error:", err);
+      return res.status(500).json({ message: "TENANT_GRANT_FREE_ACCESS_ERROR" });
+    }
+  }
+);
+
+app.post(
+  "/api/admin/tenants/:id/toggle-access",
+  auth,
+  requireAdmin,
+  requireSystemOwner,
+  async (req, res) => {
+    try {
+      if (!hasPermission(req.user, PERMISSION_KEYS.ADMIN_TENANTS)) {
+        return res.status(403).json({ message: "Нет доступа к разделу." });
+      }
+
+      const tenantId = Number(req.params.id);
+      if (!tenantId || Number.isNaN(tenantId)) {
+        return res.status(400).json({ message: "BAD_TENANT_ID" });
+      }
+
+      const enabled = req.body?.enabled === true;
+
+      const tenant = await prisma.organization.findUnique({
+        where: { id: tenantId },
+        select: { id: true, name: true, code: true, isActive: true },
+      });
+      if (!tenant || tenant.isActive === false) {
+        return res.status(404).json({ message: "TENANT_NOT_FOUND" });
+      }
+      if (tenant.code === "platform-owner") {
+        return res.status(400).json({ message: "OWNER_TENANT_FORBIDDEN" });
+      }
+
+      const orgSubscriptions = await prisma.subscription.findMany({
+        where: { user: { orgId: tenant.id } },
+        select: { id: true, userId: true },
+      });
+
+      if (!orgSubscriptions.length) {
+        if (!enabled) {
+          return res.json({
+            ok: true,
+            tenant: { id: tenant.id, name: tenant.name, code: tenant.code },
+            subscription: null,
+            accessEnabled: false,
+          });
+        }
+        return res.status(400).json({ message: "TENANT_SUBSCRIPTION_NOT_FOUND" });
+      }
+
+      const subscriptionIds = orgSubscriptions.map((row) => row.id);
+      await prisma.subscription.updateMany({
+        where: { id: { in: subscriptionIds } },
+        data: { status: enabled ? "active" : "paused" },
+      });
+
+      const subscription = await getOrgSubscription(tenant.id, null);
+      const paidUntil = subscription?.paidUntil || null;
+      const isEnabled =
+        Boolean(subscription) &&
+        ["active", "trialing"].includes(String(subscription?.status || "")) &&
+        paidUntil &&
+        new Date(paidUntil) > new Date();
+
+      return res.json({
+        ok: true,
+        tenant: { id: tenant.id, name: tenant.name, code: tenant.code },
+        subscription: subscription
+          ? {
+              plan: subscription.plan,
+              status: subscription.status,
+              paidUntil: subscription.paidUntil,
+              trialStartedAt: subscription.trialStartedAt,
+              trialUsed: subscription.trialUsed,
+              isActive: Boolean(isEnabled),
+            }
+          : null,
+        accessEnabled: Boolean(isEnabled),
+      });
+    } catch (err) {
+      console.error("tenant toggle access error:", err);
+      return res.status(500).json({ message: "TENANT_TOGGLE_ACCESS_ERROR" });
+    }
+  }
+);
+
+app.get("/api/admin/platform-news/history", auth, requireAdmin, requireSystemOwner, async (req, res) => {
+  try {
+    if (!hasPermission(req.user, PERMISSION_KEYS.ADMIN_TENANTS)) {
+      return res.status(403).json({ message: "Нет доступа к разделу." });
+    }
+
+    const limitRaw = Number(req.query.limit || 20);
+    const limit = Math.max(1, Math.min(limitRaw || 20, 100));
+    const pageRaw = Number(req.query.page || 1);
+    const page = Math.max(1, pageRaw || 1);
+    const skip = (page - 1) * limit;
+
+    const where = {
+      userId: req.user.id,
+      type: PLATFORM_NEWS_BROADCAST_TYPE,
+    };
+
+    const [items, total] = await Promise.all([
+      prisma.warehouseNotification.findMany({
+        where,
+        orderBy: { createdAt: "desc" },
+        skip,
+        take: limit,
+      }),
+      prisma.warehouseNotification.count({ where }),
+    ]);
+
+    const mapped = items.map((row) => {
+      const meta = row?.payloadJson && typeof row.payloadJson === "object" ? row.payloadJson : {};
+      return {
+        id: row.id,
+        createdAt: row.createdAt,
+        title: String(meta.title || row.title || ""),
+        message: String(meta.message || ""),
+        priority: String(meta.priority || "NORMAL"),
+        sentCount: Number(meta.sentCount || 0),
+        totalRecipients: Number(meta.totalRecipients || 0),
+        failedCount: Number(meta.failedCount || 0),
+      };
+    });
+
+    res.json({
+      items: mapped,
+      total,
+      page,
+      limit,
+    });
+  } catch (err) {
+    console.error("platform news history error:", err);
+    res.status(500).json({ message: "Не удалось загрузить историю новостей." });
+  }
+});
+
+app.post("/api/admin/platform-news/publish", auth, requireAdmin, requireSystemOwner, async (req, res) => {
+  try {
+    if (!hasPermission(req.user, PERMISSION_KEYS.ADMIN_TENANTS)) {
+      return res.status(403).json({ message: "Нет доступа к разделу." });
+    }
+
+    const rawTitle = String(req.body?.title || "").trim();
+    const rawMessage = String(req.body?.message || "").trim();
+    const rawPriority = String(req.body?.priority || "").trim().toUpperCase();
+
+    if (!rawTitle) {
+      return res.status(400).json({ message: "Введите заголовок новости." });
+    }
+    if (!rawMessage) {
+      return res.status(400).json({ message: "Введите текст новости." });
+    }
+
+    const title = rawTitle.slice(0, 140);
+    const message = rawMessage.slice(0, 4000);
+    const priority = ["LOW", "NORMAL", "HIGH"].includes(rawPriority) ? rawPriority : "NORMAL";
+
+    const admins = await prisma.user.findMany({
+      where: {
+        role: "ADMIN",
+        isActive: true,
+        orgId: { not: null },
+        organization: {
+          is: {
+            isActive: true,
+          },
+        },
+      },
+      orderBy: [{ orgId: "asc" }, { id: "asc" }],
+      select: {
+        id: true,
+        orgId: true,
+        email: true,
+      },
+    });
+
+    const orgSeen = new Set();
+    const recipients = [];
+    for (const user of admins) {
+      if (isOwnerEmail(user.email)) continue;
+      const orgId = Number(user.orgId || 0);
+      if (!orgId || orgSeen.has(orgId)) continue;
+      orgSeen.add(orgId);
+      recipients.push({ orgId, userId: user.id });
+    }
+
+    const sendResults = await Promise.allSettled(
+      recipients.map((recipient) =>
+        createWarehouseNotification({
+          orgId: recipient.orgId,
+          userId: recipient.userId,
+          type: PLATFORM_NEWS_TYPE,
+          title,
+          message,
+          linkUrl: "/news",
+          payloadJson: {
+            kind: "platform-news",
+            priority,
+            publishedAt: new Date().toISOString(),
+          },
+        })
+      )
+    );
+
+    let sentCount = 0;
+    let failedCount = 0;
+    for (const result of sendResults) {
+      if (result.status === "fulfilled") {
+        sentCount += 1;
+      } else {
+        failedCount += 1;
+      }
+    }
+
+    const summaryMessage =
+      failedCount > 0
+        ? `Отправлено ${sentCount} из ${recipients.length}. Ошибок: ${failedCount}.`
+        : `Отправлено ${sentCount} из ${recipients.length}.`;
+
+    const historyEntry = await prisma.warehouseNotification.create({
+      data: {
+        orgId: req.user.orgId || null,
+        userId: req.user.id,
+        type: PLATFORM_NEWS_BROADCAST_TYPE,
+        title: "Рассылка новости платформы",
+        message: summaryMessage,
+        linkUrl: PLATFORM_NEWS_ADMIN_LINK,
+        payloadJson: {
+          title,
+          message,
+          priority,
+          sentCount,
+          failedCount,
+          totalRecipients: recipients.length,
+          publishedAt: new Date().toISOString(),
+        },
+      },
+    });
+
+    res.json({
+      ok: true,
+      sentCount,
+      failedCount,
+      totalRecipients: recipients.length,
+      historyItem: {
+        id: historyEntry.id,
+        createdAt: historyEntry.createdAt,
+        title,
+        message,
+        priority,
+        sentCount,
+        failedCount,
+        totalRecipients: recipients.length,
+      },
+      warning:
+        recipients.length === 0
+          ? "Нет владельцев компаний для рассылки."
+          : failedCount > 0
+            ? "Часть уведомлений не отправлена. Повторите попытку позже."
+            : "",
+    });
+  } catch (err) {
+    console.error("platform news publish error:", err);
+    res.status(500).json({ message: "Не удалось отправить новость владельцам компаний." });
+  }
+});
+
+app.get("/api/platform-news", auth, async (req, res) => {
+  try {
+    const limitRaw = Number(req.query.limit || 30);
+    const limit = Math.max(1, Math.min(limitRaw || 30, 100));
+    const pageRaw = Number(req.query.page || 1);
+    const page = Math.max(1, pageRaw || 1);
+    const skip = (page - 1) * limit;
+
+    const where = {
+      type: PLATFORM_NEWS_BROADCAST_TYPE,
+    };
+
+    const [rows, total] = await Promise.all([
+      runWithoutTenantScope(() =>
+        prismaBase.warehouseNotification.findMany({
+          where,
+          orderBy: { createdAt: "desc" },
+          skip,
+          take: limit,
+        })
+      ),
+      runWithoutTenantScope(() =>
+        prismaBase.warehouseNotification.count({ where })
+      ),
+    ]);
+    const items = rows.map((row) => {
+      const meta = row?.payloadJson && typeof row.payloadJson === "object" ? row.payloadJson : {};
+      return {
+        id: row.id,
+        title: String(meta.title || row.title || ""),
+        message: String(meta.message || row.message || ""),
+        priority: String(meta.priority || "NORMAL"),
+        createdAt: row.createdAt,
+      };
+    });
+
+    res.json({
+      items,
+      total,
+      page,
+      limit,
+    });
+  } catch (err) {
+    console.error("platform news list error:", err);
+    res.status(500).json({ message: "Не удалось загрузить новости платформы." });
   }
 });
 
@@ -4954,12 +6295,12 @@ app.post("/api/warehouse/requests", auth, async (req, res) => {
           : null;
 
       if (!name) {
-        return res.status(400).json({ message: "??????? ???????? ??????." });
+        return res.status(400).json({ message: "Укажите название товара." });
       }
 
       if (!Number.isFinite(q) || !Number.isInteger(q) || q <= 0) {
         return res.status(400).json({
-          message: `?????????? ??? ?????? "${name}" ?????? ???? ????????????? ????? ??????.`,
+          message: `Количество для товара "${name}" должно быть положительным целым числом.`,
         });
       }
 
@@ -4990,15 +6331,12 @@ app.post("/api/warehouse/requests", auth, async (req, res) => {
 
         if (!invItem) continue;
 
-        const currentStock =
-          invItem.category === "TMC"
-            ? await getTmcStockForItem(invItem.id)
-            : await getCurrentStockForItem(invItem.id);
+        const currentStock = await getCurrentStockForItem(invItem.id);
         const current = currentStock ?? 0;
 
         if (current < it.quantity) {
           return res.status(400).json({
-            message: `???????????? ??????? ?? ?????? "${invItem.name}". ???????? ${current} ${invItem.unit || "??."}, ????????? ${it.quantity}.`,
+            message: `Недостаточно остатка по товару "${invItem.name}". Доступно ${current} ${invItem.unit || "шт."}, запрошено ${it.quantity}.`,
           });
         }
       }
@@ -5154,15 +6492,9 @@ async function autoPostRequestToStock(requestId, userId) {
     }
 
     // Ищем товар в номенклатуре по точному имени
-    let invItem = await prisma.item.findFirst({
-      where: { name: item.name, category: "TMC" },
+    const invItem = await prisma.item.findFirst({
+      where: { name: item.name },
     });
-
-    if (!invItem) {
-      invItem = await prisma.item.findFirst({
-        where: { name: item.name },
-      });
-    }
 
     if (!invItem) {
       console.warn(
@@ -5174,27 +6506,13 @@ async function autoPostRequestToStock(requestId, userId) {
     // Если это расход — проверяем, хватит ли остатка
     if (movementType === "ISSUE") {
       try {
-        if (invItem.category === "TMC") {
-          const current = await getTmcStockForItem(invItem.id);
-          if (current < q) {
-            console.warn(
-              `[Warehouse] Insufficient stock for "${item.name}" in request #${id} (have ${current}, need ${q})`
-            );
-            continue;
-          }
-        } else {
-          const stockInfo = await calculateStockAfterMovement(
-            invItem.id,
-            "ISSUE",
-            q
-          );
+        const stockInfo = await calculateStockAfterMovement(invItem.id, "ISSUE", q);
 
-          if (stockInfo.newStock < 0) {
-            console.warn(
-              `[Warehouse] Insufficient stock for "${item.name}" in request #${id} (have ${stockInfo.current}, need ${q})`
-            );
-            continue;
-          }
+        if (stockInfo.newStock < 0) {
+          console.warn(
+            `[Warehouse] Insufficient stock for "${item.name}" in request #${id} (have ${stockInfo.current}, need ${q})`
+          );
+          continue;
         }
       } catch (e) {
         console.error(
@@ -5216,6 +6534,7 @@ async function autoPostRequestToStock(requestId, userId) {
       },
     });
 
+    scheduleAutoReorderCheck(invItem.id);
     createdCount++;
   }
 
@@ -5312,6 +6631,7 @@ async function createWarehouseTaskFromRequest(request, assignerId) {
 
     const task = await prisma.warehouseTask.create({
       data: {
+        orgId: request.orgId || null,
         title: `\u0417\u0430\u044f\u0432\u043a\u0430 \u0441\u043a\u043b\u0430\u0434\u0430 #${request.id}: ${request.title || "\u0411\u0435\u0437 \u043d\u0430\u0437\u0432\u0430\u043d\u0438\u044f"}`,
         description,
         dueDate: null,
@@ -5323,6 +6643,9 @@ async function createWarehouseTaskFromRequest(request, assignerId) {
         assigner: {
           select: { id: true, name: true, email: true },
         },
+        executorUser: {
+          select: { id: true, name: true, email: true, role: true },
+        },
       },
     });
 
@@ -5330,20 +6653,107 @@ async function createWarehouseTaskFromRequest(request, assignerId) {
       `[Warehouse] \u0441\u043e\u0437\u0434\u0430\u043d\u0430 \u0437\u0430\u0434\u0430\u0447\u0430 ${task.id} \u043f\u043e \u0437\u0430\u044f\u0432\u043a\u0435 ${request.id}`
     );
 
-    const groupText = buildWarehouseTaskCreatedTelegramText(task);
-
-    await sendWarehouseGroupMessage(groupText);
-
     return task;
   } catch (err) {
     console.error("[createWarehouseTaskFromRequest] error:", err);
   }
 }
 
+const WAREHOUSE_TASK_INCLUDE = {
+  assigner: {
+    select: { id: true, name: true, email: true },
+  },
+  executorUser: {
+    select: { id: true, name: true, email: true, role: true },
+  },
+};
+
+const WAREHOUSE_TASK_EDIT_STATUSES = ["NEW", "IN_PROGRESS", "DONE", "CANCELLED"];
+const WAREHOUSE_TASK_STATUS_LABELS = {
+  NEW: "Не выполнена",
+  IN_PROGRESS: "В работе",
+  DONE: "Выполнена",
+  CANCELLED: "Отменена",
+};
+
+const TASK_PHOTO_MAX_COUNT = 5;
+const TASK_PHOTO_MAX_BYTES = 2 * 1024 * 1024;
+const TASK_PHOTO_ALLOWED_MIME = new Set([
+  "image/jpeg",
+  "image/png",
+  "image/webp",
+]);
+
+function normalizeTaskPhotoEntry(entry, index) {
+  const fallbackName = `photo-${index + 1}.jpg`;
+  const fileNameRaw = String(entry?.fileName || fallbackName).trim();
+  const fileName = fileNameRaw.replace(/[^\w.\-()+\u0400-\u04FF ]/g, "_").slice(0, 120) || fallbackName;
+  const mimeType = String(entry?.mimeType || "image/jpeg").trim().toLowerCase();
+  if (!TASK_PHOTO_ALLOWED_MIME.has(mimeType)) {
+    throw new Error("Разрешены только фото JPG, PNG или WEBP.");
+  }
+  const sizeBytes = Number(entry?.sizeBytes || 0);
+  if (!Number.isFinite(sizeBytes) || sizeBytes <= 0 || sizeBytes > TASK_PHOTO_MAX_BYTES) {
+    throw new Error("Размер одного фото не должен превышать 2 МБ.");
+  }
+  const dataUrl = String(entry?.dataUrl || "").trim();
+  const mimeForRegex = mimeType.replace("/", "\\/");
+  const base64Regex = new RegExp(`^data:${mimeForRegex};base64,[A-Za-z0-9+/=]+$`, "i");
+  if (!base64Regex.test(dataUrl)) {
+    throw new Error("Некорректный формат вложенного фото.");
+  }
+  return { fileName, mimeType, sizeBytes, dataUrl };
+}
+
+function normalizeTaskPhotosPayload(rawPhotos) {
+  if (!Array.isArray(rawPhotos) || !rawPhotos.length) return [];
+  if (rawPhotos.length > TASK_PHOTO_MAX_COUNT) {
+    throw new Error(`Можно прикрепить не более ${TASK_PHOTO_MAX_COUNT} фото.`);
+  }
+  return rawPhotos.map((entry, index) => normalizeTaskPhotoEntry(entry, index));
+}
+
+function parseTaskPhotosJson(rawValue) {
+  if (!rawValue) return [];
+  try {
+    const parsed = JSON.parse(rawValue);
+    if (!Array.isArray(parsed)) return [];
+    return parsed
+      .map((entry, index) => {
+        try {
+          return normalizeTaskPhotoEntry(entry, index);
+        } catch {
+          return null;
+        }
+      })
+      .filter(Boolean);
+  } catch {
+    return [];
+  }
+}
+
+function mapWarehouseTaskForResponse(task) {
+  if (!task) return task;
+  return {
+    ...task,
+    taskPhotos: parseTaskPhotosJson(task.taskPhotosJson),
+    responsePhotos: parseTaskPhotosJson(task.responsePhotosJson),
+  };
+}
+
+function canManageWarehouseTasks(user) {
+  return Boolean(
+    user?.role === "ADMIN" || hasPermission(user, PERMISSION_KEYS.WAREHOUSE_MANAGE)
+  );
+}
+
 app.post("/api/warehouse/tasks", auth, async (req, res) => {
   try {
-    const { title, description, dueDate, executorName, executorChatId } =
-      req.body;
+    if (!canManageWarehouseTasks(req.user)) {
+      return res.status(403).json({ message: "Только администратор может создавать задачи." });
+    }
+
+    const { title, description, dueDate, executorUserId, taskPhotos } = req.body;
 
     if (!title) {
       return res
@@ -5351,87 +6761,113 @@ app.post("/api/warehouse/tasks", auth, async (req, res) => {
         .json({ message: "\u041d\u0443\u0436\u043d\u043e \u0443\u043a\u0430\u0437\u0430\u0442\u044c \u043d\u0430\u0437\u0432\u0430\u043d\u0438\u0435 \u0437\u0430\u0434\u0430\u0447\u0438." });
     }
 
-    const task = await prisma.warehouseTask.create({
-      data: {
-        title,
-        description: description || null,
-        dueDate: dueDate ? new Date(dueDate) : null,
-        executorName: executorName || null,
-        executorChatId: executorChatId || null,
-        assignerId: req.user.id,
-      },
-      include: {
-        assigner: {
-          select: { id: true, name: true, email: true },
+    const normalizedExecutorUserId =
+      Number(executorUserId) > 0 ? Number(executorUserId) : null;
+
+    let executor = null;
+    if (normalizedExecutorUserId) {
+      executor = await prisma.user.findFirst({
+        where: {
+          id: normalizedExecutorUserId,
+          orgId: req.user.orgId || null,
+          isActive: true,
         },
-      },
-    });
-
-    const groupText = buildWarehouseTaskAssignedTelegramText(task, { forExecutor: false });
-
-    sendWarehouseGroupMessage(groupText).catch((err) =>
-      console.error("\u041e\u0448\u0438\u0431\u043a\u0430 \u043e\u0442\u043f\u0440\u0430\u0432\u043a\u0438 \u0432 Telegram (\u0433\u0440\u0443\u043f\u043f\u0430):", err)
-    );
-
-    if (task.executorChatId) {
-      const execText = buildWarehouseTaskAssignedTelegramText(task, { forExecutor: true });
-      let buttonText = "\u041e\u0442\u043c\u0435\u0442\u0438\u0442\u044c \u0432\u044b\u043f\u043e\u043b\u043d\u0435\u043d\u043e";
-      let callbackData = `done:${task.id}`;
-
-      try {
-        const requestId = extractRequestIdFromTitle(task.title);
-        if (requestId) {
-          const request = await prisma.warehouseRequest.findUnique({
-            where: { id: requestId },
-            include: { items: true },
-          });
-          if (await isTmcIssueRequest(request)) {
-            buttonText = "\u0412\u044b\u0434\u0430\u043d\u043e";
-            callbackData = `issue_done:${task.id}`;
-          }
-        }
-      } catch (e) {
-        console.error("[Telegram] cannot detect request for task:", e);
+        select: { id: true, name: true, email: true, role: true },
+      });
+      if (!executor) {
+        return res.status(400).json({ message: "Выбранный исполнитель не найден." });
       }
-
-      sendTelegramMessage(task.executorChatId, execText, {
-        reply_markup: {
-          inline_keyboard: [
-            [
-              {
-                text: buttonText,
-                callback_data: callbackData,
-              },
-            ],
-          ],
-        },
-      }).catch((err) =>
-        console.error("\u041e\u0448\u0438\u0431\u043a\u0430 \u043e\u0442\u043f\u0440\u0430\u0432\u043a\u0438 \u0432 Telegram (\u0438\u0441\u043f\u043e\u043b\u043d\u0438\u0442\u0435\u043b\u044c):", err)
-      );
     }
 
-    res.status(201).json(task);
+    const normalizedTaskPhotos = normalizeTaskPhotosPayload(taskPhotos);
+
+    const task = await prisma.warehouseTask.create({
+      data: {
+        orgId: req.user.orgId || null,
+        title,
+        description: description || null,
+        taskPhotosJson: normalizedTaskPhotos.length
+          ? JSON.stringify(normalizedTaskPhotos)
+          : null,
+        dueDate: dueDate ? new Date(dueDate) : null,
+        executorUserId: executor?.id || null,
+        executorName: executor?.name || null,
+        executorChatId: null,
+        assignerId: req.user.id,
+      },
+      include: WAREHOUSE_TASK_INCLUDE,
+    });
+
+    if (task.executorUserId) {
+      await createWarehouseNotification({
+        orgId: req.user.orgId || null,
+        userId: task.executorUserId,
+        type: "TASK_ASSIGNED",
+        title: "Новая задача склада",
+        message: `Вам назначена задача: "${task.title}".`,
+        linkUrl: TASKS_JOURNAL_LINK,
+        payloadJson: { taskId: task.id },
+      });
+    }
+
+    res.status(201).json(mapWarehouseTaskForResponse(task));
   } catch (err) {
     console.error("warehouse task create error:", err);
+    const message = String(err?.message || "");
+    if (
+      message.includes("Можно прикрепить не более") ||
+      message.includes("Разрешены только фото") ||
+      message.includes("Размер одного фото") ||
+      message.includes("Некорректный формат вложенного фото")
+    ) {
+      return res.status(400).json({ message });
+    }
     res
       .status(500)
       .json({ message: "\u041e\u0448\u0438\u0431\u043a\u0430 \u0441\u043e\u0437\u0434\u0430\u043d\u0438\u044f \u0437\u0430\u0434\u0430\u0447\u0438 \u0441\u043a\u043b\u0430\u0434\u0430." });
   }
 });
 
+app.get("/api/warehouse/tasks/executors", auth, async (req, res) => {
+  try {
+    if (!canManageWarehouseTasks(req.user)) {
+      return res.status(403).json({ message: "Нет прав для просмотра исполнителей." });
+    }
+    const users = await prisma.user.findMany({
+      where: {
+        orgId: req.user.orgId || null,
+        isActive: true,
+        role: { in: ["EMPLOYEE", "ADMIN"] },
+      },
+      select: {
+        id: true,
+        name: true,
+        email: true,
+        role: true,
+      },
+      orderBy: [{ role: "asc" }, { name: "asc" }],
+    });
+    res.json(users);
+  } catch (err) {
+    console.error("warehouse task executors error:", err);
+    res.status(500).json({ message: "Ошибка сервера при загрузке исполнителей." });
+  }
+});
+
 app.get("/api/warehouse/tasks/my", auth, async (req, res) => {
   try {
+    const manager = canManageWarehouseTasks(req.user);
     const tasks = await prisma.warehouseTask.findMany({
-      where: { assignerId: req.user.id },
+      where: manager
+        ? {
+            OR: [{ executorUserId: req.user.id }, { assignerId: req.user.id }],
+          }
+        : { executorUserId: req.user.id },
       orderBy: { createdAt: "desc" },
-      include: {
-        assigner: {
-          select: { id: true, name: true, email: true },
-        },
-      },
+      include: WAREHOUSE_TASK_INCLUDE,
     });
 
-    res.json(tasks);
+    res.json(tasks.map(mapWarehouseTaskForResponse));
   } catch (err) {
     console.error("warehouse tasks my error:", err);
     res
@@ -5443,20 +6879,16 @@ app.get("/api/warehouse/tasks/my", auth, async (req, res) => {
 // все задачи склада (ADMIN/EMPLOYEE)
 app.get("/api/warehouse/tasks", auth, async (req, res) => {
   try {
-    if (!PORTAL_ALLOWED_ROLES.includes(req.user.role)) {
-      return res.status(403).json({ message: "Нет прав" });
+    if (!canManageWarehouseTasks(req.user)) {
+      return res.status(403).json({ message: "Нет прав для просмотра всех задач." });
     }
 
     const tasks = await prisma.warehouseTask.findMany({
       orderBy: { createdAt: "desc" },
-      include: {
-        assigner: {
-          select: { id: true, name: true, email: true },
-        },
-      },
+      include: WAREHOUSE_TASK_INCLUDE,
     });
 
-    res.json(tasks);
+    res.json(tasks.map(mapWarehouseTaskForResponse));
   } catch (err) {
     console.error("warehouse tasks list error:", err);
     res
@@ -5471,17 +6903,32 @@ app.put("/api/warehouse/tasks/:id/status", auth, async (req, res) => {
     const id = Number(req.params.id);
     const { status } = req.body;
 
-    if (!PORTAL_ALLOWED_ROLES.includes(req.user.role)) {
-      return res.status(403).json({ message: "Нет прав" });
+    if (!id) {
+      return res.status(400).json({ message: "Некорректный идентификатор задачи." });
     }
 
-    if (!["NEW", "IN_PROGRESS", "DONE", "CANCELLED"].includes(status)) {
+    if (!WAREHOUSE_TASK_EDIT_STATUSES.includes(status)) {
       return res.status(400).json({ message: "Недопустимый статус" });
+    }
+
+    const existing = await prisma.warehouseTask.findUnique({
+      where: { id },
+      include: WAREHOUSE_TASK_INCLUDE,
+    });
+    if (!existing) {
+      return res.status(404).json({ message: "Задача не найдена." });
+    }
+
+    const manager = canManageWarehouseTasks(req.user);
+    const isExecutor = existing.executorUserId === req.user.id;
+    if (!manager && !isExecutor) {
+      return res.status(403).json({ message: "Можно менять только назначенные вам задачи." });
     }
 
     const updated = await prisma.warehouseTask.update({
       where: { id },
       data: { status },
+      include: WAREHOUSE_TASK_INCLUDE,
     });
 
     // Если задача создана по заявке на склад и мы поставили DONE —
@@ -5504,12 +6951,335 @@ app.put("/api/warehouse/tasks/:id/status", auth, async (req, res) => {
       }
     }
 
-    res.json(updated);
+    if (existing.status !== updated.status) {
+      if (updated.assignerId && updated.assignerId !== req.user.id) {
+        await createWarehouseNotification({
+          orgId: req.user.orgId || null,
+          userId: updated.assignerId,
+          type: "TASK_STATUS_CHANGED",
+          title: "Статус задачи изменен",
+          message: `Задача "${updated.title}" переведена в статус "${
+            WAREHOUSE_TASK_STATUS_LABELS[updated.status] || updated.status
+          }".`,
+          linkUrl: TASKS_JOURNAL_LINK,
+          payloadJson: {
+            taskId: updated.id,
+            fromStatus: existing.status,
+            toStatus: updated.status,
+          },
+        });
+      }
+      if (
+        updated.executorUserId &&
+        updated.executorUserId !== req.user.id &&
+        updated.executorUserId !== updated.assignerId
+      ) {
+        await createWarehouseNotification({
+          orgId: req.user.orgId || null,
+          userId: updated.executorUserId,
+          type: "TASK_STATUS_CHANGED",
+          title: "Статус вашей задачи обновлен",
+          message: `Задача "${updated.title}" теперь в статусе "${
+            WAREHOUSE_TASK_STATUS_LABELS[updated.status] || updated.status
+          }".`,
+          linkUrl: TASKS_JOURNAL_LINK,
+          payloadJson: {
+            taskId: updated.id,
+            fromStatus: existing.status,
+            toStatus: updated.status,
+          },
+        });
+      }
+    }
+
+    res.json(mapWarehouseTaskForResponse(updated));
   } catch (err) {
     console.error("warehouse task status error:", err);
     res
       .status(500)
       .json({ message: "Ошибка сервера при обновлении статуса задачи" });
+  }
+});
+
+app.put("/api/warehouse/tasks/:id/response", auth, async (req, res) => {
+  try {
+    const id = Number(req.params.id);
+    if (!id) {
+      return res.status(400).json({ message: "Некорректный идентификатор задачи." });
+    }
+
+    const responseTextRaw = req.body?.responseText;
+    const responseText =
+      responseTextRaw == null ? null : String(responseTextRaw).trim().slice(0, 5000);
+    const normalizedResponsePhotos = normalizeTaskPhotosPayload(req.body?.responsePhotos);
+
+    if (!responseText && normalizedResponsePhotos.length === 0) {
+      return res.status(400).json({ message: "Добавьте текст ответа или фото." });
+    }
+
+    const existing = await prisma.warehouseTask.findUnique({
+      where: { id },
+      include: WAREHOUSE_TASK_INCLUDE,
+    });
+    if (!existing) {
+      return res.status(404).json({ message: "Задача не найдена." });
+    }
+
+    const manager = canManageWarehouseTasks(req.user);
+    const isExecutor = Number(existing.executorUserId) === Number(req.user.id);
+    if (!manager && !isExecutor) {
+      return res.status(403).json({ message: "Можно отвечать только по назначенным вам задачам." });
+    }
+
+    const updated = await prisma.warehouseTask.update({
+      where: { id },
+      data: {
+        responseText: responseText || null,
+        responsePhotosJson: normalizedResponsePhotos.length
+          ? JSON.stringify(normalizedResponsePhotos)
+          : null,
+        responseUpdatedAt: new Date(),
+        responseAuthorUserId: req.user.id,
+        responseAuthorName: req.user.name || req.user.email || null,
+      },
+      include: WAREHOUSE_TASK_INCLUDE,
+    });
+
+    if (updated.assignerId && updated.assignerId !== req.user.id) {
+      await createWarehouseNotification({
+        orgId: req.user.orgId || null,
+        userId: updated.assignerId,
+        type: "TASK_RESPONSE_UPDATED",
+        title: "Новый ответ по задаче",
+        message: `По задаче "${updated.title}" добавлен ответ.`,
+        linkUrl: TASKS_JOURNAL_LINK,
+        payloadJson: { taskId: updated.id },
+      });
+    }
+
+    res.json(mapWarehouseTaskForResponse(updated));
+  } catch (err) {
+    console.error("warehouse task response error:", err);
+    const message = String(err?.message || "");
+    if (
+      message.includes("Можно прикрепить не более") ||
+      message.includes("Разрешены только фото") ||
+      message.includes("Размер одного фото") ||
+      message.includes("Некорректный формат вложенного фото")
+    ) {
+      return res.status(400).json({ message });
+    }
+    res.status(500).json({ message: "Ошибка сервера при сохранении ответа по задаче." });
+  }
+});
+
+// ================== УВЕДОМЛЕНИЯ ==================
+
+app.get("/api/notifications", auth, async (req, res) => {
+  try {
+    const limitRaw = Number(req.query.limit || 25);
+    const limit = Math.max(1, Math.min(limitRaw || 25, 100));
+    const unreadOnly =
+      String(req.query.unreadOnly || "").trim().toLowerCase() === "true";
+
+    const where = {
+      orgId: req.user.orgId || null,
+      userId: req.user.id,
+      ...(unreadOnly ? { isRead: false } : {}),
+    };
+
+    const [items, unreadCount] = await Promise.all([
+      prisma.warehouseNotification.findMany({
+        where,
+        orderBy: { createdAt: "desc" },
+        take: limit,
+      }),
+      prisma.warehouseNotification.count({
+        where: {
+          orgId: req.user.orgId || null,
+          userId: req.user.id,
+          isRead: false,
+        },
+      }),
+    ]);
+
+    res.json({ items, unreadCount });
+  } catch (err) {
+    console.error("notifications list error:", err);
+    res.status(500).json({ message: "Ошибка загрузки уведомлений." });
+  }
+});
+
+app.get("/api/notifications/unread-count", auth, async (req, res) => {
+  try {
+    const unreadCount = await prisma.warehouseNotification.count({
+      where: {
+        orgId: req.user.orgId || null,
+        userId: req.user.id,
+        isRead: false,
+      },
+    });
+    res.json({ unreadCount });
+  } catch (err) {
+    console.error("notifications unread-count error:", err);
+    res.status(500).json({ message: "Ошибка загрузки количества уведомлений." });
+  }
+});
+
+app.post("/api/notifications/:id/read", auth, async (req, res) => {
+  try {
+    const id = Number(req.params.id);
+    if (!id) {
+      return res.status(400).json({ message: "Некорректный идентификатор уведомления." });
+    }
+
+    const current = await prisma.warehouseNotification.findFirst({
+      where: {
+        id,
+        orgId: req.user.orgId || null,
+        userId: req.user.id,
+      },
+      select: { id: true, isRead: true },
+    });
+
+    if (!current) {
+      return res.status(404).json({ message: "Уведомление не найдено." });
+    }
+    if (current.isRead) {
+      return res.json({ ok: true });
+    }
+
+    await prisma.warehouseNotification.update({
+      where: { id },
+      data: { isRead: true, readAt: new Date() },
+    });
+    res.json({ ok: true });
+  } catch (err) {
+    console.error("notifications mark-read error:", err);
+    res.status(500).json({ message: "Ошибка обновления уведомления." });
+  }
+});
+
+app.post("/api/notifications/read-all", auth, async (req, res) => {
+  try {
+    const result = await prisma.warehouseNotification.updateMany({
+      where: {
+        orgId: req.user.orgId || null,
+        userId: req.user.id,
+        isRead: false,
+      },
+      data: { isRead: true, readAt: new Date() },
+    });
+    res.json({ ok: true, updated: result.count || 0 });
+  } catch (err) {
+    console.error("notifications read-all error:", err);
+    res.status(500).json({ message: "Ошибка обновления уведомлений." });
+  }
+});
+
+app.get("/api/notifications/push/public-key", auth, async (req, res) => {
+  res.json({
+    enabled: WEB_PUSH_ENABLED,
+    publicKey: WEB_PUSH_ENABLED ? WEB_PUSH_PUBLIC_KEY : null,
+  });
+});
+
+app.post("/api/notifications/push/subscribe", auth, async (req, res) => {
+  try {
+    if (!WEB_PUSH_ENABLED) {
+      return res.status(400).json({ message: "Push-уведомления пока не настроены." });
+    }
+
+    const subscription = parsePushSubscription(req.body?.subscription || req.body);
+    if (!subscription) {
+      return res.status(400).json({ message: "Некорректные данные push-подписки." });
+    }
+
+    await prisma.pushSubscription.upsert({
+      where: { endpoint: subscription.endpoint },
+      create: {
+        orgId: req.user.orgId || null,
+        userId: req.user.id,
+        endpoint: subscription.endpoint,
+        p256dh: subscription.p256dh,
+        auth: subscription.auth,
+        userAgent: String(req.headers["user-agent"] || "").slice(0, 255),
+      },
+      update: {
+        orgId: req.user.orgId || null,
+        userId: req.user.id,
+        p256dh: subscription.p256dh,
+        auth: subscription.auth,
+        userAgent: String(req.headers["user-agent"] || "").slice(0, 255),
+      },
+    });
+
+    res.json({ ok: true });
+  } catch (err) {
+    console.error("push subscribe error:", err);
+    res.status(500).json({ message: "Не удалось сохранить push-подписку." });
+  }
+});
+
+app.post("/api/notifications/push/unsubscribe", auth, async (req, res) => {
+  try {
+    const endpoint = String(req.body?.endpoint || "").trim();
+    if (!endpoint) {
+      return res.status(400).json({ message: "Не передан endpoint подписки." });
+    }
+
+    await prisma.pushSubscription.deleteMany({
+      where: {
+        endpoint,
+        orgId: req.user.orgId || null,
+        userId: req.user.id,
+      },
+    });
+
+    res.json({ ok: true });
+  } catch (err) {
+    console.error("push unsubscribe error:", err);
+    res.status(500).json({ message: "Не удалось удалить push-подписку." });
+  }
+});
+
+app.post("/api/notifications/push/test", auth, async (req, res) => {
+  try {
+    if (!WEB_PUSH_ENABLED) {
+      return res.status(400).json({ message: "Push-уведомления на сервере не настроены." });
+    }
+
+    const userSubsCount = await prisma.pushSubscription.count({
+      where: {
+        orgId: req.user.orgId || null,
+        userId: req.user.id,
+      },
+    });
+
+    if (!userSubsCount) {
+      return res.status(409).json({
+        message:
+          "Нет активной push-подписки на этом аккаунте. Откройте приложение на устройстве и разрешите уведомления.",
+      });
+    }
+
+    await createWarehouseNotification({
+      orgId: req.user.orgId || null,
+      userId: req.user.id,
+      type: "PUSH_TEST",
+      title: "Тест push-уведомления",
+      message: "Проверка прошла: push-канал подключен.",
+      linkUrl: "/warehouse",
+      payloadJson: { at: new Date().toISOString() },
+    });
+
+    return res.json({
+      ok: true,
+      message: "Тестовое push-уведомление отправлено.",
+    });
+  } catch (err) {
+    console.error("push test error:", err);
+    return res.status(500).json({ message: "Ошибка отправки тестового push-уведомления." });
   }
 });
 
@@ -5539,7 +7309,7 @@ app.post("/api/inventory/items", auth, async (req, res) => {
     if (!sku || !sku.trim()) {
       return res
         .status(400)
-        .json({ message: "Артикул (SKU) обязателен" });
+        .json({ message: "Артикул обязателен" });
     }
 
     if (!unit || !unit.trim()) {
@@ -5551,9 +7321,20 @@ app.post("/api/inventory/items", auth, async (req, res) => {
     // 2) Числовые поля
     const minVal = Number(minStock);
     const maxVal = Number(maxStock);
-    const priceVal = Number(
-      String(defaultPrice).toString().replace(",", ".")
-    );
+    const hasDefaultPrice =
+      defaultPrice !== undefined &&
+      defaultPrice !== null &&
+      String(defaultPrice).trim() !== "";
+    let priceVal = null;
+    if (hasDefaultPrice) {
+      const parsed = Number(String(defaultPrice).toString().replace(",", "."));
+      if (!Number.isFinite(parsed) || parsed < 0) {
+        return res.status(400).json({
+          message: "Цена за единицу должна быть числом (0 и больше)",
+        });
+      }
+      priceVal = parsed;
+    }
 
     if (!Number.isFinite(minVal) || minVal <= 0) {
       return res.status(400).json({
@@ -5564,12 +7345,6 @@ app.post("/api/inventory/items", auth, async (req, res) => {
     if (!Number.isFinite(maxVal) || maxVal <= 0) {
       return res.status(400).json({
         message: "Максимальный остаток должен быть положительным числом",
-      });
-    }
-
-    if (!Number.isFinite(priceVal) || priceVal <= 0) {
-      return res.status(400).json({
-        message: "Цена за единицу должна быть положительным числом",
       });
     }
 
@@ -5627,7 +7402,7 @@ app.get("/api/inventory/items/by-barcode/:barcode", auth, async (req, res) => {
       return res.status(400).json({ message: "Штрихкод обязателен" });
     }
 
-    // ищем по штрихкоду, QR или SKU (на случай, если сканер посылает код артикула)
+    // ищем по штрихкоду, QR или артикулу (на случай, если сканер посылает код артикула)
     const item = await prisma.item.findFirst({
       where: {
         category: "STOCK",
@@ -5818,9 +7593,6 @@ app.post("/api/warehouse/products/:id/codes", auth, async (req, res) => {
     }
 
     const item = await prisma.item.findUnique({ where: { id } });
-    if (item && item.category === "TMC") {
-      return res.status(404).json({ message: "ITEM_NOT_FOUND" });
-    }
     if (!item) {
       return res.status(404).json({ message: "Товар не найден" });
     }
@@ -5937,9 +7709,6 @@ app.post("/api/warehouse/products/:id/qr", auth, async (req, res) => {
       return res.status(400).json({ message: "Некорректный ID товара" });
     }
     const item = await prisma.item.findUnique({ where: { id } });
-    if (item && item.category === "TMC") {
-      return res.status(404).json({ message: "ITEM_NOT_FOUND" });
-    }
     if (!item) {
       return res.status(404).json({ message: "Товар не найден" });
     }
@@ -6001,7 +7770,7 @@ app.get("/api/warehouse/scan/resolve", auth, async (req, res) => {
     const isLoc = raw.startsWith("BP:LOC:") || raw.startsWith("BP:LOCATION:");
     const isItem =
       raw.startsWith("BP:ITEM:") ||
-      raw.startsWith("BP:SKU:") ||
+      raw.startsWith("BP:ARTICLE:") ||
       raw.startsWith("BP:PRODUCT:");
 
     if (isLoc) {
@@ -6065,7 +7834,7 @@ app.get("/api/warehouse/scan/resolve", auth, async (req, res) => {
     }
 
     if (isItem) {
-      const payload = raw.replace(/^BP:(ITEM|SKU|PRODUCT):/, "");
+      const payload = raw.replace(/^BP:(ITEM|ARTICLE|PRODUCT):/, "");
       const id = Number(payload);
       const hasId =
         (raw.startsWith("BP:ITEM:") || raw.startsWith("BP:PRODUCT:")) &&
@@ -6818,263 +8587,13 @@ app.post("/api/warehouse/revisions/:id/apply", auth, requireAdmin, async (req, r
   }
 });
 
-// ===== TMC (SUPPLIES) =====
-const TMC_DEFAULTS = [
-  { name: "?????? ?4", unit: "?????" },
-  { name: "????? ?????????", unit: "??" },
-  { name: "?????? ????????????", unit: "??" },
-  { name: "????? ??????????", unit: "?????" },
-  { name: "??????-?????", unit: "?????" },
-  { name: "???????? ???????", unit: "????" },
-  { name: "????????", unit: "??" },
-  { name: "????? ??? ??????", unit: "??" },
-  { name: "????????", unit: "??" },
-  { name: "??????? ?????", unit: "?????" },
-  { name: "????????", unit: "?????" },
-  { name: "??? ????????????", unit: "??" },
-  { name: "????? ????????????", unit: "?????" },
-  { name: "?????? ???", unit: "??" },
-  { name: "????????????? ????????", unit: "??" },
-];
-
-
-const getTmcStockForItem = async (itemId) => {
-  const movements = await prisma.stockMovement.findMany({
-    where: { itemId },
-    orderBy: { createdAt: "asc" },
-  });
-  let qty = 0;
-  for (const m of movements) {
-    if (m.type === "INCOME" || m.type === "ADJUSTMENT") {
-      qty += Number(m.quantity);
-    } else if (m.type === "ISSUE") {
-      qty -= Number(m.quantity);
-    }
-  }
-  return Math.round(qty);
-};
-
-app.get("/api/tmc/items", auth, async (req, res) => {
-  try {
-    const items = await prisma.item.findMany({
-      where: { category: "TMC" },
-      orderBy: { name: "asc" },
-    });
-    res.json(items);
-  } catch (err) {
-    console.error("tmc items error:", err);
-    res.status(500).json({ message: "TMC_ITEMS_ERROR" });
-  }
-});
-
-app.get("/api/tmc/stock", auth, async (req, res) => {
-  try {
-    const items = await prisma.item.findMany({
-      where: { category: "TMC" },
-      orderBy: { name: "asc" },
-    });
-    const result = [];
-    for (const item of items) {
-      const currentStock = await getTmcStockForItem(item.id);
-      result.push({
-        id: item.id,
-        name: item.name,
-        sku: item.sku,
-        barcode: item.barcode,
-        unit: item.unit,
-        currentStock,
-      });
-    }
-    res.json(result);
-  } catch (err) {
-    console.error("tmc stock error:", err);
-    res.status(500).json({ message: "TMC_STOCK_ERROR" });
-  }
-});
-
-app.get("/api/tmc/transactions", auth, async (req, res) => {
-  try {
-    const limit = Math.min(Number(req.query.limit) || 200, 500);
-    const items = await prisma.stockMovement.findMany({
-      where: { item: { category: "TMC" } },
-      orderBy: { createdAt: "desc" },
-      take: limit,
-      include: { item: true, createdBy: true },
-    });
-    const result = items.map((m) => ({
-      id: m.id,
-      type: m.type,
-      createdAt: m.createdAt,
-      qty: m.type === "ISSUE" ? -Number(m.quantity) : Number(m.quantity),
-      comment: m.comment || null,
-      item: m.item
-        ? { id: m.item.id, name: m.item.name, sku: m.item.sku }
-        : null,
-      user: m.createdBy ? { id: m.createdBy.id, name: m.createdBy.name } : null,
-    }));
-    res.json({ items: result });
-  } catch (err) {
-    console.error("tmc transactions error:", err);
-    res.status(500).json({ message: "TMC_TRANSACTIONS_ERROR" });
-  }
-});
-
-app.post("/api/tmc/items", auth, requireAdmin, async (req, res) => {
-  try {
-    const { name, unit, sku, barcode } = req.body || {};
-    if (!name || String(name).trim().length < 2) {
-      return res.status(400).json({ message: "BAD_NAME" });
-    }
-    const item = await prisma.item.create({
-      data: {
-        name: String(name).trim(),
-        unit: unit ? String(unit).trim() : "??",
-        sku: sku ? String(sku).trim() : null,
-        barcode: barcode ? String(barcode).trim() : null,
-        category: "TMC",
-      },
-    });
-    res.json(item);
-  } catch (err) {
-    console.error("tmc item create error:", err);
-    res.status(500).json({ message: "TMC_ITEM_CREATE_ERROR" });
-  }
-});
-
-app.put("/api/tmc/items/:id", auth, requireAdmin, async (req, res) => {
-  try {
-    const id = Number(req.params.id);
-    const { name, unit, sku, barcode } = req.body || {};
-    if (!id || Number.isNaN(id)) {
-      return res.status(400).json({ message: "BAD_ITEM_ID" });
-    }
-    const existing = await prisma.item.findUnique({ where: { id } });
-    if (!existing || existing.category !== "TMC") {
-      return res.status(404).json({ message: "ITEM_NOT_FOUND" });
-    }
-    const item = await prisma.item.update({
-      where: { id },
-      data: {
-        name: name ? String(name).trim() : existing.name,
-        unit: unit ? String(unit).trim() : existing.unit,
-        sku: sku ? String(sku).trim() : existing.sku,
-        barcode: barcode ? String(barcode).trim() : existing.barcode,
-      },
-    });
-    res.json(item);
-  } catch (err) {
-    console.error("tmc item update error:", err);
-    res.status(500).json({ message: "TMC_ITEM_UPDATE_ERROR" });
-  }
-});
-
-app.post("/api/tmc/receive", auth, requireAdmin, async (req, res) => {
-  try {
-    const { itemId, qty, comment, docNo } = req.body || {};
-    const item = Number(itemId);
-    const amount = Number(qty);
-    if (!item || !Number.isFinite(amount) || amount <= 0) {
-      return res.status(400).json({ message: "BAD_REQUEST" });
-    }
-    const itemRow = await prisma.item.findUnique({ where: { id: item } });
-    if (!itemRow || itemRow.category !== "TMC") {
-      return res.status(404).json({ message: "ITEM_NOT_FOUND" });
-    }
-    const note = docNo ? `?????? ???: ${docNo}` : "?????? ???";
-    const movement = await stockService.createMovement({
-      type: "INCOME",
-      itemId: item,
-      qty: Math.trunc(amount),
-      locationId: null,
-      comment: comment ? `${note}. ${comment}` : note,
-      userId: req.user?.id || null,
-    });
-    res.json({ ok: true, id: movement.id });
-  } catch (err) {
-    console.error("tmc receive error:", err);
-    res.status(500).json({ message: "TMC_RECEIVE_ERROR" });
-  }
-});
-
-app.post("/api/tmc/issue", auth, async (req, res) => {
-  try {
-    const { itemId, qty, department, employee, comment } = req.body || {};
-    const item = Number(itemId);
-    const amount = Number(qty);
-    if (!item || !Number.isFinite(amount) || amount <= 0) {
-      return res.status(400).json({ message: "BAD_REQUEST" });
-    }
-    const itemRow = await prisma.item.findUnique({ where: { id: item } });
-    if (!itemRow || itemRow.category !== "TMC") {
-      return res.status(404).json({ message: "ITEM_NOT_FOUND" });
-    }
-
-    const current = await getTmcStockForItem(itemRow.id);
-    if (current < amount) {
-      return res.status(400).json({ message: "INSUFFICIENT_QTY" });
-    }
-
-    const target = [department, employee].filter(Boolean).join(" / ");
-    const note = target ? `?????? ???: ${target}` : "?????? ???";
-    const movement = await stockService.createMovement({
-      type: "ISSUE",
-      itemId: item,
-      qty: Math.trunc(amount),
-      locationId: null,
-      comment: comment ? `${note}. ${comment}` : note,
-      userId: req.user?.id || null,
-    });
-    res.json({ ok: true, id: movement.id });
-  } catch (err) {
-    console.error("tmc issue error:", err);
-    res.status(500).json({ message: "TMC_ISSUE_ERROR" });
-  }
-});
-
-app.post("/api/tmc/seed-defaults", auth, requireAdmin, async (req, res) => {
-  try {
-    const existing = await prisma.item.findMany({
-      where: { category: "TMC" },
-      select: { id: true, name: true },
-    });
-    const bad = existing.filter((row) => (row.name || "").includes(String.fromCharCode(0xFFFD)) || (row.name || "").includes("?"));
-    if (bad.length) {
-      await prisma.item.deleteMany({
-        where: { id: { in: bad.map((row) => row.id) } },
-      });
-    }
-
-    const existingAfter = await prisma.item.findMany({
-      where: { category: "TMC" },
-      select: { name: true },
-    });
-
-    const exists = new Set(existingAfter.map((i) => i.name.toLowerCase()));
-    const toCreate = TMC_DEFAULTS.filter((row) => !exists.has(row.name.toLowerCase()))
-      .map((row) => ({
-        name: row.name,
-        unit: row.unit || "\u0448\u0442",
-        category: "TMC",
-      }));
-
-    if (toCreate.length) {
-      await prisma.item.createMany({ data: toCreate });
-    }
-
-    res.json({ added: toCreate.length });
-  } catch (err) {
-    console.error("tmc seed error:", err);
-    res.status(500).json({ message: "TMC_SEED_ERROR" });
-  }
-});
-
 // ===== DISCREPANCY CLOSE =====
 app.put("/api/warehouse/discrepancies/:id/close", auth, async (req, res) => {
   try {
     const id = Number(req.params.id);
     const { closeNote } = req.body || {};
     if (!id || Number.isNaN(id)) {
-      return res.status(400).json({ message: "???????????? ????????????? ???????????." });
+      return res.status(400).json({ message: "Некорректный идентификатор расхождения." });
     }
 
     const discrepancy = await prisma.stockDiscrepancy.findUnique({
@@ -7082,7 +8601,7 @@ app.put("/api/warehouse/discrepancies/:id/close", auth, async (req, res) => {
       include: { item: true, location: true },
     });
     if (!discrepancy) {
-      return res.status(404).json({ message: "??????????? ?? ???????." });
+      return res.status(404).json({ message: "Расхождение не найдено." });
     }
 
     if (discrepancy.status === "CLOSED") {
@@ -7090,13 +8609,13 @@ app.put("/api/warehouse/discrepancies/:id/close", auth, async (req, res) => {
     }
 
     if (!["ADMIN", "EMPLOYEE"].includes(req.user?.role)) {
-      return res.status(403).json({ message: "???????????? ????." });
+      return res.status(403).json({ message: "Недостаточно прав." });
     }
 
     if (discrepancy.delta < 0 && req.user?.role !== "ADMIN") {
       return res
         .status(403)
-        .json({ message: "?????? ????????????? ????? ??????????? ????????." });
+        .json({ message: "Только администратор может закрывать минусовые расхождения." });
     }
 
     await prisma.$transaction(async (tx) => {
@@ -7112,7 +8631,7 @@ app.put("/api/warehouse/discrepancies/:id/close", auth, async (req, res) => {
           itemId: discrepancy.itemId,
           qty: Math.trunc(discrepancy.delta),
           locationId: discrepancy.locationId,
-          comment: "?????????????? - (???????????? ???????????????)",
+          comment: "Корректировка - (закрытие расхождения)",
           userId: req.user?.id || null,
         });
       }
@@ -7132,9 +8651,9 @@ app.put("/api/warehouse/discrepancies/:id/close", auth, async (req, res) => {
   } catch (err) {
     console.error("discrepancy close error:", err);
     if (err.code === "NO_LOCATION") {
-      return res.status(400).json({ message: "??? ??????????? ?? ??????? ??????." });
+      return res.status(400).json({ message: "Нет привязки к ячейке товара." });
     }
-    res.status(500).json({ message: "?? ??????? ??????? ???????????." });
+    res.status(500).json({ message: "Не удалось закрыть расхождение." });
   }
 });
 
@@ -7394,7 +8913,7 @@ app.post("/api/warehouse/inventory/count", auth, async (req, res) => {
     if (err.code === "COUNT_MINUS_ONLY") {
       return res.status(400).json({ message: "COUNT_MINUS_ONLY", code: "COUNT_MINUS_ONLY" });
     }
-    res.status(500).json({ message: "?????? ??????????????. ????????? ???????." });
+    res.status(500).json({ message: "Ошибка инвентаризации. Проверьте данные." });
   }
 });
 
@@ -7424,9 +8943,9 @@ app.post("/api/warehouse/receiving", auth, async (req, res) => {
     }
 
     const commentParts = [
-      "??????? (???)",
-      locationId ? `??????=${locationId}` : "",
-      supplierName ? `?????????=${String(supplierName).trim()}` : "",
+      "Приход (ТСД)",
+      locationId ? `ячейка=${locationId}` : "",
+      supplierName ? `поставщик=${String(supplierName).trim()}` : "",
       docNo ? `???=${String(docNo).trim()}` : "",
     ].filter(Boolean);
     const baseComment = commentParts.join(" ");
@@ -7545,7 +9064,7 @@ app.post("/api/warehouse/move", auth, async (req, res) => {
         throw err;
       }
 
-      const moveComment = comment || `??????????? (???) ${from} > ${to}`;
+      const moveComment = comment || `Перемещение (ТСД) ${from} > ${to}`;
 
       await stockService.createMovementInTx(tx, {
         opId: opId ? `${opId}:OUT` : null,
@@ -7621,7 +9140,7 @@ app.post("/api/warehouse/putaway", auth, async (req, res) => {
         throw err;
       }
 
-      const moveComment = comment || `?????????? (???) ${from} > ${to}`;
+      const moveComment = comment || `Размещение (ТСД) ${from} > ${to}`;
 
       await stockService.createMovementInTx(tx, {
         opId: opId ? `${opId}:OUT` : null,
@@ -7789,7 +9308,7 @@ app.post("/api/warehouse/putaway/from-receiving", auth, async (req, res) => {
         throw err;
       }
 
-      const moveComment = `?????????? (???) ${receivingLocationId} > ${to}`;
+      const moveComment = `Размещение (ТСД) ${receivingLocationId} > ${to}`;
 
       if (line.sourceType === "INVENTORY_PLUS") {
         await stockService.createMovementInTx(tx, {
@@ -7800,7 +9319,7 @@ app.post("/api/warehouse/putaway/from-receiving", auth, async (req, res) => {
           locationId: to,
           fromLocationId: null,
           toLocationId: to,
-          comment: "?????????????? +",
+          comment: "Инвентаризация +",
           userId: req.user?.id || null,
         });
       } else {
@@ -7924,7 +9443,7 @@ app.post("/api/warehouse/pick", auth, async (req, res) => {
     if (!itemRow) return res.status(404).json({ message: "ITEM_NOT_FOUND" });
     if (!fromLoc) return res.status(404).json({ message: "LOCATION_NOT_FOUND" });
 
-    const pickComment = comment || `????? (???) ?? ${from}`;
+    const pickComment = comment || `Подбор (ТСД) из ${from}`;
     const movement = await prisma.$transaction(async (tx) => {
       const created = await stockService.createMovementInTx(tx, {
         opId: opId || null,
@@ -8013,7 +9532,7 @@ app.post("/api/warehouse/replen/execute", auth, async (req, res) => {
         throw err;
       }
 
-      const replComment = comment || `?????????? (???) ${from} > ${to}`;
+      const replComment = comment || `Пополнение (ТСД) ${from} > ${to}`;
 
       await stockService.createMovementInTx(tx, {
         opId: opId ? `${opId}:OUT` : null,
@@ -8068,7 +9587,106 @@ app.post("/api/warehouse/print/labels", auth, async (req, res) => {
     }
 
     const count = Math.max(1, Number(qtyPerId || 1));
-    const isLabel = String(layout).toLowerCase() === "label";
+    const normalizedLayout = String(layout || "A4")
+      .trim()
+      .toUpperCase()
+      .replace(/\s+/g, "");
+
+    const layoutPreset = (() => {
+      if (normalizedLayout === "A4_12") {
+        return {
+          pageSize: "A4",
+          pageMargin: "8mm",
+          bodyPadding: "0",
+          wrapperClass: "grid",
+          gridColumns: "repeat(3, 1fr)",
+          gridGap: "4mm",
+          justifyItems: "stretch",
+          labelRadius: "6px",
+          labelPadding: "4mm",
+          labelWidth: "auto",
+          labelMinHeight: "58mm",
+          labelGap: "3mm",
+          titleSize: "13px",
+          subtitleSize: "10px",
+          qrSize: "30mm",
+          locationQrSize: "34mm",
+          codeSize: "10px",
+          codeSpacing: "0.2px",
+          forcePageBreak: false,
+        };
+      }
+
+      if (normalizedLayout === "LABEL_70X50") {
+        return {
+          pageSize: "70mm 50mm",
+          pageMargin: "0",
+          bodyPadding: "0",
+          wrapperClass: "",
+          gridColumns: "1fr",
+          gridGap: "0",
+          justifyItems: "stretch",
+          labelRadius: "0",
+          labelPadding: "2.5mm",
+          labelWidth: "70mm",
+          labelMinHeight: "50mm",
+          labelGap: "2mm",
+          titleSize: "12px",
+          subtitleSize: "10px",
+          qrSize: "28mm",
+          locationQrSize: "32mm",
+          codeSize: "10px",
+          codeSpacing: "0.2px",
+          forcePageBreak: true,
+        };
+      }
+
+      if (normalizedLayout === "LABEL" || normalizedLayout === "LABEL_58X40") {
+        return {
+          pageSize: "58mm 40mm",
+          pageMargin: "0",
+          bodyPadding: "0",
+          wrapperClass: "",
+          gridColumns: "1fr",
+          gridGap: "0",
+          justifyItems: "stretch",
+          labelRadius: "0",
+          labelPadding: "2mm",
+          labelWidth: "58mm",
+          labelMinHeight: "40mm",
+          labelGap: "2mm",
+          titleSize: "10px",
+          subtitleSize: "8px",
+          qrSize: "22mm",
+          locationQrSize: "25mm",
+          codeSize: "9px",
+          codeSpacing: "0.2px",
+          forcePageBreak: true,
+        };
+      }
+
+      return {
+        pageSize: "A4",
+        pageMargin: "10mm",
+        bodyPadding: "0",
+        wrapperClass: "grid",
+        gridColumns: "1fr",
+        gridGap: "12mm",
+        justifyItems: "center",
+        labelRadius: "12px",
+        labelPadding: "10mm",
+        labelWidth: "170mm",
+        labelMinHeight: "90mm",
+        labelGap: "8mm",
+        titleSize: "18px",
+        subtitleSize: "13px",
+        qrSize: "60mm",
+        locationQrSize: "70mm",
+        codeSize: "14px",
+        codeSpacing: "0.4px",
+        forcePageBreak: false,
+      };
+    })();
 
     const labels = [];
 
@@ -8078,15 +9696,12 @@ app.post("/api/warehouse/print/labels", auth, async (req, res) => {
 
       if (kind === "item") {
         const item = await prisma.item.findUnique({ where: { id } });
-    if (item && item.category === "TMC") {
-      return res.status(404).json({ message: "ITEM_NOT_FOUND" });
-    }
         if (!item) continue;
         labels.push({
           kind: "item",
           title: item.name,
           subtitle: item.sku
-            ? `SKU: ${item.sku}`
+            ? `Артикул: ${item.sku}`
             : item.barcode
               ? `BARCODE: ${item.barcode}`
               : "",
@@ -8129,57 +9744,86 @@ app.post("/api/warehouse/print/labels", auth, async (req, res) => {
       });
     }
 
+    const printRows = rendered.flatMap((row) =>
+      Array.from({ length: count }, () => row)
+    );
+
     const html = `
       <html>
         <head>
           <meta charset="utf-8" />
           <title>Print Labels</title>
           <style>
-            @page { size: ${isLabel ? "58mm 40mm" : "A4"}; margin: ${isLabel ? "0" : "10mm"}; }
-            body { font-family: Arial, sans-serif; margin: 0; color: #0f172a; }
+            @page { size: ${layoutPreset.pageSize}; margin: ${layoutPreset.pageMargin}; }
+            body { font-family: Arial, sans-serif; margin: 0; color: #0f172a; padding: ${layoutPreset.bodyPadding}; }
             .grid {
               display: grid;
-              grid-template-columns: ${isLabel ? "repeat(3, 1fr)" : "1fr"};
-              gap: ${isLabel ? "8px" : "12mm"};
-              padding: ${isLabel ? "8px" : "0"};
-              justify-items: ${isLabel ? "stretch" : "center"};
+              grid-template-columns: ${layoutPreset.gridColumns};
+              gap: ${layoutPreset.gridGap};
+              justify-items: ${layoutPreset.justifyItems};
             }
             .label {
               border: 1px solid #e5e7eb;
-              border-radius: ${isLabel ? "6px" : "12px"};
-              padding: ${isLabel ? "8px" : "10mm"};
+              border-radius: ${layoutPreset.labelRadius};
+              padding: ${layoutPreset.labelPadding};
               display: grid;
-              gap: ${isLabel ? "6px" : "8mm"};
-              width: ${isLabel ? "auto" : "170mm"};
-              min-height: ${isLabel ? "auto" : "90mm"};
+              gap: ${layoutPreset.labelGap};
+              width: ${layoutPreset.labelWidth};
+              min-height: ${layoutPreset.labelMinHeight};
+              box-sizing: border-box;
             }
-            .title { font-weight: 700; font-size: ${isLabel ? "12px" : "18px"}; line-height: 1.2; }
-            .subtitle { font-size: ${isLabel ? "10px" : "13px"}; color: #475569; }
-            .qr { width: ${isLabel ? "90px" : "60mm"}; height: ${isLabel ? "90px" : "60mm"}; }
-            .code { font-size: ${isLabel ? "11px" : "14px"}; letter-spacing: 0.4px; text-align: center; }
-            .label--location .qr { width: ${isLabel ? "110px" : "70mm"}; height: ${isLabel ? "110px" : "70mm"}; }
+            .title { font-weight: 700; font-size: ${layoutPreset.titleSize}; line-height: 1.2; }
+            .subtitle { font-size: ${layoutPreset.subtitleSize}; color: #475569; }
+            .qr { width: ${layoutPreset.qrSize}; height: ${layoutPreset.qrSize}; }
+            .code { font-size: ${layoutPreset.codeSize}; letter-spacing: ${layoutPreset.codeSpacing}; text-align: center; }
+            .label--location .qr { width: ${layoutPreset.locationQrSize}; height: ${layoutPreset.locationQrSize}; }
+            .label--page-break { break-after: page; page-break-after: always; }
+            .label--page-break:last-child { break-after: auto; page-break-after: auto; }
+            .print-actions { margin: 12px 8px 8px; display: flex; gap: 8px; flex-wrap: wrap; }
+            .print-btn { padding: 6px 14px; font-size: 13px; cursor: pointer; }
+            @media print { .print-actions { display: none; } }
           </style>
         </head>
         <body>
-          <div class="${isLabel ? "" : "grid"}">
-            ${rendered
+          <div class="${layoutPreset.wrapperClass}">
+            ${printRows
               .map((r) => {
-                return Array.from({ length: count })
-                  .map(
-                    () => `
-                <div class="label ${r.kind === "location" ? "label--location" : ""}">
-                  <div class="title">${r.title}</div>
-                  ${r.subtitle ? `<div class="subtitle">${r.subtitle}</div>` : ""}
+                const classes = [
+                  "label",
+                  r.kind === "location" ? "label--location" : "",
+                  layoutPreset.forcePageBreak ? "label--page-break" : "",
+                ]
+                  .filter(Boolean)
+                  .join(" ");
+                return `
+                <div class="${classes}">
+                  <div class="title">${escapeHtml(r.title)}</div>
+                  ${r.subtitle ? `<div class="subtitle">${escapeHtml(r.subtitle)}</div>` : ""}
                   <img class="qr" src="${r.qrImg}" />
-                  <div class="code">${r.qrValue}</div>
+                  <div class="code">${escapeHtml(r.qrValue)}</div>
                 </div>
-              `
-                  )
-                  .join("");
+              `;
               })
               .join("")}
           </div>
+          <div class="print-actions">
+            <button class="print-btn" onclick="window.print()">Печать</button>
+            <button class="print-btn" onclick="returnToApp()">Назад</button>
+          </div>
           <script>
+            function returnToApp() {
+              try {
+                if (window.opener && !window.opener.closed) {
+                  window.close();
+                  return;
+                }
+              } catch (e) {}
+              if (window.history.length > 1) {
+                window.history.back();
+                return;
+              }
+              window.location.href = "/warehouse";
+            }
             (function () {
               const images = Array.from(document.images || []);
               const finish = () => setTimeout(() => window.print(), 200);
@@ -8243,7 +9887,7 @@ app.post("/api/warehouse/qr/print", auth, async (req, res) => {
       const item = await prisma.item.findUnique({ where: { id: Number(id) } });
       if (!item) return res.status(404).json({ message: "Товар не найден" });
       title = item.name;
-      subtitle = item.sku ? `SKU: ${item.sku}` : "";
+      subtitle = item.sku ? `Артикул: ${item.sku}` : "";
       qrValue = item.qrCode || `BP:PRODUCT:${item.id}`;
     } else {
       const location = await prisma.warehouseLocation.findUnique({ where: { id: Number(id) } });
@@ -8272,6 +9916,9 @@ app.post("/api/warehouse/qr/print", auth, async (req, res) => {
             .qr { width: ${isLabel ? "90px" : "80px"}; height: ${isLabel ? "90px" : "80px"}; }
             .code { font-size: 11px; letter-spacing: 0.4px; text-align: center; }
             .label--location .qr { width: ${isLabel ? "110px" : "90px"}; height: ${isLabel ? "110px" : "90px"}; }
+            .print-actions { margin: 12px 8px 8px; display: flex; gap: 8px; flex-wrap: wrap; }
+            .print-btn { padding: 6px 14px; font-size: 13px; cursor: pointer; }
+            @media print { .print-actions { display: none; } }
           </style>
         </head>
         <body>
@@ -8289,7 +9936,26 @@ app.post("/api/warehouse/qr/print", auth, async (req, res) => {
               )
               .join("")}
           </div>
-          <script>window.print();</script>
+          <div class="print-actions">
+            <button class="print-btn" onclick="window.print()">Печать</button>
+            <button class="print-btn" onclick="returnToApp()">Назад</button>
+          </div>
+          <script>
+            function returnToApp() {
+              try {
+                if (window.opener && !window.opener.closed) {
+                  window.close();
+                  return;
+                }
+              } catch (e) {}
+              if (window.history.length > 1) {
+                window.history.back();
+                return;
+              }
+              window.location.href = "/warehouse";
+            }
+            window.print();
+          </script>
         </body>
       </html>
     `;
@@ -8519,6 +10185,9 @@ app.post("/api/warehouse/labels/print", auth, async (req, res) => {
             .qr--big { width: 90px; height: 90px; }
             .content { display: grid; grid-template-columns: 1fr auto; gap: 8px; align-items: center; }
             .print-date { font-size: 9px; color: #94a3b8; margin-top: 2px; }
+            .print-actions { margin: 12px 0 8px; display: flex; gap: 8px; flex-wrap: wrap; }
+            .print-btn { padding: 6px 14px; font-size: 13px; cursor: pointer; }
+            @media print { .print-actions { display: none; } }
           </style>
         </head>
         <body>
@@ -8541,7 +10210,7 @@ app.post("/api/warehouse/labels/print", auth, async (req, res) => {
                 return `
                   <div class="label ${isLabel ? "label--label" : ""}">
                     <div class="title">${r.title}</div>
-                    ${r.sku ? `<div class="sku">SKU: ${r.sku}</div>` : ""}
+                    ${r.sku ? `<div class="sku">Артикул: ${r.sku}</div>` : ""}
                     <div class="content">
                       <div>
                         ${r.barcodeImg ? `<img class="barcode" src="${r.barcodeImg}" />` : ""}
@@ -8555,7 +10224,26 @@ app.post("/api/warehouse/labels/print", auth, async (req, res) => {
               })
               .join("")}
           </div>
-          <script>window.print();</script>
+          <div class="print-actions">
+            <button class="print-btn" onclick="window.print()">Печать</button>
+            <button class="print-btn" onclick="returnToApp()">Назад</button>
+          </div>
+          <script>
+            function returnToApp() {
+              try {
+                if (window.opener && !window.opener.closed) {
+                  window.close();
+                  return;
+                }
+              } catch (e) {}
+              if (window.history.length > 1) {
+                window.history.back();
+                return;
+              }
+              window.location.href = "/warehouse";
+            }
+            window.print();
+          </script>
         </body>
       </html>
     `;
@@ -8730,11 +10418,11 @@ app.post("/api/warehouse/holds", auth, async (req, res) => {
     }
 
     const created = await prisma.$transaction(async (tx) => {
-      const item = await tx.item.findFirst({ where: { id: itemId, orgId } });
-      if (!item || item.category === "TMC") {
-        const err = new Error("ITEM_NOT_FOUND");
-        err.code = "ITEM_NOT_FOUND";
-        throw err;
+        const item = await tx.item.findFirst({ where: { id: itemId, orgId } });
+        if (!item) {
+          const err = new Error("ITEM_NOT_FOUND");
+          err.code = "ITEM_NOT_FOUND";
+          throw err;
       }
 
       const location = await tx.warehouseLocation.findFirst({ where: { id: locationId, orgId } });
@@ -8779,6 +10467,7 @@ app.post("/api/warehouse/holds", auth, async (req, res) => {
       });
     });
 
+    scheduleAutoReorderCheck(created.itemId);
     res.status(201).json({ ok: true, hold: created });
   } catch (err) {
     if (err.code === "ITEM_NOT_FOUND") {
@@ -8834,6 +10523,7 @@ app.post("/api/warehouse/holds/:id/release", auth, async (req, res) => {
       },
     });
 
+    scheduleAutoReorderCheck(updated.itemId);
     res.json({ ok: true, hold: updated });
   } catch (err) {
     console.error("warehouse hold release error:", err);
@@ -8848,9 +10538,6 @@ app.get("/api/warehouse/stock/item/:id", auth, async (req, res) => {
     }
 
     const item = await prisma.item.findUnique({ where: { id } });
-    if (item && item.category === "TMC") {
-      return res.status(404).json({ message: "ITEM_NOT_FOUND" });
-    }
     if (!item) {
       return res.status(404).json({ message: "ITEM_NOT_FOUND" });
     }
@@ -9090,7 +10777,7 @@ app.post(
       // Предполагаем структуру файла "Импорт.xlsx":
       // 1-я строка — заголовки, дальше — данные
       // A: Наименование
-      // B: Артикул (SKU)
+      // B: Артикул
       // C: Штрихкод
       // D: Ед. изм.
       // E: Мин. остаток
@@ -9103,10 +10790,16 @@ app.post(
       let skipped = 0;
 
       const toNumber = (raw) => {
-        if (raw == null) return 0;
+        if (raw == null || String(raw).trim() === "") return 0;
         if (typeof raw === "number") return raw;
         const n = Number(String(raw).replace(",", "."));
         return Number.isFinite(n) ? n : 0;
+      };
+      const toOptionalNumber = (raw) => {
+        if (raw == null || String(raw).trim() === "") return null;
+        if (typeof raw === "number") return Number.isFinite(raw) ? raw : null;
+        const n = Number(String(raw).replace(",", "."));
+        return Number.isFinite(n) ? n : null;
       };
 
       for (let rowNumber = 2; rowNumber <= lastRow; rowNumber++) {
@@ -9121,9 +10814,9 @@ app.post(
         // F=6 (Min), I=9 (Max), J=10 (Price)
         let minStock = Math.round(toNumber(row.getCell(6).value));
         let maxStock = Math.round(toNumber(row.getCell(9).value));
-        let defaultPrice = toNumber(row.getCell(10).value);
+        let defaultPrice = toOptionalNumber(row.getCell(10).value);
 
-        console.log(`Row ${rowNumber}: SKU=${sku}, Min=${minStock}, Max=${maxStock}, Price=${defaultPrice}`);
+        console.log(`Row ${rowNumber}: Артикул=${sku}, Мин=${minStock}, Макс=${maxStock}, Цена=${defaultPrice}`);
 
         // Если строка совсем пустая — пропускаем
         if (!name && !sku && !barcode) {
@@ -9131,7 +10824,7 @@ app.post(
           continue;
         }
 
-        // Без имени или SKU — пропускаем (как и в API создания товара)
+        // Без имени или артикула — пропускаем (как и в API создания товара)
         if (!name || !sku) {
           skipped++;
           continue;
@@ -9146,7 +10839,7 @@ app.post(
           skipped++;
           continue;
         }
-        if (!Number.isFinite(defaultPrice) || defaultPrice < 0) {
+        if (defaultPrice !== null && (!Number.isFinite(defaultPrice) || defaultPrice < 0)) {
           skipped++;
           continue;
         }
@@ -9162,7 +10855,7 @@ app.post(
         };
 
         try {
-          // Ищем по SKU (он у тебя уникальный)
+          // Ищем по артикулу (он уникальный)
           const existing = await prisma.item.findFirst({
             where: { sku, category: "STOCK" },
           });
@@ -9215,7 +10908,19 @@ app.post("/api/inventory/items/batch", auth, async (req, res) => {
     for (const item of items) {
       // Валидация
       if (!item.name || !item.sku) {
-        errors.push({ row: item.row, error: "Нет имени или SKU" });
+        errors.push({ row: item.row, error: "Нет имени или артикула" });
+        continue;
+      }
+
+      const hasDefaultPrice =
+        item.defaultPrice !== undefined &&
+        item.defaultPrice !== null &&
+        String(item.defaultPrice).trim() !== "";
+      const parsedDefaultPrice = hasDefaultPrice
+        ? Number(String(item.defaultPrice).replace(",", "."))
+        : null;
+      if (hasDefaultPrice && (!Number.isFinite(parsedDefaultPrice) || parsedDefaultPrice < 0)) {
+        errors.push({ row: item.row, error: "Некорректная цена (должна быть 0 и больше)" });
         continue;
       }
 
@@ -9226,7 +10931,7 @@ app.post("/api/inventory/items/batch", auth, async (req, res) => {
         unit: item.unit ? String(item.unit).trim() : "шт",
         minStock: item.minStock ? Number(item.minStock) : 0,
         maxStock: item.maxStock ? Number(item.maxStock) : 0,
-        defaultPrice: item.defaultPrice ? Number(item.defaultPrice) : 0,
+        defaultPrice: parsedDefaultPrice,
       };
 
       try {
@@ -9429,6 +11134,7 @@ app.post("/api/inventory/movements", auth, async (req, res) => {
       },
     });
 
+    scheduleAutoReorderCheck(movement.itemId);
     res.status(201).json(movement);
   } catch (err) {
     console.error("create movement error:", err);
@@ -9588,6 +11294,43 @@ app.delete("/api/suppliers/:id", auth, async (req, res) => {
 
 // ================== ЗАКАЗЫ ПОСТАВЩИКУ ==================
 
+function buildPurchasePriceUpdates(rows = [], { onlyReceived = false } = {}) {
+  const latestByItemId = new Map();
+  for (const row of rows) {
+    const itemId = Number(row?.itemId);
+    const price = Number(row?.price);
+    if (!itemId || Number.isNaN(itemId)) continue;
+    if (!Number.isFinite(price) || price < 0) continue;
+    if (onlyReceived) {
+      const receivedQty = Number(row?.receivedQty) || 0;
+      if (receivedQty <= 0) continue;
+    }
+    latestByItemId.set(itemId, price);
+  }
+  return Array.from(latestByItemId.entries()).map(([itemId, price]) => ({
+    itemId,
+    price,
+  }));
+}
+
+async function applyPurchasePriceUpdates(db, updates = [], orgId = null) {
+  if (!Array.isArray(updates) || updates.length === 0) return;
+  for (const update of updates) {
+    const itemId = Number(update?.itemId);
+    const price = Number(update?.price);
+    if (!itemId || Number.isNaN(itemId)) continue;
+    if (!Number.isFinite(price) || price < 0) continue;
+    const where =
+      orgId === null || orgId === undefined
+        ? { id: itemId }
+        : { id: itemId, orgId };
+    await db.item.updateMany({
+      where,
+      data: { defaultPrice: price },
+    });
+  }
+}
+
 // Создать заказ поставщику (запись в БД)
 app.post("/api/purchase-orders", auth, async (req, res) => {
   try {
@@ -9682,6 +11425,12 @@ app.post("/api/purchase-orders", auth, async (req, res) => {
         },
       },
     });
+
+    await applyPurchasePriceUpdates(
+      prisma,
+      buildPurchasePriceUpdates(preparedItems),
+      req.user.orgId || null
+    );
 
     res.status(201).json(order);
   } catch (err) {
@@ -10217,31 +11966,108 @@ app.get("/api/purchase-orders/:id/excel-file", auth, async (req, res) => {
 app.put("/api/purchase-orders/:id/status", auth, async (req, res) => {
   try {
     if (!isWarehouseManager(req.user)) {
-      return res.status(403).json({ message: "Нет прав" });
+      return res.status(403).json({ message: "\u041d\u0435\u0442 \u043f\u0440\u0430\u0432" });
     }
 
     const id = Number(req.params.id);
-    const { status } = req.body;
+    const { status, sendEmail, emailTo, emailMessage } = req.body || {};
 
     if (!id || Number.isNaN(id)) {
-      return res.status(400).json({ message: "Некорректный ID заказа" });
+      return res.status(400).json({ message: "\u041d\u0435\u043a\u043e\u0440\u0440\u0435\u043a\u0442\u043d\u044b\u0439 ID \u0437\u0430\u043a\u0430\u0437\u0430" });
     }
 
     const allowedStatuses = ["DRAFT", "SENT", "PARTIAL", "RECEIVED", "CLOSED"];
     if (!allowedStatuses.includes(status)) {
-      return res.status(400).json({ message: "Недопустимый статус заказа" });
+      return res.status(400).json({ message: "\u041d\u0435\u0434\u043e\u043f\u0443\u0441\u0442\u0438\u043c\u044b\u0439 \u0441\u0442\u0430\u0442\u0443\u0441 \u0437\u0430\u043a\u0430\u0437\u0430" });
     }
 
     const order = await prisma.purchaseOrder.findUnique({
       where: { id },
       include: {
-        items: true,
+        supplier: true,
+        items: {
+          include: {
+            item: {
+              select: {
+                id: true,
+                name: true,
+                sku: true,
+                unit: true,
+                autoReorderContactEmail: true,
+                autoReorderMessage: true,
+              },
+            },
+          },
+        },
       },
     });
 
     if (!order) {
-      return res.status(404).json({ message: "Заказ не найден" });
+      return res.status(404).json({ message: "\u0417\u0430\u043a\u0430\u0437 \u043d\u0435 \u043d\u0430\u0439\u0434\u0435\u043d" });
     }
+
+    if (status === "SENT" && ["RECEIVED", "CLOSED"].includes(order.status)) {
+      return res.status(409).json({
+        message: "\u041d\u0435\u043b\u044c\u0437\u044f \u043e\u0442\u043f\u0440\u0430\u0432\u0438\u0442\u044c \u043f\u043e\u0441\u0442\u0430\u0432\u0449\u0438\u043a\u0443 \u0437\u0430\u043a\u0430\u0437 \u0441\u043e \u0441\u0442\u0430\u0442\u0443\u0441\u043e\u043c \u041f\u043e\u043b\u0443\u0447\u0435\u043d/\u0417\u0430\u043a\u0440\u044b\u0442",
+      });
+    }
+
+    let emailResult = null;
+    if (status === "SENT") {
+      const orgProfile = await prisma.orgProfile.findFirst({
+        where: { orgId: order.orgId || req.user.orgId || null },
+        select: { purchaseOrderEmailTemplate: true },
+      });
+      const shouldSendEmail = sendEmail !== false;
+      const preferredItem = (order.items || []).find(
+        (row) => row?.item?.autoReorderContactEmail || row?.item?.autoReorderMessage
+      );
+      const recipient =
+        String(emailTo || "").trim() ||
+        String(preferredItem?.item?.autoReorderContactEmail || "").trim() ||
+        String(order.supplier?.email || "").trim() ||
+        null;
+
+      const subject = `\u0417\u0430\u043a\u0430\u0437 \u043f\u043e\u0441\u0442\u0430\u0432\u0449\u0438\u043a\u0443 ${order.number || `#${order.id}`}`;
+      const text =
+        String(emailMessage || "").trim() ||
+        String(preferredItem?.item?.autoReorderMessage || "").trim() ||
+        buildPurchaseOrderEmailText(
+          order,
+          orgProfile?.purchaseOrderEmailTemplate || null
+        );
+
+      if (!shouldSendEmail) {
+        emailResult = {
+          emailSent: false,
+          emailRecipient: recipient,
+          emailSkippedReason: "Email-\u043e\u0442\u043f\u0440\u0430\u0432\u043a\u0430 \u043e\u0442\u043a\u043b\u044e\u0447\u0435\u043d\u0430 \u0432\u0440\u0443\u0447\u043d\u0443\u044e",
+          emailError: null,
+        };
+      } else if (!recipient) {
+        emailResult = {
+          emailSent: false,
+          emailRecipient: null,
+          emailSkippedReason: "\u0423 \u043f\u043e\u0441\u0442\u0430\u0432\u0449\u0438\u043a\u0430 \u043d\u0435 \u0443\u043a\u0430\u0437\u0430\u043d email \u0434\u043b\u044f \u043e\u0442\u043f\u0440\u0430\u0432\u043a\u0438",
+          emailError: null,
+        };
+      } else {
+        const sent = await sendAutoReorderEmail({
+          to: recipient,
+          subject,
+          text,
+        });
+
+        emailResult = {
+          emailSent: sent?.sent === true,
+          emailRecipient: recipient,
+          emailSkippedReason: sent?.sent === true ? null : "\u041e\u0442\u043f\u0440\u0430\u0432\u043a\u0430 \u043d\u0435 \u0432\u044b\u043f\u043e\u043b\u043d\u0435\u043d\u0430",
+          emailError: sent?.error || null,
+        };
+      }
+    }
+
+    const touchedAutoReorderItemIds = new Set();
 
     if (status === "RECEIVED") {
       const alreadyPosted = await prisma.stockMovement.findFirst({
@@ -10254,7 +12080,7 @@ app.put("/api/purchase-orders/:id/status", auth, async (req, res) => {
 
       if (alreadyPosted) {
         return res.status(400).json({
-          message: "Этот заказ уже проведён по складу",
+          message: "\u042d\u0442\u043e\u0442 \u0437\u0430\u043a\u0430\u0437 \u0443\u0436\u0435 \u043f\u0440\u043e\u0432\u0435\u0434\u0451\u043d \u043f\u043e \u0441\u043a\u043b\u0430\u0434\u0443",
         });
       }
 
@@ -10267,11 +12093,20 @@ app.put("/api/purchase-orders/:id/status", auth, async (req, res) => {
             type: "INCOME",
             quantity: row.quantity,
             pricePerUnit: row.price,
-            comment: `Приход по заказу поставщику ${order.number} [PO#${order.id}]`,
+            comment: `\u041f\u0440\u0438\u0445\u043e\u0434 \u043f\u043e \u0437\u0430\u043a\u0430\u0437\u0443 \u043f\u043e\u0441\u0442\u0430\u0432\u0449\u0438\u043a\u0443 ${order.number} [PO#${order.id}]`,
             createdById: req.user.id,
           },
         });
+        touchedAutoReorderItemIds.add(Number(row.itemId));
       }
+
+      await applyPurchasePriceUpdates(
+        prisma,
+        buildPurchasePriceUpdates(order.items),
+        order.orgId || req.user.orgId || null
+      );
+
+      scheduleAutoReorderChecks(Array.from(touchedAutoReorderItemIds.values()));
     }
 
     const nextReceivingStage =
@@ -10280,6 +12115,7 @@ app.put("/api/purchase-orders/:id/status", auth, async (req, res) => {
         : status === "PARTIAL"
           ? "CONFIRMED"
           : "NEW";
+
     const updated = await prisma.purchaseOrder.update({
       where: { id },
       data: { status, receivingStage: nextReceivingStage },
@@ -10291,16 +12127,18 @@ app.put("/api/purchase-orders/:id/status", auth, async (req, res) => {
       },
     });
 
+    if (status === "SENT") {
+      return res.json({ ...updated, ...emailResult });
+    }
+
     res.json(updated);
   } catch (err) {
     console.error("update purchase order status error:", err);
     res
       .status(500)
-      .json({ message: "Ошибка сервера при смене статуса заказа" });
+      .json({ message: "\u041e\u0448\u0438\u0431\u043a\u0430 \u0441\u0435\u0440\u0432\u0435\u0440\u0430 \u043f\u0440\u0438 \u0441\u043c\u0435\u043d\u0435 \u0441\u0442\u0430\u0442\u0443\u0441\u0430 \u0437\u0430\u043a\u0430\u0437\u0430" });
   }
 });
-
-// Приёмка заказа поставщику (с актом расхождений)
 app.post("/api/purchase-orders/:id/receive", auth, async (req, res) => {
   try {
     if (!isWarehouseManager(req.user)) {
@@ -10377,6 +12215,7 @@ app.post("/api/purchase-orders/:id/receive", auth, async (req, res) => {
     const movementsData = [];
     const discrepancies = [];
     const receivedByOrderItemId = new Map();
+    const priceUpdatesByItemId = new Map();
     const userId = req.user.id;
 
     for (const row of order.items) {
@@ -10396,6 +12235,10 @@ app.post("/api/purchase-orders/:id/receive", auth, async (req, res) => {
           comment: `Приход по заказу ${order.number} [PO#${order.id}] (заказано ${ordered}, получено ${received})`,
           createdById: userId,
         });
+        const price = Number(row.price);
+        if (Number.isFinite(price) && price >= 0) {
+          priceUpdatesByItemId.set(row.itemId, price);
+        }
       }
 
       const diff = received - ordered;
@@ -10414,7 +12257,19 @@ app.post("/api/purchase-orders/:id/receive", auth, async (req, res) => {
     // создаём движения
     if (movementsData.length > 0) {
       await prisma.stockMovement.createMany({ data: movementsData });
+      scheduleAutoReorderChecks(
+        movementsData.map((row) => Number(row.itemId)).filter((value) => Number.isFinite(value) && value > 0)
+      );
     }
+
+    await applyPurchasePriceUpdates(
+      prisma,
+      Array.from(priceUpdatesByItemId.entries()).map(([itemId, price]) => ({
+        itemId,
+        price,
+      })),
+      order.orgId || req.user.orgId || null
+    );
 
     // обновляем статус заказа
     for (const row of order.items) {
@@ -10547,6 +12402,7 @@ app.post("/api/warehouse/receiving/:poId/confirm", auth, async (req, res) => {
     const movementIds = [];
 
     await prisma.$transaction(async (tx) => {
+      const priceUpdatesByItemId = new Map();
       for (const line of lines) {
         const itemId = Number(line.productId ?? line.itemId);
         const qty = Number(line.qty);
@@ -10575,7 +12431,7 @@ app.post("/api/warehouse/receiving/:poId/confirm", auth, async (req, res) => {
           itemId,
           qty: qtyInt,
           locationId: location.id,
-          comment: `??????? ?? ?????? ${order.number} [PO#${order.id}]`,
+          comment: `Приход по заказу ${order.number} [PO#${order.id}]`,
           refType: "PO",
           refId: String(order.id),
           userId: req.user?.id || null,
@@ -10616,6 +12472,11 @@ app.post("/api/warehouse/receiving/:poId/confirm", auth, async (req, res) => {
               data: { receivedQty: nextReceived, orgId: effectiveOrgId },
             })
           );
+
+          const price = Number(orderRow.price);
+          if (Number.isFinite(price) && price >= 0) {
+            priceUpdatesByItemId.set(itemId, price);
+          }
 
           if (qtyInt !== expectedRemaining) {
             const delta = Math.trunc(qtyInt - expectedRemaining);
@@ -10660,6 +12521,15 @@ app.post("/api/warehouse/receiving/:poId/confirm", auth, async (req, res) => {
           }
         }
       }
+
+      await applyPurchasePriceUpdates(
+        tx,
+        Array.from(priceUpdatesByItemId.entries()).map(([itemId, price]) => ({
+          itemId,
+          price,
+        })),
+        effectiveOrgId
+      );
 
       await runWithoutTenantScope(() =>
         tx.purchaseOrder.updateMany({
@@ -10773,9 +12643,14 @@ app.post("/api/warehouse/receiving/:poId/finalize", auth, async (req, res) => {
       });
       if (!refreshed) return;
 
+      const priceUpdatesByItemId = new Map();
       for (const row of refreshed.items || []) {
         const ordered = Number(row.quantity) || 0;
         const received = Number(row.receivedQty) || 0;
+        const price = Number(row.price);
+        if (received > 0 && Number.isFinite(price) && price >= 0) {
+          priceUpdatesByItemId.set(row.itemId, price);
+        }
         if (ordered === received) continue;
 
         const delta = Math.trunc(received - ordered);
@@ -10802,6 +12677,15 @@ app.post("/api/warehouse/receiving/:poId/finalize", auth, async (req, res) => {
           });
         }
       }
+
+      await applyPurchasePriceUpdates(
+        tx,
+        Array.from(priceUpdatesByItemId.entries()).map(([itemId, price]) => ({
+          itemId,
+          price,
+        })),
+        effectiveOrgId
+      );
 
       const allReceived = refreshed.items.every(
         (row) => Number(row.receivedQty) >= Number(row.quantity)
@@ -11178,7 +13062,7 @@ app.post("/api/purchase-orders/excel-file", auth, async (req, res) => {
 app.post("/api/orders/inbound", auth, async (req, res) => {
   try {
     if (!isWarehouseManager(req.user)) {
-      return res.status(403).json({ message: "??? ???????." });
+      return res.status(403).json({ message: "Нет доступа." });
     }
 
     const {
@@ -11193,10 +13077,10 @@ app.post("/api/orders/inbound", auth, async (req, res) => {
     } = req.body || {};
 
     if (!orderNumber || !customerName || !shippingAddress) {
-      return res.status(400).json({ message: "????????? ????? ??????, ?????????? ? ?????." });
+      return res.status(400).json({ message: "Заполните номер заказа, получателя и адрес." });
     }
     if (!Array.isArray(items) || items.length === 0) {
-      return res.status(400).json({ message: "???????? ??????? ??????." });
+      return res.status(400).json({ message: "Добавьте позиции заказа." });
     }
 
     const linesPayload = [];
@@ -11213,7 +13097,7 @@ app.post("/api/orders/inbound", auth, async (req, res) => {
     }
 
     if (linesPayload.length === 0) {
-      return res.status(400).json({ message: "???????? ??????? ??????." });
+      return res.status(400).json({ message: "Добавьте позиции заказа." });
     }
 
     const result = await prisma.$transaction(async (tx) => {
@@ -11285,10 +13169,10 @@ app.post("/api/orders/inbound", auth, async (req, res) => {
     res.status(201).json({ ok: true, order: result });
   } catch (err) {
     if (err.code === "ORDER_LOCKED") {
-      return res.status(409).json({ message: "????? ??? ? ?????? ??? ??????." });
+      return res.status(409).json({ message: "Заказ уже в работе или закрыт." });
     }
     console.error("orders inbound error:", err);
-    res.status(500).json({ message: "?????? ???????? ??????." });
+    res.status(500).json({ message: "Ошибка создания заказа." });
   }
 });
 
@@ -11297,7 +13181,7 @@ app.post("/api/integrations/orders/inbound", async (req, res) => {
   try {
     const apiKey = req.headers["x-api-key"] || req.headers["X-Api-Key"];
     if (!apiKey) {
-      return res.status(401).json({ message: "????????? ???? ??????????." });
+      return res.status(401).json({ message: "Укажите API-ключ интеграции." });
     }
     const hash = hashApiKey(String(apiKey));
     const profile = await prisma.orgProfile.findFirst({
@@ -11310,7 +13194,7 @@ app.post("/api/integrations/orders/inbound", async (req, res) => {
       },
     });
     if (!profile?.orgId) {
-      return res.status(401).json({ message: "???? ?????????? ?? ????????." });
+      return res.status(401).json({ message: "Ключ интеграции не найден." });
     }
     const store = requestContext.getStore();
     if (store) {
@@ -11330,10 +13214,10 @@ app.post("/api/integrations/orders/inbound", async (req, res) => {
     } = req.body || {};
 
     if (!orderNumber || !customerName || !shippingAddress) {
-      return res.status(400).json({ message: "????????? ????? ??????, ?????????? ? ?????." });
+      return res.status(400).json({ message: "Заполните номер заказа, получателя и адрес." });
     }
     if (!Array.isArray(items) || items.length === 0) {
-      return res.status(400).json({ message: "???????? ??????? ??????." });
+      return res.status(400).json({ message: "Добавьте позиции заказа." });
     }
 
     const linesPayload = [];
@@ -11350,7 +13234,7 @@ app.post("/api/integrations/orders/inbound", async (req, res) => {
     }
 
     if (linesPayload.length === 0) {
-      return res.status(400).json({ message: "???????? ??????? ??????." });
+      return res.status(400).json({ message: "Добавьте позиции заказа." });
     }
 
     const result = await prisma.$transaction(async (tx) => {
@@ -11422,10 +13306,10 @@ app.post("/api/integrations/orders/inbound", async (req, res) => {
     res.status(201).json({ ok: true, order: result });
   } catch (err) {
     if (err.code === "ORDER_LOCKED") {
-      return res.status(409).json({ message: "????? ??? ? ?????? ??? ??????." });
+      return res.status(409).json({ message: "Заказ уже в работе или закрыт." });
     }
     console.error("integration inbound error:", err);
-    res.status(500).json({ message: "?????? ???????? ??????." });
+    res.status(500).json({ message: "Ошибка создания заказа." });
   }
 });
 
@@ -11434,7 +13318,7 @@ app.post("/api/orders/import-batch", auth, requireAdmin, async (req, res) => {
   try {
     const { orders } = req.body || {};
     if (!Array.isArray(orders) || orders.length === 0) {
-      return res.status(400).json({ message: "???????? ?????? ??? ???????." });
+      return res.status(400).json({ message: "Передайте массив заказов." });
     }
 
     let created = 0;
@@ -11455,11 +13339,11 @@ app.post("/api/orders/import-batch", auth, requireAdmin, async (req, res) => {
       } = row;
 
       if (!orderNumber || !customerName || !shippingAddress) {
-        errors.push({ row: i + 1, error: "????????? ????? ??????, ?????????? ? ?????." });
+        errors.push({ row: i + 1, error: "Заполните номер заказа, получателя и адрес." });
         continue;
       }
       if (!Array.isArray(items) || items.length === 0) {
-        errors.push({ row: i + 1, error: "???????? ??????? ??????." });
+        errors.push({ row: i + 1, error: "Добавьте позиции заказа." });
         continue;
       }
 
@@ -11477,7 +13361,7 @@ app.post("/api/orders/import-batch", auth, requireAdmin, async (req, res) => {
       }
 
       if (linesPayload.length === 0) {
-        errors.push({ row: i + 1, error: "??? ???????? ????? ??????." });
+        errors.push({ row: i + 1, error: "Не удалось распознать товары заказа." });
         continue;
       }
 
@@ -11546,9 +13430,9 @@ app.post("/api/orders/import-batch", auth, requireAdmin, async (req, res) => {
         if (result.mode === "updated") updated += 1;
       } catch (err) {
         if (err.code === "ORDER_LOCKED") {
-          errors.push({ row: i + 1, error: "????? ??? ? ?????? ??? ??????." });
+          errors.push({ row: i + 1, error: "Заказ уже в работе или закрыт." });
         } else {
-          errors.push({ row: i + 1, error: "?????? ??????? ??????." });
+          errors.push({ row: i + 1, error: "Ошибка обработки заказа." });
           console.error("orders import row error:", err);
         }
       }
@@ -11557,7 +13441,7 @@ app.post("/api/orders/import-batch", auth, requireAdmin, async (req, res) => {
     res.json({ created, updated, errors });
   } catch (err) {
     console.error("orders import error:", err);
-    res.status(500).json({ message: "?????? ??????? ???????." });
+    res.status(500).json({ message: "Ошибка импорта заказов." });
   }
 });
 
@@ -11569,7 +13453,7 @@ app.post("/api/orders/test", auth, requireAdmin, async (req, res) => {
       orderBy: { id: "asc" },
     });
     if (!items.length) {
-      return res.status(400).json({ message: "??? ??????? ??? ????????? ??????." });
+      return res.status(400).json({ message: "Нет товаров для создания теста." });
     }
 
     const orderNumber = `TEST-${Date.now()}`;
@@ -11577,10 +13461,10 @@ app.post("/api/orders/test", auth, requireAdmin, async (req, res) => {
       data: {
         source: "TEST",
         orderNumber,
-        customerName: "???????? ??????????",
+        customerName: "Тестовый покупатель",
         customerPhone: null,
-        shippingAddress: "???????? ?????",
-        deliveryComment: "???????? ?????",
+        shippingAddress: "Тестовый адрес",
+        deliveryComment: "Тестовый заказ",
         lines: {
           create: items.map((item) => ({
             orgId: req.user.orgId || null,
@@ -11600,7 +13484,7 @@ app.post("/api/orders/test", auth, requireAdmin, async (req, res) => {
     res.status(201).json({ ok: true, order: created });
   } catch (err) {
     console.error("orders test error:", err);
-    res.status(500).json({ message: "?????? ???????? ????????? ??????." });
+    res.status(500).json({ message: "Ошибка создания тестового заказа." });
   }
 });
 
@@ -11617,7 +13501,7 @@ app.get("/api/integrations/api-key", auth, requireAdmin, async (req, res) => {
     });
   } catch (err) {
     console.error("get api key error:", err);
-    res.status(500).json({ message: "?????? ????????? ????? ??????????." });
+    res.status(500).json({ message: "Ошибка работы с API-ключом интеграции." });
   }
 });
 
@@ -11666,7 +13550,7 @@ app.post("/api/integrations/api-key/rotate", auth, requireAdmin, async (req, res
     });
   } catch (err) {
     console.error("rotate api key error:", err);
-    res.status(500).json({ message: "?????? ????????? ????? ??????????." });
+    res.status(500).json({ message: "Ошибка работы с API-ключом интеграции." });
   }
 });
 
@@ -11786,7 +13670,7 @@ app.get("/api/orders/queue", auth, async (req, res) => {
     res.json({ items: orders });
   } catch (err) {
     console.error("orders queue error:", err);
-    res.status(500).json({ message: "?????? ???????? ??????? ???????." });
+    res.status(500).json({ message: "Ошибка загрузки очереди заказов." });
   }
 });
 
@@ -12251,7 +14135,7 @@ app.get("/api/orders/:id/pick-skips", auth, async (req, res) => {
   try {
     const orderId = Number(req.params.id);
     if (!orderId || Number.isNaN(orderId)) {
-      return res.status(400).json({ message: "������������ ID ������." });
+      return res.status(400).json({ message: "Некорректный ID заказа." });
     }
 
     const order = await prisma.salesOrder.findUnique({
@@ -12259,7 +14143,7 @@ app.get("/api/orders/:id/pick-skips", auth, async (req, res) => {
       select: { id: true, assignedToUserId: true },
     });
     if (!order) {
-      return res.status(404).json({ message: "����� �� ������." });
+      return res.status(404).json({ message: "Заказ не найден." });
     }
 
     if (
@@ -12267,7 +14151,7 @@ app.get("/api/orders/:id/pick-skips", auth, async (req, res) => {
       order.assignedToUserId !== req.user.id &&
       !isWarehouseManager(req.user)
     ) {
-      return res.status(403).json({ message: "����� ��������� �� ������ �����������." });
+      return res.status(403).json({ message: "Заказ закреплен за другим сотрудником." });
     }
 
     const items = await prisma.salesOrderPickSkip.findMany({
@@ -12284,7 +14168,7 @@ app.get("/api/orders/:id/pick-skips", auth, async (req, res) => {
     res.json({ items });
   } catch (err) {
     console.error("orders pick skips list error:", err);
-    res.status(500).json({ message: "������ �������� ��������� ������." });
+    res.status(500).json({ message: "Ошибка при получении пропусков подбора." });
   }
 });
 
@@ -12299,19 +14183,19 @@ app.post("/api/orders/:id/pick-skips", auth, async (req, res) => {
     const comment = String(req.body?.comment || "").trim();
 
     if (!orderId || Number.isNaN(orderId)) {
-      return res.status(400).json({ message: "������������ ID ������." });
+      return res.status(400).json({ message: "Некорректный ID заказа." });
     }
     if (!lineId || Number.isNaN(lineId)) {
-      return res.status(400).json({ message: "������������ ������ ������." });
+      return res.status(400).json({ message: "Некорректная строка заказа." });
     }
     if (!reason) {
-      return res.status(400).json({ message: "������� ������� ��������." });
+      return res.status(400).json({ message: "Укажите причину пропуска." });
     }
     if (reason.length > 180) {
-      return res.status(400).json({ message: "������� �������� ������� ������� (�������� 180 ��������)." });
+      return res.status(400).json({ message: "Причина слишком длинная (максимум 180 символов)." });
     }
     if (comment.length > 500) {
-      return res.status(400).json({ message: "����������� ������� ������� (�������� 500 ��������)." });
+      return res.status(400).json({ message: "Комментарий слишком длинный (максимум 500 символов)." });
     }
 
     const locationId =
@@ -12324,10 +14208,10 @@ app.post("/api/orders/:id/pick-skips", auth, async (req, res) => {
         : Number(itemRaw);
 
     if (locationId !== null && (!locationId || Number.isNaN(locationId))) {
-      return res.status(400).json({ message: "������������ ������." });
+      return res.status(400).json({ message: "Некорректная ячейка." });
     }
     if (itemId !== null && (!itemId || Number.isNaN(itemId))) {
-      return res.status(400).json({ message: "������������ �����." });
+      return res.status(400).json({ message: "Некорректный товар." });
     }
 
     const item = await prisma.$transaction(async (tx) => {
@@ -12418,22 +14302,22 @@ app.post("/api/orders/:id/pick-skips", auth, async (req, res) => {
     res.json({ ok: true, item });
   } catch (err) {
     if (err.code === "ORDER_NOT_FOUND") {
-      return res.status(404).json({ message: "����� �� ������." });
+      return res.status(404).json({ message: "Заказ не найден." });
     }
     if (err.code === "LINE_NOT_FOUND") {
-      return res.status(404).json({ message: "������ ������ �� �������." });
+      return res.status(404).json({ message: "Строка заказа не найдена." });
     }
     if (err.code === "ITEM_MISMATCH") {
-      return res.status(400).json({ message: "����� �� ��������� �� ������� ������." });
+      return res.status(400).json({ message: "Товар не соответствует строке заказа." });
     }
     if (err.code === "NOT_ASSIGNED_TO_YOU") {
-      return res.status(403).json({ message: "����� ��������� �� ������ �����������." });
+      return res.status(403).json({ message: "Заказ закреплен за другим сотрудником." });
     }
     if (err.code === "BAD_STATUS") {
-      return res.status(400).json({ message: "������� �������� ������ ��� ������� � ������." });
+      return res.status(400).json({ message: "Заказ нельзя менять в текущем статусе." });
     }
     console.error("orders pick skip create error:", err);
-    res.status(500).json({ message: "������ ���������� ��������." });
+    res.status(500).json({ message: "Ошибка сохранения пропуска." });
   }
 });
 
@@ -12442,7 +14326,7 @@ app.post("/api/orders/:id/pick-skips/:skipId/restore", auth, async (req, res) =>
     const orderId = Number(req.params.id);
     const skipId = Number(req.params.skipId);
     if (!orderId || Number.isNaN(orderId) || !skipId || Number.isNaN(skipId)) {
-      return res.status(400).json({ message: "������������ ���������." });
+      return res.status(400).json({ message: "Некорректные параметры." });
     }
 
     const item = await prisma.$transaction(async (tx) => {
@@ -12491,16 +14375,16 @@ app.post("/api/orders/:id/pick-skips/:skipId/restore", auth, async (req, res) =>
     res.json({ ok: true, item });
   } catch (err) {
     if (err.code === "ORDER_NOT_FOUND") {
-      return res.status(404).json({ message: "����� �� ������." });
+      return res.status(404).json({ message: "Заказ не найден." });
     }
     if (err.code === "SKIP_NOT_FOUND") {
-      return res.status(404).json({ message: "������� �� ������." });
+      return res.status(404).json({ message: "Пропуск не найден." });
     }
     if (err.code === "NOT_ASSIGNED_TO_YOU") {
-      return res.status(403).json({ message: "����� ��������� �� ������ �����������." });
+      return res.status(403).json({ message: "Заказ закреплен за другим сотрудником." });
     }
     console.error("orders pick skip restore error:", err);
-    res.status(500).json({ message: "������ �������������� ��������." });
+    res.status(500).json({ message: "Ошибка восстановления пропуска." });
   }
 });
 
@@ -12508,7 +14392,7 @@ app.post("/api/orders/:id/pick-skips/restore-all", auth, async (req, res) => {
   try {
     const orderId = Number(req.params.id);
     if (!orderId || Number.isNaN(orderId)) {
-      return res.status(400).json({ message: "������������ ID ������." });
+      return res.status(400).json({ message: "Некорректный ID заказа." });
     }
 
     const result = await prisma.$transaction(async (tx) => {
@@ -12547,13 +14431,13 @@ app.post("/api/orders/:id/pick-skips/restore-all", auth, async (req, res) => {
     res.json({ ok: true, count: result.count || 0 });
   } catch (err) {
     if (err.code === "ORDER_NOT_FOUND") {
-      return res.status(404).json({ message: "����� �� ������." });
+      return res.status(404).json({ message: "Заказ не найден." });
     }
     if (err.code === "NOT_ASSIGNED_TO_YOU") {
-      return res.status(403).json({ message: "����� ��������� �� ������ �����������." });
+      return res.status(403).json({ message: "Заказ закреплен за другим сотрудником." });
     }
     console.error("orders pick skip restore all error:", err);
-    res.status(500).json({ message: "������ �������������� ���������." });
+    res.status(500).json({ message: "Ошибка восстановления пропусков." });
   }
 });
 
@@ -12708,22 +14592,22 @@ app.get("/api/orders/:id/pick-plan", auth, async (req, res) => {
   try {
     const id = Number(req.params.id);
     if (!id || Number.isNaN(id)) {
-      return res.status(400).json({ message: "???????????? ID ??????." });
+      return res.status(400).json({ message: "Некорректный ID заказа." });
     }
     const order = await prisma.salesOrder.findUnique({
       where: { id },
       include: { assignedToUser: { select: { id: true } } },
     });
-    if (!order) return res.status(404).json({ message: "????? ?? ??????." });
+    if (!order) return res.status(404).json({ message: "Заказ не найден." });
     if (order.assignedToUserId && order.assignedToUserId !== req.user.id) {
-      return res.status(403).json({ message: "????? ????????? ?? ?????? ???????????." });
+      return res.status(403).json({ message: "Заказ закреплен за другим сотрудником." });
     }
 
     const plan = await buildOrderPickPlan(id);
     res.json({ items: plan || [] });
   } catch (err) {
     console.error("orders pick plan error:", err);
-    res.status(500).json({ message: "?????? ?????????? ???????? ??????." });
+    res.status(500).json({ message: "Ошибка формирования плана подбора." });
   }
 });
 
@@ -12736,7 +14620,7 @@ app.post("/api/orders/:id/pick-confirm", auth, async (req, res) => {
     const amount = Math.trunc(Number(qty));
 
     if (!orderId || !line || !location || !Number.isFinite(amount) || amount <= 0) {
-      return res.status(400).json({ message: "������������ ��������� �������������." });
+      return res.status(400).json({ message: "Некорректные параметры подтверждения." });
     }
 
     const updated = await prisma.$transaction(async (tx) => {
@@ -12822,7 +14706,7 @@ app.post("/api/orders/:id/pick-confirm", auth, async (req, res) => {
             itemId: actualItemId,
             qty: syncDelta,
             locationId: location,
-            comment: `������������� �������� ����� ������� ������ ${order.orderNumber}`,
+            comment: `Синхронизация остатка перед подбором заказа ${order.orderNumber}`,
             refType: "ORDER",
             refId: String(orderId),
             userId: req.user?.id || null,
@@ -12858,7 +14742,7 @@ app.post("/api/orders/:id/pick-confirm", auth, async (req, res) => {
         qty: amount,
         locationId: location,
         fromLocationId: location,
-        comment: `����� �� ������ ${order.orderNumber}`,
+        comment: `Подбор по заказу ${order.orderNumber}`,
         refType: "ORDER",
         refId: String(orderId),
         userId: req.user?.id || null,
@@ -12913,16 +14797,16 @@ app.post("/api/orders/:id/pick-confirm", auth, async (req, res) => {
 
     res.json({ ok: true, order: updated });
   } catch (err) {
-    if (err.code === "ORDER_NOT_FOUND") return res.status(404).json({ message: "����� �� ������." });
-    if (err.code === "LINE_NOT_FOUND") return res.status(404).json({ message: "������ ������ �� �������." });
-    if (err.code === "NOT_ASSIGNED_TO_YOU") return res.status(403).json({ message: "����� ��������� �� ������ �����������." });
-    if (err.code === "BAD_STATUS") return res.status(400).json({ message: "����� �� � ������� ������." });
-    if (err.code === "QTY_EXCEEDS_REMAINING") return res.status(400).json({ message: "���������� ��������� ������� �� ������." });
-    if (err.code === "LINE_ITEM_NOT_LINKED") return res.status(400).json({ message: "������ ������ �� ������� � �������." });
+    if (err.code === "ORDER_NOT_FOUND") return res.status(404).json({ message: "Заказ не найден." });
+    if (err.code === "LINE_NOT_FOUND") return res.status(404).json({ message: "Строка заказа не найдена." });
+    if (err.code === "NOT_ASSIGNED_TO_YOU") return res.status(403).json({ message: "Заказ закреплен за другим сотрудником." });
+    if (err.code === "BAD_STATUS") return res.status(400).json({ message: "Заказ не в статусе подбора." });
+    if (err.code === "QTY_EXCEEDS_REMAINING") return res.status(400).json({ message: "Количество превышает остаток по строке." });
+    if (err.code === "LINE_ITEM_NOT_LINKED") return res.status(400).json({ message: "Строка заказа не связана с товаром." });
     if (err.code === "HOLD_QTY_BLOCKED") return res.status(409).json({ message: "\u041a\u043e\u043b\u0438\u0447\u0435\u0441\u0442\u0432\u043e \u0432 \u044f\u0447\u0435\u0439\u043a\u0435 \u0437\u0430\u0431\u043b\u043e\u043a\u0438\u0440\u043e\u0432\u0430\u043d\u043e (Hold).", detail: err.detail || null });
-    if (err.code === "INSUFFICIENT_QTY") return res.status(400).json({ message: "������������ ������� � ������." });
+    if (err.code === "INSUFFICIENT_QTY") return res.status(400).json({ message: "Недостаточно товара в ячейке." });
     console.error("orders pick confirm error:", err);
-    res.status(500).json({ message: "������ ������������� ������." });
+    res.status(500).json({ message: "Ошибка подтверждения подбора." });
   }
 });
 
@@ -12977,7 +14861,7 @@ app.get("/api/orders/:id/label", auth, async (req, res) => {
   try {
     const id = Number(req.params.id);
     if (!id || Number.isNaN(id)) {
-      return res.status(400).json({ message: "???????????? ID ??????." });
+      return res.status(400).json({ message: "Некорректный ID заказа." });
     }
     const order = await prisma.salesOrder.findUnique({
       where: { id },
@@ -12985,9 +14869,9 @@ app.get("/api/orders/:id/label", auth, async (req, res) => {
         lines: { include: { item: true }, orderBy: { id: "asc" } },
       },
     });
-    if (!order) return res.status(404).json({ message: "????? ?? ??????." });
+    if (!order) return res.status(404).json({ message: "Заказ не найден." });
     if (order.assignedToUserId && order.assignedToUserId !== req.user.id && !isWarehouseManager(req.user)) {
-      return res.status(403).json({ message: "????? ????????? ?? ?????? ???????????." });
+      return res.status(403).json({ message: "Заказ закреплен за другим сотрудником." });
     }
 
     const html = buildOrderLabelHtml(order);
@@ -13000,7 +14884,7 @@ app.get("/api/orders/:id/label", auth, async (req, res) => {
     res.send(html);
   } catch (err) {
     console.error("orders label error:", err);
-    res.status(500).json({ message: "?????? ?????? ????????." });
+    res.status(500).json({ message: "Ошибка печати этикетки." });
   }
 });
 
@@ -13176,18 +15060,18 @@ app.post("/api/orders/:id/passport-printed", auth, async (req, res) => {
   try {
     const id = Number(req.params.id);
     if (!id || Number.isNaN(id)) {
-      return res.status(400).json({ message: "������������ ID ������." });
+      return res.status(400).json({ message: "Некорректный ID заказа." });
     }
 
     const order = await prisma.salesOrder.findUnique({
       where: { id },
     });
-    if (!order) return res.status(404).json({ message: "����� �� ������." });
+    if (!order) return res.status(404).json({ message: "Заказ не найден." });
     if (order.assignedToUserId && order.assignedToUserId !== req.user.id && !isWarehouseManager(req.user)) {
-      return res.status(403).json({ message: "����� ��������� �� ������ �����������." });
+      return res.status(403).json({ message: "Заказ закреплен за другим сотрудником." });
     }
     if (!["PICKED", "PACKED", "READY_TO_SHIP", "SHIPPED"].includes(order.status)) {
-      return res.status(400).json({ message: "������ �������� �������� ����� ������." });
+      return res.status(400).json({ message: "Нельзя печатать паспорт в этом статусе заказа." });
     }
 
     const now = new Date();
@@ -13208,7 +15092,7 @@ app.post("/api/orders/:id/passport-printed", auth, async (req, res) => {
     res.json({ ok: true, order: updated });
   } catch (err) {
     console.error("orders passport printed error:", err);
-    res.status(500).json({ message: "������ �������� ������ ��������." });
+    res.status(500).json({ message: "Ошибка отметки печати паспорта." });
   }
 });
 
@@ -13382,7 +15266,7 @@ async function checkDbReadyForBackground() {
     await prisma.$queryRaw`SELECT "orgId" FROM "WarehouseTask" LIMIT 1`;
     return true;
   } catch (err) {
-    console.error("[DB ready check] ??????:", err?.message || err);
+    console.error("[DB ready check] ошибка:", err?.message || err);
     return false;
   }
 }
@@ -13393,21 +15277,115 @@ const AUTO_REORDER_INTERVAL_MS = Number(
 const AUTO_REORDER_REMINDER_MS = Number(
   process.env.AUTO_REORDER_REMINDER_MS || 24 * 60 * 60 * 1000
 );
+const AUTO_REORDER_EVENT_DEBOUNCE_MS = Math.max(
+  250,
+  Number(process.env.AUTO_REORDER_EVENT_DEBOUNCE_MS || 1200)
+);
+const autoReorderPendingItemIds = new Set();
+let autoReorderEventTimer = null;
+let autoReorderEventRunning = false;
+let autoReorderEventRerun = false;
 
-async function getItemTotalQty(itemId) {
-  const movements = await prisma.stockMovement.findMany({
-    where: { itemId },
-    select: { type: true, quantity: true },
-  });
-  let qty = 0;
-  for (const m of movements) {
-    if (m.type === "INCOME" || m.type === "ADJUSTMENT") {
-      qty += Number(m.quantity);
-    } else if (m.type === "ISSUE") {
-      qty -= Number(m.quantity);
+function scheduleAutoReorderCheck(itemId) {
+  const id = Number(itemId);
+  if (!id || Number.isNaN(id)) return;
+  autoReorderPendingItemIds.add(id);
+  if (autoReorderEventTimer) return;
+  autoReorderEventTimer = setTimeout(() => {
+    autoReorderEventTimer = null;
+    flushAutoReorderQueue().catch((err) =>
+      console.error("AUTO_REORDER_EVENT_FLUSH_ERROR:", err)
+    );
+  }, AUTO_REORDER_EVENT_DEBOUNCE_MS);
+}
+
+function scheduleAutoReorderChecks(itemIds = []) {
+  for (const itemId of itemIds) {
+    scheduleAutoReorderCheck(itemId);
+  }
+}
+
+async function flushAutoReorderQueue() {
+  if (autoReorderEventRunning) {
+    autoReorderEventRerun = true;
+    return;
+  }
+
+  const itemIds = Array.from(autoReorderPendingItemIds.values())
+    .map((value) => Number(value))
+    .filter((value) => Number.isFinite(value) && value > 0);
+
+  autoReorderPendingItemIds.clear();
+  if (!itemIds.length) return;
+
+  autoReorderEventRunning = true;
+  try {
+    await checkAutoReorders({ itemIds });
+  } finally {
+    autoReorderEventRunning = false;
+    if (autoReorderEventRerun || autoReorderPendingItemIds.size > 0) {
+      autoReorderEventRerun = false;
+      if (!autoReorderEventTimer) {
+        autoReorderEventTimer = setTimeout(() => {
+          autoReorderEventTimer = null;
+          flushAutoReorderQueue().catch((err) =>
+            console.error("AUTO_REORDER_EVENT_FLUSH_ERROR:", err)
+          );
+        }, AUTO_REORDER_EVENT_DEBOUNCE_MS);
+      }
     }
   }
-  return Math.round(qty);
+}
+
+async function getItemTotalQty(itemId, options = {}) {
+  const id = Number(itemId);
+  if (!id || Number.isNaN(id)) return 0;
+
+  const orgIdRaw = options?.orgId;
+  const orgId = Number.isFinite(Number(orgIdRaw)) ? Number(orgIdRaw) : null;
+  const subtractHolds = Boolean(options?.subtractHolds);
+
+  const movementWhere = {
+    itemId: id,
+    locationId: { not: null },
+  };
+  if (orgId !== null) {
+    movementWhere.orgId = orgId;
+  }
+
+  const movements = await prisma.stockMovement.findMany({
+    where: movementWhere,
+    select: { type: true, quantity: true },
+  });
+
+  let qty = 0;
+  for (const movement of movements) {
+    if (movement.type === "INCOME" || movement.type === "ADJUSTMENT") {
+      qty += Number(movement.quantity);
+    } else if (movement.type === "ISSUE") {
+      qty -= Number(movement.quantity);
+    }
+  }
+
+  if (!subtractHolds) {
+    return Math.round(qty);
+  }
+
+  const holdWhere = {
+    itemId: id,
+    status: "ACTIVE",
+  };
+  if (orgId !== null) {
+    holdWhere.orgId = orgId;
+  }
+
+  const activeHolds = await prisma.stockHold.aggregate({
+    where: holdWhere,
+    _sum: { qty: true },
+  });
+
+  const holdQty = Number(activeHolds?._sum?.qty) || 0;
+  return Math.max(0, Math.round(qty - holdQty));
 }
 
 async function ensureOwnerAdminAccount() {
@@ -13540,6 +15518,94 @@ async function ensureLegacyTenantBackfill() {
   }
 }
 
+async function ensureEmailVerificationStorageReady() {
+  const normalizedUrl = String(DATABASE_URL || "").trim().toLowerCase();
+  if (
+    !normalizedUrl.startsWith("postgresql://") &&
+    !normalizedUrl.startsWith("postgres://")
+  ) {
+    console.log(
+      "[EMAIL_VERIFY_BOOTSTRAP] skipped: DATABASE_URL не PostgreSQL, runtime-инициализация не требуется."
+    );
+    return;
+  }
+
+  await prismaBase.$executeRawUnsafe(`
+    CREATE TABLE IF NOT EXISTS "EmailVerificationCode" (
+      "id" SERIAL NOT NULL,
+      "userId" INTEGER NOT NULL,
+      "codeHash" TEXT NOT NULL,
+      "expiresAt" TIMESTAMP(3) NOT NULL,
+      "attempts" INTEGER NOT NULL DEFAULT 0,
+      "usedAt" TIMESTAMP(3),
+      "phone" TEXT,
+      "companyName" TEXT,
+      "note" TEXT,
+      "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+      CONSTRAINT "EmailVerificationCode_pkey" PRIMARY KEY ("id")
+    );
+  `);
+
+  await prismaBase.$executeRawUnsafe(`
+    CREATE INDEX IF NOT EXISTS "EmailVerificationCode_userId_createdAt_idx"
+    ON "EmailVerificationCode"("userId", "createdAt");
+  `);
+
+  await prismaBase.$executeRawUnsafe(`
+    CREATE INDEX IF NOT EXISTS "EmailVerificationCode_userId_usedAt_expiresAt_idx"
+    ON "EmailVerificationCode"("userId", "usedAt", "expiresAt");
+  `);
+
+  await prismaBase.$executeRawUnsafe(`
+    DO $$
+    BEGIN
+      IF NOT EXISTS (
+        SELECT 1
+        FROM pg_constraint
+        WHERE conname = 'EmailVerificationCode_userId_fkey'
+      ) THEN
+        ALTER TABLE "EmailVerificationCode"
+        ADD CONSTRAINT "EmailVerificationCode_userId_fkey"
+        FOREIGN KEY ("userId") REFERENCES "User"("id")
+        ON DELETE CASCADE ON UPDATE CASCADE;
+      END IF;
+    END
+    $$;
+  `);
+
+  console.log("[EMAIL_VERIFY_BOOTSTRAP] EmailVerificationCode table is ready.");
+}
+
+function logMailConfigStatus() {
+  const requiredKeys = [
+    "MAIL_HOST",
+    "MAIL_PORT",
+    "MAIL_USER",
+    "MAIL_PASS",
+    "MAIL_FROM",
+  ];
+  const missing = requiredKeys.filter((key) =>
+    !String(process.env[key] || "").trim()
+  );
+
+  if (missing.length) {
+    console.warn(
+      `[MAIL_CONFIG] не заполнены переменные: ${missing.join(", ")}`
+    );
+  } else {
+    console.log("[MAIL_CONFIG] почтовые переменные заполнены.");
+  }
+
+  const notifyEmail = String(
+    process.env.NEW_CLIENT_NOTIFY_EMAILS ||
+      process.env.NEW_CLIENT_NOTIFY_EMAIL ||
+      OWNER_PRIMARY_EMAIL
+  ).trim();
+  console.log(
+    `[MAIL_CONFIG] получатели уведомлений о новых клиентах: ${notifyEmail || "-"}`
+  );
+}
+
 const DEPLOY_REVISION_KEY =
   process.env.RENDER_GIT_COMMIT ||
   process.env.SOURCE_VERSION ||
@@ -13633,14 +15699,29 @@ async function ensureWarehouseItemsResetForCurrentRevision() {
   );
 }
 
-async function checkAutoReorders() {
+async function checkAutoReorders(options = {}) {
   try {
+    const requestedItemIds = Array.isArray(options?.itemIds)
+      ? options.itemIds
+          .map((value) => Number(value))
+          .filter((value) => Number.isFinite(value) && value > 0)
+      : [];
+
+    if (Array.isArray(options?.itemIds) && !requestedItemIds.length) {
+      return;
+    }
+
+    const itemsWhere = {
+      autoReorderEnabled: true,
+      autoReorderMin: { not: null },
+      autoReorderSupplierId: { not: null },
+    };
+    if (requestedItemIds.length) {
+      itemsWhere.id = { in: requestedItemIds };
+    }
+
     const items = await prisma.item.findMany({
-      where: {
-        autoReorderEnabled: true,
-        autoReorderMin: { not: null },
-        autoReorderSupplierId: { not: null },
-      },
+      where: itemsWhere,
       include: {
         autoReorderSupplier: true,
       },
@@ -13648,18 +15729,42 @@ async function checkAutoReorders() {
     if (!items.length) return;
 
     const adminUsers = await prisma.user.findMany({
-      where: { role: "ADMIN", isActive: true },
-      select: { email: true, name: true },
+      where: { role: "ADMIN", isActive: true, orgId: { not: null } },
+      select: { id: true, email: true, orgId: true },
     });
-    const adminEmails = adminUsers
-      .map((u) => u.email)
-      .filter(Boolean);
+
+    const adminByOrg = new Map();
+    const adminEmailsByOrg = new Map();
+    for (const admin of adminUsers) {
+      const orgKey = Number.isFinite(Number(admin.orgId)) ? Number(admin.orgId) : null;
+      if (orgKey == null) continue;
+      if (!adminByOrg.has(orgKey)) {
+        adminByOrg.set(orgKey, admin.id);
+      }
+      if (admin.email) {
+        if (!adminEmailsByOrg.has(orgKey)) {
+          adminEmailsByOrg.set(orgKey, []);
+        }
+        adminEmailsByOrg.get(orgKey).push(admin.email);
+      }
+    }
 
     for (const item of items) {
-      const totalQty = await getItemTotalQty(item.id);
+      const orgId = Number.isFinite(Number(item.orgId)) ? Number(item.orgId) : null;
+      if (orgId == null) continue;
+
+      const adminUserId = adminByOrg.get(orgId) || null;
+      const adminEmails = adminEmailsByOrg.get(orgId) || [];
       const minQty = Number(item.autoReorderMin);
 
-      if (item.autoReorderActive && totalQty > minQty) {
+      if (!Number.isFinite(minQty) || minQty <= 0) continue;
+
+      const availableQty = await getItemTotalQty(item.id, {
+        orgId,
+        subtractHolds: true,
+      });
+
+      if (item.autoReorderActive && availableQty > minQty) {
         await prisma.item.update({
           where: { id: item.id },
           data: {
@@ -13670,19 +15775,58 @@ async function checkAutoReorders() {
         continue;
       }
 
-      if (item.autoReorderActive && totalQty <= minQty) {
-        const lastReminder = item.autoReorderLastReminderAt
+      if (availableQty > minQty) {
+        continue;
+      }
+
+      const supplier = item.autoReorderSupplier;
+      if (!supplier) continue;
+      if (!adminUserId) {
+        console.error(`AUTO_REORDER: admin user not found for org ${orgId}`);
+        continue;
+      }
+
+      const existingDraft = await prisma.purchaseOrder.findFirst({
+        where: {
+          orgId,
+          supplierId: supplier.id,
+          status: "DRAFT",
+          comment: { contains: "[AUTO-REORDER]" },
+        },
+        orderBy: { createdAt: "desc" },
+        include: {
+          items: {
+            where: { itemId: item.id },
+            select: { id: true, quantity: true, price: true },
+            take: 1,
+          },
+        },
+      });
+      const existingLine = Array.isArray(existingDraft?.items)
+        ? existingDraft.items[0]
+        : null;
+
+      if (item.autoReorderActive && existingLine) {
+        const lastReminderAt = item.autoReorderLastReminderAt
           ? new Date(item.autoReorderLastReminderAt).getTime()
           : 0;
-        if (Date.now() - lastReminder >= AUTO_REORDER_REMINDER_MS) {
-          const subject = `?????????: ??????????? ?? ?????? "${item.name}"`;
+
+        if (Date.now() - lastReminderAt >= AUTO_REORDER_REMINDER_MS) {
+          const draftOrderId = existingDraft?.id || item.autoReorderLastOrderId;
+          const lastOrderInfo = draftOrderId
+            ? `\nDraft order ID: #${draftOrderId}`
+            : "";
+          const subject = `Auto reorder: action required for item \"${item.name}\"`;
           const text =
-            `??????? ?????? "${item.name}" ??-???????? ???? ????????.\n` +
-            `??????? ???????: ${totalQty}\n???????: ${minQty}\n` +
-            `????????? ???????. ????????? ????? ??????????.`;
+            `Item \"${item.name}\" is still below minimum.\n` +
+            `Available qty: ${availableQty}\nMinimum: ${minQty}` +
+            `${lastOrderInfo}\n\n` +
+            `Open \"Purchase Orders\" and confirm sending manually.`;
+
           for (const email of adminEmails) {
             await sendAutoReorderEmail({ to: email, subject, text });
           }
+
           await prisma.item.update({
             where: { id: item.id },
             data: { autoReorderLastReminderAt: new Date() },
@@ -13691,46 +15835,63 @@ async function checkAutoReorders() {
         continue;
       }
 
-      if (totalQty > minQty) continue;
-
-      const supplier = item.autoReorderSupplier;
-      if (!supplier) continue;
-
       const targetMax = Number(item.maxStock || item.autoReorderMin || 0);
-      const orderQty = Math.max(targetMax - totalQty, 1);
+      const orderQty = Math.max(Math.round(targetMax - availableQty), 1);
 
-      const adminUser = await prisma.user.findFirst({
-        where: { role: "ADMIN", isActive: true },
-        select: { id: true },
-      });
-      if (!adminUser) {
-        console.error("AUTO_REORDER: admin user not found");
-        continue;
-      }
+      let order = existingDraft;
 
-      const nextNumber = await getNextPurchaseOrderNumber(item.orgId || null);
+      let isNewDraft = false;
+      let lineUpdated = false;
 
-      const order = await prisma.purchaseOrder.create({
-        data: {
-          orgId: item.orgId || null,
-          number: nextNumber,
-          date: new Date(),
-          status: "DRAFT",
-          comment: `????????? ?? ?????? "${item.name}"`,
-          supplierId: supplier.id,
-          createdById: adminUser.id,
-          items: {
-            create: [
-              {
-                orgId: item.orgId || null,
-                itemId: item.id,
-                quantity: orderQty,
-                price: item.defaultPrice || 0,
-              },
-            ],
+      if (!order) {
+        const nextNumber = await getNextPurchaseOrderNumber(orgId);
+        order = await prisma.purchaseOrder.create({
+          data: {
+            orgId,
+            number: nextNumber,
+            date: new Date(),
+            status: "DRAFT",
+            comment: `[AUTO-REORDER] Draft for supplier \"${supplier.name}\"`,
+            supplierId: supplier.id,
+            createdById: adminUserId,
+            items: {
+              create: [
+                {
+                  orgId,
+                  itemId: item.id,
+                  quantity: orderQty,
+                  price: item.defaultPrice || 0,
+                },
+              ],
+            },
           },
-        },
-      });
+        });
+        isNewDraft = true;
+      } else {
+        if (existingLine) {
+          await prisma.purchaseOrderItem.update({
+            where: { id: existingLine.id },
+            data: {
+              quantity: Number(existingLine.quantity || 0) + orderQty,
+              price:
+                Number(item.defaultPrice) ||
+                Number(existingLine.price) ||
+                0,
+            },
+          });
+          lineUpdated = true;
+        } else {
+          await prisma.purchaseOrderItem.create({
+            data: {
+              orgId,
+              orderId: order.id,
+              itemId: item.id,
+              quantity: orderQty,
+              price: item.defaultPrice || 0,
+            },
+          });
+        }
+      }
 
       await prisma.item.update({
         where: { id: item.id },
@@ -13742,64 +15903,55 @@ async function checkAutoReorders() {
         },
       });
 
-      const supplierEmail =
-        item.autoReorderContactEmail || supplier.email || null;
-      const subject = `?????????: ${item.name}`;
+      const orderNumberLabel = order.number || `#${order.id}`;
+      const subject = isNewDraft
+        ? `Auto reorder: draft created ${orderNumberLabel}`
+        : `Auto reorder: draft updated ${orderNumberLabel}`;
       const text =
-        item.autoReorderMessage ||
-        `?????? ???????? ???????? ?????? "${item.name}".\n` +
-          `??????????: ${orderQty}\n` +
-          `??????? ???????: ${totalQty}\n` +
-          `???????: ${minQty}\n` +
-          `???????: ${item.autoReorderContactName || "?????????????"}\n`;
-
-      if (supplierEmail) {
-        await sendAutoReorderEmail({ to: supplierEmail, subject, text });
-      }
+        `System ${isNewDraft ? "created" : "updated"} a draft supplier order.\n` +
+        `Item: ${item.name}\n` +
+        `Available qty: ${availableQty}\n` +
+        `Minimum: ${minQty}\n` +
+        `Order qty: ${orderQty}\n` +
+        `Supplier: ${supplier.name}\n` +
+        `Order number: ${orderNumberLabel}\n` +
+        `Line action: ${lineUpdated ? "quantity increased" : "line added"}\n\n` +
+        `Manual step required: open order and click \"Send to supplier\".`;
 
       for (const email of adminEmails) {
-        await sendAutoReorderEmail({
-          to: email,
-          subject,
-          text:
-            `?????? ????????? ?? ????? "${item.name}".\n` +
-            `??????????: ${orderQty}\n` +
-            `?????????: ${supplier.name}\n` +
-            `?????: ${nextNumber}`,
-        });
+        await sendAutoReorderEmail({ to: email, subject, text });
       }
     }
   } catch (err) {
     console.error("AUTO_REORDER_CHECK_ERROR:", err);
   }
 }
-
 async function startBackgroundTasks() {
   if (backgroundTasksStarted) return;
   const ready = await checkDbReadyForBackground();
   if (!ready) {
     console.error(
-      "[DB ready check] ???? ?? ??????, ??????? ?????? ?? ??????????? (????????? db:deploy)."
+      "[DB ready check] БД не готова, фоновые задачи не запущены (выполните db:deploy)."
     );
     return;
   }
 
   backgroundTasksStarted = true;
-  console.log("[DB ready check] OK, ???? ??????.");
+  console.log("[DB ready check] OK, БД готова.");
 
-  setInterval(sendSafetyReminders, 1000 * 60 * 60); // ??? ? ???
+  setInterval(sendSafetyReminders, 1000 * 60 * 60); // раз в час
   sendSafetyReminders();
 
   setInterval(checkAutoReorders, AUTO_REORDER_INTERVAL_MS);
   checkAutoReorders();
 
   setInterval(() => {
-    // 1) ??????????? ?? ??????? ??????
+    // 1) Уведомления по задачам склада
     checkWarehouseTaskNotifications().catch((err) =>
-      console.error("?????? ? checkWarehouseTaskNotifications:", err)
+      console.error("ошибка в checkWarehouseTaskNotifications:", err)
     );
 
-    // 2) ? 09:00 ? 18:00 ?????????? ?????? ?? ?????? ????????
+    // 2) В 18:00 отправляем сводку по остаткам
     const now = new Date();
     const hours = now.getHours(); // 0..23
     const minutes = now.getMinutes(); // 0..59
@@ -13809,7 +15961,7 @@ async function startBackgroundTasks() {
       lastLowStockReportDate = todayKey;
 
       sendDailyLowStockSummary().catch((err) =>
-        console.error("?????? ? sendDailyLowStockSummary:", err)
+        console.error("ошибка в sendDailyLowStockSummary:", err)
       );
     }
   }, 60 * 1000);
@@ -13962,16 +16114,32 @@ app.post("/api/warehouse/stock/adjustment", requireAdmin, async (req, res) => {
   }
 });
 
-// запуск long polling Telegram (один экземпляр)
-startTelegramPolling().catch((err) =>
-  console.error("Ошибка при запуске startTelegramPolling:", err)
-);
+// запуск long polling Telegram (только при явном включении)
+const TELEGRAM_POLLING_ENABLED =
+  String(process.env.TELEGRAM_POLLING_ENABLED || "").toLowerCase() === "true";
+
+if (TELEGRAM_POLLING_ENABLED) {
+  startTelegramPolling().catch((err) =>
+    console.error("Ошибка при запуске startTelegramPolling:", err)
+  );
+} else {
+  console.log(
+    "[Telegram] long polling отключен (установите TELEGRAM_POLLING_ENABLED=true для включения)."
+  );
+}
 
 // ================== ЗАПУСК СЕРВЕРА ==================
 
-const PORT = process.env.PORT || 3001;
+const PORT = Number(process.env.PORT || 3001);
+const HOST = process.env.HOST || "0.0.0.0";
 
 async function bootstrapServer() {
+  try {
+    await ensureEmailVerificationStorageReady();
+  } catch (err) {
+    console.error("[EMAIL_VERIFY_BOOTSTRAP] error:", err);
+  }
+
   try {
     await ensureOwnerAdminAccount();
   } catch (err) {
@@ -13990,8 +16158,10 @@ async function bootstrapServer() {
     console.error("[WAREHOUSE_BOOTSTRAP] reset error:", err);
   }
 
-  app.listen(PORT, () => {
-    console.log(`🚀 API запущен: http://localhost:${PORT}`);
+  logMailConfigStatus();
+
+  app.listen(PORT, HOST, () => {
+    console.log(`🚀 API запущен: http://${HOST}:${PORT}`);
   });
 
   startBackgroundTasks().catch((err) =>
@@ -14002,4 +16172,3 @@ async function bootstrapServer() {
 bootstrapServer().catch((err) =>
   console.error("Ошибка запуска bootstrapServer:", err)
 );
-

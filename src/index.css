@@ -1,4 +1,4 @@
-﻿:root {
+:root {
   --bg: #ffffff;
   --bg-soft: #f3f4f6;
   --card-bg: #ffffff;
@@ -138,6 +138,143 @@ a:hover {
   margin: 0;
   font-size: 14px;
   color: var(--muted);
+}
+
+.legal-page {
+  max-width: 980px;
+  padding: 20px 14px 36px;
+}
+
+.legal-topbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 12px;
+}
+
+.legal-brand {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  color: #0f172a;
+  font-size: 16px;
+  font-weight: 700;
+}
+
+.legal-brand img {
+  width: 30px;
+  height: 30px;
+  border-radius: 8px;
+  border: 1px solid #dbeafe;
+  background: #ffffff;
+}
+
+.legal-back-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  width: auto;
+  padding: 10px 14px;
+  border-radius: 12px;
+  border: 1px solid #cbd5e1;
+  background: #1f2937;
+  color: #f8fafc;
+  font-size: 14px;
+  font-weight: 600;
+  box-shadow: 0 6px 16px rgba(15, 23, 42, 0.18);
+}
+
+.legal-back-btn:hover:not(:disabled) {
+  background: #111827;
+  transform: translateY(-1px);
+}
+
+.legal-hero {
+  margin-bottom: 12px;
+  padding: 16px 18px;
+  border-radius: 16px;
+  border: 1px solid #dbeafe;
+  background: linear-gradient(180deg, #f8fbff 0%, #eef4ff 100%);
+}
+
+.legal-badge {
+  display: inline-flex;
+  align-items: center;
+  padding: 4px 10px;
+  border-radius: 999px;
+  border: 1px solid #bfdbfe;
+  background: #eff6ff;
+  color: #1d4ed8;
+  font-size: 12px;
+  font-weight: 700;
+  margin-bottom: 8px;
+}
+
+.legal-grid {
+  display: grid;
+  gap: 12px;
+}
+
+.legal-card {
+  background: #ffffff;
+  border: 1px solid #e2e8f0;
+  border-radius: 14px;
+  padding: 16px 18px;
+  box-shadow: 0 8px 20px rgba(15, 23, 42, 0.05);
+}
+
+.legal-card p {
+  margin: 0;
+  line-height: 1.55;
+  color: #334155;
+}
+
+.legal-section-title {
+  margin: 0 0 8px;
+  color: #0f172a;
+  font-size: 17px;
+  line-height: 1.25;
+}
+
+.legal-list {
+  margin: 0;
+  padding-left: 18px;
+  color: #334155;
+  display: grid;
+  gap: 6px;
+}
+
+.legal-list li {
+  line-height: 1.5;
+}
+
+.legal-links {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+  margin-top: 8px;
+}
+
+.legal-link {
+  font-weight: 600;
+  color: #1d4ed8;
+}
+
+@media (max-width: 720px) {
+  .legal-page {
+    padding: 14px 10px 24px;
+  }
+
+  .legal-topbar {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+
+  .legal-back-btn {
+    width: 100%;
+    justify-content: center;
+  }
 }
 
 .card {
@@ -982,6 +1119,39 @@ input[type="number"] {
   padding: 12px 12px 14px;
 }
 
+.task-photo-preview__modal {
+  width: min(980px, 96vw);
+}
+
+.task-photo-preview__body {
+  padding-top: 12px;
+  padding-bottom: 8px;
+}
+
+.task-photo-preview__image-wrap {
+  width: 100%;
+  max-height: 76vh;
+  overflow: auto;
+  border-radius: 12px;
+  border: 1px solid #e5e7eb;
+  background: #f8fafc;
+  padding: 8px;
+}
+
+.task-photo-preview__image {
+  width: 100%;
+  max-height: 72vh;
+  object-fit: contain;
+  display: block;
+  border-radius: 10px;
+}
+
+.task-photo-preview__actions {
+  display: flex;
+  justify-content: flex-end;
+  padding: 0 12px 14px;
+}
+
 @media (max-width: 900px) {
   .modal--wide {
     width: min(100vw - 20px, 1100px);
@@ -1476,12 +1646,15 @@ input[type="number"] {
   .requests-journal-table .requests-journal-row td {
     display: grid;
     grid-template-columns: 110px minmax(0, 1fr);
-    align-items: baseline;
+    align-items: start;
     gap: 8px;
     padding: 0;
     border: none;
     background: transparent;
     font-weight: 600;
+    line-height: 1.3;
+    word-break: break-word;
+    overflow-wrap: anywhere;
   }
 
   .requests-journal-table .requests-journal-row td::before {
@@ -1494,31 +1667,31 @@ input[type="number"] {
   }
 
   .requests-journal-table .requests-journal-row td[data-label="index"]::before {
-    content: "в„–";
+    content: "№";
   }
 
   .requests-journal-table .requests-journal-row td[data-label="date"]::before {
-    content: "Р”Р°С‚Р°";
+    content: "Дата";
   }
 
   .requests-journal-table .requests-journal-row td[data-label="status"]::before {
-    content: "РЎС‚Р°С‚СѓСЃ";
+    content: "Статус";
   }
 
   .requests-journal-table .requests-journal-row td[data-label="author"]::before {
-    content: "РђРІС‚РѕСЂ";
+    content: "Автор";
   }
 
   .requests-journal-table .requests-journal-row td[data-label="title"]::before {
-    content: "РўРѕРІР°СЂ / Р·Р°СЏРІРєР°";
+    content: "Товар / заявка";
   }
 
   .requests-journal-table .requests-journal-row td[data-label="qty"]::before {
-    content: "РљРѕР»-РІРѕ";
+    content: "Кол-во";
   }
 
   .requests-journal-table .requests-journal-row td[data-label="comment"]::before {
-    content: "РљРѕРјРјРµРЅС‚Р°СЂРёР№";
+    content: "Комментарий";
   }
 
   .requests-journal-table .requests-journal-row td[data-label="qty"] {
@@ -1559,61 +1732,31 @@ input[type="number"] {
 
   .tasks-journal-table .tasks-journal-row td {
     display: grid;
-    grid-template-columns: 110px minmax(0, 1fr);
+    grid-template-columns: 126px minmax(0, 1fr);
     align-items: baseline;
     gap: 8px;
-    padding: 0;
+    padding: 4px 0;
     border: none;
+    border-bottom: 1px solid #f1f5f9;
     background: transparent;
     font-weight: 600;
   }
 
+  .tasks-journal-table .tasks-journal-row td:last-child {
+    border-bottom: none;
+    padding-bottom: 0;
+  }
+
   .tasks-journal-table .tasks-journal-row td::before {
     content: attr(data-label);
-    font-size: 12px;
-    text-transform: uppercase;
-    letter-spacing: 0.04em;
+    font-size: 11px;
+    text-transform: none;
+    letter-spacing: 0;
     color: #64748b;
     font-weight: 700;
   }
 
-  .tasks-journal-table .tasks-journal-row td[data-label="index"]::before {
-    content: "в„–";
-  }
-
-  .tasks-journal-table .tasks-journal-row td[data-label="date"]::before {
-    content: "Р”Р°С‚Р°";
-  }
-
-  .tasks-journal-table .tasks-journal-row td[data-label="status"]::before {
-    content: "РЎС‚Р°С‚СѓСЃ";
-  }
-
-  .tasks-journal-table .tasks-journal-row td[data-label="due"]::before {
-    content: "РЎСЂРѕРє";
-  }
-
-  .tasks-journal-table .tasks-journal-row td[data-label="title"]::before {
-    content: "Р—Р°РґР°С‡Р°";
-  }
-
-  .tasks-journal-table .tasks-journal-row td[data-label="executor"]::before {
-    content: "РСЃРїРѕР»РЅРёС‚РµР»СЊ";
-  }
-
-  .tasks-journal-table .tasks-journal-row td[data-label="author"]::before {
-    content: "РђРІС‚РѕСЂ";
-  }
-
-  .tasks-journal-table .tasks-journal-row td[data-label="desc"]::before {
-    content: "РћРїРёСЃР°РЅРёРµ";
-  }
-
-  .tasks-journal-table .tasks-journal-row td[data-label="actions"]::before {
-    content: "Р”РµР№СЃС‚РІРёСЏ";
-  }
-
-  .tasks-journal-table .tasks-journal-row td[data-label="actions"] {
+  .tasks-journal-table .tasks-journal-row td[data-label="Изменить статус"] {
     grid-template-columns: 1fr;
     justify-items: stretch;
   }
@@ -1701,13 +1844,16 @@ input[type="number"] {
   .stock-audit-table .stock-audit-row td {
     display: grid;
     grid-template-columns: 110px minmax(0, 1fr);
-    align-items: baseline;
+    align-items: start;
     gap: 8px;
     padding: 0;
     border: none !important;
     background: transparent;
     font-weight: 600;
     text-align: left !important;
+    line-height: 1.3;
+    word-break: break-word;
+    overflow-wrap: anywhere;
   }
 
   .stock-audit-table .stock-audit-row td::before {
@@ -1720,31 +1866,31 @@ input[type="number"] {
   }
 
   .stock-audit-table .stock-audit-row td[data-label="index"]::before {
-    content: "в„–";
+    content: "№";
   }
 
   .stock-audit-table .stock-audit-row td[data-label="name"]::before {
-    content: "РќР°РёРјРµРЅРѕРІР°РЅРёРµ";
+    content: "Наименование";
   }
 
   .stock-audit-table .stock-audit-row td[data-label="sku"]::before {
-    content: "SKU";
+    content: "Артикул";
   }
 
   .stock-audit-table .stock-audit-row td[data-label="unit"]::before {
-    content: "Р•Рґ.";
+    content: "Ед.";
   }
 
   .stock-audit-table .stock-audit-row td[data-label="stock"]::before {
-    content: "РћСЃС‚Р°С‚РѕРє";
+    content: "Остаток";
   }
 
   .stock-audit-table .stock-audit-row td[data-label="min"]::before {
-    content: "РњРёРЅ.";
+    content: "Мин.";
   }
 
   .stock-audit-table .stock-audit-row td[data-label="max"]::before {
-    content: "РњР°РєСЃ.";
+    content: "Макс.";
   }
 
   .queue-filters {
@@ -1829,13 +1975,16 @@ input[type="number"] {
   .queue-table .queue-row td {
     display: grid;
     grid-template-columns: 120px minmax(0, 1fr);
-    align-items: baseline;
+    align-items: start;
     gap: 8px;
     padding: 0;
     border: none !important;
     background: transparent;
     font-weight: 600;
     text-align: left !important;
+    line-height: 1.3;
+    word-break: break-word;
+    overflow-wrap: anywhere;
   }
 
   .queue-table .queue-row td::before {
@@ -1848,59 +1997,59 @@ input[type="number"] {
   }
 
   .queue-table .queue-row td[data-label="status"]::before {
-    content: "РЎС‚Р°С‚СѓСЃ";
+    content: "Статус";
   }
 
   .queue-table .queue-row td[data-label="arrival"]::before {
-    content: "РџСЂРёР±С‹С‚РёРµ";
+    content: "Прибытие";
   }
 
   .queue-table .queue-row td[data-label="unloadStart"]::before {
-    content: "Р—Р°РµР·Рґ";
+    content: "Заезд";
   }
 
   .queue-table .queue-row td[data-label="unloadEnd"]::before {
-    content: "Р’С‹РµР·Рґ";
+    content: "Выезд";
   }
 
   .queue-table .queue-row td[data-label="supplier"]::before {
-    content: "РџРѕСЃС‚Р°РІС‰РёРє";
+    content: "Поставщик";
   }
 
   .queue-table .queue-row td[data-label="order"]::before {
-    content: "в„– Р·Р°РєР°Р·Р°";
+    content: "№ заказа";
   }
 
   .queue-table .queue-row td[data-label="delivery"]::before {
-    content: "Р”Р°С‚Р° РґРѕСЃС‚.";
+    content: "Дата дост.";
   }
 
   .queue-table .queue-row td[data-label="gate"]::before {
-    content: "Р’РѕСЂРѕС‚Р°";
+    content: "Ворота";
   }
 
   .queue-table .queue-row td[data-label="brand"]::before {
-    content: "РњР°СЂРєР°";
+    content: "Марка";
   }
 
   .queue-table .queue-row td[data-label="truck"]::before {
-    content: "РќРѕРјРµСЂ Р°РІС‚Рѕ";
+    content: "Номер авто";
   }
 
   .queue-table .queue-row td[data-label="driver"]::before {
-    content: "Р’РѕРґРёС‚РµР»СЊ";
+    content: "Водитель";
   }
 
   .queue-table .queue-row td[data-label="phone"]::before {
-    content: "РўРµР»РµС„РѕРЅ";
+    content: "Телефон";
   }
 
   .queue-table .queue-row td[data-label="cargo"]::before {
-    content: "РўРѕРІР°СЂ";
+    content: "Товар";
   }
 
   .queue-table .queue-row td[data-label="note"]::before {
-    content: "РџСЂРёРјРµС‡Р°РЅРёРµ";
+    content: "Примечание";
   }
 
   .discrepancies-header {
@@ -1958,13 +2107,16 @@ input[type="number"] {
   .discrepancies-table .discrepancies-row td {
     display: grid;
     grid-template-columns: 110px minmax(0, 1fr);
-    align-items: baseline;
+    align-items: start;
     gap: 8px;
     padding: 0;
     border: none !important;
     background: transparent;
     font-weight: 600;
     text-align: left !important;
+    line-height: 1.3;
+    word-break: break-word;
+    overflow-wrap: anywhere;
   }
 
   .discrepancies-table .discrepancies-row td::before {
@@ -1977,39 +2129,39 @@ input[type="number"] {
   }
 
   .discrepancies-table .discrepancies-row td[data-label="date"]::before {
-    content: "Р”Р°С‚Р°";
+    content: "Дата";
   }
 
   .discrepancies-table .discrepancies-row td[data-label="location"]::before {
-    content: "РЇС‡РµР№РєР°";
+    content: "Ячейка";
   }
 
   .discrepancies-table .discrepancies-row td[data-label="item"]::before {
-    content: "РўРѕРІР°СЂ";
+    content: "Товар";
   }
 
   .discrepancies-table .discrepancies-row td[data-label="expected"]::before {
-    content: "Р‘С‹Р»Рѕ";
+    content: "Было";
   }
 
   .discrepancies-table .discrepancies-row td[data-label="counted"]::before {
-    content: "Р¤Р°РєС‚";
+    content: "Факт";
   }
 
   .discrepancies-table .discrepancies-row td[data-label="delta"]::before {
-    content: "О”";
+    content: "Δ";
   }
 
   .discrepancies-table .discrepancies-row td[data-label="session"]::before {
-    content: "РЎРµСЃСЃРёСЏ";
+    content: "Сессия";
   }
 
   .discrepancies-table .discrepancies-row td[data-label="user"]::before {
-    content: "\041A\0442\043E";
+    content: "Кто";
   }
 
   .discrepancies-table .discrepancies-row td[data-label="actions"]::before {
-    content: "Р”РµР№СЃС‚РІРёСЏ";
+    content: "Действия";
   }
 
   .discrepancies-table .discrepancies-row td[data-label="actions"] {
@@ -2070,13 +2222,16 @@ input[type="number"] {
   .movements-history-table .movements-history-row td {
     display: grid;
     grid-template-columns: 110px minmax(0, 1fr);
-    align-items: baseline;
+    align-items: start;
     gap: 8px;
     padding: 0;
     border: none !important;
     background: transparent;
     font-weight: 600;
     text-align: left !important;
+    line-height: 1.3;
+    word-break: break-word;
+    overflow-wrap: anywhere;
   }
 
   .movements-history-table .movements-history-row td::before {
@@ -2089,39 +2244,39 @@ input[type="number"] {
   }
 
   .movements-history-table .movements-history-row td[data-label="index"]::before {
-    content: "в„–";
+    content: "№";
   }
 
   .movements-history-table .movements-history-row td[data-label="date"]::before {
-    content: "Р”Р°С‚Р°";
+    content: "Дата";
   }
 
   .movements-history-table .movements-history-row td[data-label="type"]::before {
-    content: "РўРёРї";
+    content: "Тип";
   }
 
   .movements-history-table .movements-history-row td[data-label="item"]::before {
-    content: "РўРѕРІР°СЂ";
+    content: "Товар";
   }
 
   .movements-history-table .movements-history-row td[data-label="qty"]::before {
-    content: "РљРѕР»-РІРѕ";
+    content: "Кол-во";
   }
 
   .movements-history-table .movements-history-row td[data-label="unit"]::before {
-    content: "Р•Рґ.";
+    content: "Ед.";
   }
 
   .movements-history-table .movements-history-row td[data-label="price"]::before {
-    content: "Р¦РµРЅР°";
+    content: "Цена";
   }
 
   .movements-history-table .movements-history-row td[data-label="author"]::before {
-    content: "РђРІС‚РѕСЂ";
+    content: "Автор";
   }
 
   .movements-history-table .movements-history-row td[data-label="comment"]::before {
-    content: "РљРѕРјРјРµРЅС‚Р°СЂРёР№";
+    content: "Комментарий";
   }
 
   .transactions-table {
@@ -2158,13 +2313,16 @@ input[type="number"] {
   .transactions-table .transactions-row td {
     display: grid;
     grid-template-columns: 110px minmax(0, 1fr);
-    align-items: baseline;
+    align-items: start;
     gap: 8px;
     padding: 0;
     border: none !important;
     background: transparent;
     font-weight: 600;
     text-align: left !important;
+    line-height: 1.3;
+    word-break: break-word;
+    overflow-wrap: anywhere;
   }
 
   .transactions-table .transactions-row td::before {
@@ -2177,35 +2335,35 @@ input[type="number"] {
   }
 
   .transactions-table .transactions-row td[data-label="date"]::before {
-    content: "Р”Р°С‚Р°";
+    content: "Дата";
   }
 
   .transactions-table .transactions-row td[data-label="type"]::before {
-    content: "РўРёРї";
+    content: "Тип";
   }
 
   .transactions-table .transactions-row td[data-label="item"]::before {
-    content: "РўРѕРІР°СЂ";
+    content: "Товар";
   }
 
   .transactions-table .transactions-row td[data-label="location"]::before {
-    content: "РЇС‡РµР№РєР°";
+    content: "Ячейка";
   }
 
   .transactions-table .transactions-row td[data-label="qty"]::before {
-    content: "РљРѕР»-РІРѕ";
+    content: "Кол-во";
   }
 
   .transactions-table .transactions-row td[data-label="user"]::before {
-    content: "РљС‚Рѕ";
+    content: "Кто";
   }
 
   .transactions-table .transactions-row td[data-label="comment"]::before {
-    content: "РљРѕРјРјРµРЅС‚Р°СЂРёР№";
+    content: "Комментарий";
   }
 
   .transactions-table .transactions-row td[data-label="unit"]::before {
-    content: "Р•Рґ.";
+    content: "Ед.";
   }
 
   .purchase-orders-desktop {
@@ -3200,6 +3358,91 @@ input[type="number"] {
   border-radius: 10px;
 }
 
+.global-error-modal {
+  position: fixed;
+  inset: 0;
+  z-index: 6000;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 20px;
+  background: transparent;
+}
+
+.global-error-modal__panel {
+  position: relative;
+  width: min(460px, calc(100vw - 28px));
+  border-radius: 14px;
+  border: 1px solid rgba(239, 68, 68, 0.38);
+  background: #fff;
+  box-shadow: 0 18px 46px rgba(15, 23, 42, 0.25);
+  padding: 14px 14px 12px;
+}
+
+.global-error-modal__header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  margin-bottom: 8px;
+}
+
+.global-error-modal__close {
+  min-width: 44px;
+  height: 36px;
+  border-radius: 10px;
+  border: 1px solid #4b5563;
+  background: #4b5563;
+  color: #fff;
+  font-size: 22px;
+  line-height: 1;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0 10px;
+}
+
+.global-error-modal__title {
+  font-size: 17px;
+  font-weight: 800;
+  color: #991b1b;
+  margin: 0;
+}
+
+.global-error-modal__text {
+  font-size: 14px;
+  line-height: 1.45;
+  color: #7f1d1d;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+.global-error-modal__actions {
+  display: flex;
+  justify-content: flex-end;
+  margin-top: 12px;
+}
+
+/* Скрываем старые встроенные ошибки: теперь используется единое модальное окно */
+.alert--error,
+.alert--danger,
+.admin-alert--error,
+.tsd-alert--error,
+.login-card__error {
+  display: none !important;
+}
+
+.login-card__notice {
+  margin-bottom: 12px;
+  background: #ecfdf5;
+  color: #065f46;
+  padding: 10px 12px;
+  border-radius: 10px;
+  border: 1px solid #a7f3d0;
+  font-size: 13px;
+}
+
 .login-form {
   display: grid;
   gap: 10px;
@@ -3213,6 +3456,151 @@ input[type="number"] {
 
 .login-form__submit:hover:not(:disabled) {
   background: #1565c0;
+}
+
+.register-card {
+  width: min(560px, 100%);
+}
+
+.register-card__title {
+  margin-bottom: 14px;
+}
+
+.register-card__error,
+.register-card__success {
+  margin-bottom: 12px;
+  padding: 10px 12px;
+  border-radius: 10px;
+  font-size: 14px;
+  line-height: 1.4;
+}
+
+.register-card__error {
+  background: #ffe6e6;
+  color: #b00020;
+}
+
+.register-card__success {
+  background: #ecfdf5;
+  color: #065f46;
+  border: 1px solid #a7f3d0;
+}
+
+.register-card__hint {
+  margin: 0;
+  color: #0f172a;
+  font-size: 14px;
+}
+
+.register-form {
+  display: grid;
+  gap: 10px;
+}
+
+.register-form__field {
+  display: grid;
+  gap: 6px;
+}
+
+.register-form__field span {
+  font-size: 13px;
+  color: #334155;
+}
+
+.register-form__field input,
+.register-form__field textarea {
+  width: 100%;
+  min-height: 42px;
+  padding: 9px 11px;
+  border: 1px solid #cbd5e1;
+  border-radius: 10px;
+  background: #fff;
+  font-size: 14px;
+  color: #0f172a;
+}
+
+.register-form__field textarea {
+  min-height: 84px;
+  resize: vertical;
+}
+
+.register-form__field input:focus,
+.register-form__field textarea:focus {
+  outline: none;
+  border-color: #2563eb;
+  box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.14);
+}
+
+.register-form__check {
+  display: grid;
+  grid-template-columns: 18px minmax(0, 1fr);
+  gap: 8px;
+  align-items: flex-start;
+  margin-top: 4px;
+  color: #334155;
+  font-size: 13px;
+  line-height: 1.4;
+}
+
+.register-form__check input[type="checkbox"] {
+  width: 16px;
+  height: 16px;
+  margin-top: 2px;
+  accent-color: #2563eb;
+}
+
+.register-form__check a {
+  color: #1d4ed8;
+}
+
+.register-form__submit,
+.register-form__secondary {
+  width: 100%;
+  min-height: 44px;
+  border-radius: 10px;
+  border: none;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.register-form__submit {
+  background: #1976d2;
+  color: #fff;
+}
+
+.register-form__submit:hover:not(:disabled) {
+  background: #1565c0;
+}
+
+.register-form__secondary {
+  background: #eef2ff;
+  color: #1d4ed8;
+}
+
+.register-form__secondary:hover:not(:disabled) {
+  background: #dbeafe;
+}
+
+.register-form__submit:disabled,
+.register-form__secondary:disabled {
+  opacity: 0.7;
+  cursor: not-allowed;
+}
+
+.register-form__link {
+  border: none;
+  background: transparent;
+  color: #1d4ed8;
+  text-align: left;
+  padding: 4px 0;
+  cursor: pointer;
+  font-size: 13px;
+}
+
+.register-card__footer {
+  margin: 12px 0 0;
+  color: #475569;
+  font-size: 14px;
 }
 
 .login-card__help {
@@ -3381,6 +3769,22 @@ input[type="number"] {
     padding: 14px;
   }
 
+  .register-form__field input,
+  .register-form__field textarea,
+  .register-form__submit,
+  .register-form__secondary {
+    min-height: 46px;
+    font-size: 16px;
+  }
+
+  .register-form__field textarea {
+    min-height: 96px;
+  }
+
+  .register-form__check {
+    font-size: 14px;
+  }
+
   .login-card__brand {
     font-size: 28px;
   }
@@ -3432,6 +3836,10 @@ input[type="number"] {
   font-size: 18px;
 }
 
+.stock-holds-mobile-nav {
+  display: none;
+}
+
 .stock-holds-tabs {
   display: inline-flex;
   gap: 6px;
@@ -3463,24 +3871,31 @@ input[type="number"] {
   }
 
   .stock-holds-title {
-    font-size: 24px;
+    font-size: 18px;
   }
 
-  .stock-holds-tabs {
+  .stock-holds-tabs,
+  .stock-holds-mobile-nav {
     display: grid;
     grid-template-columns: repeat(2, minmax(0, 1fr));
     width: 100%;
-    border-radius: 14px;
+    border-radius: 12px;
     padding: 4px;
     gap: 4px;
+    background: #f1f5f9;
   }
 
-  .stock-holds-tabs .tabs__btn {
+  .stock-holds-tabs .tabs__btn,
+  .stock-holds-mobile-nav .tabs__btn {
     width: 100%;
-    border-radius: 10px;
+    border-radius: 8px;
     padding: 9px 10px;
     font-size: 14px;
     text-align: center;
+  }
+
+  .stock-holds-mobile-nav {
+    margin-top: 10px;
   }
 
   .stock-holds-table {
@@ -3535,9 +3950,139 @@ input[type="number"] {
     font-weight: 700;
   }
 
-  .stock-holds-table tbody td[data-label="Р”РµР№СЃС‚РІРёРµ"] {
+  .stock-holds-table tbody td:last-child {
+    grid-template-columns: 1fr;
+    justify-items: stretch;
+  }
+
+  .stock-holds-table tbody td[data-label="Действие"] {
     grid-template-columns: 1fr;
     justify-items: stretch;
   }
 }
 
+
+/* ===== Журнал задач: компактная таблица + детали ===== */
+.tasks-journal-main__title {
+  font-weight: 700;
+  line-height: 1.35;
+  color: #0f172a;
+}
+
+.tasks-journal-main__meta {
+  margin-top: 4px;
+  font-size: 12px;
+  line-height: 1.35;
+  color: #64748b;
+}
+
+.tasks-journal-actions {
+  display: flex;
+  justify-content: flex-end;
+}
+
+.task-details-modal {
+  width: min(980px, 96vw);
+}
+
+.task-details-modal__body {
+  display: grid;
+  gap: 14px;
+}
+
+.task-details-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px 16px;
+  padding: 10px;
+  border: 1px solid #e2e8f0;
+  border-radius: 10px;
+  background: #f8fafc;
+}
+
+.task-details-section {
+  display: grid;
+  gap: 8px;
+}
+
+.task-details-label {
+  font-size: 12px;
+  font-weight: 700;
+  color: #64748b;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+}
+
+.task-details-text {
+  white-space: pre-wrap;
+  border: 1px solid #e2e8f0;
+  border-radius: 10px;
+  background: #ffffff;
+  padding: 10px;
+  line-height: 1.45;
+}
+
+.task-details-photos {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(92px, 1fr));
+  gap: 8px;
+}
+
+.task-details-photos a {
+  display: block;
+}
+
+.task-details-photos img {
+  width: 100%;
+  height: 92px;
+  object-fit: cover;
+  border-radius: 8px;
+  border: 1px solid #dbe4ee;
+  display: block;
+}
+
+.task-details-files {
+  display: grid;
+  gap: 6px;
+}
+
+.task-details-file-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 10px;
+  border: 1px solid #dbe4ee;
+  border-radius: 8px;
+  padding: 6px 8px;
+  background: #f8fafc;
+}
+
+.task-details-file-row span {
+  font-size: 12px;
+}
+
+.task-details-actions {
+  display: flex;
+  gap: 10px;
+  align-items: center;
+  flex-wrap: wrap;
+}
+
+.task-details-footer {
+  display: flex;
+  justify-content: flex-end;
+  padding: 0 12px 14px;
+}
+
+@media (max-width: 900px) {
+  .task-details-grid {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+
+@media (max-width: 680px) {
+  .tasks-journal-table .tasks-journal-row td[data-label="Действия"] {
+    grid-template-columns: 1fr;
+    justify-items: stretch;
+  }
+}

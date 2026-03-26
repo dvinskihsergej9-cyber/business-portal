@@ -625,7 +625,7 @@ export default function OrderFulfillmentFlow({ authHeaders, onBack }) {
     autoTable(pdf, {
       startY: y,
       margin: { left: margin + 10, right: margin + 10 },
-      head: [["#", "SKU", "Товар", "Заказано", "Отобрано", "Ед."]],
+      head: [["#", "Артикул", "Товар", "Заказано", "Отобрано", "Ед."]],
       body: rows.length ? rows : [["-", "-", "Нет позиций", "-", "-", "-"]],
       theme: "grid",
       styles: {
@@ -1083,7 +1083,7 @@ export default function OrderFulfillmentFlow({ authHeaders, onBack }) {
                     Ячейка: {currentStep.locationCode || currentStep.locationName || `#${currentStep.locationId}`}
                   </div>
                   <div className="tsd-card__meta">Товар: {currentStep.itemName}</div>
-                  <div className="tsd-card__meta">SKU: {currentStep.sku || "-"}</div>
+                  <div className="tsd-card__meta">Артикул: {currentStep.sku || "-"}</div>
                   <div className="tsd-card__meta">К отбору: {currentStep.qty}</div>
                   <div className="tsd-card__meta">Сканировано: {scannedQty}</div>
                 </div>
@@ -1188,7 +1188,7 @@ export default function OrderFulfillmentFlow({ authHeaders, onBack }) {
                     disabled={loading || !canPrintPassport}
                     onClick={printPassport}
                   >
-                    Паспорт (PDF)
+                    Паспорт
                   </button>
                   {!isClosed && (
                     <button

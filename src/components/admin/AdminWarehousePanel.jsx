@@ -21,6 +21,23 @@ function toDateInput(value) {
 
 const ITEM_IMAGE_MAX_BYTES = 3 * 1024 * 1024;
 const ITEM_IMAGE_MAX_SIDE = 1200;
+const CARD_REFRESH_BTN_STYLE = {
+  width: 26,
+  height: 26,
+  borderRadius: "50%",
+  padding: 0,
+  lineHeight: "26px",
+  textAlign: "center",
+  fontSize: 14,
+  fontWeight: 700,
+  background: "#ffffff",
+  border: "1px solid #e5e7eb",
+  color: "#9ca3af",
+  position: "absolute",
+  top: 8,
+  right: 8,
+  zIndex: 5,
+};
 
 async function fileToDataUrl(file) {
   return new Promise((resolve, reject) => {
@@ -231,12 +248,7 @@ export default function AdminWarehousePanel() {
 
   useEffect(() => {
     if (!error) return;
-    const node = errorRef.current;
-    if (node?.scrollIntoView) {
-      node.scrollIntoView({ behavior: "smooth", block: "start" });
-    } else if (typeof window !== "undefined") {
-      window.scrollTo({ top: 0, behavior: "smooth" });
-    }
+    // Ошибки показываются через глобальное модальное окно.
   }, [error]);
 
   const handleSaveItem = async () => {
@@ -276,7 +288,7 @@ export default function AdminWarehousePanel() {
         return setItemError("Наименование товара обязательно.");
       }
       if (!itemForm.sku.trim()) {
-        return setItemError("Артикул (SKU) обязателен.");
+        return setItemError("Артикул обязателен.");
       }
       if (!itemForm.barcode.trim()) {
         return setItemError("Штрихкод обязателен.");
@@ -287,7 +299,13 @@ export default function AdminWarehousePanel() {
 
       const minVal = Number(itemForm.minStock);
       const maxVal = Number(itemForm.maxStock);
-      const priceVal = Number(String(itemForm.defaultPrice).replace(",", "."));
+      const hasDefaultPrice =
+        itemForm.defaultPrice !== undefined &&
+        itemForm.defaultPrice !== null &&
+        String(itemForm.defaultPrice).trim() !== "";
+      const priceVal = hasDefaultPrice
+        ? Number(String(itemForm.defaultPrice).replace(",", "."))
+        : null;
 
       if (!Number.isFinite(minVal) || minVal <= 0) {
         return setItemError("Минимальный остаток должен быть положительным числом.");
@@ -295,8 +313,8 @@ export default function AdminWarehousePanel() {
       if (!Number.isFinite(maxVal) || maxVal <= 0) {
         return setItemError("Максимальный остаток должен быть положительным числом.");
       }
-      if (!Number.isFinite(priceVal) || priceVal <= 0) {
-        return setItemError("Цена за единицу должна быть положительным числом.");
+      if (hasDefaultPrice && (!Number.isFinite(priceVal) || priceVal < 0)) {
+        return setItemError("Цена за единицу должна быть числом (0 и больше).");
       }
 
       const body = {
@@ -524,11 +542,21 @@ export default function AdminWarehousePanel() {
 
 
   return (
-    <div className="admin-console__card">
+    <div className="admin-console__card" style={{ position: "relative" }}>
       <div className="admin-console__card-title">Склад</div>
       <div className="admin-console__card-text">
         Редактирование товаров, ячеек и заявок.
       </div>
+      <button
+        type="button"
+        className="admin-corner-refresh-btn"
+        onClick={loadAll}
+        title="Обновить раздел"
+        aria-label="Обновить данные склада"
+        style={CARD_REFRESH_BTN_STYLE}
+      >
+        ↻
+      </button>
 
       <div className="admin-console__tabs admin-console__tabs--small">
         <button
@@ -571,36 +599,6 @@ export default function AdminWarehousePanel() {
         >
           Заказы
         </button>
-        <div className="admin-console__tab-actions">
-          <button
-            type="button"
-            className="admin-console__tab admin-console__tab--action"
-            onClick={loadAll}
-          >
-            {"Обновить"}
-          </button>
-          <button
-            type="button"
-            className="admin-btn admin-btn--ghost"
-            title="\u041e\u0431\u043d\u043e\u0432\u0438\u0442\u044c \u0441\u043f\u0438\u0441\u043e\u043a \u0442\u043e\u0432\u0430\u0440\u043e\u0432, \u044f\u0447\u0435\u0435\u043a \u0438 \u0437\u0430\u044f\u0432\u043e\u043a"
-            aria-label="\u041f\u043e\u0434\u0441\u043a\u0430\u0437\u043a\u0430: \u043e\u0431\u043d\u043e\u0432\u043b\u044f\u0435\u0442 \u0441\u043f\u0438\u0441\u043e\u043a \u0442\u043e\u0432\u0430\u0440\u043e\u0432, \u044f\u0447\u0435\u0435\u043a \u0438 \u0437\u0430\u044f\u0432\u043e\u043a"
-            onClick={() => {
-              if (typeof window !== "undefined") {
-                window.alert("\u041e\u0431\u043d\u043e\u0432\u043b\u044f\u0435\u0442 \u0441\u043f\u0438\u0441\u043e\u043a \u0442\u043e\u0432\u0430\u0440\u043e\u0432, \u044f\u0447\u0435\u0435\u043a \u0438 \u0437\u0430\u044f\u0432\u043e\u043a.");
-              }
-            }}
-            style={{
-              width: 28,
-              height: 28,
-              borderRadius: "50%",
-              padding: 0,
-              lineHeight: "28px",
-              textAlign: "center",
-            }}
-          >
-            ?
-          </button>
-        </div>
       </div>
 
       {error && (
@@ -643,7 +641,7 @@ export default function AdminWarehousePanel() {
                 />
               </div>
               <div>
-                <label className="admin-label">SKU</label>
+                <label className="admin-label">Артикул</label>
                 <input
                   className="admin-input"
                   value={itemForm.sku}
@@ -711,11 +709,12 @@ export default function AdminWarehousePanel() {
                 />
               </div>
               <div>
-                <label className="admin-label">Цена</label>
+                <label className="admin-label">Цена (необязательно)</label>
                 <input
                   className="admin-input"
                   type="number"
                   value={itemForm.defaultPrice}
+                  placeholder="Например: 120.50"
                   onChange={(event) =>
                     setItemForm((prev) => ({
                       ...prev,
@@ -738,7 +737,7 @@ export default function AdminWarehousePanel() {
                 <tr>
                   <th>Фото</th>
                   <th>Товар</th>
-                  <th>SKU</th>
+                  <th>Артикул</th>
                   <th>Штрихкод</th>
                   <th>Ед.</th>
                   <th>Мин</th>
@@ -775,7 +774,7 @@ export default function AdminWarehousePanel() {
                       <div className="admin-table__title">{item.name}</div>
                       <div className="admin-table__meta">ID: {item.id}</div>
                     </td>
-                    <td data-label="SKU">{item.sku || "-"}</td>
+                    <td data-label="Артикул">{item.sku || "-"}</td>
                     <td data-label="Штрихкод">{item.barcode || "-"}</td>
                     <td data-label="Ед.">{item.unit || "-"}</td>
                     <td data-label="Мин">{item.minStock ?? "-"}</td>
@@ -839,104 +838,117 @@ export default function AdminWarehousePanel() {
       )}
 
       {!loading && activeTab === "locations" && (
-        <div className="admin-table-wrapper">
-          <table className="admin-table">
-            <thead>
-              <tr>
-                <th>Ячейка</th>
-                <th>Код</th>
-                <th>Зона</th>
-                <th>Ряд</th>
-                <th></th>
-              </tr>
-            </thead>
-            <tbody>
-              {locations.map((loc) => (
-                <tr key={loc.id}>
-                  <td data-label="Ячейка">
-                    <div className="admin-table__title">{loc.name}</div>
-                    <div className="admin-table__meta">ID: {loc.id}</div>
-                  </td>
-                  <td data-label="Код">{loc.code || "-"}</td>
-                  <td data-label="Зона">{loc.zone || "-"}</td>
-                  <td data-label="Ряд">{loc.aisle || "-"}</td>
-                  <td data-label="Действия" className="admin-table__actions">
-                    <button
-                      type="button"
-                      className="admin-btn admin-btn--secondary"
-                      onClick={() => setEditLocation(loc)}
-                    >
-                      Редактировать
-                    </button>
-                    <button
-                      type="button"
-                      className="admin-btn admin-btn--danger"
-                      onClick={() => setDeleteLocation(loc)}
-                    >
-                      Удалить
-                    </button>
-                  </td>
-                </tr>
-              ))}
-              {!locations.length && (
+        <div className="admin-form">
+          <div className="admin-label" style={{ fontWeight: 700 }}>
+            Ячейки
+          </div>
+          <div className="admin-table-wrapper">
+            <table className="admin-table">
+              <thead>
                 <tr>
-                  <td colSpan="5" className="admin-muted">
-                    Нет ячеек.
-                  </td>
+                  <th>Ячейка</th>
+                  <th>Код</th>
+                  <th>Зона</th>
+                  <th>Ряд</th>
+                  <th></th>
                 </tr>
-              )}
-            </tbody>
-          </table>
+              </thead>
+              <tbody>
+                {locations.map((loc) => (
+                  <tr key={loc.id}>
+                    <td data-label="Ячейка">
+                      <div className="admin-table__title">{loc.name}</div>
+                      <div className="admin-table__meta">ID: {loc.id}</div>
+                    </td>
+                    <td data-label="Код">{loc.code || "-"}</td>
+                    <td data-label="Зона">{loc.zone || "-"}</td>
+                    <td data-label="Ряд">{loc.aisle || "-"}</td>
+                    <td data-label="Действия" className="admin-table__actions">
+                      <button
+                        type="button"
+                        className="admin-btn admin-btn--secondary"
+                        onClick={() => setEditLocation(loc)}
+                      >
+                        Редактировать
+                      </button>
+                      <button
+                        type="button"
+                        className="admin-btn admin-btn--danger"
+                        onClick={() => setDeleteLocation(loc)}
+                      >
+                        Удалить
+                      </button>
+                    </td>
+                  </tr>
+                ))}
+                {!locations.length && (
+                  <tr>
+                    <td colSpan="5" className="admin-muted">
+                      Нет ячеек.
+                    </td>
+                  </tr>
+                )}
+              </tbody>
+            </table>
+          </div>
         </div>
       )}
 
       {!loading && activeTab === "requests" && (
-        <div className="admin-table-wrapper">
-          <table className="admin-table">
-            <thead>
-              <tr>
-                <th>Заявка</th>
-                <th>Тип</th>
-                <th>Статус</th>
-                <th>Автор</th>
-                <th></th>
-              </tr>
-            </thead>
-            <tbody>
-              {requests.map((req) => (
-                <tr key={req.id}>
-                  <td data-label="Заявка">
-                    <div className="admin-table__title">{req.title}</div>
-                    <div className="admin-table__meta">ID: {req.id}</div>
-                  </td>
-                  <td data-label="Тип">{req.type}</td>
-                  <td data-label="Статус">{req.status}</td>
-                  <td data-label="Автор">{req.createdBy?.name || "-"}</td>
-                  <td data-label="Действия" className="admin-table__actions">
-                    <button
-                      type="button"
-                      className="admin-btn admin-btn--secondary"
-                      onClick={() => setEditRequest(req)}
-                    >
-                      Открыть
-                    </button>
-                  </td>
-                </tr>
-              ))}
-              {!requests.length && (
+        <div className="admin-form">
+          <div className="admin-label" style={{ fontWeight: 700 }}>
+            Заявки
+          </div>
+          <div className="admin-table-wrapper">
+            <table className="admin-table">
+              <thead>
                 <tr>
-                  <td colSpan="5" className="admin-muted">
-                    Нет заявок.
-                  </td>
+                  <th>Заявка</th>
+                  <th>Тип</th>
+                  <th>Статус</th>
+                  <th>Автор</th>
+                  <th></th>
                 </tr>
-              )}
-            </tbody>
-          </table>
+              </thead>
+              <tbody>
+                {requests.map((req) => (
+                  <tr key={req.id}>
+                    <td data-label="Заявка">
+                      <div className="admin-table__title">{req.title}</div>
+                      <div className="admin-table__meta">ID: {req.id}</div>
+                    </td>
+                    <td data-label="Тип">{req.type}</td>
+                    <td data-label="Статус">{req.status}</td>
+                    <td data-label="Автор">{req.createdBy?.name || "-"}</td>
+                    <td data-label="Действия" className="admin-table__actions">
+                      <button
+                        type="button"
+                        className="admin-btn admin-btn--secondary"
+                        onClick={() => setEditRequest(req)}
+                      >
+                        Открыть
+                      </button>
+                    </td>
+                  </tr>
+                ))}
+                {!requests.length && (
+                  <tr>
+                    <td colSpan="5" className="admin-muted">
+                      Нет заявок.
+                    </td>
+                  </tr>
+                )}
+              </tbody>
+            </table>
+          </div>
         </div>
       )}
 
       {!loading && activeTab === "orders" && (
         <div className="admin-form">
+          <div className="admin-label" style={{ fontWeight: 700 }}>
+            Заказы
+          </div>
           <div className="admin-label" style={{ fontWeight: 600 }}>
             Импорт заказов из Excel
           </div>
@@ -987,7 +999,7 @@ export default function AdminWarehousePanel() {
                   />
                 </div>
                 <div>
-                  <label className="admin-label">SKU</label>
+                  <label className="admin-label">Артикул</label>
                   <input
                     className="admin-input"
                     value={itemForm.sku}
@@ -1059,10 +1071,11 @@ export default function AdminWarehousePanel() {
                 </div>
               </div>
               <div>
-                <label className="admin-label">Цена по умолчанию</label>
+                <label className="admin-label">Цена по умолчанию (необязательно)</label>
                 <input
                   className="admin-input"
                   type="number"
+                  placeholder="Например: 120.50"
                   value={itemForm.defaultPrice}
                   onChange={(event) =>
                     setItemForm((prev) => ({

@@ -6,19 +6,17 @@ const API = API_BASE;
 
 /**
  * Печатная форма инвентаризации (акт ревизионной проверки)
- * includeZero = true  → печатать все позиции
- * includeZero = false → печатать только позиции с остатком > 0
+ * includeZero = true  -> печатать все позиции
+ * includeZero = false -> печатать только позиции с остатком > 0
  */
 function openInventoryAuditActWindow(items, includeZero) {
   if (!Array.isArray(items) || items.length === 0) return;
 
-  // 1. Фильтруем список в зависимости от галочки
   const itemsForPrint = items.filter((it) => {
     const stock = it.currentStock ?? 0;
     return includeZero ? true : stock > 0;
   });
 
-  // Если после фильтрации ничего не осталось — предупредим
   if (itemsForPrint.length === 0) {
     alert("Нет позиций для печати акта.");
     return;
@@ -26,7 +24,6 @@ function openInventoryAuditActWindow(items, includeZero) {
 
   const dateStr = new Date().toLocaleDateString("ru-RU");
 
-  // 2. Строки таблицы строим по itemsForPrint
   const rowsHtml = itemsForPrint
     .map((it, index) => {
       const stock = it.currentStock ?? "";
@@ -101,13 +98,31 @@ function openInventoryAuditActWindow(items, includeZero) {
       border-bottom: 1px solid #000;
       margin: 18px 0 4px;
     }
-    .print-btn {
+    .print-actions {
       margin-top: 16px;
+      display: flex;
+      gap: 8px;
+      flex-wrap: wrap;
+    }
+    .print-btn {
       padding: 6px 16px;
       font-size: 13px;
+      border: 1px solid #bbb;
+      border-radius: 8px;
+      background: #fff;
+      cursor: pointer;
+    }
+    .print-btn--primary {
+      border-color: #1890d8;
+      background: #1ba3e0;
+      color: #fff;
+    }
+    .print-btn--ghost {
+      background: #fff;
+      color: #0f172a;
     }
     @media print {
-      .print-btn { display: none; }
+      .print-actions { display: none; }
       body { margin: 0; }
       .a4 { width: auto; margin: 0; }
     }
@@ -126,7 +141,7 @@ function openInventoryAuditActWindow(items, includeZero) {
         <tr>
           <th style="width:25px;">№</th>
           <th>Наименование товара</th>
-          <th style="width:60px;">SKU</th>
+          <th style="width:60px;">Артикул</th>
           <th style="width:40px;">Ед.</th>
           <th style="width:70px;">Остаток по учёту</th>
           <th style="width:80px;">Фактический остаток</th>
@@ -152,8 +167,26 @@ function openInventoryAuditActWindow(items, includeZero) {
       </div>
     </div>
 
-    <button class="print-btn" onclick="window.print()">Печать</button>
+    <div class="print-actions">
+      <button class="print-btn print-btn--primary" onclick="window.print()">Печать</button>
+      <button class="print-btn print-btn--ghost" onclick="returnToApp()">Назад</button>
+    </div>
   </div>
+  <script>
+    function returnToApp() {
+      try {
+        if (window.opener && !window.opener.closed) {
+          window.close();
+          return;
+        }
+      } catch (e) {}
+      if (window.history.length > 1) {
+        window.history.back();
+        return;
+      }
+      window.location.href = '/warehouse';
+    }
+  </script>
 </body>
 </html>
   `;
@@ -162,7 +195,7 @@ function openInventoryAuditActWindow(items, includeZero) {
 }
 
 /**
- * Таб “Текущие остатки”
+ * Вкладка "Текущие остатки"
  */
 export default function StockAuditTab() {
   const token = localStorage.getItem("token");
@@ -172,7 +205,7 @@ export default function StockAuditTab() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [search, setSearch] = useState("");
-  const [includeZeroInPrint, setIncludeZeroInPrint] = useState(false); // ← галочка
+  const [includeZeroInPrint, setIncludeZeroInPrint] = useState(false);
 
   useEffect(() => {
     const load = async () => {
@@ -188,13 +221,11 @@ export default function StockAuditTab() {
         try {
           data = await res.json();
         } catch {
-          throw new Error(
-            "Ответ сервера не похож на JSON при загрузке остатков"
-          );
+          throw new Error("Ответ сервера при загрузке остатков имеет неверный формат.");
         }
 
         if (!res.ok) {
-          throw new Error(data?.message || "Ошибка загрузки остатков");
+          throw new Error(data?.message || "Ошибка загрузки остатков.");
         }
 
         setItems(Array.isArray(data) ? data : []);
@@ -215,11 +246,9 @@ export default function StockAuditTab() {
       alert("Нет данных по остаткам для печати.");
       return;
     }
-    // Передаём флаг includeZeroInPrint
     openInventoryAuditActWindow(items, includeZeroInPrint);
   };
 
-  // Фильтрация по коду (SKU) и названию для таблицы на экране
   const trimmedSearch = search.trim().toLowerCase();
   const visibleItems = trimmedSearch
     ? items.filter((it) => {
@@ -231,15 +260,10 @@ export default function StockAuditTab() {
 
   return (
     <div className="card card--1c">
-      <div
-        className="card1c__header stock-audit-header"
-      >
-        {/* Левая часть: заголовок + галочка */}
+      <div className="card1c__header stock-audit-header">
         <div className="stock-audit-header__left">
           <span>Текущие остатки</span>
-          <label
-            className="stock-audit-header__toggle"
-          >
+          <label className="stock-audit-header__toggle">
             <input
               type="checkbox"
               checked={includeZeroInPrint}
@@ -250,7 +274,6 @@ export default function StockAuditTab() {
           </label>
         </div>
 
-        {/* Правая часть: кнопка печати */}
         <button
           type="button"
           className="btn btn--secondary btn--sm"
@@ -261,17 +284,14 @@ export default function StockAuditTab() {
       </div>
 
       <div className="card1c__body">
-        {/* Поиск по коду / названию */}
         <div className="stock-audit-filters">
-          <span className="stock-audit-filters__label">
-            Поиск по коду / названию:
-          </span>
+          <span className="stock-audit-filters__label">Поиск по коду / названию:</span>
           <input
             type="text"
             className="form__input stock-audit-filters__control"
             value={search}
             onChange={(e) => setSearch(e.target.value)}
-            placeholder="Введите SKU или часть названия..."
+            placeholder="Введите артикул или часть названия..."
           />
         </div>
 
@@ -324,7 +344,7 @@ export default function StockAuditTab() {
                       width: 80,
                     }}
                   >
-                    SKU
+                    Артикул
                   </th>
                   <th
                     style={{
@@ -453,6 +473,3 @@ export default function StockAuditTab() {
     </div>
   );
 }
-
-
-

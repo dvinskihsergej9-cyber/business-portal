@@ -1,10 +1,10 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+﻿import { useEffect, useMemo, useRef, useState } from "react";
 import { apiFetch, normalizeErrorMessage } from "../apiConfig";
 import { useAuth } from "../context/AuthContext";
-const TENANT_CREDENTIALS_KEY = "bp.createdTenantCredentials.v1";
-const sanitizeLoginInput = (value) =>
-  String(value || "").replace(/\s+/g, "_");
 
+const TENANT_CREDENTIALS_KEY = "bp.createdTenantCredentials.v1";
+
+const sanitizeLoginInput = (value) => String(value || "").replace(/\s+/g, "_");
 const normalizeLoginForSubmit = (value) =>
   String(value || "")
     .trim()
@@ -23,12 +23,10 @@ function generatePassword(length = 12) {
   const upper = "ABCDEFGHJKLMNPQRSTUVWXYZ";
   const digits = "23456789";
   const all = `${lower}${upper}${digits}`;
-  const pick = (src) => src[Math.floor(Math.random() * src.length)];
+  const pick = (source) => source[Math.floor(Math.random() * source.length)];
 
   const chars = [pick(lower), pick(upper), pick(digits)];
-  while (chars.length < length) {
-    chars.push(pick(all));
-  }
+  while (chars.length < length) chars.push(pick(all));
 
   for (let i = chars.length - 1; i > 0; i -= 1) {
     const j = Math.floor(Math.random() * (i + 1));
@@ -47,6 +45,22 @@ function readTenantCredentials() {
   } catch {
     return {};
   }
+}
+
+function formatDateTime(value) {
+  if (!value) return "-";
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return "-";
+  return date.toLocaleString("ru-RU");
+}
+
+function getAccessStateLabel(subscription) {
+  if (!subscription) return "нет подписки";
+  if (String(subscription.status || "").toLowerCase() === "paused") {
+    return "приостановлен";
+  }
+  if (subscription.isActive) return "активен";
+  return "не активен";
 }
 
 async function copyText(value) {
@@ -71,10 +85,13 @@ async function copyText(value) {
 export default function TenantManagement() {
   const { user } = useAuth();
   const isSystemOwner = user?.isSystemOwner === true;
+
   const [items, setItems] = useState([]);
   const [loading, setLoading] = useState(true);
   const [submitting, setSubmitting] = useState(false);
   const [deletingTenantId, setDeletingTenantId] = useState(null);
+  const [grantingTenantId, setGrantingTenantId] = useState(null);
+  const [togglingAccessTenantId, setTogglingAccessTenantId] = useState(null);
   const [error, setError] = useState("");
   const [success, setSuccess] = useState("");
   const [tenantSearch, setTenantSearch] = useState("");
@@ -84,6 +101,7 @@ export default function TenantManagement() {
   );
   const [pendingScrollTenantId, setPendingScrollTenantId] = useState(null);
   const [copiedTenantId, setCopiedTenantId] = useState(null);
+
   const tenantRowRefs = useRef({});
   const copiedTenantTimerRef = useRef(null);
 
@@ -129,7 +147,10 @@ export default function TenantManagement() {
 
   useEffect(() => {
     try {
-      localStorage.setItem(TENANT_CREDENTIALS_KEY, JSON.stringify(tenantCredentials));
+      localStorage.setItem(
+        TENANT_CREDENTIALS_KEY,
+        JSON.stringify(tenantCredentials)
+      );
     } catch {
       // ignore storage write errors
     }
@@ -157,6 +178,7 @@ export default function TenantManagement() {
     setSubmitting(true);
     setError("");
     setSuccess("");
+
     try {
       const payload = {
         name: String(form.name || "").trim(),
@@ -177,7 +199,9 @@ export default function TenantManagement() {
 
       const createdTenantId = data?.tenant?.id || null;
       const createdLogin = data?.user?.login || payload.ownerLogin;
-      const createdPassword = data?.user?.initialPassword || payload.ownerPassword;
+      const createdPassword =
+        data?.user?.initialPassword || payload.ownerPassword;
+
       if (createdTenantId) {
         setTenantCredentials((prev) => ({
           ...prev,
@@ -235,6 +259,83 @@ export default function TenantManagement() {
     }
   };
 
+  const handleGrantFreeAccess = async (tenant, days = 30) => {
+    const tenantId = Number(tenant?.id || 0);
+    if (!tenantId) return;
+    if (String(tenant?.code || "") === "platform-owner") return;
+
+    const tenantName = String(tenant?.name || `ID ${tenantId}`);
+    const confirmed = window.confirm(
+      `Продлить клиенту "${tenantName}" бесплатный доступ на ${days} дней?`
+    );
+    if (!confirmed) return;
+
+    setGrantingTenantId(tenantId);
+    setError("");
+    setSuccess("");
+    try {
+      const res = await apiFetch(`/admin/tenants/${tenantId}/grant-free-access`, {
+        method: "POST",
+        headers,
+        body: JSON.stringify({ days }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        throw new Error(data.message || "TENANT_GRANT_FREE_ACCESS_ERROR");
+      }
+      setSuccess(
+        `Клиенту "${tenantName}" продлён бесплатный доступ до ${formatDateTime(
+          data?.subscription?.paidUntil
+        )}.`
+      );
+      await loadTenants();
+    } catch (err) {
+      setError(
+        normalizeErrorMessage(err, "Не удалось продлить бесплатный доступ.")
+      );
+    } finally {
+      setGrantingTenantId(null);
+    }
+  };
+
+  const handleToggleAccess = async (tenant, nextEnabled) => {
+    const tenantId = Number(tenant?.id || 0);
+    if (!tenantId) return;
+    if (String(tenant?.code || "") === "platform-owner") return;
+    if (!tenant?.subscription) return;
+
+    const tenantName = String(tenant?.name || `ID ${tenantId}`);
+    const actionText = nextEnabled ? "возобновить" : "приостановить";
+    const confirmed = window.confirm(
+      `Вы точно хотите ${actionText} доступ клиенту "${tenantName}"?`
+    );
+    if (!confirmed) return;
+
+    setTogglingAccessTenantId(tenantId);
+    setError("");
+    setSuccess("");
+    try {
+      const res = await apiFetch(`/admin/tenants/${tenantId}/toggle-access`, {
+        method: "POST",
+        headers,
+        body: JSON.stringify({ enabled: Boolean(nextEnabled) }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        throw new Error(data.message || "TENANT_TOGGLE_ACCESS_ERROR");
+      }
+      const stateText = data?.accessEnabled ? "включен" : "приостановлен";
+      setSuccess(`Доступ клиента "${tenantName}" ${stateText}.`);
+      await loadTenants();
+    } catch (err) {
+      setError(
+        normalizeErrorMessage(err, "Не удалось изменить состояние доступа клиента.")
+      );
+    } finally {
+      setTogglingAccessTenantId(null);
+    }
+  };
+
   const handleCopyTenantCredentials = async (tenant) => {
     const login = String(
       tenantCredentials[tenant.id]?.login || tenant.adminLogin || ""
@@ -252,7 +353,9 @@ export default function TenantManagement() {
       await copyText(`Логин: ${login}\nПароль: ${password}`);
       setError("");
       setCopiedTenantId(tenant.id);
-      if (copiedTenantTimerRef.current) clearTimeout(copiedTenantTimerRef.current);
+      if (copiedTenantTimerRef.current) {
+        clearTimeout(copiedTenantTimerRef.current);
+      }
       copiedTenantTimerRef.current = setTimeout(() => setCopiedTenantId(null), 1800);
       if (document.activeElement instanceof HTMLElement) {
         document.activeElement.blur();
@@ -320,6 +423,7 @@ export default function TenantManagement() {
               />
             </div>
           </div>
+
           <div className="admin-form__row">
             <div>
               <label className="admin-label">Логин администратора</label>
@@ -395,6 +499,7 @@ export default function TenantManagement() {
             onChange={(event) => setTenantSearch(event.target.value)}
           />
         </div>
+
         {loading ? (
           <div className="admin-muted">Загрузка...</div>
         ) : items.length === 0 ? (
@@ -411,6 +516,7 @@ export default function TenantManagement() {
                   <th>Код клиента</th>
                   <th>Логин администратора</th>
                   <th>Пароль</th>
+                  <th>Доступ до</th>
                   <th>Пользователей</th>
                   <th>Инвайтов</th>
                   <th>Создано</th>
@@ -423,60 +529,95 @@ export default function TenantManagement() {
                     tenantCredentials[item.id]?.login || item.adminLogin || "-";
                   const adminPassword =
                     tenantCredentials[item.id]?.password || item.adminPassword || "-";
+                  const isOwnerTenant = String(item.code || "") === "platform-owner";
+                  const accessEnabled = Boolean(item?.subscription?.isActive);
+                  const canToggleAccess = !isOwnerTenant && Boolean(item?.subscription);
+
                   return (
-                  <tr
-                    key={item.id}
-                    ref={(node) => {
-                      if (node) tenantRowRefs.current[item.id] = node;
-                    }}
-                  >
-                    <td data-label="ID">{item.id}</td>
-                    <td data-label="Компания">{item.name || "-"}</td>
-                    <td data-label="Код клиента">{item.code || "-"}</td>
-                    <td data-label="Логин администратора">
-                      {adminLogin}
-                    </td>
-                    <td data-label="Пароль">
-                      {adminPassword}
-                    </td>
-                    <td data-label="Пользователей">{item?._count?.users || 0}</td>
-                    <td data-label="Инвайтов">{item?._count?.invites || 0}</td>
-                    <td data-label="Создано">
-                      {item.createdAt
-                        ? new Date(item.createdAt).toLocaleString("ru-RU")
-                        : "-"}
-                    </td>
-                    <td data-label="" className="admin-table__actions">
-                      <div className="admin-copy-wrap">
+                    <tr
+                      key={item.id}
+                      ref={(node) => {
+                        if (node) tenantRowRefs.current[item.id] = node;
+                      }}
+                    >
+                      <td data-label="ID">{item.id}</td>
+                      <td data-label="Компания">{item.name || "-"}</td>
+                      <td data-label="Код клиента">{item.code || "-"}</td>
+                      <td data-label="Логин администратора">{adminLogin}</td>
+                      <td data-label="Пароль">{adminPassword}</td>
+                      <td data-label="Доступ до">
+                        {formatDateTime(item?.subscription?.paidUntil)}
+                        <div className="admin-muted" style={{ marginTop: 4 }}>
+                          {getAccessStateLabel(item?.subscription)}
+                        </div>
+                      </td>
+                      <td data-label="Пользователей">{item?._count?.users || 0}</td>
+                      <td data-label="Инвайтов">{item?._count?.invites || 0}</td>
+                      <td data-label="Создано">{formatDateTime(item.createdAt)}</td>
+                      <td data-label="" className="admin-table__actions">
+                        <div className="admin-copy-wrap">
+                          <button
+                            type="button"
+                            className={
+                              "admin-btn admin-btn--ghost admin-copy-btn" +
+                              (copiedTenantId === item.id
+                                ? " admin-copy-btn--copied"
+                                : "")
+                            }
+                            title="Скопировать логин и пароль"
+                            aria-label="Скопировать логин и пароль"
+                            onClick={() => handleCopyTenantCredentials(item)}
+                            disabled={adminPassword === "-"}
+                          >
+                            Скопировать
+                          </button>
+                          {copiedTenantId === item.id ? (
+                            <span className="admin-copy-toast">
+                              Скопировано: логин и пароль
+                            </span>
+                          ) : null}
+                        </div>
+
                         <button
                           type="button"
-                          className={
-                            "admin-btn admin-btn--ghost admin-copy-btn" +
-                            (copiedTenantId === item.id ? " admin-copy-btn--copied" : "")
-                          }
-                          title="Скопировать логин и пароль"
-                          aria-label="Скопировать логин и пароль"
-                          onClick={() => handleCopyTenantCredentials(item)}
-                          disabled={adminPassword === "-"}
+                          className="admin-btn admin-btn--ghost"
+                          onClick={() => handleGrantFreeAccess(item, 30)}
+                          disabled={grantingTenantId === item.id || isOwnerTenant}
                         >
-                          Скопировать
+                          {grantingTenantId === item.id
+                            ? "Продление..."
+                            : "Бесплатно +30 дней"}
                         </button>
-                        {copiedTenantId === item.id ? (
-                          <span className="admin-copy-toast">
-                            Скопировано логин и пароль
-                          </span>
-                        ) : null}
-                      </div>
-                      <button
-                        type="button"
-                        className="admin-btn admin-btn--secondary"
-                        onClick={() => handleDeleteTenant(item)}
-                        disabled={deletingTenantId === item.id}
-                      >
-                        {deletingTenantId === item.id ? "Удаление..." : "Удалить"}
-                      </button>
-                    </td>
-                  </tr>
+
+                        <button
+                          type="button"
+                          className="admin-btn admin-btn--ghost"
+                          onClick={() => handleToggleAccess(item, !accessEnabled)}
+                          disabled={
+                            togglingAccessTenantId === item.id ||
+                            grantingTenantId === item.id ||
+                            !canToggleAccess
+                          }
+                        >
+                          {togglingAccessTenantId === item.id
+                            ? "Смена..."
+                            : !canToggleAccess
+                            ? "Нет подписки"
+                            : accessEnabled
+                            ? "Приостановить доступ"
+                            : "Возобновить доступ"}
+                        </button>
+
+                        <button
+                          type="button"
+                          className="admin-btn admin-btn--secondary"
+                          onClick={() => handleDeleteTenant(item)}
+                          disabled={deletingTenantId === item.id || isOwnerTenant}
+                        >
+                          {deletingTenantId === item.id ? "Удаление..." : "Удалить"}
+                        </button>
+                      </td>
+                    </tr>
                   );
                 })}
               </tbody>

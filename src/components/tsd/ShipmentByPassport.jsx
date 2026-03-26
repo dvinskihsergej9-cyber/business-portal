@@ -174,6 +174,7 @@ export default function ShipmentByPassport({ authHeaders, onBack }) {
           manualPlaceholder="bp:order:123 или ID заказа"
           onScan={handleScan}
           disabled={loading}
+          scanKind="qr"
         />
 
         {order ? (

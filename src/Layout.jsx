@@ -1,12 +1,26 @@
 import { useEffect, useMemo, useState } from "react";
-import { NavLink, Outlet, useLocation } from "react-router-dom";
+import { NavLink, Outlet, useLocation, useNavigate } from "react-router-dom";
 import { useAuth } from "./context/AuthContext";
 import { hasPermission, PERMISSION_KEYS } from "./utils/permissions";
 import { APP_LOGO_DATA_URL } from "./assets/appLogoDataUrl";
+import NotificationBell from "./components/NotificationBell";
 
 const DATE_INPUT_SELECTOR =
   'input[type="date"], input[type="datetime-local"], input[type="month"]';
 const APP_LOGO_SRC = APP_LOGO_DATA_URL;
+const WAREHOUSE_SECTION_TITLE_MAP = {
+  tasks: "\u0417\u0430\u0434\u0430\u0447\u0438 \u0441\u043a\u043b\u0430\u0434\u0430",
+  inventory: "\u041e\u0441\u0442\u0430\u0442\u043a\u0438",
+  holds: "\u0411\u043b\u043e\u043a\u0438\u0440\u043e\u0432\u043a\u0430 \u043e\u0441\u0442\u0430\u0442\u043a\u043e\u0432",
+  movement: "\u0418\u0441\u0442\u043e\u0440\u0438\u044f \u0434\u0432\u0438\u0436\u0435\u043d\u0438\u0439",
+  transactions: "\u0422\u0440\u0430\u043d\u0437\u0430\u043a\u0446\u0438\u0438",
+  revision: "\u0420\u0435\u0432\u0438\u0437\u0438\u044f",
+  suppliers: "\u041f\u043e\u0441\u0442\u0430\u0432\u0449\u0438\u043a\u0438",
+  locations: "\u0421\u043f\u0440\u0430\u0432\u043e\u0447\u043d\u0438\u043a \u044f\u0447\u0435\u0435\u043a",
+  items: "\u0421\u043f\u0440\u0430\u0432\u043e\u0447\u043d\u0438\u043a \u0442\u043e\u0432\u0430\u0440\u043e\u0432",
+  queue: "\u041c\u0430\u0448\u0438\u043d\u044b \u043f\u043e\u0441\u0442\u0430\u0432\u0449\u0438\u043a\u043e\u0432",
+  tsd: "\u041c\u043e\u0431\u0438\u043b\u044c\u043d\u044b\u0439 \u0422\u0421\u0414",
+};
 
 function openDatePicker(input) {
   if (!input) return;
@@ -32,39 +46,124 @@ function openDatePicker(input) {
   }
 }
 
+function MenuIcon({ type, active = false }) {
+  const stroke = active ? "#0b67c0" : "#64748b";
+  const fill = active ? "rgba(14, 165, 233, 0.14)" : "transparent";
+
+  if (type === "warehouse") {
+    return (
+      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+        <path
+          d="M4.5 10.5 12 6l7.5 4.5v8L12 21l-7.5-2.5v-8Z"
+          stroke={stroke}
+          strokeWidth="1.8"
+          fill={fill}
+        />
+        <path d="M4.5 10.5 12 15l7.5-4.5" stroke={stroke} strokeWidth="1.6" />
+        <path
+          d="M8.6 12.5h6.8M8.6 15.2h4.4"
+          stroke={stroke}
+          strokeWidth="1.4"
+          strokeLinecap="round"
+        />
+      </svg>
+    );
+  }
+
+  if (type === "news") {
+    return (
+      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+        <rect
+          x="3.5"
+          y="4.5"
+          width="17"
+          height="15"
+          rx="2.5"
+          stroke={stroke}
+          strokeWidth="1.8"
+          fill={fill}
+        />
+        <path
+          d="M7.5 9h9M7.5 12.5h9M7.5 16h6"
+          stroke={stroke}
+          strokeWidth="1.6"
+          strokeLinecap="round"
+        />
+      </svg>
+    );
+  }
+
+  return (
+    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+      <path
+        d="M12 3.5 4 7.5v5c0 4.2 3.1 7.5 8 8.5 4.9-1 8-4.3 8-8.5v-5l-8-4Z"
+        stroke={stroke}
+        strokeWidth="1.8"
+        fill={fill}
+      />
+      <path
+        d="M8.5 12.2 11 14.7l4.7-4.7"
+        stroke={stroke}
+        strokeWidth="1.8"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+    </svg>
+  );
+}
+
+function BackIcon() {
+  return (
+    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+      <path d="M15.5 4.5 8 12l7.5 7.5" stroke="#334155" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
+    </svg>
+  );
+}
+
 export default function Layout() {
   const { user, logout } = useAuth();
+  const navigate = useNavigate();
   const location = useLocation();
   const [isMobile, setIsMobile] = useState(false);
-  const [drawerOpen, setDrawerOpen] = useState(false);
-  const menu = [
-    {
-      label: "\u0421\u043a\u043b\u0430\u0434",
-      to: "/warehouse",
-      permission: PERMISSION_KEYS.APP_WAREHOUSE,
-    },
-    {
-      label: "\u0422\u041c\u0426 \u0438 \u0420\u041c",
-      to: "/tmc",
-      permission: PERMISSION_KEYS.APP_TMC,
-    },
-    {
-      label: "\u0410\u0434\u043c\u0438\u043d\u0438\u0441\u0442\u0440\u0438\u0440\u043e\u0432\u0430\u043d\u0438\u0435",
-      to: "/admin",
-      permission: PERMISSION_KEYS.APP_ADMIN,
-    },
-  ];
+
+  const menu = useMemo(
+    () => [
+      {
+        label: "Склад",
+        shortLabel: "Склад",
+        icon: "warehouse",
+        to: "/warehouse",
+        permission: PERMISSION_KEYS.APP_WAREHOUSE,
+      },
+      {
+        label: "Новости платформы",
+        shortLabel: "Новости",
+        icon: "news",
+        to: "/news",
+      },
+      {
+        label: "Управление",
+        shortLabel: "Управление",
+        icon: "admin",
+        to: "/admin",
+        permission: PERMISSION_KEYS.APP_ADMIN,
+      },
+    ],
+    []
+  );
 
   const allowedMenu = user
     ? menu.filter((item) => hasPermission(user, item.permission))
     : [];
-
-  const pageTitle = useMemo(() => {
-    if (location.pathname.startsWith("/admin")) return "\u0410\u0434\u043c\u0438\u043d\u0438\u0441\u0442\u0440\u0438\u0440\u043e\u0432\u0430\u043d\u0438\u0435";
-    if (location.pathname.startsWith("/tmc")) return "\u0422\u041c\u0426 \u0438 \u0420\u041c";
-    if (location.pathname.startsWith("/warehouse")) return "\u0421\u043a\u043b\u0430\u0434";
-    return "\u0421\u043a\u043b\u0430\u0434\u041e\u043d\u043b\u0430\u0439\u043d";
-  }, [location.pathname]);
+  const sectionParam = new URLSearchParams(location.search || "").get("section");
+  const isWarehouseNested = location.pathname === "/warehouse" && Boolean(sectionParam);
+  const isTopLevelMenuRoute = allowedMenu.some((item) => item.to === location.pathname);
+  const showBack = isWarehouseNested || !isTopLevelMenuRoute;
+  const activeMenuItem = allowedMenu.find((item) => item.to === location.pathname) || null;
+  const currentPageTitle =
+    location.pathname === "/warehouse" && sectionParam
+      ? WAREHOUSE_SECTION_TITLE_MAP[sectionParam] || activeMenuItem?.label || "\u0421\u043a\u043b\u0430\u0434"
+      : activeMenuItem?.label || "\u0420\u0430\u0437\u0434\u0435\u043b";
 
   useEffect(() => {
     const media = window.matchMedia("(max-width: 768px)");
@@ -73,22 +172,6 @@ export default function Layout() {
     media.addEventListener("change", onChange);
     return () => media.removeEventListener("change", onChange);
   }, []);
-
-  useEffect(() => {
-    if (drawerOpen) {
-      setDrawerOpen(false);
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [location.pathname]);
-
-  useEffect(() => {
-    if (!drawerOpen) return;
-    const onKeyDown = (e) => {
-      if (e.key === "Escape") setDrawerOpen(false);
-    };
-    window.addEventListener("keydown", onKeyDown);
-    return () => window.removeEventListener("keydown", onKeyDown);
-  }, [drawerOpen]);
 
   useEffect(() => {
     const onDocumentClick = (event) => {
@@ -107,7 +190,10 @@ export default function Layout() {
       let node = target;
       for (let depth = 0; node && depth < 8; depth += 1) {
         const dateInputs = node.querySelectorAll(DATE_INPUT_SELECTOR);
-        if (dateInputs.length === 1 && dateInputs[0] instanceof HTMLInputElement) {
+        if (
+          dateInputs.length === 1 &&
+          dateInputs[0] instanceof HTMLInputElement
+        ) {
           const dateInput = dateInputs[0];
           const rowRect = node.getBoundingClientRect();
           const inputRect = dateInput.getBoundingClientRect();
@@ -133,19 +219,36 @@ export default function Layout() {
     logout();
   };
 
+  const handleBack = () => {
+    if (!showBack) return;
+
+    if (location.pathname === "/warehouse") {
+      const event = new CustomEvent("portal:warehouse-back", { cancelable: true });
+      window.dispatchEvent(event);
+      if (event.defaultPrevented) {
+        return;
+      }
+    }
+
+    if (window.history.length > 1) {
+      navigate(-1);
+      return;
+    }
+
+    const fallbackRoute = allowedMenu[0]?.to || "/warehouse";
+    if (location.pathname !== fallbackRoute) {
+      navigate(fallbackRoute);
+    }
+  };
+
   const rootStyle = isMobile ? styles.rootMobile : styles.root;
   const sidebarStyle = isMobile
     ? { ...styles.sidebar, display: "none" }
     : styles.sidebar;
-  const headerStyle = isMobile
-    ? { ...styles.header, ...styles.headerMobile }
-    : styles.header;
 
   return (
     <div style={rootStyle}>
-      {/* Сайдбар */}
       <aside style={sidebarStyle}>
-        {/* Лого / название */}
         <div style={styles.logoBlock}>
           <img
             src={APP_LOGO_SRC}
@@ -160,7 +263,6 @@ export default function Layout() {
           </div>
         </div>
 
-        {/* Карточка пользователя */}
         {user && (
           <div style={styles.userCard}>
             <div style={styles.userName}>{user.name}</div>
@@ -169,120 +271,86 @@ export default function Layout() {
           </div>
         )}
 
-        {/* Навигация */}
         <nav style={styles.nav} className="sidebar-nav">
           {allowedMenu.map((item) => (
             <NavLink
               key={item.to}
               to={item.to}
-              onClick={() => setDrawerOpen(false)}
               style={({ isActive }) =>
                 isActive
                   ? { ...styles.navItem, ...styles.navItemActive }
                   : styles.navItem
               }
             >
+              <MenuIcon type={item.icon} active={false} />
               <span>{item.label}</span>
             </NavLink>
           ))}
         </nav>
-
       </aside>
 
-      {/* Правая часть: шапка + контент */}
       <div style={styles.main}>
-        <header style={headerStyle} className="portal-header">
-          <div style={styles.headerRow}>
-            <div style={styles.headerLeft}>
-              {isMobile && (
-                <button
-                  type="button"
-                  onClick={() => setDrawerOpen(true)}
-                  style={styles.burgerBtn}
-                  aria-label="Открыть меню"
-                  aria-expanded={drawerOpen}
-                >
-                  ☰
-                </button>
-              )}
-              <div>
-                <div style={styles.headerTitle}>{pageTitle}</div>
-                <div style={styles.headerSubtitle}>
-                  {user
-                    ? `Пользователь: ${user.name} (${user.role})`
-                    : "Вы не авторизованы"}
-                </div>
-              </div>
-            </div>
-            <div style={styles.headerActions}>
-              {!isMobile && (
-                <div style={styles.headerUserInfo}>
-                  {user?.name || "Пользователь"}
-                </div>
-              )}
-              <button
-                type="button"
-                style={styles.headerLogoutBtn}
-                onClick={handleLogout}
-              >
-                Выйти
-              </button>
-            </div>
+        <header
+          style={isMobile ? styles.topBarMobile : styles.topBar}
+          className="portal-topbar"
+        >
+          <div style={styles.topBarLeft}>
+            {showBack && (
+            <button
+              type="button"
+              style={styles.backBtn}
+              onClick={handleBack}
+              aria-label="Назад"
+            >
+              <BackIcon />
+              <span>Назад</span>
+            </button>
+            )}
+          </div>
+
+          <div style={styles.topBarTitle} title={currentPageTitle}>
+            {currentPageTitle}
+          </div>
+
+          <div style={styles.topBarActions}>
+            {user && <NotificationBell />}
+            <button type="button" style={styles.headerLogoutBtn} onClick={handleLogout}>
+              Выйти
+            </button>
           </div>
         </header>
 
-        <main style={styles.content} className="portal-surface">
+        <main
+          style={isMobile ? { ...styles.content, ...styles.contentMobile } : styles.content}
+          className="portal-surface"
+        >
           <Outlet />
         </main>
       </div>
 
-      {/* Мобильное меню (drawer) */}
-      {isMobile && drawerOpen && (
-        <div
-          style={styles.drawerOverlay}
-          onClick={() => setDrawerOpen(false)}
-          role="presentation"
-        >
-          <aside
-            style={styles.drawerPanel}
-            onClick={(e) => e.stopPropagation()}
-            role="dialog"
-            aria-modal="true"
-            aria-label="Навигация"
-          >
-            <div style={styles.drawerHeader}>
-              <img
-                src={APP_LOGO_SRC}
-                alt="Логотип"
-                style={styles.logoMarkImage}
-                loading="eager"
-                decoding="sync"
-              />
-              <div>
-                <div style={styles.logoTitle}>СкладОнлайн</div>
-                <div style={styles.logoSubtitle}>Меню</div>
-              </div>
-            </div>
-
-            <nav style={styles.drawerNav} className="sidebar-nav">
-              {allowedMenu.map((item) => (
-                <NavLink
-                  key={`drawer-${item.to}`}
-                  to={item.to}
-                  onClick={() => setDrawerOpen(false)}
-                  style={({ isActive }) =>
-                    isActive
-                      ? { ...styles.navItem, ...styles.navItemActive }
-                      : styles.navItem
-                  }
-                >
-                  <span>{item.label}</span>
-                </NavLink>
-              ))}
-            </nav>
-
-          </aside>
-        </div>
+      {isMobile && (
+        <nav style={styles.mobileBottomNav} className="mobile-bottom-nav">
+          {allowedMenu.map((item) => (
+            <NavLink
+              key={`mobile-bottom-${item.to}`}
+              to={item.to}
+              style={({ isActive }) =>
+                isActive
+                  ? { ...styles.mobileBottomNavItem, ...styles.mobileBottomNavItemActive }
+                  : styles.mobileBottomNavItem
+              }
+            >
+              {({ isActive }) => (
+                <>
+                  <span style={styles.mobileBottomNavIconWrap}>
+                    <MenuIcon type={item.icon} active={isActive} />
+                  </span>
+                  <span style={styles.mobileBottomNavLabel}>{item.shortLabel}</span>
+                </>
+              )}
+            </NavLink>
+          ))}
+        </nav>
       )}
     </div>
   );
@@ -318,13 +386,6 @@ const styles = {
     background: "#eff6ff",
     border: "1px solid #dbeafe",
     gap: 14,
-  },
-  logoMark: {
-    width: 28,
-    height: 28,
-    borderRadius: 8,
-    background:
-      "linear-gradient(135deg, #2563eb 0%, #1e40af 40%, #93c5fd 100%)",
   },
   logoMarkImage: {
     width: 68,
@@ -375,23 +436,23 @@ const styles = {
   navItem: {
     display: "flex",
     alignItems: "center",
-    padding: "8px 10px",
-    borderRadius: 8,
+    padding: "9px 11px",
+    borderRadius: 10,
     textDecoration: "none",
-    color: "#374151",
+    color: "#334155",
     fontSize: 14,
+    fontWeight: 600,
     gap: 8,
     background: "transparent",
-    border: "1px solid #111827", // чёрная рамка всегда
+    border: "1px solid #d1d5db",
     transition:
       "background 0.15s ease, color 0.15s ease, border 0.15s ease, box-shadow 0.15s ease",
   },
   navItemActive: {
-    background: "#ffffff",
-    color: "#1d4ed8",
-    borderColor: "#2563eb", // активный — синяя рамка
+    background: "#eff6ff",
+    color: "#0b67c0",
+    borderColor: "#bfdbfe",
     boxShadow: "0 0 0 1px rgba(37, 99, 235, 0.12)",
-    fontWeight: 600,
   },
   main: {
     flex: 1,
@@ -399,116 +460,140 @@ const styles = {
     flexDirection: "column",
     minWidth: 0,
   },
-  header: {
-    padding: "14px 26px",
-    background: "rgba(255,255,255,0.9)",
-    borderBottom: "1px solid #e5e7eb",
-    boxShadow: "0 1px 4px rgba(15, 23, 42, 0.04)",
-    backdropFilter: "blur(6px)",
+  topBar: {
     position: "sticky",
     top: 0,
-    zIndex: 5,
-  },
-  headerMobile: {
-    padding: "12px 14px",
-  },
-  headerRow: {
-    display: "flex",
+    zIndex: 45,
+    minHeight: 52,
+    display: "grid",
+    gridTemplateColumns: "minmax(0, 1fr) auto minmax(0, 1fr)",
     alignItems: "center",
-    justifyContent: "space-between",
-    gap: 12,
+    padding: "6px 16px",
+    borderBottom: "1px solid rgba(15, 23, 42, 0.08)",
+    background: "rgba(248, 250, 252, 0.9)",
+    backdropFilter: "blur(8px)",
   },
-  headerLeft: {
-    display: "flex",
-    alignItems: "center",
-    gap: 10,
-    minWidth: 0,
+  topBarMobile: {
+    position: "sticky",
+    top: 0,
+    zIndex: 120,
+    minHeight: "calc(env(safe-area-inset-top, 0px) + 52px)",
+    display: "grid",
+    gridTemplateColumns: "minmax(0, 1fr) auto minmax(0, 1fr)",
+    alignItems: "flex-end",
+    padding: "calc(env(safe-area-inset-top, 0px) + 6px) 10px 6px",
+    borderBottom: "1px solid rgba(15, 23, 42, 0.08)",
+    background: "rgba(248, 250, 252, 0.92)",
+    backdropFilter: "blur(10px)",
   },
-  headerActions: {
+  backBtn: {
+    minHeight: 34,
+    padding: "7px 10px",
+    borderRadius: 10,
+    border: "1px solid #d1d5db",
+    background: "#ffffff",
+    color: "#334155",
+    fontSize: 13,
+    fontWeight: 600,
     display: "inline-flex",
     alignItems: "center",
-    gap: 10,
-    marginLeft: 12,
-    flexShrink: 0,
+    gap: 6,
+    boxShadow: "none",
   },
-  headerUserInfo: {
-    fontSize: 13,
-    color: "#4b5563",
+  topBarLeft: {
+    justifySelf: "start",
+    display: "inline-flex",
+    alignItems: "center",
+    minHeight: 34,
+    minWidth: 72,
+  },
+  topBarTitle: {
+    justifySelf: "center",
+    maxWidth: "min(64vw, 460px)",
+    textAlign: "center",
+    fontSize: 16,
+    fontWeight: 700,
+    lineHeight: 1.2,
+    color: "#0f172a",
     whiteSpace: "nowrap",
+    overflow: "hidden",
+    textOverflow: "ellipsis",
+    pointerEvents: "none",
+  },
+  topBarActions: {
+    justifySelf: "end",
+    display: "inline-flex",
+    alignItems: "center",
+    gap: 8,
   },
   headerLogoutBtn: {
     padding: "7px 12px",
-    borderRadius: 8,
+    borderRadius: 10,
     border: "1px solid #d1d5db",
     background: "#ffffff",
     color: "#111827",
     fontSize: 13,
+    fontWeight: 600,
     cursor: "pointer",
     textAlign: "center",
     whiteSpace: "nowrap",
-  },
-  burgerBtn: {
-    width: 40,
-    height: 40,
-    borderRadius: 10,
-    border: "1px solid #e5e7eb",
-    background: "#ffffff",
-    color: "#0f172a",
-    fontSize: 20,
-    lineHeight: 1,
-    display: "inline-flex",
-    alignItems: "center",
-    justifyContent: "center",
-    cursor: "pointer",
-  },
-  headerTitle: {
-    fontSize: 20,
-    fontWeight: 600,
-  },
-  headerSubtitle: {
-    fontSize: 13,
-    color: "#6b7280",
-    marginTop: 2,
+    boxShadow: "none",
   },
   content: {
-    padding: "0",
+    padding: 0,
     flex: 1,
     boxSizing: "border-box",
   },
-  drawerOverlay: {
+  contentMobile: {
+    paddingBottom: "calc(env(safe-area-inset-bottom, 0px) + 108px)",
+  },
+  mobileBottomNav: {
     position: "fixed",
-    inset: 0,
-    background: "rgba(15, 23, 42, 0.45)",
-    zIndex: 60,
-    display: "flex",
-    alignItems: "stretch",
+    left: 0,
+    right: 0,
+    bottom: 0,
+    zIndex: 120,
+    display: "grid",
+    gridTemplateColumns: "repeat(3, minmax(0, 1fr))",
+    gap: 4,
+    padding: "8px 8px calc(env(safe-area-inset-bottom, 0px) + 8px)",
+    borderTop: "1px solid rgba(191, 219, 254, 0.95)",
+    borderRadius: "16px 16px 0 0",
+    background: "rgba(255, 255, 255, 0.97)",
+    boxShadow: "0 -10px 24px rgba(15, 23, 42, 0.16)",
+    backdropFilter: "blur(12px)",
   },
-  drawerPanel: {
-    width: "min(84vw, 320px)",
-    background: "#ffffff",
-    borderRight: "1px solid #e5e7eb",
-    boxShadow: "8px 0 24px rgba(15, 23, 42, 0.18)",
-    padding: "16px 14px 20px",
-    display: "flex",
+  mobileBottomNavItem: {
+    display: "inline-flex",
     flexDirection: "column",
-    gap: 12,
-    animation: "portal-rise 0.18s ease-out",
-  },
-  drawerHeader: {
-    display: "flex",
     alignItems: "center",
-    gap: 10,
-    padding: "6px 8px",
-    borderRadius: 12,
-    background: "#eff6ff",
-    border: "1px solid #dbeafe",
-    marginBottom: 6,
+    justifyContent: "center",
+    gap: 3,
+    minHeight: 48,
+    borderRadius: 11,
+    textDecoration: "none",
+    color: "#64748b",
+    background: "transparent",
+    padding: "5px 2px",
   },
-  drawerNav: {
-    flex: 1,
-    display: "flex",
-    flexDirection: "column",
-    gap: 6,
-    marginTop: 2,
+  mobileBottomNavItemActive: {
+    color: "#0b67c0",
+    background: "#eff6ff",
+  },
+  mobileBottomNavIconWrap: {
+    height: 18,
+    display: "inline-flex",
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  mobileBottomNavLabel: {
+    display: "block",
+    fontSize: 10,
+    fontWeight: 600,
+    lineHeight: 1.1,
+    letterSpacing: 0,
+    textAlign: "center",
+    whiteSpace: "normal",
+    overflowWrap: "anywhere",
   },
 };

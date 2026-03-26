@@ -7,7 +7,14 @@ import {
 
 const API = API_BASE;
 
-export default function WarehouseLocationsPanel() {
+const LAYOUT_OPTIONS = [
+  { value: "A4", label: "A4 (крупные)" },
+  { value: "A4_12", label: "A4 (сетка 12 шт.)" },
+  { value: "LABEL_58X40", label: "Стикер 58x40 мм" },
+  { value: "LABEL_70X50", label: "Стикер 70x50 мм" },
+];
+
+export default function WarehouseLocationsPanel({ mode = "both" }) {
   const [locations, setLocations] = useState([]);
   const [loading, setLoading] = useState(true);
   const [items, setItems] = useState([]);
@@ -16,7 +23,9 @@ export default function WarehouseLocationsPanel() {
   const [message, setMessage] = useState("");
   const [createLoading, setCreateLoading] = useState(false);
   const [actionLoading, setActionLoading] = useState(false);
-  const [subtab, setSubtab] = useState("location");
+  const [subtab, setSubtab] = useState(
+    mode === "items" ? "item" : "location"
+  );
   const [editLoading, setEditLoading] = useState(false);
   const [deleteLoading, setDeleteLoading] = useState(false);
   const [qrResetLoading, setQrResetLoading] = useState(false);
@@ -32,6 +41,7 @@ export default function WarehouseLocationsPanel() {
   const [selectedId, setSelectedId] = useState("");
   const [itemPick, setItemPick] = useState("");
   const [selectedItems, setSelectedItems] = useState([]);
+  const [selectedLocationsForPrint, setSelectedLocationsForPrint] = useState([]);
   const [qty, setQty] = useState(1);
   const [layout, setLayout] = useState("A4");
   const [editForm, setEditForm] = useState({
@@ -41,6 +51,16 @@ export default function WarehouseLocationsPanel() {
     rack: "",
     level: "",
   });
+
+  useEffect(() => {
+    if (mode === "items") {
+      setSubtab("item");
+      return;
+    }
+    if (mode === "locations") {
+      setSubtab("location");
+    }
+  }, [mode]);
 
   const authHeaders = useMemo(() => {
     const token = localStorage.getItem("token");
@@ -160,7 +180,13 @@ export default function WarehouseLocationsPanel() {
       return;
     }
 
-    if (!selectedId) {
+    const printLocationIds = selectedLocationsForPrint.length
+      ? selectedLocationsForPrint.map((entry) => Number(entry.id)).filter(Boolean)
+      : selectedId
+        ? [Number(selectedId)]
+        : [];
+
+    if (!printLocationIds.length) {
       setError("Выберите ячейку.");
       try {
         if (!printWindow.closed) printWindow.close();
@@ -174,14 +200,16 @@ export default function WarehouseLocationsPanel() {
       setActionLoading(true);
       setError("");
       setMessage("");
-      const locationId = Number(selectedId);
-      await ensureLocationQr(locationId);
+      for (const locationId of printLocationIds) {
+        // Перед печатью гарантируем наличие QR.
+        await ensureLocationQr(locationId);
+      }
       const res = await fetch(`${API}/warehouse/print/labels`, {
         method: "POST",
         headers: authHeaders,
         body: JSON.stringify({
           kind: "location",
-          ids: [locationId],
+          ids: printLocationIds,
           qtyPerId: Number(qty) || 1,
           layout,
         }),
@@ -331,6 +359,17 @@ export default function WarehouseLocationsPanel() {
     setItemPick("");
   };
 
+  const handleAddLocationForPrint = () => {
+    const id = Number(selectedId);
+    if (!id) return;
+    const selected = locations.find((entry) => entry.id === id);
+    if (!selected) return;
+    setSelectedLocationsForPrint((prev) => {
+      if (prev.find((entry) => entry.id === selected.id)) return prev;
+      return [...prev, selected];
+    });
+  };
+
   const handlePrintItems = async () => {
     const printWindow = prepareDocumentTab({ title: "Этикетки товаров" });
     if (!printWindow) {
@@ -409,6 +448,7 @@ export default function WarehouseLocationsPanel() {
 
   return (
     <div className="warehouse-locations">
+      {mode !== "items" && (
       <div style={{ display: "grid", gap: 6 }}>
         <div style={{ fontSize: 18, fontWeight: 700 }}>
           {"Справочник ячеек"}
@@ -417,9 +457,11 @@ export default function WarehouseLocationsPanel() {
           {"Создайте ячейку, создайте QR-этикетку и используйте её в ТСД."}
         </div>
       </div>
+      )}
       {error && <div className="alert alert--error">{error}</div>}
       {message && <div className="alert alert--success">{message}</div>}
 
+      {mode === "both" && (
       <div className="tabs tabs--sm">
         <button
           type="button"
@@ -441,8 +483,9 @@ export default function WarehouseLocationsPanel() {
           {"Товары / QR"}
         </button>
       </div>
+      )}
 
-      {subtab === "location" && (
+      {(mode === "locations" || subtab === "location") && (
         <div className="warehouse-locations__grid">
           <div className="card">
             <h3 className="card__title">{`Создать ячейку`}</h3>
@@ -539,6 +582,53 @@ export default function WarehouseLocationsPanel() {
                   </option>
                 ))}
               </select>
+
+              <div className="warehouse-locations__actions">
+                <button
+                  type="button"
+                  className="btn btn--secondary"
+                  onClick={handleAddLocationForPrint}
+                  disabled={!selectedId}
+                >
+                  {"Добавить в печать"}
+                </button>
+                <button
+                  type="button"
+                  className="btn btn--ghost"
+                  onClick={() => setSelectedLocationsForPrint([])}
+                  disabled={!selectedLocationsForPrint.length}
+                >
+                  {"Очистить список"}
+                </button>
+              </div>
+
+              {selectedLocationsForPrint.length > 0 && (
+                <div className="warehouse-locations__list">
+                  {selectedLocationsForPrint.map((entry) => (
+                    <div className="warehouse-locations__list-item" key={entry.id}>
+                      <div>
+                        <div className="warehouse-locations__list-title">
+                          {entry.name || `Ячейка ${entry.id}`}
+                        </div>
+                        <div className="warehouse-locations__list-meta">
+                          {`ID: ${entry.id}`}
+                        </div>
+                      </div>
+                      <button
+                        type="button"
+                        className="btn btn--ghost"
+                        onClick={() =>
+                          setSelectedLocationsForPrint((prev) =>
+                            prev.filter((item) => item.id !== entry.id)
+                          )
+                        }
+                      >
+                        &times;
+                      </button>
+                    </div>
+                  ))}
+                </div>
+              )}
 
             {selectedLocation && (
               <div className="warehouse-locations__meta">
@@ -684,8 +774,11 @@ export default function WarehouseLocationsPanel() {
                     value={layout}
                     onChange={(event) => setLayout(event.target.value)}
                   >
-                    <option value="A4">A4</option>
-                    <option value="label">Label</option>
+                    {LAYOUT_OPTIONS.map((option) => (
+                      <option key={option.value} value={option.value}>
+                        {option.label}
+                      </option>
+                    ))}
                   </select>
                 </div>
               </div>
@@ -715,7 +808,7 @@ export default function WarehouseLocationsPanel() {
         </div>
       )}
 
-      {subtab === "item" && (
+      {(mode === "items" || subtab === "item") && (
         <div className="warehouse-locations__grid warehouse-locations__grid--single">
           <div className="card">
             <h3 className="card__title">{`QR для товара`}</h3>
@@ -757,7 +850,7 @@ export default function WarehouseLocationsPanel() {
                         </div>
                         {item.sku && (
                           <div className="warehouse-locations__list-meta">
-                            SKU: {item.sku}
+                            Артикул: {item.sku}
                           </div>
                         )}
                       </div>
@@ -795,8 +888,11 @@ export default function WarehouseLocationsPanel() {
                     value={layout}
                     onChange={(event) => setLayout(event.target.value)}
                   >
-                    <option value="A4">A4</option>
-                    <option value="label">Label</option>
+                    {LAYOUT_OPTIONS.map((option) => (
+                      <option key={option.value} value={option.value}>
+                        {option.label}
+                      </option>
+                    ))}
                   </select>
                 </div>
               </div>
@@ -818,12 +914,12 @@ export default function WarehouseLocationsPanel() {
         </div>
       )}
 
-      {loading && (
+      {loading && (mode !== "items") && (
         <div className="text-muted">
           {`Загрузка ячеек...`}
         </div>
       )}
-      {itemsLoading && (
+      {itemsLoading && (mode !== "locations") && (
         <div className="text-muted">
           {`Загрузка товаров...`}
         </div>

@@ -405,7 +405,9 @@ export default function MobileTsd() {
       }
       return data;
     } catch (err) {
-      throw new Error(normalizeErrorMessage(err, "Ошибка запроса."));
+      throw new Error(
+        normalizeErrorMessage(err, "Не удалось распознать код. Повторите ввод.")
+      );
     }
   };
 
@@ -485,7 +487,17 @@ export default function MobileTsd() {
     if (resolvedType && resolvedType !== "location") {
       throw new Error("Это не ячейка.");
     }
-    throw lastError || new Error("Ячейка не найдена.");
+    if (lastError) {
+      const lastMessage = String(lastError?.message || "").trim();
+      if (
+        lastMessage === "Код не найден." ||
+        lastMessage === "Не удалось распознать код. Повторите ввод."
+      ) {
+        throw new Error("Ячейка не найдена.");
+      }
+      throw lastError;
+    }
+    throw new Error("Ячейка не найдена.");
   };
 
   const handleCountLocation = async (code) => {

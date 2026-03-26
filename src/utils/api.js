@@ -5,7 +5,7 @@ const api = axios.create({
   baseURL: API_BASE,
 });
 
-// Автоматически вставляет токен в каждый запрос
+// Автоматически подставляет токен в каждый запрос.
 api.interceptors.request.use((config) => {
   const token = localStorage.getItem("token");
   if (token) config.headers.Authorization = `Bearer ${token}`;
@@ -15,7 +15,7 @@ api.interceptors.request.use((config) => {
 api.interceptors.response.use(
   (response) => response,
   (error) => {
-    const message = normalizeErrorMessage(error, "Ошибка запроса.");
+    const message = normalizeErrorMessage(error, "Не удалось выполнить запрос.");
     return Promise.reject(new Error(message));
   }
 );

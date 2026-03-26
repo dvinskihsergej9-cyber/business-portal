@@ -186,6 +186,19 @@
   opacity: 0.45;
 }
 
+.admin-corner-refresh-btn,
+.admin-corner-refresh-btn:hover,
+.admin-corner-refresh-btn:active,
+.admin-corner-refresh-btn:focus,
+.admin-corner-refresh-btn:focus-visible {
+  -webkit-tap-highlight-color: transparent;
+  background: #ffffff !important;
+  border: 1px solid #e5e7eb !important;
+  color: #9ca3af !important;
+  box-shadow: none !important;
+  outline: none !important;
+}
+
 .admin-table__actions .admin-copy-btn {
   width: auto;
   min-width: 0;
@@ -329,6 +342,72 @@
   padding: 8px 10px;
   border-radius: 10px;
   font-size: 12px;
+}
+
+.admin-marketing-toggle {
+  margin-top: 14px;
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  align-items: center;
+  gap: 12px;
+  padding: 12px;
+  border: 1px solid #e2e8f0;
+  border-radius: 12px;
+  background: #f8fafc;
+}
+
+.admin-marketing-toggle__switch {
+  width: 52px;
+  height: 30px;
+  border-radius: 999px;
+  border: 1px solid #cbd5e1 !important;
+  background: #ffffff !important;
+  padding: 2px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: flex-start;
+  box-shadow: inset 0 0 0 1px rgba(148, 163, 184, 0.22);
+  transition: background-color 0.2s ease, border-color 0.2s ease, box-shadow 0.2s ease;
+}
+
+.admin-marketing-toggle__switch--on {
+  background: #0ea5e9 !important;
+  border-color: #0284c7 !important;
+  box-shadow: inset 0 0 0 1px rgba(14, 165, 233, 0.2);
+}
+
+.admin-marketing-toggle__thumb {
+  width: 24px;
+  height: 24px;
+  border-radius: 50%;
+  background: #ffffff;
+  box-shadow: 0 1px 3px rgba(15, 23, 42, 0.25);
+  transition: transform 0.2s ease;
+}
+
+.admin-marketing-toggle__switch:not(.admin-marketing-toggle__switch--on) .admin-marketing-toggle__thumb {
+  background: #f8fafc;
+  box-shadow: 0 1px 2px rgba(15, 23, 42, 0.16);
+}
+
+.admin-marketing-toggle__switch--on .admin-marketing-toggle__thumb {
+  transform: translateX(22px);
+}
+
+.admin-marketing-toggle__content {
+  display: grid;
+  gap: 2px;
+}
+
+.admin-marketing-toggle__title {
+  font-size: 14px;
+  font-weight: 700;
+  color: #0f172a;
+}
+
+.admin-marketing-toggle__meta {
+  font-size: 12px;
+  color: #475569;
 }
 
 .admin-alert--error {

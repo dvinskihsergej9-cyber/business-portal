@@ -29,6 +29,7 @@ function mapError(code) {
       return "\u0421\u0441\u044b\u043b\u043a\u0430 \u0443\u0436\u0435 \u0438\u0441\u043f\u043e\u043b\u044c\u0437\u043e\u0432\u0430\u043d\u0430";
     case "INVITE_NOT_FOUND":
     case "BAD_TOKEN":
+    case "INVALID_TOKEN":
     case "INVITE_INVALID":
       return "\u041d\u0435\u0432\u0435\u0440\u043d\u0430\u044f \u0441\u0441\u044b\u043b\u043a\u0430";
     case "WEAK_PASSWORD":
@@ -38,7 +39,7 @@ function mapError(code) {
     case "EMAIL_ALREADY_EXISTS":
       return "\u0410\u043a\u043a\u0430\u0443\u043d\u0442 \u0441 \u044d\u0442\u043e\u0439 \u043f\u043e\u0447\u0442\u043e\u0439 \u0443\u0436\u0435 \u0435\u0441\u0442\u044c";
     default:
-      return code;
+      return "\u041d\u0435 \u0443\u0434\u0430\u043b\u043e\u0441\u044c \u043f\u0440\u0438\u043d\u044f\u0442\u044c \u043f\u0440\u0438\u0433\u043b\u0430\u0448\u0435\u043d\u0438\u0435";
   }
 }
 

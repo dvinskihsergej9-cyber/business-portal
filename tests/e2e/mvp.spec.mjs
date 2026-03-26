@@ -60,7 +60,7 @@ test.describe("MVP UI", () => {
     await page.getByRole("button", { name: /Остатки/ }).click();
     await expect(page.getByText("Текущие остатки", { exact: true })).toBeVisible();
 
-    const searchInput = page.getByPlaceholder("Введите SKU или часть названия...");
+    const searchInput = page.getByPlaceholder("Введите артикул или часть названия...");
     const fontSize = await searchInput.evaluate((el) =>
       parseFloat(getComputedStyle(el).fontSize)
     );

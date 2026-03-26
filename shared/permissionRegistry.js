@@ -13,13 +13,6 @@ const ENTRY_DEFINITIONS = Object.freeze([
     groupId: "apps",
   },
   {
-    id: "APP_TMC",
-    key: "app.tmc",
-    label: "ТМЦ и РМ",
-    groupId: "apps",
-    warehouseSection: "tmc",
-  },
-  {
     id: "APP_ADMIN",
     key: "app.admin",
     label: "Администрирование",
@@ -195,7 +188,6 @@ const ENTRY_DEFINITIONS = Object.freeze([
 const ROLE_DEFAULT_PERMISSION_IDS = Object.freeze({
   EMPLOYEE: [
     "APP_WAREHOUSE",
-    "APP_TMC",
     "WAREHOUSE_REQUESTS",
     "WAREHOUSE_TASKS",
     "WAREHOUSE_INVENTORY",
@@ -289,7 +281,6 @@ const TEMPLATE_DEFINITIONS = Object.freeze([
     label: "Офис: склад без ТСД",
     permissionIds: [
       "APP_WAREHOUSE",
-      "APP_TMC",
       "WAREHOUSE_REQUESTS",
       "WAREHOUSE_TASKS",
       "WAREHOUSE_INVENTORY",
@@ -376,12 +367,16 @@ export const PERMISSION_GROUPS = Object.freeze(
 );
 
 export const WAREHOUSE_SECTION_PERMISSION_MAP = Object.freeze(
-  Object.fromEntries(
-    ENTRY_DEFINITIONS.filter((entry) => entry.warehouseSection).map((entry) => [
-      entry.warehouseSection,
-      entry.key,
-    ])
-  )
+  {
+    ...Object.fromEntries(
+      ENTRY_DEFINITIONS.filter((entry) => entry.warehouseSection).map((entry) => [
+        entry.warehouseSection,
+        entry.key,
+      ])
+    ),
+    items: PERMISSION_KEYS.WAREHOUSE_LOCATIONS,
+    holds: PERMISSION_KEYS.WAREHOUSE_MANAGE,
+  }
 );
 
 export const TSD_MODE_PERMISSION_MAP = Object.freeze(

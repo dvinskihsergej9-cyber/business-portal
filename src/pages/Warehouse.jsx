@@ -1,6 +1,7 @@
+﻿
 
-
-import { useEffect, useMemo, useRef, useState, Fragment } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, Fragment } from "react";
+import { useLocation, useNavigate } from "react-router-dom";
 
 import { API_BASE, normalizeErrorMessage } from "../apiConfig";
 import { useAuth } from "../context/AuthContext";
@@ -21,8 +22,8 @@ import StockRevisionTab from "../components/StockRevisionTab";
 import SupplierTrucksQueueTab from "../components/SupplierTrucksQueueTab";
 import MobileTsdTab from "../components/MobileTsdTab";
 import WarehouseLocationsPanel from "../components/WarehouseLocationsPanel";
-import TmcTab from "../components/TmcTab";
 import { WAREHOUSE_EMBEDDED_ICONS } from "../assets/warehouse/embeddedIcons";
+import holdsImage from "../assets/warehouse/holds.png";
 
 
 const API = API_BASE;
@@ -32,11 +33,12 @@ const WAREHOUSE_EMOJI = {
   requests: "📦",
   tasks: "✅",
   inventory: "🧾",
+  holds: "🔒",
   movement: "\uD83D\uDCE6",
   transactions: "\uD83D\uDD01",
   revision: "\uD83E\uDDFE",
-  tmc: "\uD83D\uDCCE",
   locations: "📍",
+  items: "📦",
   queue: "🚚",
   tsd: "📱",
   qr: "🏷️",
@@ -52,10 +54,11 @@ const WAREHOUSE_ICON_FALLBACK = {
   requests: "REQ",
   tasks: "TASK",
   inventory: "INV",
+  holds: "HOLD",
   movement: "\uD83D\uDCE6",
   transactions: "\uD83D\uDD01",
-  tmc: "\uD83D\uDCCE",
   locations: "LOC",
+  items: "\u0422\u041e\u0412",
   queue: "QUEUE",
   tsd: "TSD",
   qr: "QR",
@@ -71,11 +74,13 @@ const WAREHOUSE_ICON_FALLBACK = {
 const WAREHOUSE_IMAGE = {
   tasks: WAREHOUSE_EMBEDDED_ICONS.tasks,
   inventory: WAREHOUSE_EMBEDDED_ICONS.inventory,
+  holds: holdsImage,
   movement: WAREHOUSE_EMBEDDED_ICONS.movement,
   transactions: WAREHOUSE_EMBEDDED_ICONS.transactions,
   revision: WAREHOUSE_EMBEDDED_ICONS.revision,
   suppliers: WAREHOUSE_EMBEDDED_ICONS.suppliers,
   locations: WAREHOUSE_EMBEDDED_ICONS.locations,
+  items: WAREHOUSE_EMBEDDED_ICONS.inventory,
   queue: WAREHOUSE_EMBEDDED_ICONS.queue,
   tsd: WAREHOUSE_EMBEDDED_ICONS.tsd,
 };
@@ -122,7 +127,7 @@ function WarehouseTileIcon({ name }) {
 
 const TYPE_LABELS = {
 
-  ISSUE: "Выдача расходных материалов (РМ)",
+  ISSUE: "Выдача со склада",
 
   RETURN: "Возврат на склад",
 
@@ -168,13 +173,10 @@ const STATUS_OPTIONS = [
 
 const TASK_STATUS_LABELS = {
 
-  NEW: "Не выполнена",
-
-  IN_PROGRESS: "В работе",
-
-  DONE: "Выполнена",
-
-  CANCELLED: "Отменена",
+  NEW: "Не выполнено",
+  IN_PROGRESS: "Не выполнено",
+  DONE: "Выполнено",
+  CANCELLED: "Не выполнено",
 
 };
 
@@ -182,24 +184,90 @@ const TASK_STATUS_LABELS = {
 
 const TASK_STATUS_OPTIONS = [
 
-  { value: "NEW", label: "Не выполнена" },
-
-  { value: "IN_PROGRESS", label: "В работе" },
-
-  { value: "DONE", label: "Выполнена" },
-
-  { value: "CANCELLED", label: "Отменена" },
+  { value: "NEW", label: "Не выполнено" },
+  { value: "DONE", label: "Выполнено" },
 
 ];
+
+const TASK_ATTACHMENT_MAX_COUNT = 5;
+const TASK_ATTACHMENT_MAX_BYTES = 2 * 1024 * 1024;
+const TASK_ATTACHMENT_MAX_SIDE = 1400;
+const TASK_ATTACHMENT_ALLOWED_TYPES = new Set([
+  "image/jpeg",
+  "image/png",
+  "image/webp",
+]);
+
+async function fileToDataUrl(file) {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => resolve(String(reader.result || ""));
+    reader.onerror = () => reject(new Error("Не удалось прочитать фото."));
+    reader.readAsDataURL(file);
+  });
+}
+
+async function prepareTaskAttachmentDataUrl(file) {
+  const initialDataUrl = await fileToDataUrl(file);
+  const image = await new Promise((resolve, reject) => {
+    const img = new Image();
+    img.onload = () => resolve(img);
+    img.onerror = () => reject(new Error("Не удалось обработать фото."));
+    img.src = initialDataUrl;
+  });
+  const srcW = Number(image.width) || 0;
+  const srcH = Number(image.height) || 0;
+  if (!srcW || !srcH) return initialDataUrl;
+
+  const scale = Math.min(1, TASK_ATTACHMENT_MAX_SIDE / Math.max(srcW, srcH));
+  const canvas = document.createElement("canvas");
+  canvas.width = Math.max(1, Math.round(srcW * scale));
+  canvas.height = Math.max(1, Math.round(srcH * scale));
+  const ctx = canvas.getContext("2d");
+  if (!ctx) return initialDataUrl;
+  ctx.drawImage(image, 0, 0, canvas.width, canvas.height);
+
+  const preferredType =
+    TASK_ATTACHMENT_ALLOWED_TYPES.has(String(file?.type || "").toLowerCase()) &&
+    String(file?.type || "").toLowerCase() !== "image/png"
+      ? String(file.type).toLowerCase()
+      : "image/jpeg";
+
+  const qualitySteps = [0.9, 0.82, 0.74, 0.66, 0.58];
+  for (const quality of qualitySteps) {
+    const dataUrl = canvas.toDataURL(preferredType, quality);
+    const estimatedBytes = Math.floor((dataUrl.length * 3) / 4);
+    if (estimatedBytes <= TASK_ATTACHMENT_MAX_BYTES) return dataUrl;
+  }
+  return canvas.toDataURL("image/jpeg", 0.55);
+}
+
+async function buildTaskAttachmentPayload(file) {
+  const mimeType = String(file?.type || "").toLowerCase();
+  if (!TASK_ATTACHMENT_ALLOWED_TYPES.has(mimeType)) {
+    throw new Error("Допустимы только фото JPG, PNG или WEBP.");
+  }
+  const dataUrl = await prepareTaskAttachmentDataUrl(file);
+  const sizeBytes = Math.floor((dataUrl.length * 3) / 4);
+  if (sizeBytes > TASK_ATTACHMENT_MAX_BYTES) {
+    throw new Error("Одно фото слишком большое. Максимум 2 МБ.");
+  }
+  return {
+    fileName: String(file?.name || "photo.jpg"),
+    mimeType: mimeType || "image/jpeg",
+    sizeBytes,
+    dataUrl,
+  };
+}
 
 
 
 const PO_STATUS_LABELS = {
-  DRAFT: "Не получен",
-  SENT: "Не получен",
-  PARTIAL: "Частично",
-  RECEIVED: "Получен",
-  CLOSED: "Получен",
+  DRAFT: "\u0427\u0435\u0440\u043d\u043e\u0432\u0438\u043a",
+  SENT: "\u041e\u0442\u043f\u0440\u0430\u0432\u043b\u0435\u043d \u043f\u043e\u0441\u0442\u0430\u0432\u0449\u0438\u043a\u0443",
+  PARTIAL: "\u0427\u0430\u0441\u0442\u0438\u0447\u043d\u043e",
+  RECEIVED: "\u041f\u043e\u043b\u0443\u0447\u0435\u043d",
+  CLOSED: "\u0417\u0430\u043a\u0440\u044b\u0442",
 };
 
 
@@ -210,6 +278,8 @@ export default function Warehouse({
 }) {
 
   const { user } = useAuth();
+  const location = useLocation();
+  const navigate = useNavigate();
 
   const isWarehouseManager =
     user?.role === "ADMIN" ||
@@ -218,23 +288,32 @@ export default function Warehouse({
 
 
   const defaultSections = [
-    "requests",
     "tasks",
-    "inventory","movement",
+    "inventory",
+    "holds",
+    "movement",
     "transactions",
     "revision",
-    "tmc",
     "suppliers",
     "locations",
+    "items",
     "queue",
     "tsd",
   ];
 
   const permissionAllowedSections = useMemo(
-    () =>
-      defaultSections.filter((sectionKey) =>
+    () => {
+      const allowed = defaultSections.filter((sectionKey) =>
         hasPermission(user, WAREHOUSE_SECTION_PERMISSION_MAP[sectionKey])
-      ),
+      );
+      if (
+        hasPermission(user, PERMISSION_KEYS.APP_WAREHOUSE) &&
+        !allowed.includes("tasks")
+      ) {
+        return ["tasks", ...allowed];
+      }
+      return allowed;
+    },
     [user]
   );
 
@@ -254,7 +333,6 @@ export default function Warehouse({
   const canInventory = sectionSet.has("inventory");
   const canMovement = sectionSet.has("movement");
   const canSuppliers = sectionSet.has("suppliers");
-  const canTmc = sectionSet.has("tmc");
 
   const [section, setSection] = useState("");
 
@@ -276,12 +354,12 @@ export default function Warehouse({
   const requestsRef = useRef(null);
   const tasksRef = useRef(null);
   const inventoryRef = useRef(null);
+  const holdsRef = useRef(null);
   const locationsRef = useRef(null);
   const queueRef = useRef(null);
   const tsdRef = useRef(null);
   const transactionsRef = useRef(null);
   const revisionRef = useRef(null);
-  const tmcRef = useRef(null);
   const purchaseOrdersLoadSeqRef = useRef(0);
   const purchaseOrdersRef = useRef([]);
 
@@ -332,11 +410,11 @@ export default function Warehouse({
 
     dueDate: "",
 
-    executorName: "",
-
-    executorChatId: "",
+    executorUserId: "",
 
   });
+
+  const [taskExecutors, setTaskExecutors] = useState([]);
 
 
 
@@ -345,6 +423,23 @@ export default function Warehouse({
   const [taskAllList, setTaskAllList] = useState([]);
 
     const [taskView, setTaskView] = useState("new"); // 'new' | 'journal'
+
+  useEffect(() => {
+    const params = new URLSearchParams(location.search || "");
+    const sectionParam = params.get("section");
+    const taskViewParam = params.get("taskView");
+
+    if (sectionParam && sectionSet.has(sectionParam)) {
+      setSection(sectionParam);
+    }
+
+    if (
+      sectionParam === "tasks" &&
+      (taskViewParam === "new" || taskViewParam === "journal")
+    ) {
+      setTaskView(taskViewParam);
+    }
+  }, [location.search, sectionSet]);
 
   const [taskTab, setTaskTab] = useState("my");
 
@@ -357,8 +452,14 @@ export default function Warehouse({
   const [taskSaving, setTaskSaving] = useState(false);
 
   const [taskStatusSavingId, setTaskStatusSavingId] = useState(null);
+  const [taskResponseSavingId, setTaskResponseSavingId] = useState(null);
 
   const [taskError, setTaskError] = useState("");
+  const [taskPhotoFiles, setTaskPhotoFiles] = useState([]);
+  const [taskResponseDrafts, setTaskResponseDrafts] = useState({});
+  const [taskResponsePhotoFiles, setTaskResponsePhotoFiles] = useState({});
+  const [taskPhotoPreview, setTaskPhotoPreview] = useState(null);
+  const [taskDetailsId, setTaskDetailsId] = useState(null);
 
 
 
@@ -372,7 +473,7 @@ export default function Warehouse({
 
   const [inventoryError, setInventoryError] = useState("");
 
-  const [tmcStock, setTmcStock] = useState([]);
+  const [requestStock, setRequestStock] = useState([]);
 
 
   const [inventoryTab, setInventoryTab] = useState("stock"); // stock | movement | suppliers
@@ -481,6 +582,8 @@ export default function Warehouse({
   const [viewPurchaseOrder, setViewPurchaseOrder] = useState(null);
   const [viewPurchaseOrderLoading, setViewPurchaseOrderLoading] = useState(false);
   const [viewPurchaseOrderError, setViewPurchaseOrderError] = useState("");
+  const [viewPurchaseOrderActionLoading, setViewPurchaseOrderActionLoading] = useState(false);
+  const [viewPurchaseOrderActionNotice, setViewPurchaseOrderActionNotice] = useState("");
 
   const [showReceiveModal, setShowReceiveModal] = useState(false);
 
@@ -675,6 +778,26 @@ export default function Warehouse({
 
   };
 
+  const loadTaskExecutors = async () => {
+    if (!isWarehouseManager) {
+      setTaskExecutors([]);
+      return;
+    }
+    try {
+      const res = await fetch(`${API}/warehouse/tasks/executors`, {
+        headers: authHeaders,
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        throw new Error(data.message || "Ошибка загрузки исполнителей");
+      }
+      setTaskExecutors(Array.isArray(data) ? data : []);
+    } catch (e) {
+      console.error(e);
+      setTaskError(e.message || "Ошибка загрузки исполнителей");
+    }
+  };
+
 
 
   // ===== API: ИНВЕНТАРИЗАЦИЯ / ОСТАТКИ =====
@@ -745,19 +868,25 @@ export default function Warehouse({
 
   };
 
-  const loadTmcStock = async () => {
+  const loadRequestStock = async () => {
     try {
-      const res = await fetch(`${API}/tmc/stock`, {
+      const res = await fetch(`${API}/inventory/stock`, {
         headers: { Authorization: authHeaders.Authorization },
       });
       const data = await res.json();
       if (!res.ok) {
-        throw new Error(data.message || "Ошибка загрузки ТМЦ");
+        throw new Error(data.message || "Ошибка загрузки остатков для заявок");
       }
-      setTmcStock(data || []);
+      const normalized = Array.isArray(data)
+        ? data.map((item) => ({
+            ...item,
+            currentStock: Number(item?.availableStock ?? item?.currentStock ?? 0),
+          }))
+        : [];
+      setRequestStock(normalized);
     } catch (e) {
       console.error(e);
-      setError(e.message || "Ошибка загрузки ТМЦ");
+      setError(e.message || "Ошибка загрузки остатков для заявок");
     }
   };
 
@@ -907,12 +1036,12 @@ export default function Warehouse({
     if (canInventory || canMovement || canSuppliers) {
       loadInventory();
     }
-    if (canTmc || canRequests) {
-      loadTmcStock();
+    if (canRequests) {
+      loadRequestStock();
     }
 
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [canRequests, canTasks, canInventory, canMovement, canSuppliers, canTmc]);
+  }, [canRequests, canTasks, canInventory, canMovement, canSuppliers]);
 
 
 
@@ -967,25 +1096,24 @@ export default function Warehouse({
     if (!canTasks) return;
 
     loadTasks();
-
-    const intervalId = setInterval(() => {
-
-      loadTasks();
-
-    }, 30000);
-
-    return () => clearInterval(intervalId);
+    loadTaskExecutors();
 
     // eslint-disable-next-line react-hooks/exhaustive-deps
 
   }, [section, canTasks]);
+
+  useEffect(() => {
+    if (section === "tasks" && !isWarehouseManager) {
+      setTaskView("journal");
+    }
+  }, [section, isWarehouseManager]);
 
 
 
   useEffect(() => {
     if (section !== "requests") return;
     if (!canRequests) return;
-    loadTmcStock();
+    loadRequestStock();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [section, canRequests]);
 
@@ -1041,10 +1169,10 @@ export default function Warehouse({
 
     try {
 
-      const selectedItem = selectedTmcItem;
+      const selectedItem = selectedRequestItem;
       if (!selectedItem) {
         setSaving(false);
-        return setError("Выберите товар из ТМЦ.");
+        return setError("Выберите товар.");
       }
 
       const title = selectedItem.name;
@@ -1136,9 +1264,9 @@ export default function Warehouse({
       setError("");
       setPostMessage("");
 
-      const selectedItem = selectedTmcItem;
+      const selectedItem = selectedRequestItem;
       if (!selectedItem) {
-        return setError("Выберите товар из ТМЦ.");
+        return setError("Выберите товар.");
       }
 
       const qty = Number(requestForm.quantity);
@@ -1146,11 +1274,11 @@ export default function Warehouse({
         Number.isFinite(qty) && qty > 0 ? Math.floor(qty) : 1;
 
       const body = {
-        title: `Пополнение ТМЦ: ${selectedItem.name}`,
+        title: `Пополнение: ${selectedItem.name}`,
         type: "INCOME",
         comment: requestForm.description?.trim()
-          ? `Автозаявка на пополнение ТМЦ. ${requestForm.description.trim()}`
-          : "Автозаявка на пополнение ТМЦ.",
+          ? `Автозаявка на пополнение. ${requestForm.description.trim()}`
+          : "Автозаявка на пополнение.",
         items: [
           {
             itemId: selectedItem.id,
@@ -1359,24 +1487,105 @@ export default function Warehouse({
 
 
 
-  // Товары, у которых текущий остаток > 0 (для выпадающего списка в заявке)
-
-  const tmcStockItems = useMemo(() => tmcStock || [], [tmcStock]);
-  const filteredTmcItems = useMemo(() => {
+  // Товары для выпадающего списка в заявке
+  const requestStockItems = useMemo(() => requestStock || [], [requestStock]);
+  const filteredRequestItems = useMemo(() => {
     const q = requestItemQuery.trim().toLowerCase();
-    if (!q) return tmcStockItems;
-    return tmcStockItems.filter((item) =>
+    if (!q) return requestStockItems;
+    return requestStockItems.filter((item) =>
       String(item.name || "").toLowerCase().includes(q)
     );
-  }, [tmcStockItems, requestItemQuery]);
-  const selectedTmcItem = useMemo(
-    () => tmcStockItems.find((it) => String(it.id) === String(requestForm.itemId)),
-    [tmcStockItems, requestForm.itemId]
+  }, [requestStockItems, requestItemQuery]);
+  const selectedRequestItem = useMemo(
+    () =>
+      requestStockItems.find((it) => String(it.id) === String(requestForm.itemId)),
+    [requestStockItems, requestForm.itemId]
   );
 
 
 
   // ===== ХЕЛПЕРЫ ДЛЯ ЗАДАЧ =====
+
+  const handleTaskPhotoPick = (event) => {
+    const picked = Array.from(event.target.files || []);
+    event.target.value = "";
+    if (!picked.length) return;
+    setTaskError("");
+    setTaskPhotoFiles((prev) => {
+      const existingKeys = new Set(
+        prev.map((file) => `${file.name}-${file.size}-${file.lastModified}`)
+      );
+      const next = [...prev];
+      for (const file of picked) {
+        const key = `${file.name}-${file.size}-${file.lastModified}`;
+        if (!existingKeys.has(key)) {
+          next.push(file);
+          existingKeys.add(key);
+        }
+      }
+      if (next.length > TASK_ATTACHMENT_MAX_COUNT) {
+        setTaskError(`Можно прикрепить не более ${TASK_ATTACHMENT_MAX_COUNT} фото.`);
+        return next.slice(0, TASK_ATTACHMENT_MAX_COUNT);
+      }
+      return next;
+    });
+  };
+
+  const removeTaskPhoto = (indexToRemove) => {
+    setTaskPhotoFiles((prev) => prev.filter((_, index) => index !== indexToRemove));
+  };
+
+  const handleTaskResponsePhotoPick = (taskId, event) => {
+    const picked = Array.from(event.target.files || []);
+    event.target.value = "";
+    if (!picked.length) return;
+    setTaskError("");
+    setTaskResponsePhotoFiles((prev) => {
+      const current = Array.isArray(prev[taskId]) ? prev[taskId] : [];
+      const existingKeys = new Set(
+        current.map((file) => `${file.name}-${file.size}-${file.lastModified}`)
+      );
+      const next = [...current];
+      for (const file of picked) {
+        const key = `${file.name}-${file.size}-${file.lastModified}`;
+        if (!existingKeys.has(key)) {
+          next.push(file);
+          existingKeys.add(key);
+        }
+      }
+      if (next.length > TASK_ATTACHMENT_MAX_COUNT) {
+        setTaskError(`Можно прикрепить не более ${TASK_ATTACHMENT_MAX_COUNT} фото.`);
+      }
+      return {
+        ...prev,
+        [taskId]: next.slice(0, TASK_ATTACHMENT_MAX_COUNT),
+      };
+    });
+  };
+
+  const removeTaskResponsePhoto = (taskId, indexToRemove) => {
+    setTaskResponsePhotoFiles((prev) => {
+      const current = Array.isArray(prev[taskId]) ? prev[taskId] : [];
+      return {
+        ...prev,
+        [taskId]: current.filter((_, index) => index !== indexToRemove),
+      };
+    });
+  };
+
+  const openTaskPhotoPreview = (event, photo, fallbackTitle) => {
+    event.preventDefault();
+    const url = String(photo?.dataUrl || "").trim();
+    if (!url) return;
+    setTaskPhotoPreview({
+      url,
+      title: String(photo?.fileName || fallbackTitle || "Фото").trim() || "Фото",
+    });
+  };
+
+  const closeTaskPhotoPreview = () => {
+    setTaskPhotoPreview(null);
+  };
 
   const handleCreateTask = async (e) => {
 
@@ -1390,17 +1599,26 @@ export default function Warehouse({
 
     try {
 
+      const taskPhotos = [];
+      for (const file of taskPhotoFiles) {
+        taskPhotos.push(await buildTaskAttachmentPayload(file));
+      }
+
       const body = {
 
         title: taskForm.title.trim(),
 
         description: taskForm.description?.trim() || null,
 
-        dueDate: taskForm.dueDate || null,
+        taskPhotos,
 
-        executorName: taskForm.executorName?.trim() || null,
+        dueDate: taskForm.dueDate
+          ? new Date(taskForm.dueDate).toISOString()
+          : null,
 
-        executorChatId: taskForm.executorChatId?.trim() || null,
+        executorUserId: taskForm.executorUserId
+          ? Number(taskForm.executorUserId)
+          : null,
 
       };
 
@@ -1436,11 +1654,10 @@ export default function Warehouse({
 
         dueDate: "",
 
-        executorName: "",
-
-        executorChatId: "",
+        executorUserId: "",
 
       });
+      setTaskPhotoFiles([]);
 
 
 
@@ -1460,93 +1677,85 @@ export default function Warehouse({
 
   };
 
+  const handleTaskApplyStatus = async (task, nextStatusRaw) => {
+    const taskId = Number(task?.id);
+    const nextStatus = normalizeTaskStatus(nextStatusRaw);
+    if (!taskId) return;
 
-
-  const handleTaskStatusChangeLocal = (id, newStatus) => {
-
-    setTaskAllList((prev) =>
-
-      prev.map((t) => (t.id === id ? { ...t, status: newStatus } : t))
-
-    );
-
-  };
-
-
-
-  const handleTaskStatusSave = async (id) => {
-
-    const task = taskAllList.find((t) => t.id === id);
-
-    if (!task) return;
-
-
-
-    setTaskStatusSavingId(id);
-
+    setTaskStatusSavingId(taskId);
+    setTaskResponseSavingId(taskId);
     setTaskError("");
 
-
-
     try {
+      const hasDraft = Object.prototype.hasOwnProperty.call(taskResponseDrafts, taskId);
+      const responseText = String(
+        hasDraft ? taskResponseDrafts[taskId] || "" : task?.responseText || ""
+      )
+        .trim()
+        .slice(0, 5000);
+      const responseFiles = Array.isArray(taskResponsePhotoFiles[taskId])
+        ? taskResponsePhotoFiles[taskId]
+        : [];
+      const shouldSaveResponse =
+        responseFiles.length > 0 || (hasDraft && responseText.length > 0);
 
-      const res = await fetch(`${API}/warehouse/tasks/${id}/status`, {
-
-        method: "PUT",
-
-        headers: authHeaders,
-
-        body: JSON.stringify({ status: task.status }),
-
-      });
-
-
-
-      const data = await res.json();
-
-      if (!res.ok) {
-
-        throw new Error(data.message || "Ошибка обновления статуса задачи");
-
+      if (shouldSaveResponse) {
+        const responsePhotos = [];
+        for (const file of responseFiles) {
+          responsePhotos.push(await buildTaskAttachmentPayload(file));
+        }
+        const responseRes = await fetch(`${API}/warehouse/tasks/${taskId}/response`, {
+          method: "PUT",
+          headers: authHeaders,
+          body: JSON.stringify({
+            responseText: responseText || null,
+            responsePhotos,
+          }),
+        });
+        const responseData = await readResponsePayload(responseRes);
+        if (!responseRes.ok) {
+          throw new Error(
+            responseData?.message || "Ошибка сохранения ответа по задаче."
+          );
+        }
       }
 
+      const statusRes = await fetch(`${API}/warehouse/tasks/${taskId}/status`, {
+        method: "PUT",
+        headers: authHeaders,
+        body: JSON.stringify({ status: nextStatus }),
+      });
+      const statusData = await readResponsePayload(statusRes);
+      if (!statusRes.ok) {
+        throw new Error(
+          statusData?.message || "Ошибка обновления статуса задачи."
+        );
+      }
 
-
+      setTaskResponseDrafts((prev) => ({ ...prev, [taskId]: "" }));
+      setTaskResponsePhotoFiles((prev) => ({ ...prev, [taskId]: [] }));
       await loadTasks();
-
     } catch (e) {
-
       console.error(e);
-
-      setTaskError(e.message);
-
+      setTaskError(e.message || "Ошибка обновления задачи.");
     } finally {
-
+      setTaskResponseSavingId(null);
       setTaskStatusSavingId(null);
-
     }
-
   };
 
 
 
-  const taskStatusBadgeClass = (status) => {
-
-    if (status === "CANCELLED") return "badge badge--rejected";
-
-    if (status === "DONE") return "badge badge--approved";
-
-    if (status === "IN_PROGRESS") return "badge badge--pending";
-
-    return "badge badge--pending";
-
-  };
+  const taskStatusBadgeClass = (status) =>
+    normalizeTaskStatus(status) === "DONE"
+      ? "badge badge--approved"
+      : "badge badge--pending";
 
 
 
   const isTaskOverdue = (t) => {
 
-    if (t.status === "DONE" || t.status === "CANCELLED") return false;
+    if (normalizeTaskStatus(t.status) === "DONE") return false;
 
     if (!t.dueDate) return false;
 
@@ -1568,7 +1777,9 @@ export default function Warehouse({
 
     if (taskFilterStatus !== "ALL") {
 
-      res = res.filter((t) => t.status === taskFilterStatus);
+      res = res.filter(
+        (t) => normalizeTaskStatus(t.status) === taskFilterStatus
+      );
 
     }
 
@@ -1585,6 +1796,12 @@ export default function Warehouse({
           t.title,
 
           t.description,
+
+          t.responseText,
+
+          t.responseAuthorName,
+
+          t.executorUser?.name,
 
           t.executorName,
 
@@ -1612,6 +1829,66 @@ export default function Warehouse({
 
   }, [taskListForTab, taskFilterStatus, taskFilterText]);
 
+  const canEditTaskStatus = (task) =>
+    Boolean(
+      isWarehouseManager ||
+        (task && Number(task.executorUserId) === Number(user?.id))
+    );
+
+  const openTaskDetails = (taskId) => {
+    setTaskDetailsId(Number(taskId));
+  };
+
+  const closeTaskDetails = () => {
+    setTaskDetailsId(null);
+  };
+
+  const taskDetails = useMemo(() => {
+    if (!taskDetailsId) return null;
+    const merged = [...(taskMyList || []), ...(taskAllList || [])];
+    return (
+      merged.find((task) => Number(task.id) === Number(taskDetailsId)) || null
+    );
+  }, [taskDetailsId, taskMyList, taskAllList]);
+
+  const taskDetailsCanEdit = canEditTaskStatus(taskDetails);
+  const taskDetailsTaskPhotos = Array.isArray(taskDetails?.taskPhotos)
+    ? taskDetails.taskPhotos
+    : [];
+  const taskDetailsResponsePhotos = Array.isArray(taskDetails?.responsePhotos)
+    ? taskDetails.responsePhotos
+    : [];
+  const taskDetailsResponseFiles =
+    taskDetails && Array.isArray(taskResponsePhotoFiles[taskDetails.id])
+      ? taskResponsePhotoFiles[taskDetails.id]
+      : [];
+  const taskDetailsHasResponseDraft = taskDetails
+    ? Object.prototype.hasOwnProperty.call(taskResponseDrafts, taskDetails.id)
+    : false;
+  const taskDetailsResponseDraft = taskDetails
+    ? taskDetailsHasResponseDraft
+      ? taskResponseDrafts[taskDetails.id]
+      : taskDetails.responseText || ""
+    : "";
+  const taskDetailsExecutor = taskDetails
+    ? taskDetails.executorUser?.name || taskDetails.executorName || "-"
+    : "-";
+  const taskDetailsAuthor = taskDetails
+    ? taskDetails.assigner?.name || taskDetails.assigner?.email || "-"
+    : "-";
+  const normalizeTaskStatus = (status) =>
+    String(status || "").toUpperCase() === "DONE" ? "DONE" : "NEW";
+  const taskDetailsUiStatus = normalizeTaskStatus(taskDetails?.status);
+
+  useEffect(() => {
+    if (!taskDetails) return undefined;
+    const prevOverflow = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+    return () => {
+      document.body.style.overflow = prevOverflow;
+    };
+  }, [taskDetails]);
+
 
 
   // ===== ХЕЛПЕРЫ ДЛЯ ИНВЕНТАРИЗАЦИИ / ЗАКУПОК =====
@@ -1634,7 +1911,7 @@ export default function Warehouse({
 
       if (!itemForm.sku.trim()) {
 
-        return setInventoryError("Артикул (SKU) обязателен.");
+        return setInventoryError("Артикул обязателен.");
 
       }
 
@@ -1656,7 +1933,13 @@ export default function Warehouse({
 
       const maxVal = Number(itemForm.maxStock);
 
-      const priceVal = Number(String(itemForm.defaultPrice).replace(",", "."));
+      const hasDefaultPrice =
+        itemForm.defaultPrice !== undefined &&
+        itemForm.defaultPrice !== null &&
+        String(itemForm.defaultPrice).trim() !== "";
+      const priceVal = hasDefaultPrice
+        ? Number(String(itemForm.defaultPrice).replace(",", "."))
+        : null;
 
 
 
@@ -1684,11 +1967,11 @@ export default function Warehouse({
 
 
 
-      if (!Number.isFinite(priceVal) || priceVal <= 0) {
+      if (hasDefaultPrice && (!Number.isFinite(priceVal) || priceVal < 0)) {
 
         return setInventoryError(
 
-          "Цена за единицу должна быть положительным числом."
+          "Цена за единицу должна быть числом (0 и больше)."
 
         );
 
@@ -2179,6 +2462,7 @@ export default function Warehouse({
     if (!order?.id) return;
     setViewPurchaseOrder(order);
     setViewPurchaseOrderError("");
+    setViewPurchaseOrderActionNotice("");
     setViewPurchaseOrderLoading(true);
     try {
       const res = await fetch(`${API}/purchase-orders/${order.id}`, {
@@ -2204,7 +2488,9 @@ export default function Warehouse({
   const handleCloseViewPurchaseOrder = () => {
     setViewPurchaseOrder(null);
     setViewPurchaseOrderError("");
+    setViewPurchaseOrderActionNotice("");
     setViewPurchaseOrderLoading(false);
+    setViewPurchaseOrderActionLoading(false);
   };
 
 
@@ -2263,6 +2549,54 @@ export default function Warehouse({
 
   };
 
+  const handlePurchaseOrderStatusSent = async (orderId) => {
+    const ok = window.confirm("\u041e\u0442\u043f\u0440\u0430\u0432\u0438\u0442\u044c \u0437\u0430\u043a\u0430\u0437 \u043f\u043e\u0441\u0442\u0430\u0432\u0449\u0438\u043a\u0443 \u0438 \u0443\u0441\u0442\u0430\u043d\u043e\u0432\u0438\u0442\u044c \u0441\u0442\u0430\u0442\u0443\u0441 '\u041e\u0442\u043f\u0440\u0430\u0432\u043b\u0435\u043d \u043f\u043e\u0441\u0442\u0430\u0432\u0449\u0438\u043a\u0443'?");
+    if (!ok) return;
+
+    try {
+      setViewPurchaseOrderActionLoading(true);
+      setViewPurchaseOrderError("");
+      setViewPurchaseOrderActionNotice("");
+
+      const res = await fetch(`${API}/purchase-orders/${orderId}/status`, {
+        method: "PUT",
+        headers: authHeaders,
+        body: JSON.stringify({ status: "SENT" }),
+      });
+
+      const data = await readResponsePayload(res);
+      if (!res.ok) {
+        throw new Error((data && data.message) || "\u041e\u0448\u0438\u0431\u043a\u0430 \u043e\u0442\u043f\u0440\u0430\u0432\u043a\u0438 \u0437\u0430\u043a\u0430\u0437\u0430 \u043f\u043e\u0441\u0442\u0430\u0432\u0449\u0438\u043a\u0443.");
+      }
+
+      if (data && typeof data === "object") {
+        setViewPurchaseOrder(data);
+      } else {
+        setViewPurchaseOrder((prev) => (prev ? { ...prev, status: "SENT" } : prev));
+      }
+
+      if (data?.emailSent) {
+        setViewPurchaseOrderActionNotice(
+          `\u041f\u043e\u0441\u0442\u0430\u0432\u0449\u0438\u043a\u0443 \u043e\u0442\u043f\u0440\u0430\u0432\u043b\u0435\u043d\u043e \u043f\u0438\u0441\u044c\u043c\u043e${data.emailRecipient ? `: ${data.emailRecipient}` : ""}.`
+        );
+      } else if (data?.emailError) {
+        setViewPurchaseOrderActionNotice(
+          `\u0421\u0442\u0430\u0442\u0443\u0441 \u043e\u0431\u043d\u043e\u0432\u043b\u0451\u043d, \u043d\u043e \u043f\u0438\u0441\u044c\u043c\u043e \u043d\u0435 \u043e\u0442\u043f\u0440\u0430\u0432\u043b\u0435\u043d\u043e: ${data.emailError}`
+        );
+      } else if (data?.emailSkippedReason) {
+        setViewPurchaseOrderActionNotice(`\u0421\u0442\u0430\u0442\u0443\u0441 \u043e\u0431\u043d\u043e\u0432\u043b\u0451\u043d: ${data.emailSkippedReason}.`);
+      } else {
+        setViewPurchaseOrderActionNotice("\u0421\u0442\u0430\u0442\u0443\u0441 \u0437\u0430\u043a\u0430\u0437\u0430 \u043e\u0431\u043d\u043e\u0432\u043b\u0451\u043d: \u043e\u0442\u043f\u0440\u0430\u0432\u043b\u0435\u043d \u043f\u043e\u0441\u0442\u0430\u0432\u0449\u0438\u043a\u0443.");
+      }
+
+      await loadPurchaseOrders();
+    } catch (e) {
+      console.error(e);
+      setViewPurchaseOrderError(resolveErrorMessage(e, "\u041e\u0448\u0438\u0431\u043a\u0430 \u043e\u0442\u043f\u0440\u0430\u0432\u043a\u0438 \u0437\u0430\u043a\u0430\u0437\u0430 \u043f\u043e\u0441\u0442\u0430\u0432\u0449\u0438\u043a\u0443."));
+    } finally {
+      setViewPurchaseOrderActionLoading(false);
+    }
+  };
   const sortedPurchaseOrders = useMemo(() => {
     return [...purchaseOrders].sort((a, b) => {
       const da = a.createdAt ? new Date(a.createdAt).getTime() : 0;
@@ -2301,15 +2635,15 @@ export default function Warehouse({
 
   const sectionCards = useMemo(
     () => [
-      { key: "requests", title: "\u0417\u0430\u044f\u0432\u043a\u0438 \u043d\u0430 \u0441\u043a\u043b\u0430\u0434", subtitle: "\u0421\u043e\u0437\u0434\u0430\u043d\u0438\u0435 \u0437\u0430\u044f\u0432\u043e\u043a \u0438 \u043a\u043e\u043d\u0442\u0440\u043e\u043b\u044c \u0432\u044b\u0434\u0430\u0447\u0438 \u0440\u0430\u0441\u0445\u043e\u0434\u043d\u044b\u0445 \u043c\u0430\u0442\u0435\u0440\u0438\u0430\u043b\u043e\u0432." },
-      { key: "tasks", title: "\u0417\u0430\u0434\u0430\u0447\u0438 \u0441\u043a\u043b\u0430\u0434\u0430", subtitle: "\u041d\u0430\u0437\u043d\u0430\u0447\u0435\u043d\u0438\u0435 \u0437\u0430\u0434\u0430\u0447, \u0441\u0440\u043e\u043a\u0438 \u0438 \u043d\u0430\u043f\u043e\u043c\u0438\u043d\u0430\u043d\u0438\u044f \u0432 Telegram." },
+      { key: "tasks", title: "Задачи склада", subtitle: "Постановка задач сотрудникам, сроки и журнал выполнения." },
       { key: "inventory", title: "\u041e\u0441\u0442\u0430\u0442\u043a\u0438", subtitle: "\u0422\u0435\u043a\u0443\u0449\u0438\u0435 \u043e\u0441\u0442\u0430\u0442\u043a\u0438 \u043f\u043e \u0441\u043a\u043b\u0430\u0434\u0443." },
+      { key: "holds", title: "Блокировка остатков", subtitle: "Фиксация и снятие блокировок по товарам и ячейкам." },
       { key: "movement", title: "\u0418\u0441\u0442\u043e\u0440\u0438\u044f \u0434\u0432\u0438\u0436\u0435\u043d\u0438\u0439", subtitle: "\u0416\u0443\u0440\u043d\u0430\u043b \u043e\u043f\u0435\u0440\u0430\u0446\u0438\u0439 \u043f\u043e \u0441\u043a\u043b\u0430\u0434\u0443." },
       { key: "transactions", title: "\u0422\u0440\u0430\u043d\u0437\u0430\u043a\u0446\u0438\u0438", subtitle: "\u0412\u0441\u0435 \u0434\u0435\u0439\u0441\u0442\u0432\u0438\u044f \u043f\u043e \u044f\u0447\u0435\u0439\u043a\u0430\u043c \u0438 \u0442\u043e\u0432\u0430\u0440\u0443." },
       { key: "revision", title: "\u0420\u0435\u0432\u0438\u0437\u0438\u044f", subtitle: "\u0421\u043d\u0438\u043c\u043e\u043a \u0440\u0430\u0441\u0445\u043e\u0436\u0434\u0435\u043d\u0438\u0439 \u043f\u043e \u043a\u043e\u043d\u0442\u0440\u043e\u043b\u044e \u044f\u0447\u0435\u0435\u043a." },
-      { key: "tmc", title: "\u0422\u041c\u0426", subtitle: "\u0420\u0430\u0441\u0445\u043e\u0434\u043d\u044b\u0435 \u043c\u0430\u0442\u0435\u0440\u0438\u0430\u043b\u044b \u0434\u043b\u044f \u043e\u0442\u0434\u0435\u043b\u043e\u0432 \u0438 \u0441\u043e\u0442\u0440\u0434\u043d\u0438\u043a\u043e\u0432." },
       { key: "suppliers", title: "\u041f\u043e\u0441\u0442\u0430\u0432\u0449\u0438\u043a\u0438", subtitle: "\u041f\u043e\u0441\u0442\u0430\u0432\u0449\u0438\u043a\u0438 \u0438 \u0437\u0430\u043a\u0430\u0437\u044b \u043f\u043e\u0441\u0442\u0430\u0432\u0449\u0438\u043a\u0443." },
       { key: "locations", title: "\u0421\u043f\u0440\u0430\u0432\u043e\u0447\u043d\u0438\u043a \u044f\u0447\u0435\u0435\u043a", subtitle: "\u0421\u043e\u0437\u0434\u0430\u043d\u0438\u0435 \u044f\u0447\u0435\u0435\u043a \u0438 \u043f\u0435\u0447\u0430\u0442\u044c QR-\u044d\u0442\u0438\u043a\u0435\u0442\u043e\u043a." },
+      { key: "items", title: "\u0421\u043f\u0440\u0430\u0432\u043e\u0447\u043d\u0438\u043a \u0442\u043e\u0432\u0430\u0440\u043e\u0432", subtitle: "\u0412\u044b\u0431\u043e\u0440 \u0442\u043e\u0432\u0430\u0440\u043e\u0432 \u0438 \u043f\u0435\u0447\u0430\u0442\u044c QR-\u044d\u0442\u0438\u043a\u0435\u0442\u043e\u043a." },
       { key: "queue", title: "\u041c\u0430\u0448\u0438\u043d\u044b \u043f\u043e\u0441\u0442\u0430\u0432\u0449\u0438\u043a\u043e\u0432 \u0432 \u043e\u0447\u0435\u0440\u0435\u0434\u0438", subtitle: "\u041e\u0447\u0435\u0440\u0435\u0434\u044c \u043d\u0430 \u0440\u0430\u0437\u0433\u0440\u0443\u0437\u043a\u0443, \u0432\u043e\u0440\u043e\u0442\u0430 \u0438 \u0432\u0440\u0435\u043c\u044f." },
       { key: "tsd", title: "\u041c\u043e\u0431\u0438\u043b\u044c\u043d\u044b\u0439 \u0422\u0421\u0414", subtitle: "\u0421\u043a\u0430\u043d\u0438\u0440\u043e\u0432\u0430\u043d\u0438\u0435 \u0448\u0442\u0440\u0438\u0445\u043a\u043e\u0434\u043e\u0432 \u0438 \u0431\u044b\u0441\u0442\u0440\u044b\u0435 \u043e\u043f\u0435\u0440\u0430\u0446\u0438\u0438." },
     ],
@@ -2321,20 +2655,48 @@ export default function Warehouse({
     [sectionCards, sectionSet]
   );
 
-  const selectedSectionCard = useMemo(
-    () => sectionCards.find((card) => card.key === section) || null,
-    [sectionCards, section]
-  );
-
-  const openSection = (sectionKey) => {
+  const openSection = useCallback((sectionKey) => {
     setSection(sectionKey);
+    const params = new URLSearchParams(location.search || "");
+    params.set("section", sectionKey);
+    navigate(
+      {
+        pathname: location.pathname,
+        search: `?${params.toString()}`,
+      },
+      { replace: true }
+    );
     window.scrollTo({ top: 0, left: 0, behavior: "auto" });
-  };
+  }, [location.pathname, location.search, navigate]);
 
-  const closeSection = () => {
+  const closeSection = useCallback(() => {
     setSection("");
+    const params = new URLSearchParams(location.search || "");
+    params.delete("section");
+    params.delete("taskView");
+    const search = params.toString();
+    navigate(
+      {
+        pathname: location.pathname,
+        search: search ? `?${search}` : "",
+      },
+      { replace: true }
+    );
     window.scrollTo({ top: 0, left: 0, behavior: "auto" });
-  };
+  }, [location.pathname, location.search, navigate]);
+
+  useEffect(() => {
+    const handleTopBack = (event) => {
+      if (!section) return;
+      closeSection();
+      if (typeof event?.preventDefault === "function") {
+        event.preventDefault();
+      }
+    };
+
+    window.addEventListener("portal:warehouse-back", handleTopBack);
+    return () => window.removeEventListener("portal:warehouse-back", handleTopBack);
+  }, [section, closeSection]);
 
 
 
@@ -2375,38 +2737,6 @@ export default function Warehouse({
                 </div>
               </button>
             ))}
-          </div>
-        </div>
-      )}
-
-      {section && selectedSectionCard && (
-        <div className="card" style={{ marginBottom: 12 }}>
-          <div
-            className="card1c__body"
-            style={{
-              display: "flex",
-              alignItems: "center",
-              justifyContent: "space-between",
-              gap: 12,
-              flexWrap: "wrap",
-            }}
-          >
-            <div style={{ minWidth: 0, display: "flex", alignItems: "center", gap: 10 }}>
-              <div className="warehouse-card__icon" style={{ width: 52, height: 52 }}>
-                <WarehouseTileIcon name={selectedSectionCard.key} />
-              </div>
-              <div style={{ minWidth: 0 }}>
-                <div style={{ fontSize: 20, fontWeight: 700, lineHeight: 1.2 }}>
-                  {selectedSectionCard.title}
-                </div>
-                <div style={{ marginTop: 4, fontSize: 13, color: "#64748b" }}>
-                  {selectedSectionCard.subtitle}
-                </div>
-              </div>
-            </div>
-            <button type="button" className="btn btn--secondary" onClick={closeSection}>
-              Назад к разделам
-            </button>
           </div>
         </div>
       )}
@@ -2478,18 +2808,18 @@ export default function Warehouse({
                 >
 
                   <div className="form__group">
-                    <label className="form__label">Товар (ТМЦ)</label>
+                    <label className="form__label">Товар</label>
                     <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
                     <input
                       className="form__input"
-                      placeholder="Поиск по ТМЦ..."
+                      placeholder="Поиск по товару..."
                       value={requestItemQuery}
                       onChange={(e) => setRequestItemQuery(e.target.value)}
                     />
                       <button
                         type="button"
                         className="btn btn--secondary btn--sm"
-                        onClick={loadTmcStock}
+                        onClick={loadRequestStock}
                       >
                         Обновить
                       </button>
@@ -2505,17 +2835,17 @@ export default function Warehouse({
                       }
                     >
                       <option value="">Выберите товар</option>
-                      {filteredTmcItems.map((item) => (
+                      {filteredRequestItems.map((item) => (
                         <option key={item.id} value={item.id}>
                           {item.name} (остаток: {item.currentStock} {item.unit || "шт"})
                           {Number(item.currentStock) <= 0 ? " — нет остатка" : ""}
                         </option>
                       ))}
                     </select>
-                    {selectedTmcItem && (
+                    {selectedRequestItem && (
                       <div className="form__hint">
-                        Остаток: {selectedTmcItem.currentStock}{" "}
-                        {selectedTmcItem.unit || "шт"}
+                        Остаток: {selectedRequestItem.currentStock}{" "}
+                        {selectedRequestItem.unit || "шт"}
                       </div>
                     )}
                   </div>
@@ -2550,14 +2880,14 @@ export default function Warehouse({
 
                     />
 
-                    {selectedTmcItem &&
-                      Number(requestForm.quantity) > Number(selectedTmcItem.currentStock ?? 0) && (
+                    {selectedRequestItem &&
+                      Number(requestForm.quantity) > Number(selectedRequestItem.currentStock ?? 0) && (
                         <div className="form__hint" style={{ color: "#dc2626" }}>
-                          Недостаточно остатка. Доступно {selectedTmcItem.currentStock} {selectedTmcItem.unit || "шт."}.
+                          Недостаточно остатка. Доступно {selectedRequestItem.currentStock} {selectedRequestItem.unit || "шт."}.
                         </div>
                       )}
 
-                    {selectedTmcItem && Number(selectedTmcItem.currentStock ?? 0) <= 0 && (
+                    {selectedRequestItem && Number(selectedRequestItem.currentStock ?? 0) <= 0 && (
                       <div className="form__hint" style={{ color: "#dc2626" }}>
                         На складе нет остатка для выдачи. Можно создать заявку на пополнение.
                       </div>
@@ -2617,9 +2947,9 @@ export default function Warehouse({
                     </button>
 
                   
-                    {(selectedTmcItem && Number(selectedTmcItem.currentStock ?? 0) <= 0) ||
-                    (selectedTmcItem &&
-                      Number(requestForm.quantity) > Number(selectedTmcItem.currentStock ?? 0)) ? (
+                    {(selectedRequestItem && Number(selectedRequestItem.currentStock ?? 0) <= 0) ||
+                    (selectedRequestItem &&
+                      Number(requestForm.quantity) > Number(selectedRequestItem.currentStock ?? 0)) ? (
                       <button
                         type="button"
                         className="btn btn--secondary"
@@ -2914,23 +3244,17 @@ export default function Warehouse({
 
           <div className="tabs tabs--sm" style={{ marginBottom: 16 }}>
 
-            <button
-
-              type="button"
-
-              className={
-
-                "tabs__btn " + (taskView === "new" ? "tabs__btn--active" : "")
-
-              }
-
-              onClick={() => setTaskView("new")}
-
-            >
-
-              Новая задача
-
-            </button>
+            {isWarehouseManager && (
+              <button
+                type="button"
+                className={
+                  "tabs__btn " + (taskView === "new" ? "tabs__btn--active" : "")
+                }
+                onClick={() => setTaskView("new")}
+              >
+                Новая задача
+              </button>
+            )}
 
             <button
 
@@ -2984,13 +3308,12 @@ export default function Warehouse({
 
 
 
-                <form
-
-                  onSubmit={handleCreateTask}
-
-                  className="form request-form-1c"
-
-                >
+                {!isWarehouseManager ? (
+                  <div className="alert alert--warning">
+                    Создавать задачи может только администратор.
+                  </div>
+                ) : (
+                <form onSubmit={handleCreateTask} className="form request-form-1c">
 
                   <div className="form__group">
 
@@ -3077,69 +3400,70 @@ export default function Warehouse({
 
 
                   <div className="form__group">
-
-                    <label className="form__label">Исполнитель (имя)</label>
-
-                    <input
-
-                      type="text"
-
-                      className="form__input"
-
-                      value={taskForm.executorName}
-
+                    <label className="form__label">Исполнитель</label>
+                    <select
+                      className="form__select"
+                      value={taskForm.executorUserId}
                       onChange={(e) =>
-
                         setTaskForm({
-
                           ...taskForm,
-
-                          executorName: e.target.value,
-
+                          executorUserId: e.target.value,
                         })
-
                       }
-
-                      placeholder="Иван Иванов"
-
-                    />
-
+                    >
+                      <option value="">Не назначен</option>
+                      {taskExecutors.map((exec) => (
+                        <option key={exec.id} value={exec.id}>
+                          {exec.name} ({exec.role})
+                        </option>
+                      ))}
+                    </select>
                   </div>
 
-
-
                   <div className="form__group">
-
                     <label className="form__label">
-
-                      ID исполнителя в Telegram
-
+                      Фото к задаче (до {TASK_ATTACHMENT_MAX_COUNT} шт.)
                     </label>
-
                     <input
-
-                      type="text"
-
+                      type="file"
                       className="form__input"
-
-                      value={taskForm.executorChatId}
-
-                      onChange={(e) =>
-
-                        setTaskForm({
-
-                          ...taskForm,
-
-                          executorChatId: e.target.value,
-
-                        })
-
-                      }
-
-                      placeholder="Например: 514030529"
-
+                      accept="image/jpeg,image/png,image/webp"
+                      multiple
+                      onChange={handleTaskPhotoPick}
                     />
-
+                    <div className="form__hint">
+                      Поддерживаются JPG, PNG, WEBP. Максимум 2 МБ на фото.
+                    </div>
+                    {taskPhotoFiles.length > 0 && (
+                      <div style={{ marginTop: 8, display: "grid", gap: 6 }}>
+                        {taskPhotoFiles.map((file, index) => (
+                          <div
+                            key={`${file.name}-${file.lastModified}-${index}`}
+                            style={{
+                              display: "flex",
+                              justifyContent: "space-between",
+                              alignItems: "center",
+                              gap: 12,
+                              border: "1px solid #dbe4ee",
+                              borderRadius: 10,
+                              padding: "8px 10px",
+                              background: "#f8fafc",
+                            }}
+                          >
+                            <span style={{ fontSize: 13, color: "#0f172a" }}>
+                              {file.name}
+                            </span>
+                            <button
+                              type="button"
+                              className="btn btn--ghost btn--sm"
+                              onClick={() => removeTaskPhoto(index)}
+                            >
+                              Убрать
+                            </button>
+                          </div>
+                        ))}
+                      </div>
+                    )}
                   </div>
 
 
@@ -3163,6 +3487,7 @@ export default function Warehouse({
                   </div>
 
                 </form>
+                )}
 
               </div>
 
@@ -3178,7 +3503,26 @@ export default function Warehouse({
 
             <div className="card card--1c">
 
-              <div className="card1c__header">Журнал задач</div>
+              <div
+                className="card1c__header"
+                style={{
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: "space-between",
+                  gap: 12,
+                  flexWrap: "wrap",
+                }}
+              >
+                <span>Журнал задач</span>
+                <button
+                  type="button"
+                  className="btn btn--secondary btn--sm"
+                  onClick={() => loadTasks()}
+                  disabled={tasksLoading}
+                >
+                  {tasksLoading ? "Обновление..." : "Обновить"}
+                </button>
+              </div>
 
               <div className="card1c__body">
 
@@ -3308,23 +3652,15 @@ export default function Warehouse({
 
                           <th style={{ width: 170 }}>Дата</th>
 
-                          <th style={{ width: 110 }}>Статус</th>
-
                           <th style={{ width: 170 }}>Срок</th>
+
+                          <th style={{ width: 130 }}>Статус</th>
 
                           <th>Задача</th>
 
                           <th style={{ width: 180 }}>Исполнитель</th>
 
-                          <th style={{ width: 200 }}>Автор</th>
-
-                          <th style={{ width: 260 }}>Описание</th>
-
-                          {isWarehouseManager && (
-
-  <th style={{ width: 190 }}>Действия</th>
-
-)}
+                          <th style={{ width: 150 }}>Действия</th>
 
                         </tr>
 
@@ -3333,16 +3669,30 @@ export default function Warehouse({
                       <tbody>
 
                         {filteredTasks.map((t, index) => {
-
                           const overdue = isTaskOverdue(t);
+                          const taskPhotoCount = Array.isArray(t.taskPhotos)
+                            ? t.taskPhotos.length
+                            : 0;
+                          const responsePhotoCount = Array.isArray(t.responsePhotos)
+                            ? t.responsePhotos.length
+                            : 0;
+                          const hasResponseText = Boolean(
+                            String(t.responseText || "").trim()
+                          );
+                          const authorLabel =
+                            t.assigner?.name || t.assigner?.email || "-";
+                          const attachmentsSummary =
+                            taskPhotoCount || responsePhotoCount
+                              ? `Фото: к задаче ${taskPhotoCount}, в ответе ${responsePhotoCount}`
+                              : "Фото нет";
 
                           return (
 
                             <tr key={t.id} className="tasks-journal-row">
 
-                              <td data-label="index">{index + 1}</td>
+                              <td data-label="Номер">{index + 1}</td>
 
-                              <td>
+                              <td data-label="Дата">
 
                                 {t.createdAt
 
@@ -3368,21 +3718,7 @@ export default function Warehouse({
 
                               </td>
 
-                              <td>
-
-                                <span
-
-                                  className={taskStatusBadgeClass(t.status)}
-
-                                >
-
-                                  {TASK_STATUS_LABELS[t.status] || t.status}
-
-                                </span>
-
-                              </td>
-
-                              <td>
+                              <td data-label="Срок">
 
                                 {t.dueDate
 
@@ -3426,81 +3762,62 @@ export default function Warehouse({
 
                                   </span>
 
-                                )}
+                                  )}
 
                               </td>
 
-                              <td data-label="title">{t.title}</td>
+                              <td data-label="Статус">
+                                <span className={taskStatusBadgeClass(t.status)}>
+                                  {TASK_STATUS_LABELS[normalizeTaskStatus(t.status)] ||
+                                    normalizeTaskStatus(t.status)}
+                                </span>
+                              </td>
 
-                              <td>
+                              <td data-label="Задача">
+                                <div
+                                  style={{
+                                    fontWeight: 700,
+                                    lineHeight: 1.35,
+                                    color: "#0f172a",
+                                  }}
+                                >
+                                  {t.title || "-"}
+                                </div>
+                                <div
+                                  style={{
+                                    marginTop: 4,
+                                    fontSize: 12,
+                                    lineHeight: 1.35,
+                                    color: "#64748b",
+                                  }}
+                                >
+                                  {authorLabel} • {attachmentsSummary} •{" "}
+                                  {hasResponseText ? "Ответ добавлен" : "Ответ не добавлен"}
+                                </div>
+                              </td>
 
-                                {t.executorName || t.executorChatId
+                              <td data-label="Исполнитель">
 
-                                  ? `${t.executorName || ""}${
-
-                                      t.executorChatId
-
-                                        ? ` (TG: ${t.executorChatId})`
-
-                                        : ""
-
-                                    }`
-
-                                  : "-"}
+                                {t.executorUser?.name || t.executorName || "-"}
 
                               </td>
 
-                              <td>
-
-                                {t.assigner?.name ||
-
-                                  t.assigner?.email ||
-
-                                  "-"}
-
+                              <td data-label="Действия">
+                                <div
+                                  style={{
+                                    display: "flex",
+                                    justifyContent: "flex-end",
+                                  }}
+                                >
+                                  <button
+                                    type="button"
+                                    className="btn btn--ghost btn--sm"
+                                    onClick={() => openTaskDetails(t.id)}
+                                  >
+                                    Подробнее
+                                  </button>
+                                </div>
                               </td>
-
-                              <td data-label="desc">{t.description || "-"}</td>
-
-                              {isWarehouseManager && (
-
-  <td>
-
-    <select
-
-      className="form__select form__select--sm"
-
-      style={{ minWidth: 170 }}
-
-      value={t.status}
-
-      onChange={(e) =>
-
-        handleTaskStatusChangeLocal(t.id, e.target.value)
-
-      }
-
-      onBlur={() => handleTaskStatusSave(t.id)}
-
-      disabled={taskStatusSavingId === t.id}
-
-    >
-
-      {TASK_STATUS_OPTIONS.map((o) => (
-
-        <option key={o.value} value={o.value}>
-
-          {o.label}
-
-        </option>
-
-      ))}
-
-    </select>
-
-  </td>
-
-)}
 
                             </tr>
 
@@ -3514,6 +3831,236 @@ export default function Warehouse({
 
                   </div>
 
+                )}
+
+                {taskDetails && (
+                  <div className="modal-backdrop" onClick={closeTaskDetails}>
+                    <div
+                      className="modal modal--wide task-details-modal"
+                      onClick={(event) => event.stopPropagation()}
+                    >
+                      <div className="modal__header">
+                        <h2 className="modal__title">
+                          Задача №{taskDetails.id}: {taskDetails.title || "Без названия"}
+                        </h2>
+                        <button
+                          type="button"
+                          className="modal__close"
+                          aria-label="Закрыть детали задачи"
+                          onClick={closeTaskDetails}
+                        >
+                          ×
+                        </button>
+                      </div>
+
+                      <div className="modal__body task-details-modal__body">
+                        <div className="task-details-grid">
+                          <div>
+                            <div className="task-details-label">Статус</div>
+                            <div>
+                              <span className={taskStatusBadgeClass(taskDetails.status)}>
+                                {TASK_STATUS_LABELS[taskDetailsUiStatus] || taskDetailsUiStatus}
+                              </span>
+                            </div>
+                          </div>
+                          <div>
+                            <div className="task-details-label">Срок</div>
+                            <div>
+                              {taskDetails.dueDate
+                                ? new Date(taskDetails.dueDate).toLocaleString("ru-RU", {
+                                    day: "2-digit",
+                                    month: "2-digit",
+                                    year: "numeric",
+                                    hour: "2-digit",
+                                    minute: "2-digit",
+                                  })
+                                : "-"}
+                            </div>
+                          </div>
+                          <div>
+                            <div className="task-details-label">Исполнитель</div>
+                            <div>{taskDetailsExecutor}</div>
+                          </div>
+                          <div>
+                            <div className="task-details-label">Автор</div>
+                            <div>{taskDetailsAuthor}</div>
+                          </div>
+                        </div>
+
+                        <div className="task-details-section">
+                          <div className="task-details-label">Описание</div>
+                          <div className="task-details-text">
+                            {taskDetails.description || "Описание не добавлено"}
+                          </div>
+                        </div>
+
+                        <div className="task-details-section">
+                          <div className="task-details-label">Фото к задаче</div>
+                          {taskDetailsTaskPhotos.length === 0 ? (
+                            <div className="text-muted">Фото не добавлены</div>
+                          ) : (
+                            <div className="task-details-photos">
+                              {taskDetailsTaskPhotos.map((photo, photoIndex) => (
+                                <a
+                                  key={`${taskDetails.id}-task-photo-${photoIndex}`}
+                                  href={photo.dataUrl}
+                                  title={photo.fileName || "Фото"}
+                                  onClick={(event) =>
+                                    openTaskPhotoPreview(
+                                      event,
+                                      photo,
+                                      `Фото ${photoIndex + 1}`
+                                    )
+                                  }
+                                >
+                                  <img
+                                    src={photo.dataUrl}
+                                    alt={photo.fileName || `Фото ${photoIndex + 1}`}
+                                  />
+                                </a>
+                              ))}
+                            </div>
+                          )}
+                        </div>
+
+                        <div className="task-details-section">
+                          <div className="task-details-label">Ответ исполнителя</div>
+                          {taskDetails.responseText ? (
+                            <div className="task-details-text">{taskDetails.responseText}</div>
+                          ) : (
+                            <div className="text-muted">Ответ не добавлен</div>
+                          )}
+
+                          {taskDetailsResponsePhotos.length > 0 && (
+                            <div className="task-details-photos">
+                              {taskDetailsResponsePhotos.map((photo, photoIndex) => (
+                                <a
+                                  key={`${taskDetails.id}-response-photo-${photoIndex}`}
+                                  href={photo.dataUrl}
+                                  title={photo.fileName || "Фото"}
+                                  onClick={(event) =>
+                                    openTaskPhotoPreview(
+                                      event,
+                                      photo,
+                                      `Фото ${photoIndex + 1}`
+                                    )
+                                  }
+                                >
+                                  <img
+                                    src={photo.dataUrl}
+                                    alt={photo.fileName || `Фото ${photoIndex + 1}`}
+                                  />
+                                </a>
+                              ))}
+                            </div>
+                          )}
+
+                          {taskDetails.responseUpdatedAt && (
+                            <div className="text-muted" style={{ fontSize: 12 }}>
+                              Ответ обновлён:{" "}
+                              {new Date(taskDetails.responseUpdatedAt).toLocaleString(
+                                "ru-RU",
+                                {
+                                  day: "2-digit",
+                                  month: "2-digit",
+                                  year: "numeric",
+                                  hour: "2-digit",
+                                  minute: "2-digit",
+                                }
+                              )}
+                              {taskDetails.responseAuthorName
+                                ? `, ${taskDetails.responseAuthorName}`
+                                : ""}
+                            </div>
+                          )}
+                        </div>
+
+                        {taskDetailsCanEdit && (
+                          <div className="task-details-section">
+                            <div className="task-details-label">Комментарий по выполнению</div>
+                            <textarea
+                              className="form__textarea"
+                              rows={3}
+                              placeholder="Комментарий по выполнению задачи..."
+                              value={taskDetailsResponseDraft}
+                              onChange={(e) =>
+                                setTaskResponseDrafts((prev) => ({
+                                  ...prev,
+                                  [taskDetails.id]: e.target.value,
+                                }))
+                              }
+                            />
+
+                            <input
+                              type="file"
+                              className="form__input"
+                              accept="image/jpeg,image/png,image/webp"
+                              multiple
+                              onChange={(event) =>
+                                handleTaskResponsePhotoPick(taskDetails.id, event)
+                              }
+                            />
+
+                            {taskDetailsResponseFiles.length > 0 && (
+                              <div className="task-details-files">
+                                {taskDetailsResponseFiles.map((file, fileIndex) => (
+                                  <div
+                                    key={`${taskDetails.id}-response-file-${file.name}-${file.lastModified}-${fileIndex}`}
+                                    className="task-details-file-row"
+                                  >
+                                    <span>{file.name}</span>
+                                    <button
+                                      type="button"
+                                      className="btn btn--ghost btn--sm"
+                                      onClick={() =>
+                                        removeTaskResponsePhoto(taskDetails.id, fileIndex)
+                                      }
+                                    >
+                                      Убрать
+                                    </button>
+                                  </div>
+                                ))}
+                              </div>
+                            )}
+
+                            <div className="task-details-actions">
+                              <select
+                                className="form__select form__select--sm"
+                                style={{ minWidth: 190 }}
+                                value={taskDetailsUiStatus}
+                                onChange={(e) =>
+                                  handleTaskApplyStatus(taskDetails, e.target.value)
+                                }
+                                disabled={
+                                  taskStatusSavingId === taskDetails.id ||
+                                  taskResponseSavingId === taskDetails.id
+                                }
+                              >
+                                {TASK_STATUS_OPTIONS.map((option) => (
+                                  <option key={option.value} value={option.value}>
+                                    {option.label}
+                                  </option>
+                                ))}
+                              </select>
+                              <span className="text-muted" style={{ fontSize: 12 }}>
+                                При смене статуса сохраняются комментарий и фото.
+                              </span>
+                            </div>
+                          </div>
+                        )}
+                      </div>
+
+                      <div className="task-details-footer">
+                        <button
+                          type="button"
+                          className="btn btn--ghost"
+                          onClick={closeTaskDetails}
+                        >
+                          Закрыть
+                        </button>
+                      </div>
+                    </div>
+                  </div>
                 )}
 
               </div>
@@ -3534,10 +4081,16 @@ export default function Warehouse({
 
         <div className="locations-section" ref={locationsRef}>
 
-          <WarehouseLocationsPanel />
+          <WarehouseLocationsPanel mode="locations" />
 
         </div>
 
+      )}
+
+      {sectionSet.has("items") && section === "items" && (
+        <div className="locations-section">
+          <WarehouseLocationsPanel mode="items" />
+        </div>
       )}
 
 
@@ -3578,14 +4131,11 @@ export default function Warehouse({
         </div>
       )}
 
-      {sectionSet.has("tmc") && section === "tmc" && (
-        <div className="inventory-section" ref={tmcRef}>
-          <TmcTab />
+      {sectionSet.has("holds") && section === "holds" && (
+        <div className="inventory-section" ref={holdsRef}>
+          <StockHoldsPanel showTitle={false} withTopMargin={false} />
         </div>
       )}
-
-
-
 
       {/* ====== ОСТАТКИ / ИНВЕНТАРИЗАЦИЯ / ЗАКУПКИ ====== */}
 
@@ -3638,7 +4188,6 @@ export default function Warehouse({
           {inventoryTab === "stock" && (
             <>
               <StockAuditTab />
-              {isWarehouseManager && <StockHoldsPanel />}
             </>
           )}
 
@@ -4339,6 +4888,41 @@ export default function Warehouse({
 
 
 
+      {taskPhotoPreview?.url && (
+        <div className="modal-backdrop task-photo-preview" onClick={closeTaskPhotoPreview}>
+          <div
+            className="modal modal--wide task-photo-preview__modal"
+            onClick={(event) => event.stopPropagation()}
+          >
+            <div className="modal__header">
+              <h2 className="modal__title">{taskPhotoPreview.title}</h2>
+              <button
+                type="button"
+                className="modal__close"
+                aria-label="Закрыть просмотр фото"
+                onClick={closeTaskPhotoPreview}
+              >
+                ×
+              </button>
+            </div>
+            <div className="modal__body task-photo-preview__body">
+              <div className="task-photo-preview__image-wrap">
+                <img
+                  src={taskPhotoPreview.url}
+                  alt={taskPhotoPreview.title || "Фото"}
+                  className="task-photo-preview__image"
+                />
+              </div>
+            </div>
+            <div className="task-photo-preview__actions">
+              <button type="button" className="btn btn--ghost" onClick={closeTaskPhotoPreview}>
+                Закрыть
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       {showReceiveModal && (
 
         <PurchaseOrderReceiveModal
@@ -4379,6 +4963,11 @@ export default function Warehouse({
                   {viewPurchaseOrderError}
                 </div>
               )}
+              {viewPurchaseOrderActionNotice && (
+                <div className="alert alert--success" style={{ marginBottom: 12 }}>
+                  {viewPurchaseOrderActionNotice}
+                </div>
+              )}
 
               <div className="grid-2" style={{ marginBottom: 12 }}>
                 <div className="card">
@@ -4414,7 +5003,7 @@ export default function Warehouse({
                       <tr>
                         <th>№</th>
                         <th>Товар</th>
-                        <th>SKU</th>
+                        <th>Артикул</th>
                         <th>Ед.</th>
                         <th>Заказано</th>
                         <th>Получено</th>
@@ -4462,12 +5051,23 @@ export default function Warehouse({
               )}
 
               <div className="modal__actions">
+                {viewPurchaseOrder.status === "DRAFT" && (
+                  <button
+                    type="button"
+                    className="btn"
+                    onClick={() => handlePurchaseOrderStatusSent(viewPurchaseOrder.id)}
+                    disabled={viewPurchaseOrderActionLoading}
+                  >
+                    {viewPurchaseOrderActionLoading ? "\u041e\u0442\u043f\u0440\u0430\u0432\u043a\u0430..." : "\u041e\u0442\u043f\u0440\u0430\u0432\u0438\u0442\u044c \u043f\u043e\u0441\u0442\u0430\u0432\u0449\u0438\u043a\u0443"}
+                  </button>
+                )}
                 <button
                   type="button"
                   className="btn btn--ghost"
                   onClick={handleCloseViewPurchaseOrder}
+                  disabled={viewPurchaseOrderActionLoading}
                 >
-                  Закрыть
+                  {"\u0417\u0430\u043a\u0440\u044b\u0442\u044c"}
                 </button>
               </div>
             </div>
@@ -4510,43 +5110,4 @@ export default function Warehouse({
   );
 
 }
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 

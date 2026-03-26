@@ -1,4 +1,9 @@
-export function createWarehouseStockService(prisma) {
+export function createWarehouseStockService(prisma, options = {}) {
+  const onMovementCreated =
+    typeof options.onMovementCreated === "function"
+      ? options.onMovementCreated
+      : null;
+
   const normalizeQty = (value) => {
     const qty = Number(value);
     if (!Number.isFinite(qty) || qty === 0) {
@@ -77,7 +82,7 @@ export function createWarehouseStockService(prisma) {
       throw err;
     }
 
-    return tx.stockMovement.create({
+    const movement = await tx.stockMovement.create({
       data: {
         opId: opId || null,
         type,
@@ -92,6 +97,20 @@ export function createWarehouseStockService(prisma) {
         createdById: userId || null,
       },
     });
+
+    if (onMovementCreated) {
+      try {
+        onMovementCreated({
+          id: movement.id,
+          itemId: movement.itemId,
+          type: movement.type,
+        });
+      } catch {
+        // Игнорируем ошибки нотификатора, чтобы не ломать складские операции.
+      }
+    }
+
+    return movement;
   };
 
   const createMovement = async (data) => {

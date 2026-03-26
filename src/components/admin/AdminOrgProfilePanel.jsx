@@ -1,6 +1,13 @@
 import { useEffect, useMemo, useState } from "react";
 import { API_BASE, normalizeErrorMessage } from "../../apiConfig";
 
+const DEFAULT_PURCHASE_ORDER_EMAIL_TEMPLATE =
+  "Здравствуйте, {{поставщик}}!\n\n" +
+  "Просим обработать заказ № {{номерЗаказа}} от {{датаЗаказа}}.\n\n" +
+  "Позиции:\n{{позиции}}\n\n" +
+  "Итого: {{итого}} ₽\n\n" +
+  "С уважением,\nСкладОнлайн";
+
 const EMPTY_FORM = {
   orgName: "",
   legalAddress: "",
@@ -8,6 +15,7 @@ const EMPTY_FORM = {
   inn: "",
   kpp: "",
   phone: "",
+  purchaseOrderEmailTemplate: DEFAULT_PURCHASE_ORDER_EMAIL_TEMPLATE,
 };
 
 export default function AdminOrgProfilePanel() {
@@ -52,6 +60,9 @@ export default function AdminOrgProfilePanel() {
           inn: profile?.inn || "",
           kpp: profile?.kpp || "",
           phone: profile?.phone || "",
+          purchaseOrderEmailTemplate:
+            profile?.purchaseOrderEmailTemplate ||
+            DEFAULT_PURCHASE_ORDER_EMAIL_TEMPLATE,
         });
       } catch (err) {
         if (!active) return;
@@ -82,6 +93,9 @@ export default function AdminOrgProfilePanel() {
       inn: String(form.inn || "").trim(),
       kpp: String(form.kpp || "").trim(),
       phone: String(form.phone || "").trim(),
+      purchaseOrderEmailTemplate: String(
+        form.purchaseOrderEmailTemplate || ""
+      ),
     };
 
     if (
@@ -119,6 +133,9 @@ export default function AdminOrgProfilePanel() {
         inn: profile?.inn || "",
         kpp: profile?.kpp || "",
         phone: profile?.phone || "",
+        purchaseOrderEmailTemplate:
+          profile?.purchaseOrderEmailTemplate ||
+          DEFAULT_PURCHASE_ORDER_EMAIL_TEMPLATE,
       });
       setSuccess("Реквизиты сохранены.");
     } catch (err) {
@@ -197,6 +214,27 @@ export default function AdminOrgProfilePanel() {
                 value={form.kpp}
                 onChange={setField("kpp")}
               />
+            </div>
+          </div>
+
+          <div>
+            <label className="admin-label">Шаблон письма поставщику (необязательно)</label>
+            <textarea
+              className="admin-input"
+              value={form.purchaseOrderEmailTemplate}
+              onChange={setField("purchaseOrderEmailTemplate")}
+              rows={8}
+              placeholder={
+                "Здравствуйте, {{поставщик}}!\n\n" +
+                "Просим обработать заказ № {{номерЗаказа}} от {{датаЗаказа}}.\n\n" +
+                "Позиции:\n{{позиции}}\n\n" +
+                "Итого: {{итого}} ₽\n\n" +
+                "С уважением,\nСкладОнлайн"
+              }
+              style={{ resize: "vertical", minHeight: 180 }}
+            />
+            <div className="admin-muted" style={{ marginTop: 6 }}>
+              Переменные: {"{{поставщик}}"}, {"{{номерЗаказа}}"}, {"{{датаЗаказа}}"}, {"{{позиции}}"}, {"{{итого}}"}.
             </div>
           </div>
 
