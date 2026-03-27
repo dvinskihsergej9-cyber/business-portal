@@ -2514,6 +2514,35 @@ input[type="number"] {
   animation: pricing-hero-in 0.45s ease both;
 }
 
+.pricing-modern__back-login {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 40px;
+  padding: 8px 14px;
+  border-radius: 10px;
+  border: 1px solid #93c5fd;
+  background: rgba(255, 255, 255, 0.92);
+  color: #1e40af;
+  font-size: 14px;
+  font-weight: 700;
+  cursor: pointer;
+  transition: background-color 0.2s ease, border-color 0.2s ease, color 0.2s ease;
+}
+
+.pricing-modern__back-login:hover {
+  background: #eff6ff;
+  border-color: #60a5fa;
+  color: #1d4ed8;
+}
+
+.pricing-modern__back-login:focus,
+.pricing-modern__back-login:focus-visible {
+  outline: none;
+  border-color: #3b82f6;
+  box-shadow: 0 0 0 2px rgba(59, 130, 246, 0.24);
+}
+
 .pricing-modern__brand {
   display: flex;
   align-items: center;
@@ -2999,6 +3028,12 @@ input[type="number"] {
   .pricing-modern__hero {
     border-radius: 16px;
     padding: 16px;
+  }
+
+  .pricing-modern__back-login {
+    width: 100%;
+    min-height: 44px;
+    margin-bottom: 6px;
   }
 
   .pricing-modern__brand span {
