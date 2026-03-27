@@ -10,13 +10,6 @@ const CATEGORY_OPTIONS = [
   { value: "OTHER", label: "Другое" },
 ];
 
-const PRIORITY_OPTIONS = [
-  { value: "LOW", label: "Низкий" },
-  { value: "NORMAL", label: "Обычный" },
-  { value: "HIGH", label: "Высокий" },
-  { value: "URGENT", label: "Критичный" },
-];
-
 const STATUS_LABELS = {
   OPEN: "Открыта",
   IN_PROGRESS: "В работе",
@@ -36,11 +29,6 @@ function getCategoryLabel(value) {
   return option?.label || "Другое";
 }
 
-function getPriorityLabel(value) {
-  const option = PRIORITY_OPTIONS.find((item) => item.value === String(value || ""));
-  return option?.label || "Обычный";
-}
-
 function getStatusLabel(value) {
   return STATUS_LABELS[String(value || "").trim()] || "Открыта";
 }
@@ -56,7 +44,6 @@ export default function Support() {
   const location = useLocation();
   const [subject, setSubject] = useState("");
   const [category, setCategory] = useState("TECHNICAL");
-  const [priority, setPriority] = useState("NORMAL");
   const [message, setMessage] = useState("");
 
   const [tickets, setTickets] = useState([]);
@@ -171,7 +158,6 @@ export default function Support() {
         body: JSON.stringify({
           subject: preparedSubject,
           category,
-          priority,
           message: preparedMessage,
           currentPath: `${location.pathname}${location.search || ""}`,
         }),
@@ -259,29 +245,16 @@ export default function Support() {
             />
           </label>
 
-          <div className="support-page__row">
-            <label className="support-page__field">
-              <span>Категория</span>
-              <select value={category} onChange={(event) => setCategory(event.target.value)}>
-                {CATEGORY_OPTIONS.map((option) => (
-                  <option key={option.value} value={option.value}>
-                    {option.label}
-                  </option>
-                ))}
-              </select>
-            </label>
-
-            <label className="support-page__field">
-              <span>Приоритет</span>
-              <select value={priority} onChange={(event) => setPriority(event.target.value)}>
-                {PRIORITY_OPTIONS.map((option) => (
-                  <option key={option.value} value={option.value}>
-                    {option.label}
-                  </option>
-                ))}
-              </select>
-            </label>
-          </div>
+          <label className="support-page__field">
+            <span>Категория</span>
+            <select value={category} onChange={(event) => setCategory(event.target.value)}>
+              {CATEGORY_OPTIONS.map((option) => (
+                <option key={option.value} value={option.value}>
+                  {option.label}
+                </option>
+              ))}
+            </select>
+          </label>
 
           <label className="support-page__field">
             <span>Сообщение</span>
@@ -304,7 +277,6 @@ export default function Support() {
               onClick={() => {
                 setSubject("");
                 setCategory("TECHNICAL");
-                setPriority("NORMAL");
                 setMessage("");
                 setError("");
                 setSuccess("");
@@ -350,7 +322,6 @@ export default function Support() {
                     </div>
                     <div className="support-page__ticket-meta">
                       <span>{getCategoryLabel(ticket.category)}</span>
-                      <span>{getPriorityLabel(ticket.priority)}</span>
                       <span>{formatDateTime(ticket.lastMessageAt || ticket.updatedAt)}</span>
                     </div>
                     {ticket.lastMessage?.body ? (

@@ -4151,7 +4151,8 @@ app.get("/api/profile", auth, async (req, res) => {
       const subject = normalizeSupportText(req.body?.subject, 160);
       const body = normalizeSupportText(req.body?.message, 4000);
       const category = normalizeSupportTicketCategory(req.body?.category, "OTHER");
-      const priority = normalizeSupportTicketPriority(req.body?.priority, "NORMAL");
+      // Приоритет заявки выставляет только поддержка/владелец в админке.
+      const priority = "NORMAL";
 
       if (!subject) {
         return res.status(400).json({ message: "Укажите тему обращения." });

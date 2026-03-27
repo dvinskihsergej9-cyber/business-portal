@@ -40,6 +40,14 @@ const PRIORITY_LABELS = {
   URGENT: "Критичный",
 };
 
+const CATEGORY_LABELS = {
+  ACCESS: "Доступ и права",
+  BILLING: "Оплата и тарифы",
+  TECHNICAL: "Техническая ошибка",
+  INTEGRATION: "Интеграции",
+  OTHER: "Другое",
+};
+
 function formatDateTime(value) {
   if (!value) return "—";
   const date = new Date(value);
@@ -55,16 +63,27 @@ function getPriorityLabel(value) {
   return PRIORITY_LABELS[String(value || "").trim()] || "Обычный";
 }
 
+function getCategoryLabel(value) {
+  return CATEGORY_LABELS[String(value || "").trim()] || "Другое";
+}
+
 export default function AdminSupportPanel() {
   const [tickets, setTickets] = useState([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
   const [success, setSuccess] = useState("");
 
-  const [statusFilter, setStatusFilter] = useState("");
-  const [priorityFilter, setPriorityFilter] = useState("");
-  const [categoryFilter, setCategoryFilter] = useState("");
-  const [search, setSearch] = useState("");
+  const [searchInput, setSearchInput] = useState("");
+  const [statusInput, setStatusInput] = useState("");
+  const [priorityInput, setPriorityInput] = useState("");
+  const [categoryInput, setCategoryInput] = useState("");
+
+  const [filters, setFilters] = useState({
+    search: "",
+    status: "",
+    priority: "",
+    category: "",
+  });
   const [page, setPage] = useState(1);
   const [total, setTotal] = useState(0);
   const limit = 20;
@@ -79,6 +98,9 @@ export default function AdminSupportPanel() {
   const [editStatus, setEditStatus] = useState("OPEN");
   const [editPriority, setEditPriority] = useState("NORMAL");
 
+  const [isMobile, setIsMobile] = useState(false);
+  const [mobileView, setMobileView] = useState("list");
+
   const totalPages = useMemo(
     () => Math.max(1, Math.ceil((Number(total) || 0) / limit)),
     [total]
@@ -91,14 +113,22 @@ export default function AdminSupportPanel() {
     []
   );
 
+  useEffect(() => {
+    const media = window.matchMedia("(max-width: 900px)");
+    const onChange = () => setIsMobile(media.matches);
+    onChange();
+    media.addEventListener("change", onChange);
+    return () => media.removeEventListener("change", onChange);
+  }, []);
+
   const buildQuery = () => {
     const params = new URLSearchParams();
     params.set("page", String(page));
     params.set("limit", String(limit));
-    if (statusFilter) params.set("status", statusFilter);
-    if (priorityFilter) params.set("priority", priorityFilter);
-    if (categoryFilter) params.set("category", categoryFilter);
-    if (search.trim()) params.set("search", search.trim());
+    if (filters.status) params.set("status", filters.status);
+    if (filters.priority) params.set("priority", filters.priority);
+    if (filters.category) params.set("category", filters.category);
+    if (filters.search.trim()) params.set("search", filters.search.trim());
     return params.toString();
   };
 
@@ -128,7 +158,7 @@ export default function AdminSupportPanel() {
     } finally {
       setLoading(false);
     }
-  }, [authHeaders, categoryFilter, page, priorityFilter, search, statusFilter]);
+  }, [authHeaders, filters, page]);
 
   const loadThread = useCallback(
     async (ticketId) => {
@@ -171,12 +201,39 @@ export default function AdminSupportPanel() {
     loadThread(selectedTicketId);
   }, [loadThread, selectedTicketId]);
 
-  const handleApplyFilters = () => {
-    if (page === 1) {
-      loadTickets();
-      return;
+  useEffect(() => {
+    if (!isMobile) {
+      setMobileView("list");
     }
+  }, [isMobile]);
+
+  const handleApplyFilters = () => {
+    setFilters({
+      search: searchInput,
+      status: statusInput,
+      priority: priorityInput,
+      category: categoryInput,
+    });
     setPage(1);
+  };
+
+  const handleResetFilters = () => {
+    setSearchInput("");
+    setStatusInput("");
+    setPriorityInput("");
+    setCategoryInput("");
+    setFilters({
+      search: "",
+      status: "",
+      priority: "",
+      category: "",
+    });
+    setPage(1);
+  };
+
+  const handleOpenTicket = (ticketId) => {
+    setSelectedTicketId(ticketId);
+    if (isMobile) setMobileView("thread");
   };
 
   const handleSendReply = async () => {
@@ -246,256 +303,277 @@ export default function AdminSupportPanel() {
     }
   };
 
+  const selectedMessagesCount = Number(selectedTicket?.messagesCount || messages.length || 0);
+
   return (
-    <div className="admin-console__card">
+    <div className="admin-console__card admin-support-inbox">
       <div className="admin-console__card-title">Поддержка</div>
       <div className="admin-console__card-text">
-        Обращения сотрудников вашей компании и переписка с ними.
-      </div>
-
-      <div className="admin-filters" style={{ gridTemplateColumns: "1.4fr 1fr 1fr 1fr auto" }}>
-        <div>
-          <label className="admin-label">Поиск</label>
-          <input
-            className="admin-input"
-            value={search}
-            onChange={(event) => setSearch(event.target.value)}
-            placeholder="Тема, имя или email"
-          />
-        </div>
-        <div>
-          <label className="admin-label">Статус</label>
-          <select
-            className="admin-select"
-            value={statusFilter}
-            onChange={(event) => setStatusFilter(event.target.value)}
-          >
-            {STATUS_OPTIONS.map((item) => (
-              <option key={item.value || "all-status"} value={item.value}>
-                {item.label}
-              </option>
-            ))}
-          </select>
-        </div>
-        <div>
-          <label className="admin-label">Приоритет</label>
-          <select
-            className="admin-select"
-            value={priorityFilter}
-            onChange={(event) => setPriorityFilter(event.target.value)}
-          >
-            {PRIORITY_OPTIONS.map((item) => (
-              <option key={item.value || "all-priority"} value={item.value}>
-                {item.label}
-              </option>
-            ))}
-          </select>
-        </div>
-        <div>
-          <label className="admin-label">Категория</label>
-          <select
-            className="admin-select"
-            value={categoryFilter}
-            onChange={(event) => setCategoryFilter(event.target.value)}
-          >
-            {CATEGORY_OPTIONS.map((item) => (
-              <option key={item.value || "all-category"} value={item.value}>
-                {item.label}
-              </option>
-            ))}
-          </select>
-        </div>
-        <button type="button" className="admin-btn admin-btn--ghost" onClick={handleApplyFilters}>
-          Применить
-        </button>
+        Очередь обращений сотрудников и единый чат по каждому тикету.
       </div>
 
       {error ? <div className="admin-alert admin-alert--error">{error}</div> : null}
       {success ? <div className="admin-muted">{success}</div> : null}
 
-      <div className="admin-table-wrapper">
-        <table className="admin-table">
-          <thead>
-            <tr>
-              <th>ID</th>
-              <th>Тема</th>
-              <th>Пользователь</th>
-              <th>Статус</th>
-              <th>Приоритет</th>
-              <th>Обновлено</th>
-              <th>Действие</th>
-            </tr>
-          </thead>
-          <tbody>
-            {tickets.map((ticket) => (
-              <tr key={ticket.id}>
-                <td data-label="ID">{ticket.id}</td>
-                <td data-label="Тема">
-                  <div className="admin-table__title">{ticket.subject || "Без темы"}</div>
-                  <div className="admin-table__meta">
-                    {ticket.organization?.name || "Организация"} • {ticket.messagesCount || 0} сообщ.
-                  </div>
-                </td>
-                <td data-label="Пользователь">
-                  <div className="admin-table__title">{ticket.createdBy?.name || "—"}</div>
-                  <div className="admin-table__meta">{ticket.createdBy?.email || "—"}</div>
-                </td>
-                <td data-label="Статус">
-                  <span className={`admin-support__status admin-support__status--${String(ticket.status || "").toLowerCase()}`}>
-                    {getStatusLabel(ticket.status)}
-                  </span>
-                </td>
-                <td data-label="Приоритет">{getPriorityLabel(ticket.priority)}</td>
-                <td data-label="Обновлено">{formatDateTime(ticket.updatedAt)}</td>
-                <td data-label="Действие" className="admin-table__actions">
-                  <button
-                    type="button"
-                    className="admin-btn admin-btn--ghost"
-                    onClick={() => setSelectedTicketId(ticket.id)}
-                  >
-                    Открыть
-                  </button>
-                </td>
-              </tr>
-            ))}
-            {!tickets.length ? (
-              <tr>
-                <td colSpan={7} className="admin-muted">
-                  {loading ? "Загрузка..." : "Обращений пока нет."}
-                </td>
-              </tr>
-            ) : null}
-          </tbody>
-        </table>
-      </div>
-
-      <div style={{ display: "flex", alignItems: "center", gap: 10, marginTop: 12 }}>
-        <button
-          type="button"
-          className="admin-btn admin-btn--ghost"
-          disabled={loading || page <= 1}
-          onClick={() => setPage((prev) => Math.max(1, prev - 1))}
+      <div className="admin-support-inbox__layout">
+        <section
+          className={`admin-support-inbox__list-col ${isMobile && mobileView === "thread" ? "is-hidden" : ""}`}
         >
-          Назад
-        </button>
-        <div className="admin-muted">
-          Страница {page} из {totalPages} • Всего: {total}
-        </div>
-        <button
-          type="button"
-          className="admin-btn admin-btn--ghost"
-          disabled={loading || page >= totalPages}
-          onClick={() => setPage((prev) => prev + 1)}
-        >
-          Вперед
-        </button>
-      </div>
-
-      <div className="admin-support__thread">
-        {!selectedTicketId ? (
-          <div className="admin-muted">Выберите обращение для просмотра переписки.</div>
-        ) : (
-          <>
-            <div className="admin-support__thread-head">
-              <div>
-                <div className="admin-console__card-title" style={{ marginBottom: 4 }}>
-                  {selectedTicket?.subject || "Обращение"}
-                </div>
-                <div className="admin-table__meta">
-                  {selectedTicket?.createdBy?.name || "—"} •{" "}
-                  {selectedTicket?.createdBy?.email || "—"}
-                </div>
-              </div>
+          <div className="admin-support-inbox__filters">
+            <div className="admin-support-inbox__search">
+              <label className="admin-label">Поиск</label>
+              <input
+                className="admin-input"
+                value={searchInput}
+                onChange={(event) => setSearchInput(event.target.value)}
+                placeholder="Тема, клиент, email"
+              />
+            </div>
+            <div>
+              <label className="admin-label">Статус</label>
+              <select
+                className="admin-select"
+                value={statusInput}
+                onChange={(event) => setStatusInput(event.target.value)}
+              >
+                {STATUS_OPTIONS.map((item) => (
+                  <option key={item.value || "all-status"} value={item.value}>
+                    {item.label}
+                  </option>
+                ))}
+              </select>
+            </div>
+            <div>
+              <label className="admin-label">Приоритет</label>
+              <select
+                className="admin-select"
+                value={priorityInput}
+                onChange={(event) => setPriorityInput(event.target.value)}
+              >
+                {PRIORITY_OPTIONS.map((item) => (
+                  <option key={item.value || "all-priority"} value={item.value}>
+                    {item.label}
+                  </option>
+                ))}
+              </select>
+            </div>
+            <div>
+              <label className="admin-label">Категория</label>
+              <select
+                className="admin-select"
+                value={categoryInput}
+                onChange={(event) => setCategoryInput(event.target.value)}
+              >
+                {CATEGORY_OPTIONS.map((item) => (
+                  <option key={item.value || "all-category"} value={item.value}>
+                    {item.label}
+                  </option>
+                ))}
+              </select>
+            </div>
+            <div className="admin-support-inbox__filter-actions">
+              <button
+                type="button"
+                className="admin-btn admin-btn--primary"
+                onClick={handleApplyFilters}
+              >
+                Применить
+              </button>
               <button
                 type="button"
                 className="admin-btn admin-btn--ghost"
-                onClick={() => loadThread(selectedTicketId)}
-                disabled={threadLoading}
+                onClick={handleResetFilters}
               >
-                {threadLoading ? "Обновляем..." : "Обновить чат"}
+                Сбросить
               </button>
             </div>
+          </div>
 
-            <div className="admin-form__row">
-              <div>
-                <label className="admin-label">Статус</label>
-                <select
-                  className="admin-select"
-                  value={editStatus}
-                  onChange={(event) => setEditStatus(event.target.value)}
-                >
-                  {STATUS_OPTIONS.filter((item) => item.value).map((item) => (
-                    <option key={item.value} value={item.value}>
-                      {item.label}
-                    </option>
-                  ))}
-                </select>
-              </div>
-              <div>
-                <label className="admin-label">Приоритет</label>
-                <select
-                  className="admin-select"
-                  value={editPriority}
-                  onChange={(event) => setEditPriority(event.target.value)}
-                >
-                  {PRIORITY_OPTIONS.filter((item) => item.value).map((item) => (
-                    <option key={item.value} value={item.value}>
-                      {item.label}
-                    </option>
-                  ))}
-                </select>
-              </div>
-            </div>
+          <div className="admin-support-inbox__list-head">
+            <div className="admin-support-inbox__list-title">Обращения</div>
+            <button
+              type="button"
+              className="admin-btn admin-btn--ghost"
+              onClick={loadTickets}
+              disabled={loading}
+            >
+              {loading ? "Обновляем..." : "Обновить"}
+            </button>
+          </div>
 
-            <div className="admin-table__actions">
-              <button
-                type="button"
-                className="admin-btn admin-btn--primary"
-                onClick={handleSaveMeta}
-                disabled={savingMeta || !selectedTicketId}
-              >
-                {savingMeta ? "Сохраняем..." : "Сохранить статус и приоритет"}
-              </button>
-            </div>
-
-            <div className="admin-support__messages">
-              {messages.map((item) => (
-                <div
-                  key={item.id}
-                  className={`admin-support__message ${item.isStaff ? "admin-support__message--staff" : ""}`}
+          <div className="admin-support-inbox__list">
+            {tickets.map((ticket) => {
+              const isActive = Number(ticket.id) === Number(selectedTicketId);
+              return (
+                <button
+                  key={ticket.id}
+                  type="button"
+                  className={`admin-support-inbox__ticket ${isActive ? "is-active" : ""}`}
+                  onClick={() => handleOpenTicket(ticket.id)}
                 >
-                  <div className="admin-support__message-head">
-                    <span>{item.isStaff ? "Поддержка" : item.author?.name || "Пользователь"}</span>
-                    <span>{formatDateTime(item.createdAt)}</span>
+                  <div className="admin-support-inbox__ticket-head">
+                    <div className="admin-support-inbox__ticket-id">#{ticket.id}</div>
+                    <span className={`admin-support__status admin-support__status--${String(ticket.status || "").toLowerCase()}`}>
+                      {getStatusLabel(ticket.status)}
+                    </span>
                   </div>
-                  <div>{item.body}</div>
-                </div>
-              ))}
-              {!messages.length ? (
-                <div className="admin-muted">Сообщений пока нет.</div>
-              ) : null}
-            </div>
+                  <div className="admin-support-inbox__ticket-subject">{ticket.subject || "Без темы"}</div>
+                  <div className="admin-support-inbox__ticket-meta">
+                    <span>{ticket.organization?.name || "Организация"}</span>
+                    <span>{ticket.createdBy?.name || "—"}</span>
+                  </div>
+                  <div className="admin-support-inbox__ticket-meta">
+                    <span>{getCategoryLabel(ticket.category)}</span>
+                    <span>{getPriorityLabel(ticket.priority)}</span>
+                    <span>{formatDateTime(ticket.updatedAt)}</span>
+                  </div>
+                </button>
+              );
+            })}
+            {!tickets.length ? (
+              <div className="admin-muted">
+                {loading ? "Загрузка..." : "Обращений пока нет."}
+              </div>
+            ) : null}
+          </div>
 
-            <div className="admin-support__reply">
-              <textarea
-                className="admin-input"
-                rows={3}
-                maxLength={4000}
-                value={replyText}
-                onChange={(event) => setReplyText(event.target.value)}
-                placeholder="Ответ для пользователя"
-              />
-              <button
-                type="button"
-                className="admin-btn admin-btn--primary"
-                onClick={handleSendReply}
-                disabled={sendingReply || !selectedTicketId}
-              >
-                {sendingReply ? "Отправляем..." : "Отправить ответ"}
-              </button>
+          <div className="admin-support-inbox__pager">
+            <button
+              type="button"
+              className="admin-btn admin-btn--ghost"
+              disabled={loading || page <= 1}
+              onClick={() => setPage((prev) => Math.max(1, prev - 1))}
+            >
+              Назад
+            </button>
+            <div className="admin-muted">
+              Страница {page} из {totalPages} • Всего: {total}
             </div>
-          </>
-        )}
+            <button
+              type="button"
+              className="admin-btn admin-btn--ghost"
+              disabled={loading || page >= totalPages}
+              onClick={() => setPage((prev) => prev + 1)}
+            >
+              Вперёд
+            </button>
+          </div>
+        </section>
+
+        <section
+          className={`admin-support-inbox__thread-col ${isMobile && mobileView === "list" ? "is-hidden" : ""}`}
+        >
+          {!selectedTicketId ? (
+            <div className="admin-support-inbox__empty">
+              Выберите обращение из списка слева.
+            </div>
+          ) : (
+            <>
+              <div className="admin-support-inbox__thread-head">
+                <div className="admin-support-inbox__thread-title-wrap">
+                  {isMobile && (
+                    <button
+                      type="button"
+                      className="admin-btn admin-btn--ghost"
+                      onClick={() => setMobileView("list")}
+                    >
+                      Назад к списку
+                    </button>
+                  )}
+                  <div className="admin-support-inbox__thread-title">
+                    {selectedTicket?.subject || "Обращение"}
+                  </div>
+                  <div className="admin-support-inbox__thread-subtitle">
+                    {selectedTicket?.createdBy?.name || "—"} • {selectedTicket?.createdBy?.email || "—"} •{" "}
+                    {selectedMessagesCount} сообщ.
+                  </div>
+                </div>
+                <button
+                  type="button"
+                  className="admin-btn admin-btn--ghost"
+                  onClick={() => loadThread(selectedTicketId)}
+                  disabled={threadLoading}
+                >
+                  {threadLoading ? "Обновляем..." : "Обновить чат"}
+                </button>
+              </div>
+
+              <div className="admin-support-inbox__thread-controls">
+                <label className="admin-support-inbox__control">
+                  <span className="admin-label">Статус</span>
+                  <select
+                    className="admin-select"
+                    value={editStatus}
+                    onChange={(event) => setEditStatus(event.target.value)}
+                  >
+                    {STATUS_OPTIONS.filter((item) => item.value).map((item) => (
+                      <option key={item.value} value={item.value}>
+                        {item.label}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+                <label className="admin-support-inbox__control">
+                  <span className="admin-label">Приоритет</span>
+                  <select
+                    className="admin-select"
+                    value={editPriority}
+                    onChange={(event) => setEditPriority(event.target.value)}
+                  >
+                    {PRIORITY_OPTIONS.filter((item) => item.value).map((item) => (
+                      <option key={item.value} value={item.value}>
+                        {item.label}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+                <button
+                  type="button"
+                  className="admin-btn admin-btn--primary"
+                  onClick={handleSaveMeta}
+                  disabled={savingMeta || !selectedTicketId}
+                >
+                  {savingMeta ? "Сохраняем..." : "Сохранить"}
+                </button>
+              </div>
+
+              <div className="admin-support-inbox__messages">
+                {messages.map((item) => (
+                  <div
+                    key={item.id}
+                    className={`admin-support-inbox__message ${item.isStaff ? "is-staff" : "is-user"}`}
+                  >
+                    <div className="admin-support-inbox__message-head">
+                      <span>{item.isStaff ? "Поддержка" : item.author?.name || "Пользователь"}</span>
+                      <span>{formatDateTime(item.createdAt)}</span>
+                    </div>
+                    <div className="admin-support-inbox__message-body">{item.body}</div>
+                  </div>
+                ))}
+                {!messages.length ? <div className="admin-muted">Сообщений пока нет.</div> : null}
+              </div>
+
+              <div className="admin-support-inbox__reply">
+                <textarea
+                  className="admin-input"
+                  rows={4}
+                  maxLength={4000}
+                  value={replyText}
+                  onChange={(event) => setReplyText(event.target.value)}
+                  placeholder="Ответ для пользователя"
+                />
+                <button
+                  type="button"
+                  className="admin-btn admin-btn--primary"
+                  onClick={handleSendReply}
+                  disabled={sendingReply || !selectedTicketId}
+                >
+                  {sendingReply ? "Отправляем..." : "Отправить ответ"}
+                </button>
+              </div>
+            </>
+          )}
+        </section>
       </div>
     </div>
   );
