@@ -4298,12 +4298,14 @@ app.get("/api/profile", auth, async (req, res) => {
       if (!canAccessSupportTicketAsUser(ticket, req.user)) {
         return res.status(403).json({ message: "Нет доступа к заявке." });
       }
+      if (ticket.status === "RESOLVED") {
+        return res.status(409).json({
+          message: "Обращение закрыто. Создайте новое обращение.",
+        });
+      }
 
       const now = new Date();
-      const status =
-        ticket.status === "RESOLVED" || ticket.status === "WAITING_USER"
-          ? "OPEN"
-          : ticket.status;
+      const status = ticket.status === "WAITING_USER" ? "OPEN" : ticket.status;
 
       const message = await prisma.$transaction(async (tx) => {
         const created = await tx.supportMessage.create({

@@ -205,6 +205,10 @@ export default function Support() {
     const ticketId = Number(selectedTicketId || 0);
     const preparedReply = String(replyText || "").trim();
     if (!ticketId) return;
+    if (selectedTicket?.status === "RESOLVED") {
+      setError("Обращение уже закрыто. Создайте новое через кнопку + Новое.");
+      return;
+    }
     if (!preparedReply) {
       setError("Введите сообщение для поддержки.");
       return;
@@ -236,6 +240,15 @@ export default function Support() {
     }
   };
 
+  const handleRefreshAll = async () => {
+    await loadTickets();
+    if (selectedTicketId) {
+      await loadThread(selectedTicketId);
+    }
+  };
+
+  const isSelectedTicketResolved = selectedTicket?.status === "RESOLVED";
+
   return (
     <div className="page support-page">
       <div className="page-header support-page__header">
@@ -260,8 +273,13 @@ export default function Support() {
             <button type="button" className="btn primary support-page__create-btn" onClick={openComposer}>
               + Новое
             </button>
-            <button type="button" className="btn" onClick={loadTickets} disabled={ticketsLoading}>
-              {ticketsLoading ? "Обновляем..." : "Обновить"}
+            <button
+              type="button"
+              className="btn primary"
+              onClick={handleRefreshAll}
+              disabled={ticketsLoading || threadLoading}
+            >
+              {ticketsLoading || threadLoading ? "Обновляем..." : "Обновить"}
             </button>
           </div>
         </div>
@@ -316,14 +334,6 @@ export default function Support() {
                       {Number(selectedTicket?.messagesCount || messages.length || 0)}
                     </div>
                   </div>
-                  <button
-                    type="button"
-                    className="btn"
-                    onClick={() => loadThread(selectedTicketId)}
-                    disabled={threadLoading}
-                  >
-                    {threadLoading ? "Обновляем..." : "Обновить чат"}
-                  </button>
                 </div>
 
                 <div className="support-page__messages">
@@ -344,19 +354,30 @@ export default function Support() {
                   ) : null}
                 </div>
 
+                {isSelectedTicketResolved ? (
+                  <div className="support-page__resolved-note">
+                    Это обращение закрыто. Чтобы продолжить, создайте новое через кнопку + Новое.
+                  </div>
+                ) : null}
+
                 <div className="support-page__reply">
                   <textarea
                     value={replyText}
                     onChange={(event) => setReplyText(event.target.value)}
                     rows={3}
                     maxLength={4000}
-                    placeholder="Напишите сообщение поддержке"
+                    placeholder={
+                      isSelectedTicketResolved
+                        ? "Чат закрыт. Создайте новое обращение."
+                        : "Напишите сообщение поддержке"
+                    }
+                    disabled={isSelectedTicketResolved}
                   />
                   <button
                     type="button"
                     className="btn primary"
                     onClick={handleSendReply}
-                    disabled={sendingReply || !selectedTicketId}
+                    disabled={sendingReply || !selectedTicketId || isSelectedTicketResolved}
                   >
                     {sendingReply ? "Отправляем..." : "Отправить"}
                   </button>

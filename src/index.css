@@ -2791,6 +2791,16 @@ input[type="number"] {
   gap: 8px;
 }
 
+.support-page__resolved-note {
+  border: 1px solid #93c5fd;
+  border-radius: 10px;
+  background: #eff6ff;
+  color: #1e40af;
+  padding: 9px 11px;
+  font-size: 13px;
+  line-height: 1.35;
+}
+
 .support-page__modal-backdrop {
   position: fixed;
   inset: 0;
