@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+﻿import { useEffect, useMemo, useState } from "react";
 import { NavLink, Outlet, useLocation, useNavigate } from "react-router-dom";
 import { useAuth } from "./context/AuthContext";
 import { hasPermission, PERMISSION_KEYS } from "./utils/permissions";
@@ -129,21 +129,21 @@ export default function Layout() {
   const menu = useMemo(
     () => [
       {
-        label: "Склад",
-        shortLabel: "Склад",
+        label: "РЎРєР»Р°Рґ",
+        shortLabel: "РЎРєР»Р°Рґ",
         icon: "warehouse",
         to: "/warehouse",
         permission: PERMISSION_KEYS.APP_WAREHOUSE,
       },
       {
-        label: "Новости платформы",
-        shortLabel: "Новости",
+        label: "РќРѕРІРѕСЃС‚Рё РїР»Р°С‚С„РѕСЂРјС‹",
+        shortLabel: "РќРѕРІРѕСЃС‚Рё",
         icon: "news",
         to: "/news",
       },
       {
-        label: "Управление",
-        shortLabel: "Управление",
+        label: "РЈРїСЂР°РІР»РµРЅРёРµ",
+        shortLabel: "РЈРїСЂР°РІР»РµРЅРёРµ",
         icon: "admin",
         to: "/admin",
         permission: PERMISSION_KEYS.APP_ADMIN,
@@ -249,6 +249,14 @@ export default function Layout() {
   const sidebarStyle = isMobile
     ? { ...styles.sidebar, display: "none" }
     : styles.sidebar;
+  const topBarStyle = isMobile ? styles.topBarMobile : styles.topBar;
+  const topBarActionsStyle = isMobile
+    ? styles.topBarActionsMobile
+    : styles.topBarActions;
+  const headerActionBtnStyle = isMobile
+    ? styles.headerActionBtnMobile
+    : styles.headerActionBtn;
+  const supportLabel = isMobile ? "РџРѕРјРѕС‰СЊ" : "РџРѕРґРґРµСЂР¶РєР°";
 
   return (
     <div style={rootStyle}>
@@ -256,14 +264,14 @@ export default function Layout() {
         <div style={styles.logoBlock}>
           <img
             src={APP_LOGO_SRC}
-            alt="Логотип"
+            alt="Р›РѕРіРѕС‚РёРї"
             style={styles.logoMarkImage}
             loading="eager"
             decoding="sync"
           />
           <div>
-            <div style={styles.logoTitle}>СкладОнлайн</div>
-            <div style={styles.logoSubtitle}>Внутренний сервис компании</div>
+            <div style={styles.logoTitle}>РЎРєР»Р°РґРћРЅР»Р°Р№РЅ</div>
+            <div style={styles.logoSubtitle}>Р’РЅСѓС‚СЂРµРЅРЅРёР№ СЃРµСЂРІРёСЃ РєРѕРјРїР°РЅРёРё</div>
           </div>
         </div>
 
@@ -295,7 +303,7 @@ export default function Layout() {
 
       <div style={styles.main}>
         <header
-          style={isMobile ? styles.topBarMobile : styles.topBar}
+          style={topBarStyle}
           className="portal-topbar"
         >
           <div style={styles.topBarLeft}>
@@ -304,10 +312,10 @@ export default function Layout() {
               type="button"
               style={styles.backBtn}
               onClick={handleBack}
-              aria-label="Назад"
+              aria-label="РќР°Р·Р°Рґ"
             >
               <BackIcon />
-              <span>Назад</span>
+              <span>РќР°Р·Р°Рґ</span>
             </button>
             )}
           </div>
@@ -316,15 +324,15 @@ export default function Layout() {
             {currentPageTitle}
           </div>
 
-          <div style={styles.topBarActions}>
+          <div style={topBarActionsStyle}>
             {user && <NotificationBell />}
             {user && (
-              <button type="button" style={styles.headerSupportBtn} onClick={handleSupportOpen}>
-                Поддержка
+              <button type="button" style={headerActionBtnStyle} onClick={handleSupportOpen}>
+                {supportLabel}
               </button>
             )}
-            <button type="button" style={styles.headerLogoutBtn} onClick={handleLogout}>
-              Выйти
+            <button type="button" style={headerActionBtnStyle} onClick={handleLogout}>
+              Р’С‹Р№С‚Рё
             </button>
           </div>
         </header>
@@ -475,7 +483,7 @@ const styles = {
     zIndex: 45,
     minHeight: 52,
     display: "grid",
-    gridTemplateColumns: "minmax(0, 1fr) auto minmax(0, 1fr)",
+    gridTemplateColumns: "auto minmax(0, 1fr) auto",
     alignItems: "center",
     padding: "6px 16px",
     borderBottom: "1px solid rgba(15, 23, 42, 0.08)",
@@ -488,7 +496,7 @@ const styles = {
     zIndex: 120,
     minHeight: "calc(env(safe-area-inset-top, 0px) + 52px)",
     display: "grid",
-    gridTemplateColumns: "minmax(0, 1fr) auto minmax(0, 1fr)",
+    gridTemplateColumns: "auto minmax(0, 1fr) auto",
     alignItems: "flex-end",
     padding: "calc(env(safe-area-inset-top, 0px) + 6px) 10px 6px",
     borderBottom: "1px solid rgba(15, 23, 42, 0.08)",
@@ -514,11 +522,12 @@ const styles = {
     display: "inline-flex",
     alignItems: "center",
     minHeight: 34,
-    minWidth: 72,
+    minWidth: 0,
   },
   topBarTitle: {
-    justifySelf: "center",
-    maxWidth: "min(64vw, 460px)",
+    justifySelf: "stretch",
+    maxWidth: "100%",
+    padding: "0 8px",
     textAlign: "center",
     fontSize: 16,
     fontWeight: 700,
@@ -533,9 +542,17 @@ const styles = {
     justifySelf: "end",
     display: "inline-flex",
     alignItems: "center",
+    flexWrap: "nowrap",
     gap: 8,
   },
-  headerLogoutBtn: {
+  topBarActionsMobile: {
+    justifySelf: "end",
+    display: "inline-flex",
+    alignItems: "center",
+    flexWrap: "nowrap",
+    gap: 6,
+  },
+  headerActionBtn: {
     padding: "7px 12px",
     borderRadius: 10,
     border: "1px solid #d1d5db",
@@ -548,13 +565,14 @@ const styles = {
     whiteSpace: "nowrap",
     boxShadow: "none",
   },
-  headerSupportBtn: {
-    padding: "7px 12px",
+  headerActionBtnMobile: {
+    minHeight: 34,
+    padding: "6px 9px",
     borderRadius: 10,
-    border: "1px solid #bfdbfe",
-    background: "#eff6ff",
-    color: "#1d4ed8",
-    fontSize: 13,
+    border: "1px solid #d1d5db",
+    background: "#ffffff",
+    color: "#111827",
+    fontSize: 12,
     fontWeight: 600,
     cursor: "pointer",
     textAlign: "center",
@@ -619,3 +637,4 @@ const styles = {
     overflowWrap: "anywhere",
   },
 };
+
