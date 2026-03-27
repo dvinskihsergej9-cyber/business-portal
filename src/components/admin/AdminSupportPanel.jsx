@@ -205,6 +205,7 @@ export default function AdminSupportPanel() {
   const handleSendReply = async () => {
     const ticketId = Number(selectedTicketId || 0);
     const preparedReply = String(replyText || "").trim();
+    let optimisticId = "";
     if (!ticketId) return;
     if (selectedTicket?.status === "RESOLVED") {
       setError("Обращение закрыто. Отправка ответа недоступна.");
@@ -218,6 +219,20 @@ export default function AdminSupportPanel() {
       setSendingReply(true);
       setError("");
       setSuccess("");
+      optimisticId = `tmp-${Date.now()}-${Math.random().toString(36).slice(2)}`;
+      const optimisticCreatedAt = new Date().toISOString();
+      const optimisticMessage = {
+        id: optimisticId,
+        body: preparedReply,
+        isStaff: true,
+        createdAt: optimisticCreatedAt,
+        updatedAt: optimisticCreatedAt,
+        author: null,
+        pending: true,
+      };
+      setReplyText("");
+      setMessages((prev) => [...prev, optimisticMessage]);
+
       const res = await apiFetch(`/admin/support/tickets/${ticketId}/messages`, {
         method: "POST",
         headers: {
@@ -230,11 +245,47 @@ export default function AdminSupportPanel() {
       if (!res.ok) {
         throw new Error(data?.message || "SUPPORT_TICKET_REPLY_ERROR");
       }
-      setReplyText("");
+      const createdMessage = data?.message || null;
+      const ticketStatus = data?.ticketStatus || selectedTicket?.status || "WAITING_USER";
       setSuccess("Ответ отправлен.");
-      await loadTickets();
-      await loadThread(ticketId);
+      if (createdMessage) {
+        setMessages((prev) =>
+          prev.map((item) => (String(item.id) === optimisticId ? createdMessage : item))
+        );
+        setSelectedTicket((prev) =>
+          prev
+            ? {
+                ...prev,
+                status: ticketStatus,
+                messagesCount: Number(prev.messagesCount || 0) + 1,
+                lastMessageAt: createdMessage.createdAt || prev.lastMessageAt,
+                lastMessage: createdMessage,
+              }
+            : prev
+        );
+        setTickets((prev) => {
+          const current = prev.find((item) => Number(item.id) === ticketId);
+          const updated = current
+            ? {
+                ...current,
+                status: ticketStatus,
+                messagesCount: Number(current.messagesCount || 0) + 1,
+                lastMessageAt: createdMessage.createdAt || current.lastMessageAt,
+                lastMessage: createdMessage,
+              }
+            : null;
+          const rest = prev.filter((item) => Number(item.id) !== ticketId);
+          return updated ? [updated, ...rest] : prev;
+        });
+      } else {
+        setMessages((prev) => prev.filter((item) => String(item.id) !== optimisticId));
+        await Promise.all([loadTickets(), loadThread(ticketId)]);
+      }
     } catch (err) {
+      setReplyText(preparedReply);
+      setMessages((prev) =>
+        prev.filter((item) => String(item.id) !== optimisticId)
+      );
       setError(normalizeErrorMessage(err, "Не удалось отправить ответ."));
     } finally {
       setSendingReply(false);
@@ -401,7 +452,9 @@ export default function AdminSupportPanel() {
                 {messages.map((item) => (
                   <div
                     key={item.id}
-                    className={`admin-support-inbox__message ${item.isStaff ? "is-staff" : "is-user"}`}
+                    className={`admin-support-inbox__message ${item.isStaff ? "is-staff" : "is-user"} ${
+                      item.pending ? "is-pending" : ""
+                    }`}
                   >
                     <div className="admin-support-inbox__message-head">
                       <span>{item.isStaff ? "(Вы)" : "(Пользователь)"}</span>

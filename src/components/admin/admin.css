@@ -709,6 +709,11 @@
   background: #ffffff;
 }
 
+.admin-support-inbox__message.is-pending {
+  opacity: 0.72;
+  border-style: dashed;
+}
+
 .admin-support-inbox__message-head {
   display: flex;
   align-items: center;

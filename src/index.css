@@ -2801,6 +2801,11 @@ input[type="number"] {
   background: #dbeafe;
 }
 
+.support-page__message--pending {
+  opacity: 0.72;
+  border-style: dashed;
+}
+
 .support-page__message-head {
   display: flex;
   align-items: center;

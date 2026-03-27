@@ -212,6 +212,7 @@ export default function Support() {
   const handleSendReply = async () => {
     const ticketId = Number(selectedTicketId || 0);
     const preparedReply = String(replyText || "").trim();
+    let optimisticId = "";
     if (!ticketId) return;
     if (selectedTicket?.status === "RESOLVED") {
       setError("Обращение уже закрыто. Создайте новое через кнопку + Новое.");
@@ -226,6 +227,20 @@ export default function Support() {
       setSendingReply(true);
       setError("");
       setSuccess("");
+      optimisticId = `tmp-${Date.now()}-${Math.random().toString(36).slice(2)}`;
+      const optimisticCreatedAt = new Date().toISOString();
+      const optimisticMessage = {
+        id: optimisticId,
+        body: preparedReply,
+        isStaff: false,
+        createdAt: optimisticCreatedAt,
+        updatedAt: optimisticCreatedAt,
+        author: null,
+        pending: true,
+      };
+      setReplyText("");
+      setMessages((prev) => [...prev, optimisticMessage]);
+
       const res = await apiFetch(`/support/tickets/${ticketId}/messages`, {
         method: "POST",
         headers: {
@@ -240,9 +255,10 @@ export default function Support() {
       }
       const createdMessage = data?.message || null;
       const ticketStatus = data?.ticketStatus || selectedTicket?.status || "OPEN";
-      setReplyText("");
       if (createdMessage) {
-        setMessages((prev) => [...prev, createdMessage]);
+        setMessages((prev) =>
+          prev.map((item) => (String(item.id) === optimisticId ? createdMessage : item))
+        );
         setSelectedTicket((prev) =>
           prev
             ? {
@@ -269,9 +285,14 @@ export default function Support() {
           return updated ? [updated, ...rest] : prev;
         });
       } else {
+        setMessages((prev) => prev.filter((item) => String(item.id) !== optimisticId));
         await Promise.all([loadTickets(), loadThread(ticketId)]);
       }
     } catch (err) {
+      setReplyText(preparedReply);
+      setMessages((prev) =>
+        prev.filter((item) => String(item.id) !== optimisticId)
+      );
       setError(normalizeErrorMessage(err, "Не удалось отправить сообщение."));
     } finally {
       setSendingReply(false);
@@ -380,7 +401,7 @@ export default function Support() {
                       key={item.id}
                       className={`support-page__message ${
                         item.isStaff ? "support-page__message--peer" : "support-page__message--self"
-                      }`}
+                      } ${item.pending ? "support-page__message--pending" : ""}`}
                     >
                       <div className="support-page__message-head">
                         <span>{messageAuthorLabel(item)}</span>
