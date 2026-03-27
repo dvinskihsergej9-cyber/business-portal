@@ -725,6 +725,16 @@
   gap: 8px;
 }
 
+.admin-support-inbox__resolved-note {
+  border: 1px solid #93c5fd;
+  border-radius: 10px;
+  background: #eff6ff;
+  color: #1e40af;
+  padding: 9px 11px;
+  font-size: 13px;
+  line-height: 1.35;
+}
+
 .admin-support__status {
   display: inline-flex;
   align-items: center;

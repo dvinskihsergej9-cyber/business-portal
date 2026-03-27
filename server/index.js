@@ -4517,6 +4517,11 @@ app.get("/api/profile", auth, async (req, res) => {
       if (!req.user.isSystemOwner && req.user.orgId !== ticket.orgId) {
         return res.status(403).json({ message: "Нет доступа к заявке." });
       }
+      if (ticket.status === "RESOLVED") {
+        return res.status(409).json({
+          message: "Обращение закрыто. Действия по нему недоступны.",
+        });
+      }
 
       const now = new Date();
       const nextStatus = "WAITING_USER";
@@ -4593,6 +4598,11 @@ app.get("/api/profile", auth, async (req, res) => {
       }
       if (!req.user.isSystemOwner && req.user.orgId !== ticket.orgId) {
         return res.status(403).json({ message: "Нет доступа к заявке." });
+      }
+      if (ticket.status === "RESOLVED") {
+        return res.status(409).json({
+          message: "Обращение закрыто. Действия по нему недоступны.",
+        });
       }
 
       const hasStatus = Object.prototype.hasOwnProperty.call(req.body || {}, "status");

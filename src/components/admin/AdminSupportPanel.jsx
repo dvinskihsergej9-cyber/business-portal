@@ -162,9 +162,20 @@ export default function AdminSupportPanel() {
     if (isMobile) setMobileView("thread");
   };
 
+  const handleRefreshAll = async () => {
+    await loadTickets();
+    if (selectedTicketId) {
+      await loadThread(selectedTicketId);
+    }
+  };
+
   const handleUpdateStatus = async (nextStatus, successText) => {
     const ticketId = Number(selectedTicketId || 0);
     if (!ticketId) return;
+    if (selectedTicket?.status === "RESOLVED") {
+      setError("Обращение закрыто. Изменения недоступны.");
+      return;
+    }
     try {
       setUpdatingStatus(true);
       setError("");
@@ -195,6 +206,10 @@ export default function AdminSupportPanel() {
     const ticketId = Number(selectedTicketId || 0);
     const preparedReply = String(replyText || "").trim();
     if (!ticketId) return;
+    if (selectedTicket?.status === "RESOLVED") {
+      setError("Обращение закрыто. Отправка ответа недоступна.");
+      return;
+    }
     if (!preparedReply) {
       setError("Введите текст ответа.");
       return;
@@ -227,6 +242,7 @@ export default function AdminSupportPanel() {
   };
 
   const selectedMessagesCount = Number(selectedTicket?.messagesCount || messages.length || 0);
+  const isSelectedTicketResolved = selectedTicket?.status === "RESOLVED";
 
   return (
     <div className="admin-console__card admin-support-inbox">
@@ -262,10 +278,10 @@ export default function AdminSupportPanel() {
             <button
               type="button"
               className="admin-btn admin-btn--ghost"
-              onClick={loadTickets}
-              disabled={loading}
+              onClick={handleRefreshAll}
+              disabled={loading || threadLoading}
             >
-              {loading ? "Обновляем..." : "Обновить"}
+              {loading || threadLoading ? "Обновляем..." : "Обновить"}
             </button>
           </div>
 
@@ -351,14 +367,6 @@ export default function AdminSupportPanel() {
                     {selectedMessagesCount} сообщ.
                   </div>
                 </div>
-                <button
-                  type="button"
-                  className="admin-btn admin-btn--ghost"
-                  onClick={() => loadThread(selectedTicketId)}
-                  disabled={threadLoading}
-                >
-                  {threadLoading ? "Обновляем..." : "Обновить чат"}
-                </button>
               </div>
 
               <div className="admin-support-inbox__status-actions">
@@ -366,7 +374,7 @@ export default function AdminSupportPanel() {
                   type="button"
                   className="admin-btn admin-btn--primary"
                   onClick={() => handleUpdateStatus("RESOLVED", "Проблема помечена как закрытая.")}
-                  disabled={updatingStatus}
+                  disabled={updatingStatus || isSelectedTicketResolved}
                 >
                   Проблема закрыта
                 </button>
@@ -374,7 +382,7 @@ export default function AdminSupportPanel() {
                   type="button"
                   className="admin-btn admin-btn--ghost"
                   onClick={() => handleUpdateStatus("OPEN", "Проблема снова открыта.")}
-                  disabled={updatingStatus}
+                  disabled={updatingStatus || isSelectedTicketResolved}
                 >
                   Проблема не решена
                 </button>
@@ -382,6 +390,12 @@ export default function AdminSupportPanel() {
                   {getStatusLabel(selectedTicket?.status)}
                 </span>
               </div>
+
+              {isSelectedTicketResolved ? (
+                <div className="admin-support-inbox__resolved-note">
+                  Обращение закрыто. Дальнейшие действия по нему недоступны.
+                </div>
+              ) : null}
 
               <div className="admin-support-inbox__messages">
                 {messages.map((item) => (
@@ -406,13 +420,18 @@ export default function AdminSupportPanel() {
                   maxLength={4000}
                   value={replyText}
                   onChange={(event) => setReplyText(event.target.value)}
-                  placeholder="Ответ для пользователя"
+                  placeholder={
+                    isSelectedTicketResolved
+                      ? "Обращение закрыто. Ответ отправить нельзя."
+                      : "Ответ для пользователя"
+                  }
+                  disabled={isSelectedTicketResolved}
                 />
                 <button
                   type="button"
                   className="admin-btn admin-btn--primary"
                   onClick={handleSendReply}
-                  disabled={sendingReply || !selectedTicketId}
+                  disabled={sendingReply || !selectedTicketId || isSelectedTicketResolved}
                 >
                   {sendingReply ? "Отправляем..." : "Отправить ответ"}
                 </button>
