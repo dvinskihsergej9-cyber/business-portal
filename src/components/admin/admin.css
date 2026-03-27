@@ -534,21 +534,17 @@
   padding: 12px;
 }
 
-.admin-support-inbox__filters {
+.admin-support-inbox__searchbar {
   display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 8px;
   margin-bottom: 10px;
 }
 
-.admin-support-inbox__search {
-  grid-column: 1 / -1;
-}
-
-.admin-support-inbox__filter-actions {
-  display: flex;
-  align-items: end;
+.admin-support-inbox__searchbar-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
   gap: 8px;
+  align-items: center;
 }
 
 .admin-support-inbox__list-head {
@@ -656,6 +652,12 @@
   flex-wrap: wrap;
 }
 
+.admin-support-inbox__thread-title-wrap {
+  display: grid;
+  gap: 6px;
+  min-width: min(100%, 420px);
+}
+
 .admin-support-inbox__thread-title {
   font-size: 16px;
   font-weight: 700;
@@ -669,16 +671,11 @@
   word-break: break-word;
 }
 
-.admin-support-inbox__thread-controls {
-  display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr)) auto;
+.admin-support-inbox__status-actions {
+  display: flex;
+  align-items: center;
   gap: 8px;
-  align-items: end;
-}
-
-.admin-support-inbox__control {
-  display: grid;
-  gap: 4px;
+  flex-wrap: wrap;
 }
 
 .admin-support-inbox__messages {
@@ -844,6 +841,11 @@
   .admin-support-inbox__messages {
     max-height: 46vh;
   }
+
+  .admin-support-inbox__searchbar-row {
+    grid-template-columns: minmax(0, 1fr);
+    display: grid;
+  }
 }
 
 @media (max-width: 768px) {
@@ -889,16 +891,8 @@
     grid-template-columns: minmax(0, 1fr);
   }
 
-  .admin-support-inbox__filters {
-    grid-template-columns: minmax(0, 1fr);
-  }
-
-  .admin-support-inbox__filter-actions {
-    justify-content: flex-start;
-  }
-
-  .admin-support-inbox__thread-controls {
-    grid-template-columns: minmax(0, 1fr);
+  .admin-support-inbox__status-actions .admin-btn {
+    width: 100%;
   }
 
   .admin-support-inbox__messages {

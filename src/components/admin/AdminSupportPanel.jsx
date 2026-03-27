@@ -1,43 +1,11 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { apiFetch, normalizeErrorMessage } from "../../apiConfig";
 
-const STATUS_OPTIONS = [
-  { value: "", label: "Все статусы" },
-  { value: "OPEN", label: "Открыта" },
-  { value: "IN_PROGRESS", label: "В работе" },
-  { value: "WAITING_USER", label: "Ждёт ответа" },
-  { value: "RESOLVED", label: "Решена" },
-];
-
-const PRIORITY_OPTIONS = [
-  { value: "", label: "Любой приоритет" },
-  { value: "LOW", label: "Низкий" },
-  { value: "NORMAL", label: "Обычный" },
-  { value: "HIGH", label: "Высокий" },
-  { value: "URGENT", label: "Критичный" },
-];
-
-const CATEGORY_OPTIONS = [
-  { value: "", label: "Любая категория" },
-  { value: "ACCESS", label: "Доступ и права" },
-  { value: "BILLING", label: "Оплата и тарифы" },
-  { value: "TECHNICAL", label: "Техническая ошибка" },
-  { value: "INTEGRATION", label: "Интеграции" },
-  { value: "OTHER", label: "Другое" },
-];
-
 const STATUS_LABELS = {
   OPEN: "Открыта",
   IN_PROGRESS: "В работе",
   WAITING_USER: "Ждёт ответа",
   RESOLVED: "Решена",
-};
-
-const PRIORITY_LABELS = {
-  LOW: "Низкий",
-  NORMAL: "Обычный",
-  HIGH: "Высокий",
-  URGENT: "Критичный",
 };
 
 const CATEGORY_LABELS = {
@@ -59,10 +27,6 @@ function getStatusLabel(value) {
   return STATUS_LABELS[String(value || "").trim()] || "Открыта";
 }
 
-function getPriorityLabel(value) {
-  return PRIORITY_LABELS[String(value || "").trim()] || "Обычный";
-}
-
 function getCategoryLabel(value) {
   return CATEGORY_LABELS[String(value || "").trim()] || "Другое";
 }
@@ -74,16 +38,7 @@ export default function AdminSupportPanel() {
   const [success, setSuccess] = useState("");
 
   const [searchInput, setSearchInput] = useState("");
-  const [statusInput, setStatusInput] = useState("");
-  const [priorityInput, setPriorityInput] = useState("");
-  const [categoryInput, setCategoryInput] = useState("");
-
-  const [filters, setFilters] = useState({
-    search: "",
-    status: "",
-    priority: "",
-    category: "",
-  });
+  const [search, setSearch] = useState("");
   const [page, setPage] = useState(1);
   const [total, setTotal] = useState(0);
   const limit = 20;
@@ -94,9 +49,7 @@ export default function AdminSupportPanel() {
   const [threadLoading, setThreadLoading] = useState(false);
   const [replyText, setReplyText] = useState("");
   const [sendingReply, setSendingReply] = useState(false);
-  const [savingMeta, setSavingMeta] = useState(false);
-  const [editStatus, setEditStatus] = useState("OPEN");
-  const [editPriority, setEditPriority] = useState("NORMAL");
+  const [updatingStatus, setUpdatingStatus] = useState(false);
 
   const [isMobile, setIsMobile] = useState(false);
   const [mobileView, setMobileView] = useState("list");
@@ -121,14 +74,15 @@ export default function AdminSupportPanel() {
     return () => media.removeEventListener("change", onChange);
   }, []);
 
+  useEffect(() => {
+    if (!isMobile) setMobileView("list");
+  }, [isMobile]);
+
   const buildQuery = () => {
     const params = new URLSearchParams();
     params.set("page", String(page));
     params.set("limit", String(limit));
-    if (filters.status) params.set("status", filters.status);
-    if (filters.priority) params.set("priority", filters.priority);
-    if (filters.category) params.set("category", filters.category);
-    if (filters.search.trim()) params.set("search", filters.search.trim());
+    if (search.trim()) params.set("search", search.trim());
     return params.toString();
   };
 
@@ -158,7 +112,7 @@ export default function AdminSupportPanel() {
     } finally {
       setLoading(false);
     }
-  }, [authHeaders, filters, page]);
+  }, [authHeaders, page, search]);
 
   const loadThread = useCallback(
     async (ticketId) => {
@@ -174,11 +128,8 @@ export default function AdminSupportPanel() {
         if (!res.ok) {
           throw new Error(data?.message || "SUPPORT_TICKET_MESSAGES_ERROR");
         }
-        const ticket = data?.ticket || null;
-        setSelectedTicket(ticket);
+        setSelectedTicket(data?.ticket || null);
         setMessages(Array.isArray(data?.messages) ? data.messages : []);
-        setEditStatus(String(ticket?.status || "OPEN"));
-        setEditPriority(String(ticket?.priority || "NORMAL"));
       } catch (err) {
         setError(normalizeErrorMessage(err, "Не удалось загрузить переписку."));
       } finally {
@@ -201,39 +152,43 @@ export default function AdminSupportPanel() {
     loadThread(selectedTicketId);
   }, [loadThread, selectedTicketId]);
 
-  useEffect(() => {
-    if (!isMobile) {
-      setMobileView("list");
-    }
-  }, [isMobile]);
-
-  const handleApplyFilters = () => {
-    setFilters({
-      search: searchInput,
-      status: statusInput,
-      priority: priorityInput,
-      category: categoryInput,
-    });
-    setPage(1);
-  };
-
-  const handleResetFilters = () => {
-    setSearchInput("");
-    setStatusInput("");
-    setPriorityInput("");
-    setCategoryInput("");
-    setFilters({
-      search: "",
-      status: "",
-      priority: "",
-      category: "",
-    });
+  const handleSearch = () => {
+    setSearch(searchInput.trim());
     setPage(1);
   };
 
   const handleOpenTicket = (ticketId) => {
     setSelectedTicketId(ticketId);
     if (isMobile) setMobileView("thread");
+  };
+
+  const handleUpdateStatus = async (nextStatus, successText) => {
+    const ticketId = Number(selectedTicketId || 0);
+    if (!ticketId) return;
+    try {
+      setUpdatingStatus(true);
+      setError("");
+      setSuccess("");
+      const res = await apiFetch(`/admin/support/tickets/${ticketId}`, {
+        method: "PATCH",
+        headers: {
+          ...authHeaders,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({ status: nextStatus }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        throw new Error(data?.message || "SUPPORT_TICKET_UPDATE_ERROR");
+      }
+      setSuccess(successText);
+      await loadTickets();
+      await loadThread(ticketId);
+    } catch (err) {
+      setError(normalizeErrorMessage(err, "Не удалось обновить статус."));
+    } finally {
+      setUpdatingStatus(false);
+    }
   };
 
   const handleSendReply = async () => {
@@ -271,45 +226,13 @@ export default function AdminSupportPanel() {
     }
   };
 
-  const handleSaveMeta = async () => {
-    const ticketId = Number(selectedTicketId || 0);
-    if (!ticketId) return;
-    try {
-      setSavingMeta(true);
-      setError("");
-      setSuccess("");
-      const res = await apiFetch(`/admin/support/tickets/${ticketId}`, {
-        method: "PATCH",
-        headers: {
-          ...authHeaders,
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({
-          status: editStatus,
-          priority: editPriority,
-        }),
-      });
-      const data = await res.json().catch(() => ({}));
-      if (!res.ok) {
-        throw new Error(data?.message || "SUPPORT_TICKET_UPDATE_ERROR");
-      }
-      setSuccess("Параметры обращения обновлены.");
-      await loadTickets();
-      await loadThread(ticketId);
-    } catch (err) {
-      setError(normalizeErrorMessage(err, "Не удалось обновить обращение."));
-    } finally {
-      setSavingMeta(false);
-    }
-  };
-
   const selectedMessagesCount = Number(selectedTicket?.messagesCount || messages.length || 0);
 
   return (
     <div className="admin-console__card admin-support-inbox">
       <div className="admin-console__card-title">Поддержка</div>
       <div className="admin-console__card-text">
-        Очередь обращений сотрудников и единый чат по каждому тикету.
+        Слева список чатов, справа переписка и управление статусом проблемы.
       </div>
 
       {error ? <div className="admin-alert admin-alert--error">{error}</div> : null}
@@ -319,78 +242,23 @@ export default function AdminSupportPanel() {
         <section
           className={`admin-support-inbox__list-col ${isMobile && mobileView === "thread" ? "is-hidden" : ""}`}
         >
-          <div className="admin-support-inbox__filters">
-            <div className="admin-support-inbox__search">
-              <label className="admin-label">Поиск</label>
+          <div className="admin-support-inbox__searchbar">
+            <label className="admin-label">Поиск чатов</label>
+            <div className="admin-support-inbox__searchbar-row">
               <input
                 className="admin-input"
                 value={searchInput}
                 onChange={(event) => setSearchInput(event.target.value)}
                 placeholder="Тема, клиент, email"
               />
-            </div>
-            <div>
-              <label className="admin-label">Статус</label>
-              <select
-                className="admin-select"
-                value={statusInput}
-                onChange={(event) => setStatusInput(event.target.value)}
-              >
-                {STATUS_OPTIONS.map((item) => (
-                  <option key={item.value || "all-status"} value={item.value}>
-                    {item.label}
-                  </option>
-                ))}
-              </select>
-            </div>
-            <div>
-              <label className="admin-label">Приоритет</label>
-              <select
-                className="admin-select"
-                value={priorityInput}
-                onChange={(event) => setPriorityInput(event.target.value)}
-              >
-                {PRIORITY_OPTIONS.map((item) => (
-                  <option key={item.value || "all-priority"} value={item.value}>
-                    {item.label}
-                  </option>
-                ))}
-              </select>
-            </div>
-            <div>
-              <label className="admin-label">Категория</label>
-              <select
-                className="admin-select"
-                value={categoryInput}
-                onChange={(event) => setCategoryInput(event.target.value)}
-              >
-                {CATEGORY_OPTIONS.map((item) => (
-                  <option key={item.value || "all-category"} value={item.value}>
-                    {item.label}
-                  </option>
-                ))}
-              </select>
-            </div>
-            <div className="admin-support-inbox__filter-actions">
-              <button
-                type="button"
-                className="admin-btn admin-btn--primary"
-                onClick={handleApplyFilters}
-              >
-                Применить
-              </button>
-              <button
-                type="button"
-                className="admin-btn admin-btn--ghost"
-                onClick={handleResetFilters}
-              >
-                Сбросить
+              <button type="button" className="admin-btn admin-btn--primary" onClick={handleSearch}>
+                Найти
               </button>
             </div>
           </div>
 
           <div className="admin-support-inbox__list-head">
-            <div className="admin-support-inbox__list-title">Обращения</div>
+            <div className="admin-support-inbox__list-title">Чаты</div>
             <button
               type="button"
               className="admin-btn admin-btn--ghost"
@@ -424,16 +292,13 @@ export default function AdminSupportPanel() {
                   </div>
                   <div className="admin-support-inbox__ticket-meta">
                     <span>{getCategoryLabel(ticket.category)}</span>
-                    <span>{getPriorityLabel(ticket.priority)}</span>
                     <span>{formatDateTime(ticket.updatedAt)}</span>
                   </div>
                 </button>
               );
             })}
             {!tickets.length ? (
-              <div className="admin-muted">
-                {loading ? "Загрузка..." : "Обращений пока нет."}
-              </div>
+              <div className="admin-muted">{loading ? "Загрузка..." : "Чатов пока нет."}</div>
             ) : null}
           </div>
 
@@ -447,7 +312,7 @@ export default function AdminSupportPanel() {
               Назад
             </button>
             <div className="admin-muted">
-              Страница {page} из {totalPages} • Всего: {total}
+              Страница {page} из {totalPages}
             </div>
             <button
               type="button"
@@ -464,9 +329,7 @@ export default function AdminSupportPanel() {
           className={`admin-support-inbox__thread-col ${isMobile && mobileView === "list" ? "is-hidden" : ""}`}
         >
           {!selectedTicketId ? (
-            <div className="admin-support-inbox__empty">
-              Выберите обращение из списка слева.
-            </div>
+            <div className="admin-support-inbox__empty">Выберите чат из списка слева.</div>
           ) : (
             <>
               <div className="admin-support-inbox__thread-head">
@@ -477,11 +340,11 @@ export default function AdminSupportPanel() {
                       className="admin-btn admin-btn--ghost"
                       onClick={() => setMobileView("list")}
                     >
-                      Назад к списку
+                      Назад к чатам
                     </button>
                   )}
                   <div className="admin-support-inbox__thread-title">
-                    {selectedTicket?.subject || "Обращение"}
+                    {selectedTicket?.subject || "Чат поддержки"}
                   </div>
                   <div className="admin-support-inbox__thread-subtitle">
                     {selectedTicket?.createdBy?.name || "—"} • {selectedTicket?.createdBy?.email || "—"} •{" "}
@@ -498,43 +361,26 @@ export default function AdminSupportPanel() {
                 </button>
               </div>
 
-              <div className="admin-support-inbox__thread-controls">
-                <label className="admin-support-inbox__control">
-                  <span className="admin-label">Статус</span>
-                  <select
-                    className="admin-select"
-                    value={editStatus}
-                    onChange={(event) => setEditStatus(event.target.value)}
-                  >
-                    {STATUS_OPTIONS.filter((item) => item.value).map((item) => (
-                      <option key={item.value} value={item.value}>
-                        {item.label}
-                      </option>
-                    ))}
-                  </select>
-                </label>
-                <label className="admin-support-inbox__control">
-                  <span className="admin-label">Приоритет</span>
-                  <select
-                    className="admin-select"
-                    value={editPriority}
-                    onChange={(event) => setEditPriority(event.target.value)}
-                  >
-                    {PRIORITY_OPTIONS.filter((item) => item.value).map((item) => (
-                      <option key={item.value} value={item.value}>
-                        {item.label}
-                      </option>
-                    ))}
-                  </select>
-                </label>
+              <div className="admin-support-inbox__status-actions">
                 <button
                   type="button"
                   className="admin-btn admin-btn--primary"
-                  onClick={handleSaveMeta}
-                  disabled={savingMeta || !selectedTicketId}
+                  onClick={() => handleUpdateStatus("RESOLVED", "Проблема помечена как закрытая.")}
+                  disabled={updatingStatus}
                 >
-                  {savingMeta ? "Сохраняем..." : "Сохранить"}
+                  Проблема закрыта
                 </button>
+                <button
+                  type="button"
+                  className="admin-btn admin-btn--ghost"
+                  onClick={() => handleUpdateStatus("OPEN", "Проблема снова открыта.")}
+                  disabled={updatingStatus}
+                >
+                  Проблема не решена
+                </button>
+                <span className={`admin-support__status admin-support__status--${String(selectedTicket?.status || "").toLowerCase()}`}>
+                  {getStatusLabel(selectedTicket?.status)}
+                </span>
               </div>
 
               <div className="admin-support-inbox__messages">
