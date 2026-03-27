@@ -184,14 +184,23 @@ export default function Support() {
       if (!res.ok) {
         throw new Error(data?.message || "SUPPORT_TICKET_CREATE_ERROR");
       }
-      const createdTicketId = Number(data?.ticket?.id || 0);
+      const createdTicket = data?.ticket || null;
+      const createdTicketId = Number(createdTicket?.id || 0);
       resetComposer();
       setSuccess("Обращение отправлено. Мы ответим в этом чате.");
       setIsComposerOpen(false);
-      await loadTickets();
       if (createdTicketId) {
         setSelectedTicketId(createdTicketId);
-        await loadThread(createdTicketId);
+      }
+      if (createdTicket) {
+        setSelectedTicket(createdTicket);
+        setMessages(createdTicket?.lastMessage ? [createdTicket.lastMessage] : []);
+        setTickets((prev) => {
+          const next = prev.filter((item) => Number(item.id) !== createdTicketId);
+          return [createdTicket, ...next];
+        });
+      } else {
+        loadTickets().catch(() => null);
       }
     } catch (err) {
       setError(normalizeErrorMessage(err, "Не удалось отправить обращение."));
@@ -229,9 +238,39 @@ export default function Support() {
       if (!res.ok) {
         throw new Error(data?.message || "SUPPORT_TICKET_REPLY_ERROR");
       }
+      const createdMessage = data?.message || null;
+      const ticketStatus = data?.ticketStatus || selectedTicket?.status || "OPEN";
       setReplyText("");
-      await loadTickets();
-      await loadThread(ticketId);
+      if (createdMessage) {
+        setMessages((prev) => [...prev, createdMessage]);
+        setSelectedTicket((prev) =>
+          prev
+            ? {
+                ...prev,
+                status: ticketStatus,
+                messagesCount: Number(prev.messagesCount || 0) + 1,
+                lastMessageAt: createdMessage.createdAt || prev.lastMessageAt,
+                lastMessage: createdMessage,
+              }
+            : prev
+        );
+        setTickets((prev) => {
+          const current = prev.find((item) => Number(item.id) === ticketId);
+          const updated = current
+            ? {
+                ...current,
+                status: ticketStatus,
+                messagesCount: Number(current.messagesCount || 0) + 1,
+                lastMessageAt: createdMessage.createdAt || current.lastMessageAt,
+                lastMessage: createdMessage,
+              }
+            : null;
+          const rest = prev.filter((item) => Number(item.id) !== ticketId);
+          return updated ? [updated, ...rest] : prev;
+        });
+      } else {
+        await Promise.all([loadTickets(), loadThread(ticketId)]);
+      }
     } catch (err) {
       setError(normalizeErrorMessage(err, "Не удалось отправить сообщение."));
     } finally {
@@ -436,9 +475,6 @@ export default function Support() {
               <div className="support-page__actions">
                 <button type="submit" className="btn primary" disabled={creating}>
                   {creating ? "Отправляем..." : "Отправить обращение"}
-                </button>
-                <button type="button" className="btn" onClick={resetComposer} disabled={creating}>
-                  Очистить
                 </button>
               </div>
             </form>

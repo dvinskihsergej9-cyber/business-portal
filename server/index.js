@@ -4222,11 +4222,13 @@ app.get("/api/profile", auth, async (req, res) => {
         return res.status(500).json({ message: "SUPPORT_TICKET_CREATE_ERROR" });
       }
 
-      await notifySupportAdmins(orgId, req.user.id, {
+      notifySupportAdmins(orgId, req.user.id, {
         title: "Новое обращение в поддержку",
         message: subject,
         linkUrl: SUPPORT_TICKETS_ADMIN_LINK,
         payloadJson: { ticketId: created.id },
+      }).catch((notifyErr) => {
+        console.error("support create ticket notify error:", notifyErr);
       });
 
       return res.status(201).json({
@@ -4342,11 +4344,13 @@ app.get("/api/profile", auth, async (req, res) => {
         return created;
       });
 
-      await notifySupportAdmins(ticket.orgId || req.user.orgId || null, req.user.id, {
+      notifySupportAdmins(ticket.orgId || req.user.orgId || null, req.user.id, {
         title: "Новое сообщение в обращении",
         message: ticket.subject || "Обращение в поддержку",
         linkUrl: SUPPORT_TICKETS_ADMIN_LINK,
         payloadJson: { ticketId: ticket.id },
+      }).catch((notifyErr) => {
+        console.error("support add message notify error:", notifyErr);
       });
 
       return res.status(201).json({
