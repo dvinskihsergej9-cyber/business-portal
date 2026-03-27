@@ -1,4 +1,4 @@
-﻿import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { NavLink, Outlet, useLocation, useNavigate } from "react-router-dom";
 import { useAuth } from "./context/AuthContext";
 import { hasPermission, PERMISSION_KEYS } from "./utils/permissions";
@@ -129,21 +129,21 @@ export default function Layout() {
   const menu = useMemo(
     () => [
       {
-        label: "РЎРєР»Р°Рґ",
-        shortLabel: "РЎРєР»Р°Рґ",
+        label: "Склад",
+        shortLabel: "Склад",
         icon: "warehouse",
         to: "/warehouse",
         permission: PERMISSION_KEYS.APP_WAREHOUSE,
       },
       {
-        label: "РќРѕРІРѕСЃС‚Рё РїР»Р°С‚С„РѕСЂРјС‹",
-        shortLabel: "РќРѕРІРѕСЃС‚Рё",
+        label: "Новости платформы",
+        shortLabel: "Новости",
         icon: "news",
         to: "/news",
       },
       {
-        label: "РЈРїСЂР°РІР»РµРЅРёРµ",
-        shortLabel: "РЈРїСЂР°РІР»РµРЅРёРµ",
+        label: "Управление",
+        shortLabel: "Управление",
         icon: "admin",
         to: "/admin",
         permission: PERMISSION_KEYS.APP_ADMIN,
@@ -249,14 +249,12 @@ export default function Layout() {
   const sidebarStyle = isMobile
     ? { ...styles.sidebar, display: "none" }
     : styles.sidebar;
-  const topBarStyle = isMobile ? styles.topBarMobile : styles.topBar;
-  const topBarActionsStyle = isMobile
-    ? styles.topBarActionsMobile
-    : styles.topBarActions;
-  const headerActionBtnStyle = isMobile
-    ? styles.headerActionBtnMobile
-    : styles.headerActionBtn;
-  const supportLabel = isMobile ? "РџРѕРјРѕС‰СЊ" : "РџРѕРґРґРµСЂР¶РєР°";
+  const supportBtnStyle = isMobile
+    ? { ...styles.headerSupportBtn, ...styles.headerTopBtnMobile }
+    : styles.headerSupportBtn;
+  const logoutBtnStyle = isMobile
+    ? { ...styles.headerLogoutBtn, ...styles.headerTopBtnMobile }
+    : styles.headerLogoutBtn;
 
   return (
     <div style={rootStyle}>
@@ -264,14 +262,14 @@ export default function Layout() {
         <div style={styles.logoBlock}>
           <img
             src={APP_LOGO_SRC}
-            alt="Р›РѕРіРѕС‚РёРї"
+            alt="Логотип"
             style={styles.logoMarkImage}
             loading="eager"
             decoding="sync"
           />
           <div>
-            <div style={styles.logoTitle}>РЎРєР»Р°РґРћРЅР»Р°Р№РЅ</div>
-            <div style={styles.logoSubtitle}>Р’РЅСѓС‚СЂРµРЅРЅРёР№ СЃРµСЂРІРёСЃ РєРѕРјРїР°РЅРёРё</div>
+            <div style={styles.logoTitle}>СкладОнлайн</div>
+            <div style={styles.logoSubtitle}>Внутренний сервис компании</div>
           </div>
         </div>
 
@@ -303,7 +301,7 @@ export default function Layout() {
 
       <div style={styles.main}>
         <header
-          style={topBarStyle}
+          style={isMobile ? styles.topBarMobile : styles.topBar}
           className="portal-topbar"
         >
           <div style={styles.topBarLeft}>
@@ -312,10 +310,10 @@ export default function Layout() {
               type="button"
               style={styles.backBtn}
               onClick={handleBack}
-              aria-label="РќР°Р·Р°Рґ"
+              aria-label="Назад"
             >
               <BackIcon />
-              <span>РќР°Р·Р°Рґ</span>
+              <span>Назад</span>
             </button>
             )}
           </div>
@@ -324,15 +322,15 @@ export default function Layout() {
             {currentPageTitle}
           </div>
 
-          <div style={topBarActionsStyle}>
+          <div style={styles.topBarActions}>
             {user && <NotificationBell />}
             {user && (
-              <button type="button" style={headerActionBtnStyle} onClick={handleSupportOpen}>
-                {supportLabel}
+              <button type="button" style={supportBtnStyle} onClick={handleSupportOpen}>
+                Поддержка
               </button>
             )}
-            <button type="button" style={headerActionBtnStyle} onClick={handleLogout}>
-              Р’С‹Р№С‚Рё
+            <button type="button" style={logoutBtnStyle} onClick={handleLogout}>
+              Выйти
             </button>
           </div>
         </header>
@@ -545,14 +543,7 @@ const styles = {
     flexWrap: "nowrap",
     gap: 8,
   },
-  topBarActionsMobile: {
-    justifySelf: "end",
-    display: "inline-flex",
-    alignItems: "center",
-    flexWrap: "nowrap",
-    gap: 6,
-  },
-  headerActionBtn: {
+  headerLogoutBtn: {
     padding: "7px 12px",
     borderRadius: 10,
     border: "1px solid #d1d5db",
@@ -565,19 +556,23 @@ const styles = {
     whiteSpace: "nowrap",
     boxShadow: "none",
   },
-  headerActionBtnMobile: {
-    minHeight: 34,
-    padding: "6px 9px",
+  headerSupportBtn: {
+    padding: "7px 12px",
     borderRadius: 10,
     border: "1px solid #d1d5db",
     background: "#ffffff",
     color: "#111827",
-    fontSize: 12,
+    fontSize: 13,
     fontWeight: 600,
     cursor: "pointer",
     textAlign: "center",
     whiteSpace: "nowrap",
     boxShadow: "none",
+  },
+  headerTopBtnMobile: {
+    minHeight: 34,
+    padding: "6px 9px",
+    fontSize: 12,
   },
   content: {
     padding: 0,
@@ -637,4 +632,3 @@ const styles = {
     overflowWrap: "anywhere",
   },
 };
-
