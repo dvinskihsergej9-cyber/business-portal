@@ -2756,6 +2756,10 @@ input[type="number"] {
   flex-wrap: wrap;
 }
 
+.support-page__mobile-back {
+  margin-bottom: 8px;
+}
+
 .support-page__thread-title {
   font-size: 15px;
   font-weight: 700;
@@ -2874,6 +2878,15 @@ input[type="number"] {
 @media (max-width: 980px) {
   .support-page__layout {
     grid-template-columns: minmax(0, 1fr);
+  }
+
+  .support-page__tickets.is-hidden,
+  .support-page__thread.is-hidden {
+    display: none;
+  }
+
+  .support-page__thread {
+    min-height: 0;
   }
 
   .support-page__tickets {

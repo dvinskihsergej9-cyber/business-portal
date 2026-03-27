@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
 import { apiFetch, normalizeErrorMessage } from "../apiConfig";
 
@@ -46,6 +46,9 @@ export default function Support() {
   const [category, setCategory] = useState("TECHNICAL");
   const [message, setMessage] = useState("");
   const [isComposerOpen, setIsComposerOpen] = useState(false);
+  const createInFlightRef = useRef(false);
+  const [isMobile, setIsMobile] = useState(false);
+  const [mobileView, setMobileView] = useState("list");
 
   const [tickets, setTickets] = useState([]);
   const [ticketsLoading, setTicketsLoading] = useState(false);
@@ -150,8 +153,23 @@ export default function Support() {
     loadThread(selectedTicketId);
   }, [loadThread, selectedTicketId]);
 
+  useEffect(() => {
+    const media = window.matchMedia("(max-width: 980px)");
+    const onChange = () => setIsMobile(media.matches);
+    onChange();
+    media.addEventListener("change", onChange);
+    return () => media.removeEventListener("change", onChange);
+  }, []);
+
+  useEffect(() => {
+    if (!isMobile) setMobileView("list");
+  }, [isMobile]);
+
   const handleCreateTicket = async (event) => {
     event.preventDefault();
+    if (createInFlightRef.current || creating) {
+      return;
+    }
     const preparedSubject = String(subject || "").trim();
     const preparedMessage = String(message || "").trim();
     if (!preparedSubject) {
@@ -164,6 +182,7 @@ export default function Support() {
     }
 
     try {
+      createInFlightRef.current = true;
       setCreating(true);
       setError("");
       setSuccess("");
@@ -187,10 +206,15 @@ export default function Support() {
       const createdTicket = data?.ticket || null;
       const createdTicketId = Number(createdTicket?.id || 0);
       resetComposer();
-      setSuccess("Обращение отправлено. Мы ответим в этом чате.");
+      setSuccess(
+        data?.deduped
+          ? "Похожее обращение уже было создано ранее. Открыли существующий чат."
+          : "Обращение отправлено. Мы ответим в этом чате."
+      );
       setIsComposerOpen(false);
       if (createdTicketId) {
         setSelectedTicketId(createdTicketId);
+        if (isMobile) setMobileView("thread");
       }
       if (createdTicket) {
         setSelectedTicket(createdTicket);
@@ -205,6 +229,7 @@ export default function Support() {
     } catch (err) {
       setError(normalizeErrorMessage(err, "Не удалось отправить обращение."));
     } finally {
+      createInFlightRef.current = false;
       setCreating(false);
     }
   };
@@ -306,6 +331,13 @@ export default function Support() {
     }
   };
 
+  const handleOpenTicket = (ticketId) => {
+    setSelectedTicketId(ticketId);
+    if (isMobile) {
+      setMobileView("thread");
+    }
+  };
+
   const isSelectedTicketResolved = selectedTicket?.status === "RESOLVED";
 
   return (
@@ -344,7 +376,7 @@ export default function Support() {
         </div>
 
         <div className="support-page__layout">
-          <div className="support-page__tickets">
+          <div className={`support-page__tickets ${isMobile && mobileView === "thread" ? "is-hidden" : ""}`}>
             {!tickets.length ? (
               <div className="support-page__empty">
                 Чатов пока нет. Нажмите + Новое, чтобы создать первое обращение.
@@ -357,7 +389,7 @@ export default function Support() {
                     key={ticket.id}
                     type="button"
                     className={`support-page__ticket ${isActive ? "is-active" : ""}`}
-                    onClick={() => setSelectedTicketId(ticket.id)}
+                    onClick={() => handleOpenTicket(ticket.id)}
                   >
                     <div className="support-page__ticket-title-row">
                       <div className="support-page__ticket-title">{ticket.subject || "Без темы"}</div>
@@ -378,13 +410,22 @@ export default function Support() {
             )}
           </div>
 
-          <div className="support-page__thread">
+          <div className={`support-page__thread ${isMobile && mobileView === "list" ? "is-hidden" : ""}`}>
             {!selectedTicketId ? (
               <div className="support-page__empty">Выберите обращение из списка слева.</div>
             ) : (
               <>
                 <div className="support-page__thread-head">
                   <div>
+                    {isMobile ? (
+                      <button
+                        type="button"
+                        className="btn support-page__mobile-back"
+                        onClick={() => setMobileView("list")}
+                      >
+                        Назад к чатам
+                      </button>
+                    ) : null}
                     <div className="support-page__thread-title">
                       {selectedTicket?.subject || "Обращение"}
                     </div>

@@ -4172,6 +4172,52 @@ app.get("/api/profile", auth, async (req, res) => {
         return res.status(400).json({ message: "Опишите проблему в сообщении." });
       }
 
+      // Защита от дублей при повторной отправке после сетевой/серверной ошибки:
+      // если в коротком окне уже создано такое же обращение от того же пользователя,
+      // возвращаем его вместо создания нового.
+      const dedupeWindowStart = new Date(Date.now() - 90 * 1000);
+      const duplicateTicket = await prisma.supportTicket.findFirst({
+        where: {
+          orgId,
+          createdById: req.user.id,
+          subject,
+          category,
+          createdAt: { gte: dedupeWindowStart },
+          messages: {
+            some: {
+              authorId: req.user.id,
+              isStaff: false,
+              body,
+              createdAt: { gte: dedupeWindowStart },
+            },
+          },
+        },
+        orderBy: [{ createdAt: "desc" }, { id: "desc" }],
+        include: {
+          createdBy: {
+            select: { id: true, name: true, email: true },
+          },
+          messages: {
+            orderBy: { createdAt: "desc" },
+            take: 1,
+            select: {
+              id: true,
+              body: true,
+              isStaff: true,
+              createdAt: true,
+              author: { select: { id: true, name: true, email: true } },
+            },
+          },
+          _count: { select: { messages: true } },
+        },
+      });
+      if (duplicateTicket) {
+        return res.status(200).json({
+          ticket: supportTicketToResponse(duplicateTicket),
+          deduped: true,
+        });
+      }
+
       const now = new Date();
       const created = await prisma.$transaction(async (tx) => {
         const ticket = await tx.supportTicket.create({
