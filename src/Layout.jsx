@@ -219,6 +219,10 @@ export default function Layout() {
     logout();
   };
 
+  const handleSupportOpen = () => {
+    navigate("/support");
+  };
+
   const handleBack = () => {
     if (!showBack) return;
 
@@ -314,6 +318,11 @@ export default function Layout() {
 
           <div style={styles.topBarActions}>
             {user && <NotificationBell />}
+            {user && (
+              <button type="button" style={styles.headerSupportBtn} onClick={handleSupportOpen}>
+                Поддержка
+              </button>
+            )}
             <button type="button" style={styles.headerLogoutBtn} onClick={handleLogout}>
               Выйти
             </button>
@@ -532,6 +541,19 @@ const styles = {
     border: "1px solid #d1d5db",
     background: "#ffffff",
     color: "#111827",
+    fontSize: 13,
+    fontWeight: 600,
+    cursor: "pointer",
+    textAlign: "center",
+    whiteSpace: "nowrap",
+    boxShadow: "none",
+  },
+  headerSupportBtn: {
+    padding: "7px 12px",
+    borderRadius: 10,
+    border: "1px solid #bfdbfe",
+    background: "#eff6ff",
+    color: "#1d4ed8",
     fontSize: 13,
     fontWeight: 600,
     cursor: "pointer",

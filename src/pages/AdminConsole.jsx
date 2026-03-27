@@ -9,6 +9,7 @@ import AdminMarketingSettingsPanel from "../components/admin/AdminMarketingSetti
 import AdminPickingShortagePanel from "../components/admin/AdminPickingShortagePanel";
 import AdminOrderStatusHistoryPanel from "../components/admin/AdminOrderStatusHistoryPanel";
 import AdminPlatformNewsPanel from "../components/admin/AdminPlatformNewsPanel";
+import AdminSupportPanel from "../components/admin/AdminSupportPanel";
 import "../components/admin/admin.css";
 import { hasPermission, PERMISSION_KEYS } from "../utils/permissions";
 
@@ -24,6 +25,7 @@ const BASE_TABS = [
 const OWNER_TAB = { id: "tenants", label: "Клиенты" };
 const OWNER_PLATFORM_NEWS_TAB = { id: "platform-news", label: "Новости платформы" };
 const COMPANY_OWNER_MARKETING_TAB = { id: "marketing-settings", label: "Рассылка" };
+const SUPPORT_TAB = { id: "support", label: "Поддержка" };
 
 export default function AdminConsole({ initialTab = "users" }) {
   const { user } = useAuth();
@@ -51,12 +53,13 @@ export default function AdminConsole({ initialTab = "users" }) {
         canWarehouse
           ? BASE_TABS.find((item) => item.id === "org-profile")
           : null,
+        isAdmin ? SUPPORT_TAB : null,
         canCompanyOwnerMarketing ? COMPANY_OWNER_MARKETING_TAB : null,
         canWarehouse
           ? BASE_TABS.find((item) => item.id === "picking-report")
           : null,
       ].filter(Boolean),
-    [canUsers, canWarehouse, canTenants, canCompanyOwnerMarketing]
+    [canUsers, canWarehouse, canTenants, canCompanyOwnerMarketing, isAdmin]
   );
 
   const initialTabId = tabs.some((tab) => tab.id === initialTab)
@@ -131,6 +134,7 @@ export default function AdminConsole({ initialTab = "users" }) {
         {activeTab === "picking-shortage" && <AdminPickingShortagePanel />}
         {activeTab === "order-status-history" && <AdminOrderStatusHistoryPanel />}
         {activeTab === "org-profile" && <AdminOrgProfilePanel />}
+        {activeTab === "support" && <AdminSupportPanel />}
         {activeTab === "marketing-settings" && <AdminMarketingSettingsPanel />}
         {activeTab === "picking-report" && <PickingReport />}
       </div>

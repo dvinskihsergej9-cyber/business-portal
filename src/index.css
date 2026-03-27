@@ -2493,6 +2493,307 @@ input[type="number"] {
   white-space: normal;
 }
 
+/* ===== Support ===== */
+.support-page {
+  display: grid;
+  gap: 14px;
+  padding-bottom: 20px;
+}
+
+.support-page__header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.support-page__back-btn {
+  min-height: 40px;
+  white-space: nowrap;
+}
+
+.support-page__card {
+  display: grid;
+  gap: 12px;
+}
+
+.support-page__section-title {
+  font-size: 16px;
+  font-weight: 700;
+  color: #0f172a;
+}
+
+.support-page__form {
+  display: grid;
+  gap: 10px;
+}
+
+.support-page__row {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.support-page__field {
+  display: grid;
+  gap: 5px;
+}
+
+.support-page__field > span {
+  font-size: 12px;
+  color: #475569;
+}
+
+.support-page__field input,
+.support-page__field select,
+.support-page__field textarea,
+.support-page__reply textarea {
+  width: 100%;
+  border: 1px solid #d0d7e2;
+  border-radius: 10px;
+  padding: 9px 10px;
+  font-size: 14px;
+  background: #ffffff;
+}
+
+.support-page__field textarea,
+.support-page__reply textarea {
+  resize: vertical;
+  min-height: 90px;
+}
+
+.support-page__actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.support-page__alert {
+  margin: 0;
+}
+
+.support-page__tickets-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.support-page__empty {
+  padding: 12px;
+  border: 1px dashed #cbd5e1;
+  border-radius: 12px;
+  color: #475569;
+  background: #f8fafc;
+}
+
+.support-page__layout {
+  display: grid;
+  grid-template-columns: minmax(260px, 340px) minmax(0, 1fr);
+  gap: 12px;
+}
+
+.support-page__tickets {
+  display: grid;
+  gap: 8px;
+  align-content: start;
+}
+
+.support-page__ticket {
+  border: 1px solid #e2e8f0;
+  border-radius: 12px;
+  background: #ffffff;
+  padding: 10px 11px;
+  display: grid;
+  gap: 8px;
+  text-align: left;
+  cursor: pointer;
+}
+
+.support-page__ticket.is-active {
+  border-color: #60a5fa;
+  box-shadow: 0 0 0 1px rgba(59, 130, 246, 0.28);
+  background: #f8fbff;
+}
+
+.support-page__ticket-title-row {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.support-page__ticket-title {
+  font-size: 14px;
+  font-weight: 700;
+  color: #0f172a;
+  word-break: break-word;
+}
+
+.support-page__status {
+  padding: 2px 8px;
+  border-radius: 999px;
+  font-size: 11px;
+  font-weight: 700;
+  white-space: nowrap;
+  border: 1px solid #cbd5e1;
+  color: #334155;
+  background: #f8fafc;
+}
+
+.support-page__status--open {
+  color: #075985;
+  border-color: #7dd3fc;
+  background: #ecfeff;
+}
+
+.support-page__status--in_progress {
+  color: #854d0e;
+  border-color: #fcd34d;
+  background: #fffbeb;
+}
+
+.support-page__status--waiting_user {
+  color: #4338ca;
+  border-color: #c4b5fd;
+  background: #eef2ff;
+}
+
+.support-page__status--resolved {
+  color: #166534;
+  border-color: #86efac;
+  background: #f0fdf4;
+}
+
+.support-page__ticket-meta {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+  font-size: 11px;
+  color: #64748b;
+}
+
+.support-page__ticket-preview {
+  font-size: 12px;
+  color: #334155;
+  line-height: 1.4;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+
+.support-page__thread {
+  border: 1px solid #e2e8f0;
+  border-radius: 12px;
+  padding: 10px;
+  display: grid;
+  gap: 10px;
+  min-height: 320px;
+  background: #ffffff;
+}
+
+.support-page__thread-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.support-page__thread-title {
+  font-size: 15px;
+  font-weight: 700;
+  color: #0f172a;
+}
+
+.support-page__thread-meta {
+  font-size: 12px;
+  color: #64748b;
+  margin-top: 3px;
+}
+
+.support-page__messages {
+  display: grid;
+  gap: 8px;
+  max-height: 360px;
+  overflow: auto;
+  padding-right: 2px;
+}
+
+.support-page__message {
+  border: 1px solid #e2e8f0;
+  border-radius: 10px;
+  padding: 8px 10px;
+  background: #f8fafc;
+}
+
+.support-page__message--staff {
+  border-color: #bfdbfe;
+  background: #eff6ff;
+}
+
+.support-page__message-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  font-size: 11px;
+  color: #64748b;
+  margin-bottom: 4px;
+}
+
+.support-page__message-body {
+  white-space: pre-wrap;
+  line-height: 1.4;
+  color: #1e293b;
+  font-size: 13px;
+}
+
+.support-page__reply {
+  display: grid;
+  gap: 8px;
+}
+
+@media (max-width: 980px) {
+  .support-page__layout {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .support-page__tickets {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+
+@media (max-width: 620px) {
+  .support-page__header {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .support-page__back-btn {
+    width: 100%;
+  }
+
+  .support-page__row {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .support-page__messages {
+    max-height: 300px;
+  }
+
+  .support-page__field input,
+  .support-page__field select,
+  .support-page__field textarea,
+  .support-page__reply textarea {
+    font-size: 16px;
+  }
+}
+
 /* ===== Pricing (modern) ===== */
 .pricing-modern {
   display: grid;
@@ -2512,6 +2813,14 @@ input[type="number"] {
     linear-gradient(145deg, #f8fbff 0%, #f1f6ff 45%, #edf4ff 100%);
   box-shadow: 0 16px 34px rgba(15, 23, 42, 0.08);
   animation: pricing-hero-in 0.45s ease both;
+}
+
+.pricing-modern__top-actions {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  margin-bottom: 6px;
 }
 
 .pricing-modern__back-login {
@@ -2541,6 +2850,12 @@ input[type="number"] {
   outline: none;
   border-color: #3b82f6;
   box-shadow: 0 0 0 2px rgba(59, 130, 246, 0.24);
+}
+
+.pricing-modern__support-link {
+  border-color: #bae6fd;
+  color: #0c4a6e;
+  background: rgba(240, 249, 255, 0.96);
 }
 
 .pricing-modern__brand {
@@ -3033,7 +3348,12 @@ input[type="number"] {
   .pricing-modern__back-login {
     width: 100%;
     min-height: 44px;
-    margin-bottom: 6px;
+    margin-bottom: 0;
+  }
+
+  .pricing-modern__top-actions {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr);
   }
 
   .pricing-modern__brand span {

@@ -190,16 +190,29 @@ export default function Pricing() {
     navigate("/login");
   };
 
+  const handleOpenSupport = () => {
+    navigate("/support");
+  };
+
   return (
     <div className="page pricing-modern">
       <section className="pricing-modern__hero">
-        <button
-          type="button"
-          className="pricing-modern__back-login"
-          onClick={handleBackToLogin}
-        >
-          Назад ко входу
-        </button>
+        <div className="pricing-modern__top-actions">
+          <button
+            type="button"
+            className="pricing-modern__back-login"
+            onClick={handleBackToLogin}
+          >
+            Назад ко входу
+          </button>
+          <button
+            type="button"
+            className="pricing-modern__back-login pricing-modern__support-link"
+            onClick={handleOpenSupport}
+          >
+            Поддержка
+          </button>
+        </div>
 
         <div className="pricing-modern__brand">
           <img src="/logo-mark.png" alt="Логотип СкладОнлайн" />

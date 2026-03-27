@@ -416,6 +416,8 @@ const TENANT_SCOPED_MODELS = new Set([
   "SalesOrderLine",
   "SalesOrderPickSkip",
   "OrderStatusHistory",
+  "SupportTicket",
+  "SupportMessage",
 ]);
 
 function withTenantWhere(where, orgId) {
@@ -725,6 +727,138 @@ const TASKS_JOURNAL_LINK = "/warehouse?section=tasks&taskView=journal";
 const PLATFORM_NEWS_ADMIN_LINK = "/admin/platform-news";
 const PLATFORM_NEWS_TYPE = "PLATFORM_NEWS";
 const PLATFORM_NEWS_BROADCAST_TYPE = "PLATFORM_NEWS_BROADCAST";
+const SUPPORT_TICKETS_LINK = "/support";
+const SUPPORT_TICKETS_ADMIN_LINK = "/admin";
+const SUPPORT_TICKET_STATUSES = new Set([
+  "OPEN",
+  "IN_PROGRESS",
+  "WAITING_USER",
+  "RESOLVED",
+]);
+const SUPPORT_TICKET_PRIORITIES = new Set(["LOW", "NORMAL", "HIGH", "URGENT"]);
+const SUPPORT_TICKET_CATEGORIES = new Set([
+  "ACCESS",
+  "BILLING",
+  "TECHNICAL",
+  "INTEGRATION",
+  "OTHER",
+]);
+
+function normalizeSupportTicketStatus(value, fallback = "OPEN") {
+  const normalized = String(value || "").trim().toUpperCase();
+  return SUPPORT_TICKET_STATUSES.has(normalized) ? normalized : fallback;
+}
+
+function normalizeSupportTicketPriority(value, fallback = "NORMAL") {
+  const normalized = String(value || "").trim().toUpperCase();
+  return SUPPORT_TICKET_PRIORITIES.has(normalized) ? normalized : fallback;
+}
+
+function normalizeSupportTicketCategory(value, fallback = "OTHER") {
+  const normalized = String(value || "").trim().toUpperCase();
+  return SUPPORT_TICKET_CATEGORIES.has(normalized) ? normalized : fallback;
+}
+
+function normalizeSupportText(value, maxLength = 4000) {
+  return String(value || "")
+    .replace(/\r\n?/g, "\n")
+    .trim()
+    .slice(0, maxLength);
+}
+
+function supportTicketToResponse(ticket) {
+  const lastMessage = Array.isArray(ticket?.messages) ? ticket.messages[0] : null;
+  return {
+    id: ticket?.id,
+    orgId: ticket?.orgId || null,
+    subject: ticket?.subject || "",
+    category: ticket?.category || "OTHER",
+    priority: ticket?.priority || "NORMAL",
+    status: ticket?.status || "OPEN",
+    createdAt: ticket?.createdAt || null,
+    updatedAt: ticket?.updatedAt || null,
+    lastMessageAt: ticket?.lastMessageAt || ticket?.updatedAt || null,
+    closedAt: ticket?.closedAt || null,
+    messagesCount: Number(ticket?._count?.messages || 0),
+    createdBy: ticket?.createdBy
+      ? {
+          id: ticket.createdBy.id,
+          name: ticket.createdBy.name || "",
+          email: ticket.createdBy.email || "",
+        }
+      : null,
+    organization: ticket?.organization
+      ? {
+          id: ticket.organization.id,
+          name: ticket.organization.name || "",
+          code: ticket.organization.code || "",
+        }
+      : null,
+    lastMessage: lastMessage
+      ? {
+          id: lastMessage.id,
+          body: lastMessage.body || "",
+          createdAt: lastMessage.createdAt || null,
+          isStaff: Boolean(lastMessage.isStaff),
+          author: lastMessage.author
+            ? {
+                id: lastMessage.author.id,
+                name: lastMessage.author.name || "",
+                email: lastMessage.author.email || "",
+              }
+            : null,
+        }
+      : null,
+  };
+}
+
+async function loadSupportTicketForAccess(ticketId) {
+  return prisma.supportTicket.findUnique({
+    where: { id: ticketId },
+    select: {
+      id: true,
+      orgId: true,
+      createdById: true,
+      status: true,
+      subject: true,
+      priority: true,
+      category: true,
+    },
+  });
+}
+
+function canAccessSupportTicketAsUser(ticket, user) {
+  if (!ticket || !user?.id) return false;
+  if (user.isSystemOwner) return true;
+  if (ticket.createdById === user.id) return true;
+  if (user.role === "ADMIN" && user.orgId && ticket.orgId === user.orgId) return true;
+  return false;
+}
+
+async function notifySupportAdmins(orgId, actorUserId, payload) {
+  if (!orgId) return;
+  const admins = await prisma.user.findMany({
+    where: {
+      orgId,
+      role: "ADMIN",
+      isActive: true,
+      id: actorUserId ? { not: actorUserId } : undefined,
+    },
+    select: { id: true },
+    take: 20,
+  });
+  for (const admin of admins) {
+    await createWarehouseNotification({
+      orgId,
+      userId: admin.id,
+      type: "SUPPORT",
+      title: payload?.title || "Поддержка",
+      message: payload?.message || "",
+      linkUrl: payload?.linkUrl || SUPPORT_TICKETS_ADMIN_LINK,
+      payloadJson: payload?.payloadJson || null,
+    }).catch(() => null);
+  }
+}
 
 function hashInviteToken(token) {
   return crypto.createHash("sha256").update(token).digest("hex");
@@ -1486,6 +1620,7 @@ const isReadRequest = (req) =>
 
 app.use("/api/admin", auth, requirePermission(PERMISSION_KEYS.APP_ADMIN));
 app.use("/api/users", auth, requirePermission(PERMISSION_KEYS.ADMIN_USERS));
+app.use("/api/support", auth, enforceOperationalTenantScope);
 app.use("/api/inventory", auth, enforceOperationalTenantScope, (req, res, next) => {
   if (hasPermission(req.user, PERMISSION_KEYS.WAREHOUSE_INVENTORY)) {
     return next();
@@ -3960,6 +4095,573 @@ app.get("/api/profile", auth, async (req, res) => {
     } catch (err) {
       console.error("me error:", err);
       res.status(500).json({ message: "ME_LOAD_ERROR" });
+    }
+  });
+
+  app.get("/api/support/tickets/my", async (req, res) => {
+    try {
+      const requestedStatus = String(req.query?.status || "").trim();
+      const status = requestedStatus
+        ? normalizeSupportTicketStatus(requestedStatus, "")
+        : "";
+      const where = {
+        createdById: req.user.id,
+        ...(status ? { status } : {}),
+      };
+
+      const items = await prisma.supportTicket.findMany({
+        where,
+        include: {
+          createdBy: {
+            select: { id: true, name: true, email: true },
+          },
+          messages: {
+            orderBy: { createdAt: "desc" },
+            take: 1,
+            select: {
+              id: true,
+              body: true,
+              isStaff: true,
+              createdAt: true,
+              author: { select: { id: true, name: true, email: true } },
+            },
+          },
+          _count: { select: { messages: true } },
+        },
+        orderBy: [{ updatedAt: "desc" }, { id: "desc" }],
+        take: 200,
+      });
+
+      return res.json({
+        items: items.map((item) => supportTicketToResponse(item)),
+      });
+    } catch (err) {
+      console.error("support my tickets error:", err);
+      return res.status(500).json({ message: "Не удалось загрузить заявки в поддержку." });
+    }
+  });
+
+  app.post("/api/support/tickets", async (req, res) => {
+    try {
+      const orgId = Number(req.user?.orgId || 0);
+      if (!orgId) {
+        return res.status(400).json({ message: "ORG_REQUIRED" });
+      }
+
+      const subject = normalizeSupportText(req.body?.subject, 160);
+      const body = normalizeSupportText(req.body?.message, 4000);
+      const category = normalizeSupportTicketCategory(req.body?.category, "OTHER");
+      const priority = normalizeSupportTicketPriority(req.body?.priority, "NORMAL");
+
+      if (!subject) {
+        return res.status(400).json({ message: "Укажите тему обращения." });
+      }
+      if (!body) {
+        return res.status(400).json({ message: "Опишите проблему в сообщении." });
+      }
+
+      const now = new Date();
+      const created = await prisma.$transaction(async (tx) => {
+        const ticket = await tx.supportTicket.create({
+          data: {
+            orgId,
+            createdById: req.user.id,
+            subject,
+            category,
+            priority,
+            status: "OPEN",
+            lastMessageAt: now,
+          },
+        });
+
+        await tx.supportMessage.create({
+          data: {
+            orgId,
+            ticketId: ticket.id,
+            authorId: req.user.id,
+            isStaff: req.user.role === "ADMIN" || req.user.isSystemOwner === true,
+            body,
+          },
+        });
+
+        return tx.supportTicket.findUnique({
+          where: { id: ticket.id },
+          include: {
+            createdBy: {
+              select: { id: true, name: true, email: true },
+            },
+            messages: {
+              orderBy: { createdAt: "desc" },
+              take: 1,
+              select: {
+                id: true,
+                body: true,
+                isStaff: true,
+                createdAt: true,
+                author: { select: { id: true, name: true, email: true } },
+              },
+            },
+            _count: { select: { messages: true } },
+          },
+        });
+      });
+
+      if (!created) {
+        return res.status(500).json({ message: "SUPPORT_TICKET_CREATE_ERROR" });
+      }
+
+      await notifySupportAdmins(orgId, req.user.id, {
+        title: "Новое обращение в поддержку",
+        message: subject,
+        linkUrl: SUPPORT_TICKETS_ADMIN_LINK,
+        payloadJson: { ticketId: created.id },
+      });
+
+      return res.status(201).json({
+        ticket: supportTicketToResponse(created),
+      });
+    } catch (err) {
+      console.error("support create ticket error:", err);
+      return res.status(500).json({ message: "Не удалось создать обращение в поддержку." });
+    }
+  });
+
+  app.get("/api/support/tickets/:id/messages", async (req, res) => {
+    try {
+      const ticketId = Number(req.params.id);
+      if (!ticketId || Number.isNaN(ticketId)) {
+        return res.status(400).json({ message: "BAD_ID" });
+      }
+
+      const ticket = await prisma.supportTicket.findUnique({
+        where: { id: ticketId },
+        include: {
+          createdBy: { select: { id: true, name: true, email: true } },
+          _count: { select: { messages: true } },
+        },
+      });
+      if (!ticket) {
+        return res.status(404).json({ message: "Заявка не найдена." });
+      }
+      if (!canAccessSupportTicketAsUser(ticket, req.user)) {
+        return res.status(403).json({ message: "Нет доступа к заявке." });
+      }
+
+      const messages = await prisma.supportMessage.findMany({
+        where: { ticketId },
+        orderBy: [{ createdAt: "asc" }, { id: "asc" }],
+        include: {
+          author: { select: { id: true, name: true, email: true } },
+        },
+      });
+
+      return res.json({
+        ticket: supportTicketToResponse(ticket),
+        messages: messages.map((message) => ({
+          id: message.id,
+          body: message.body || "",
+          isStaff: Boolean(message.isStaff),
+          createdAt: message.createdAt,
+          updatedAt: message.updatedAt,
+          author: message.author
+            ? {
+                id: message.author.id,
+                name: message.author.name || "",
+                email: message.author.email || "",
+              }
+            : null,
+        })),
+      });
+    } catch (err) {
+      console.error("support ticket messages error:", err);
+      return res.status(500).json({ message: "Не удалось загрузить переписку." });
+    }
+  });
+
+  app.post("/api/support/tickets/:id/messages", async (req, res) => {
+    try {
+      const ticketId = Number(req.params.id);
+      if (!ticketId || Number.isNaN(ticketId)) {
+        return res.status(400).json({ message: "BAD_ID" });
+      }
+
+      const body = normalizeSupportText(req.body?.message, 4000);
+      if (!body) {
+        return res.status(400).json({ message: "Введите сообщение." });
+      }
+
+      const ticket = await loadSupportTicketForAccess(ticketId);
+      if (!ticket) {
+        return res.status(404).json({ message: "Заявка не найдена." });
+      }
+      if (!canAccessSupportTicketAsUser(ticket, req.user)) {
+        return res.status(403).json({ message: "Нет доступа к заявке." });
+      }
+
+      const now = new Date();
+      const status =
+        ticket.status === "RESOLVED" || ticket.status === "WAITING_USER"
+          ? "OPEN"
+          : ticket.status;
+
+      const message = await prisma.$transaction(async (tx) => {
+        const created = await tx.supportMessage.create({
+          data: {
+            orgId: ticket.orgId || req.user.orgId || null,
+            ticketId: ticket.id,
+            authorId: req.user.id,
+            isStaff: req.user.role === "ADMIN" || req.user.isSystemOwner === true,
+            body,
+          },
+          include: {
+            author: { select: { id: true, name: true, email: true } },
+          },
+        });
+        await tx.supportTicket.update({
+          where: { id: ticket.id },
+          data: {
+            status,
+            lastMessageAt: now,
+            closedAt: status === "RESOLVED" ? ticket.closedAt : null,
+          },
+        });
+        return created;
+      });
+
+      await notifySupportAdmins(ticket.orgId || req.user.orgId || null, req.user.id, {
+        title: "Новое сообщение в обращении",
+        message: ticket.subject || "Обращение в поддержку",
+        linkUrl: SUPPORT_TICKETS_ADMIN_LINK,
+        payloadJson: { ticketId: ticket.id },
+      });
+
+      return res.status(201).json({
+        message: {
+          id: message.id,
+          body: message.body || "",
+          isStaff: Boolean(message.isStaff),
+          createdAt: message.createdAt,
+          updatedAt: message.updatedAt,
+          author: message.author
+            ? {
+                id: message.author.id,
+                name: message.author.name || "",
+                email: message.author.email || "",
+              }
+            : null,
+        },
+        ticketStatus: status,
+      });
+    } catch (err) {
+      console.error("support add message error:", err);
+      return res.status(500).json({ message: "Не удалось отправить сообщение." });
+    }
+  });
+
+  app.get("/api/admin/support/tickets", auth, requireAdmin, async (req, res) => {
+    try {
+      const requestedStatus = String(req.query?.status || "").trim();
+      const requestedPriority = String(req.query?.priority || "").trim();
+      const requestedCategory = String(req.query?.category || "").trim();
+      const search = normalizeSupportText(req.query?.search, 160);
+      const page = Math.max(1, Number(req.query?.page || 1));
+      const limit = Math.min(100, Math.max(1, Number(req.query?.limit || 20)));
+      const skip = (page - 1) * limit;
+
+      const status = requestedStatus
+        ? normalizeSupportTicketStatus(requestedStatus, "")
+        : "";
+      const priority = requestedPriority
+        ? normalizeSupportTicketPriority(requestedPriority, "")
+        : "";
+      const category = requestedCategory
+        ? normalizeSupportTicketCategory(requestedCategory, "")
+        : "";
+
+      const where = {
+        ...(status ? { status } : {}),
+        ...(priority ? { priority } : {}),
+        ...(category ? { category } : {}),
+        ...(search
+          ? {
+              OR: [
+                { subject: { contains: search, mode: "insensitive" } },
+                { createdBy: { name: { contains: search, mode: "insensitive" } } },
+                { createdBy: { email: { contains: search, mode: "insensitive" } } },
+              ],
+            }
+          : {}),
+      };
+
+      if (req.user.isSystemOwner) {
+        const filterOrgId = Number(req.query?.orgId || 0);
+        if (filterOrgId) {
+          where.orgId = filterOrgId;
+        }
+      }
+
+      const [items, total] = await prisma.$transaction([
+        prisma.supportTicket.findMany({
+          where,
+          include: {
+            createdBy: {
+              select: { id: true, name: true, email: true },
+            },
+            organization: {
+              select: { id: true, name: true, code: true },
+            },
+            messages: {
+              orderBy: { createdAt: "desc" },
+              take: 1,
+              select: {
+                id: true,
+                body: true,
+                isStaff: true,
+                createdAt: true,
+                author: { select: { id: true, name: true, email: true } },
+              },
+            },
+            _count: { select: { messages: true } },
+          },
+          orderBy: [{ updatedAt: "desc" }, { id: "desc" }],
+          skip,
+          take: limit,
+        }),
+        prisma.supportTicket.count({ where }),
+      ]);
+
+      return res.json({
+        items: items.map((item) => supportTicketToResponse(item)),
+        total,
+        page,
+        limit,
+      });
+    } catch (err) {
+      console.error("admin support tickets error:", err);
+      return res.status(500).json({ message: "Не удалось загрузить обращения." });
+    }
+  });
+
+  app.get("/api/admin/support/tickets/:id/messages", auth, requireAdmin, async (req, res) => {
+    try {
+      const ticketId = Number(req.params.id);
+      if (!ticketId || Number.isNaN(ticketId)) {
+        return res.status(400).json({ message: "BAD_ID" });
+      }
+
+      const ticket = await prisma.supportTicket.findUnique({
+        where: { id: ticketId },
+        include: {
+          createdBy: { select: { id: true, name: true, email: true } },
+          organization: { select: { id: true, name: true, code: true } },
+          _count: { select: { messages: true } },
+        },
+      });
+      if (!ticket) {
+        return res.status(404).json({ message: "Заявка не найдена." });
+      }
+      if (!req.user.isSystemOwner && req.user.orgId !== ticket.orgId) {
+        return res.status(403).json({ message: "Нет доступа к заявке." });
+      }
+
+      const messages = await prisma.supportMessage.findMany({
+        where: { ticketId },
+        orderBy: [{ createdAt: "asc" }, { id: "asc" }],
+        include: {
+          author: { select: { id: true, name: true, email: true } },
+        },
+      });
+
+      return res.json({
+        ticket: supportTicketToResponse(ticket),
+        messages: messages.map((message) => ({
+          id: message.id,
+          body: message.body || "",
+          isStaff: Boolean(message.isStaff),
+          createdAt: message.createdAt,
+          updatedAt: message.updatedAt,
+          author: message.author
+            ? {
+                id: message.author.id,
+                name: message.author.name || "",
+                email: message.author.email || "",
+              }
+            : null,
+        })),
+      });
+    } catch (err) {
+      console.error("admin support ticket messages error:", err);
+      return res.status(500).json({ message: "Не удалось загрузить переписку." });
+    }
+  });
+
+  app.post("/api/admin/support/tickets/:id/messages", auth, requireAdmin, async (req, res) => {
+    try {
+      const ticketId = Number(req.params.id);
+      if (!ticketId || Number.isNaN(ticketId)) {
+        return res.status(400).json({ message: "BAD_ID" });
+      }
+
+      const body = normalizeSupportText(req.body?.message, 4000);
+      if (!body) {
+        return res.status(400).json({ message: "Введите сообщение." });
+      }
+
+      const ticket = await loadSupportTicketForAccess(ticketId);
+      if (!ticket) {
+        return res.status(404).json({ message: "Заявка не найдена." });
+      }
+      if (!req.user.isSystemOwner && req.user.orgId !== ticket.orgId) {
+        return res.status(403).json({ message: "Нет доступа к заявке." });
+      }
+
+      const now = new Date();
+      const nextStatus = "WAITING_USER";
+      const message = await prisma.$transaction(async (tx) => {
+        const created = await tx.supportMessage.create({
+          data: {
+            orgId: ticket.orgId || req.user.orgId || null,
+            ticketId: ticket.id,
+            authorId: req.user.id,
+            isStaff: true,
+            body,
+          },
+          include: {
+            author: { select: { id: true, name: true, email: true } },
+          },
+        });
+
+        await tx.supportTicket.update({
+          where: { id: ticket.id },
+          data: {
+            status: nextStatus,
+            lastMessageAt: now,
+            closedAt: null,
+          },
+        });
+        return created;
+      });
+
+      if (ticket.createdById && ticket.createdById !== req.user.id) {
+        await createWarehouseNotification({
+          orgId: ticket.orgId || null,
+          userId: ticket.createdById,
+          type: "SUPPORT",
+          title: "Ответ поддержки",
+          message: ticket.subject || "В вашем обращении есть новый ответ.",
+          linkUrl: SUPPORT_TICKETS_LINK,
+          payloadJson: { ticketId: ticket.id },
+        }).catch(() => null);
+      }
+
+      return res.status(201).json({
+        message: {
+          id: message.id,
+          body: message.body || "",
+          isStaff: Boolean(message.isStaff),
+          createdAt: message.createdAt,
+          updatedAt: message.updatedAt,
+          author: message.author
+            ? {
+                id: message.author.id,
+                name: message.author.name || "",
+                email: message.author.email || "",
+              }
+            : null,
+        },
+        ticketStatus: nextStatus,
+      });
+    } catch (err) {
+      console.error("admin support add message error:", err);
+      return res.status(500).json({ message: "Не удалось отправить ответ." });
+    }
+  });
+
+  app.patch("/api/admin/support/tickets/:id", auth, requireAdmin, async (req, res) => {
+    try {
+      const ticketId = Number(req.params.id);
+      if (!ticketId || Number.isNaN(ticketId)) {
+        return res.status(400).json({ message: "BAD_ID" });
+      }
+
+      const ticket = await loadSupportTicketForAccess(ticketId);
+      if (!ticket) {
+        return res.status(404).json({ message: "Заявка не найдена." });
+      }
+      if (!req.user.isSystemOwner && req.user.orgId !== ticket.orgId) {
+        return res.status(403).json({ message: "Нет доступа к заявке." });
+      }
+
+      const hasStatus = Object.prototype.hasOwnProperty.call(req.body || {}, "status");
+      const hasPriority = Object.prototype.hasOwnProperty.call(req.body || {}, "priority");
+      if (!hasStatus && !hasPriority) {
+        return res.status(400).json({ message: "Не переданы данные для изменения." });
+      }
+
+      const nextStatus = hasStatus
+        ? normalizeSupportTicketStatus(req.body?.status, "")
+        : "";
+      const nextPriority = hasPriority
+        ? normalizeSupportTicketPriority(req.body?.priority, "")
+        : "";
+
+      const updateData = {};
+      if (hasStatus) {
+        if (!nextStatus) {
+          return res.status(400).json({ message: "Некорректный статус." });
+        }
+        updateData.status = nextStatus;
+        updateData.closedAt = nextStatus === "RESOLVED" ? new Date() : null;
+      }
+      if (hasPriority) {
+        if (!nextPriority) {
+          return res.status(400).json({ message: "Некорректный приоритет." });
+        }
+        updateData.priority = nextPriority;
+      }
+
+      const updated = await prisma.supportTicket.update({
+        where: { id: ticket.id },
+        data: updateData,
+        include: {
+          createdBy: { select: { id: true, name: true, email: true } },
+          organization: { select: { id: true, name: true, code: true } },
+          messages: {
+            orderBy: { createdAt: "desc" },
+            take: 1,
+            select: {
+              id: true,
+              body: true,
+              isStaff: true,
+              createdAt: true,
+              author: { select: { id: true, name: true, email: true } },
+            },
+          },
+          _count: { select: { messages: true } },
+        },
+      });
+
+      if (
+        hasStatus &&
+        ticket.createdById &&
+        ticket.createdById !== req.user.id &&
+        ticket.status !== nextStatus
+      ) {
+        await createWarehouseNotification({
+          orgId: ticket.orgId || null,
+          userId: ticket.createdById,
+          type: "SUPPORT",
+          title: "Статус обращения обновлен",
+          message: `Новый статус: ${nextStatus}.`,
+          linkUrl: SUPPORT_TICKETS_LINK,
+          payloadJson: { ticketId: ticket.id, status: nextStatus },
+        }).catch(() => null);
+      }
+
+      return res.json({ ticket: supportTicketToResponse(updated) });
+    } catch (err) {
+      console.error("admin support update ticket error:", err);
+      return res.status(500).json({ message: "Не удалось обновить обращение." });
     }
   });
 

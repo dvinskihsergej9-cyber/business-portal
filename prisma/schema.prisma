@@ -15,8 +15,9 @@ model Organization {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  users   User[]
-  invites InviteToken[]
+  users          User[]
+  invites        InviteToken[]
+  supportTickets SupportTicket[]
 }
 
 // ============ USERS ============
@@ -70,6 +71,8 @@ model User {
   warehouseNotifications       WarehouseNotification[]
   pushSubscriptions            PushSubscription[]
   emailVerificationCodes       EmailVerificationCode[]
+  supportTicketsCreated        SupportTicket[]          @relation("SupportTicketCreatedBy")
+  supportMessagesAuthored      SupportMessage[]         @relation("SupportMessageAuthor")
 
   @@index([orgId])
 }
@@ -324,6 +327,42 @@ model WarehouseNotification {
   @@index([orgId, type, createdAt])
 }
 
+model SupportTicket {
+  id          Int                   @id @default(autoincrement())
+  orgId       Int?
+  organization Organization?        @relation(fields: [orgId], references: [id])
+  createdById Int
+  createdBy   User                  @relation("SupportTicketCreatedBy", fields: [createdById], references: [id], onDelete: Cascade)
+  subject     String
+  category    SupportTicketCategory @default(OTHER)
+  priority    SupportTicketPriority @default(NORMAL)
+  status      SupportTicketStatus   @default(OPEN)
+  createdAt   DateTime              @default(now())
+  updatedAt   DateTime              @updatedAt
+  lastMessageAt DateTime            @default(now())
+  closedAt    DateTime?
+  messages    SupportMessage[]
+
+  @@index([orgId, status, updatedAt])
+  @@index([orgId, createdById, updatedAt])
+}
+
+model SupportMessage {
+  id         Int           @id @default(autoincrement())
+  orgId      Int?
+  ticketId   Int
+  ticket     SupportTicket @relation(fields: [ticketId], references: [id], onDelete: Cascade)
+  authorId   Int
+  author     User          @relation("SupportMessageAuthor", fields: [authorId], references: [id], onDelete: Cascade)
+  isStaff    Boolean       @default(false)
+  body       String
+  createdAt  DateTime      @default(now())
+  updatedAt  DateTime      @updatedAt
+
+  @@index([orgId, ticketId, createdAt])
+  @@index([orgId, authorId, createdAt])
+}
+
 model PushSubscription {
   id               Int      @id @default(autoincrement())
   orgId            Int?
@@ -355,6 +394,28 @@ enum WarehouseRequestStatus {
   IN_PROGRESS
   DONE
   REJECTED
+}
+
+enum SupportTicketStatus {
+  OPEN
+  IN_PROGRESS
+  WAITING_USER
+  RESOLVED
+}
+
+enum SupportTicketPriority {
+  LOW
+  NORMAL
+  HIGH
+  URGENT
+}
+
+enum SupportTicketCategory {
+  ACCESS
+  BILLING
+  TECHNICAL
+  INTEGRATION
+  OTHER
 }
 
 // ============ PURCHASE ORDERS ============
