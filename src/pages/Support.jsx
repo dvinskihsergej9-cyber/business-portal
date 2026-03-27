@@ -33,9 +33,13 @@ function getStatusLabel(value) {
   return STATUS_LABELS[String(value || "").trim()] || "Открыта";
 }
 
-function messageAuthorLabel(message) {
-  if (message?.isStaff) return "(Поддержка)";
-  return "(Вы)";
+function isMessageFromTicketCreator(message, ticket) {
+  const messageAuthorId = Number(message?.author?.id || 0);
+  const creatorId = Number(ticket?.createdBy?.id || 0);
+  if (messageAuthorId && creatorId) {
+    return messageAuthorId === creatorId;
+  }
+  return !Boolean(message?.isStaff);
 }
 
 export default function Support() {
@@ -437,20 +441,23 @@ export default function Support() {
                 </div>
 
                 <div className="support-page__messages">
-                  {messages.map((item) => (
-                    <div
-                      key={item.id}
-                      className={`support-page__message ${
-                        item.isStaff ? "support-page__message--peer" : "support-page__message--self"
-                      } ${item.pending ? "support-page__message--pending" : ""}`}
-                    >
-                      <div className="support-page__message-head">
-                        <span>{messageAuthorLabel(item)}</span>
-                        <span>{formatDateTime(item.createdAt)}</span>
+                  {messages.map((item) => {
+                    const isSelfMessage = isMessageFromTicketCreator(item, selectedTicket);
+                    return (
+                      <div
+                        key={item.id}
+                        className={`support-page__message ${
+                          isSelfMessage ? "support-page__message--self" : "support-page__message--peer"
+                        } ${item.pending ? "support-page__message--pending" : ""}`}
+                      >
+                        <div className="support-page__message-head">
+                          <span>{isSelfMessage ? "(Вы)" : "(Поддержка)"}</span>
+                          <span>{formatDateTime(item.createdAt)}</span>
+                        </div>
+                        <div className="support-page__message-body">{item.body}</div>
                       </div>
-                      <div className="support-page__message-body">{item.body}</div>
-                    </div>
-                  ))}
+                    );
+                  })}
                   {!messages.length ? (
                     <div className="support-page__empty">Сообщений пока нет.</div>
                   ) : null}

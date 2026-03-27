@@ -31,6 +31,15 @@ function getCategoryLabel(value) {
   return CATEGORY_LABELS[String(value || "").trim()] || "Другое";
 }
 
+function isMessageFromTicketCreator(message, ticket) {
+  const messageAuthorId = Number(message?.author?.id || 0);
+  const creatorId = Number(ticket?.createdBy?.id || 0);
+  if (messageAuthorId && creatorId) {
+    return messageAuthorId === creatorId;
+  }
+  return !Boolean(message?.isStaff);
+}
+
 export default function AdminSupportPanel() {
   const [tickets, setTickets] = useState([]);
   const [loading, setLoading] = useState(false);
@@ -449,20 +458,23 @@ export default function AdminSupportPanel() {
               ) : null}
 
               <div className="admin-support-inbox__messages">
-                {messages.map((item) => (
-                  <div
-                    key={item.id}
-                    className={`admin-support-inbox__message ${item.isStaff ? "is-staff" : "is-user"} ${
-                      item.pending ? "is-pending" : ""
-                    }`}
-                  >
-                    <div className="admin-support-inbox__message-head">
-                      <span>{item.isStaff ? "(Вы)" : "(Пользователь)"}</span>
-                      <span>{formatDateTime(item.createdAt)}</span>
+                {messages.map((item) => {
+                  const isUserMessage = isMessageFromTicketCreator(item, selectedTicket);
+                  return (
+                    <div
+                      key={item.id}
+                      className={`admin-support-inbox__message ${isUserMessage ? "is-user" : "is-staff"} ${
+                        item.pending ? "is-pending" : ""
+                      }`}
+                    >
+                      <div className="admin-support-inbox__message-head">
+                        <span>{isUserMessage ? "(Пользователь)" : "(Вы)"}</span>
+                        <span>{formatDateTime(item.createdAt)}</span>
+                      </div>
+                      <div className="admin-support-inbox__message-body">{item.body}</div>
                     </div>
-                    <div className="admin-support-inbox__message-body">{item.body}</div>
-                  </div>
-                ))}
+                  );
+                })}
                 {!messages.length ? <div className="admin-muted">Сообщений пока нет.</div> : null}
               </div>
 

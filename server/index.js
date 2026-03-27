@@ -4237,7 +4237,7 @@ app.get("/api/profile", auth, async (req, res) => {
             orgId,
             ticketId: ticket.id,
             authorId: req.user.id,
-            isStaff: req.user.role === "ADMIN" || req.user.isSystemOwner === true,
+            isStaff: false,
             body,
           },
         });
@@ -4372,7 +4372,7 @@ app.get("/api/profile", auth, async (req, res) => {
             orgId: ticket.orgId || req.user.orgId || null,
             ticketId: ticket.id,
             authorId: req.user.id,
-            isStaff: req.user.role === "ADMIN" || req.user.isSystemOwner === true,
+            isStaff: false,
             body,
           },
           include: {
