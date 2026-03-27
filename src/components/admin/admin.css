@@ -694,14 +694,18 @@
   padding: 8px 10px;
   border: 1px solid #e2e8f0;
   line-height: 1.4;
+  width: min(86%, 100%);
+  justify-self: start;
 }
 
 .admin-support-inbox__message.is-staff {
-  background: #eff6ff;
-  border-color: #bfdbfe;
+  justify-self: end;
+  background: #dbeafe;
+  border-color: #93c5fd;
 }
 
 .admin-support-inbox__message.is-user {
+  justify-self: start;
   background: #ffffff;
 }
 

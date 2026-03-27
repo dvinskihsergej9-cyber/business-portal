@@ -339,7 +339,9 @@ export default function Support() {
                   {messages.map((item) => (
                     <div
                       key={item.id}
-                      className={`support-page__message ${item.isStaff ? "support-page__message--staff" : ""}`}
+                      className={`support-page__message ${
+                        item.isStaff ? "support-page__message--peer" : "support-page__message--self"
+                      }`}
                     >
                       <div className="support-page__message-head">
                         <span>{messageAuthorLabel(item)}</span>
