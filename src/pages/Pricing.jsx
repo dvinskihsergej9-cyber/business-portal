@@ -176,6 +176,9 @@ export default function Pricing() {
   const paidUntilDate = subscription?.paidUntil
     ? new Date(subscription.paidUntil).toLocaleDateString("ru-RU")
     : "—";
+  const canUseSupport = Boolean(
+    user?.role === "ADMIN" && user?.isSystemOwner !== true
+  );
   const visiblePlanCards = PLAN_CARDS.filter(
     (plan) => periodId === "1m" || plan.id !== "start-30"
   );
@@ -205,13 +208,15 @@ export default function Pricing() {
           >
             Назад ко входу
           </button>
-          <button
-            type="button"
-            className="pricing-modern__back-login pricing-modern__support-link"
-            onClick={handleOpenSupport}
-          >
-            Поддержка
-          </button>
+          {canUseSupport ? (
+            <button
+              type="button"
+              className="pricing-modern__back-login pricing-modern__support-link"
+              onClick={handleOpenSupport}
+            >
+              Поддержка
+            </button>
+          ) : null}
         </div>
 
         <div className="pricing-modern__brand">

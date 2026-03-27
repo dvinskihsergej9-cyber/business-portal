@@ -158,6 +158,29 @@ function requireHr(req, res, next) {
   next();
 }
 
+async function requireCompanyOwnerSupport(req, res, next) {
+  try {
+    if (req.user?.role !== "ADMIN") {
+      return res.status(403).json({ message: "NO_ACCESS" });
+    }
+    if (req.user?.isSystemOwner) {
+      return res.status(403).json({ message: "OWNER_ONLY_COMPANY" });
+    }
+    const targetOrgId = Number(req.user?.orgId || 0);
+    if (!targetOrgId) {
+      return res.status(400).json({ message: "ORG_REQUIRED" });
+    }
+    const isOwner = await isCompanyOwnerAccount(req.user.id, targetOrgId);
+    if (!isOwner) {
+      return res.status(403).json({ message: "OWNER_ONLY_COMPANY" });
+    }
+    return next();
+  } catch (err) {
+    console.error("support owner access check error:", err);
+    return res.status(500).json({ message: "NO_ACCESS" });
+  }
+}
+
 function requirePermission(permissionKey) {
   return (req, res, next) => {
     if (hasPermission(req.user, permissionKey)) {
@@ -637,10 +660,11 @@ function parsePushSubscription(input) {
 
 async function sendWebPushToUser(orgId, userId, payload) {
   if (!WEB_PUSH_ENABLED) return;
-  if (!orgId || !userId) return;
+  if (!userId) return;
+  const normalizedOrgId = orgId || null;
 
   const subscriptions = await prisma.pushSubscription.findMany({
-    where: { orgId, userId },
+    where: { orgId: normalizedOrgId, userId },
     select: { id: true, endpoint: true, p256dh: true, auth: true },
     take: 20,
   });
@@ -695,11 +719,12 @@ async function createWarehouseNotification({
   linkUrl = null,
   payloadJson = null,
 }) {
-  if (!orgId || !userId || !title || !message) return null;
+  if (!userId || !title || !message) return null;
+  const normalizedOrgId = orgId || null;
 
   const notification = await prisma.warehouseNotification.create({
     data: {
-      orgId,
+      orgId: normalizedOrgId,
       userId,
       type,
       title,
@@ -710,7 +735,7 @@ async function createWarehouseNotification({
     },
   });
 
-  await sendWebPushToUser(orgId, userId, {
+  await sendWebPushToUser(normalizedOrgId, userId, {
     title,
     body: message,
     url: linkUrl || "/warehouse",
@@ -846,21 +871,20 @@ function canAccessSupportTicketAsUser(ticket, user) {
   return false;
 }
 
-async function notifySupportAdmins(orgId, actorUserId, payload) {
-  if (!orgId) return;
+async function notifySupportOperators(actorUserId, payload) {
   const admins = await prisma.user.findMany({
     where: {
-      orgId,
       role: "ADMIN",
       isActive: true,
       id: actorUserId ? { not: actorUserId } : undefined,
     },
-    select: { id: true },
+    select: { id: true, orgId: true, email: true },
     take: 20,
   });
-  for (const admin of admins) {
+  const supportOperators = admins.filter((admin) => isOwnerEmail(admin.email));
+  for (const admin of supportOperators) {
     await createWarehouseNotification({
-      orgId,
+      orgId: admin.orgId || null,
       userId: admin.id,
       type: "SUPPORT",
       title: payload?.title || "Поддержка",
@@ -1631,7 +1655,7 @@ const isReadRequest = (req) =>
 
 app.use("/api/admin", auth, requirePermission(PERMISSION_KEYS.APP_ADMIN));
 app.use("/api/users", auth, requirePermission(PERMISSION_KEYS.ADMIN_USERS));
-app.use("/api/support", auth, enforceOperationalTenantScope);
+app.use("/api/support", auth, enforceOperationalTenantScope, requireCompanyOwnerSupport);
 app.use("/api/inventory", auth, enforceOperationalTenantScope, (req, res, next) => {
   if (hasPermission(req.user, PERMISSION_KEYS.WAREHOUSE_INVENTORY)) {
     return next();
@@ -4268,7 +4292,7 @@ app.get("/api/profile", auth, async (req, res) => {
         return res.status(500).json({ message: "SUPPORT_TICKET_CREATE_ERROR" });
       }
 
-      notifySupportAdmins(orgId, req.user.id, {
+      notifySupportOperators(req.user.id, {
         title: "Новое обращение в поддержку",
         message: subject,
         linkUrl: SUPPORT_TICKETS_ADMIN_LINK,
@@ -4390,7 +4414,7 @@ app.get("/api/profile", auth, async (req, res) => {
         return created;
       });
 
-      notifySupportAdmins(ticket.orgId || req.user.orgId || null, req.user.id, {
+      notifySupportOperators(req.user.id, {
         title: "Новое сообщение в обращении",
         message: ticket.subject || "Обращение в поддержку",
         linkUrl: SUPPORT_TICKETS_ADMIN_LINK,

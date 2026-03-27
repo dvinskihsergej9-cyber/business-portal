@@ -2614,7 +2614,7 @@ input[type="number"] {
   flex-wrap: wrap;
 }
 
-.support-page__create-btn {
+.support-page__action-btn {
   min-height: 34px;
   padding: 6px 12px;
   font-size: 13px;
@@ -2648,9 +2648,14 @@ input[type="number"] {
 }
 
 .support-page__ticket {
+  appearance: none;
+  -webkit-appearance: none;
+  -webkit-tap-highlight-color: transparent;
   border: 1px solid #dbeafe;
   border-radius: 12px;
   background: #ffffff;
+  color: #0f3f7a;
+  -webkit-text-fill-color: #0f3f7a;
   padding: 10px 11px;
   display: grid;
   gap: 8px;
@@ -2662,6 +2667,21 @@ input[type="number"] {
 .support-page__ticket:hover {
   border-color: #93c5fd;
   background: #f8fbff;
+}
+
+.support-page__ticket:active {
+  border-color: #93c5fd;
+  background: #f8fbff;
+  color: #0f3f7a;
+  -webkit-text-fill-color: #0f3f7a;
+}
+
+.support-page__ticket:focus,
+.support-page__ticket:focus-visible {
+  outline: none;
+  border-color: #3b82f6;
+  box-shadow: 0 0 0 1px rgba(59, 130, 246, 0.28);
+  background: #eff6ff;
 }
 
 .support-page__ticket.is-active {

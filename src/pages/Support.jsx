@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { useLocation, useNavigate } from "react-router-dom";
+import { Navigate, useLocation, useNavigate } from "react-router-dom";
 import { apiFetch, normalizeErrorMessage } from "../apiConfig";
+import { useAuth } from "../context/AuthContext";
 
 const CATEGORY_OPTIONS = [
   { value: "ACCESS", label: "Доступ и права" },
@@ -45,6 +46,7 @@ function isMessageFromTicketCreator(message, ticket) {
 export default function Support() {
   const navigate = useNavigate();
   const location = useLocation();
+  const { user } = useAuth();
 
   const [subject, setSubject] = useState("");
   const [category, setCategory] = useState("TECHNICAL");
@@ -408,6 +410,13 @@ export default function Support() {
   };
 
   const isSelectedTicketResolved = selectedTicket?.status === "RESOLVED";
+  const canUseSupport = Boolean(
+    user?.role === "ADMIN" && user?.isSystemOwner !== true
+  );
+
+  if (!canUseSupport) {
+    return <Navigate to="/403" replace />;
+  }
 
   return (
     <div className="page support-page">
@@ -430,12 +439,12 @@ export default function Support() {
         <div className="support-page__tickets-head">
           <div className="support-page__section-title">Чаты</div>
           <div className="support-page__head-actions">
-            <button type="button" className="btn primary support-page__create-btn" onClick={openComposer}>
+            <button type="button" className="btn primary support-page__action-btn" onClick={openComposer}>
               + Новое
             </button>
             <button
               type="button"
-              className="btn primary"
+              className="btn primary support-page__action-btn"
               onClick={handleRefreshAll}
               disabled={ticketsLoading || threadLoading}
             >
