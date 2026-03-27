@@ -661,10 +661,9 @@ function parsePushSubscription(input) {
 async function sendWebPushToUser(orgId, userId, payload) {
   if (!WEB_PUSH_ENABLED) return;
   if (!userId) return;
-  const normalizedOrgId = orgId || null;
 
   const subscriptions = await prisma.pushSubscription.findMany({
-    where: { orgId: normalizedOrgId, userId },
+    where: { userId },
     select: { id: true, endpoint: true, p256dh: true, auth: true },
     take: 20,
   });
@@ -7883,7 +7882,6 @@ app.get("/api/notifications", auth, async (req, res) => {
       String(req.query.unreadOnly || "").trim().toLowerCase() === "true";
 
     const where = {
-      orgId: req.user.orgId || null,
       userId: req.user.id,
       ...(unreadOnly ? { isRead: false } : {}),
     };
@@ -7896,7 +7894,6 @@ app.get("/api/notifications", auth, async (req, res) => {
       }),
       prisma.warehouseNotification.count({
         where: {
-          orgId: req.user.orgId || null,
           userId: req.user.id,
           isRead: false,
         },
@@ -7914,7 +7911,6 @@ app.get("/api/notifications/unread-count", auth, async (req, res) => {
   try {
     const unreadCount = await prisma.warehouseNotification.count({
       where: {
-        orgId: req.user.orgId || null,
         userId: req.user.id,
         isRead: false,
       },
@@ -7936,7 +7932,6 @@ app.post("/api/notifications/:id/read", auth, async (req, res) => {
     const current = await prisma.warehouseNotification.findFirst({
       where: {
         id,
-        orgId: req.user.orgId || null,
         userId: req.user.id,
       },
       select: { id: true, isRead: true },
@@ -7964,7 +7959,6 @@ app.post("/api/notifications/read-all", auth, async (req, res) => {
   try {
     const result = await prisma.warehouseNotification.updateMany({
       where: {
-        orgId: req.user.orgId || null,
         userId: req.user.id,
         isRead: false,
       },
@@ -8031,7 +8025,6 @@ app.post("/api/notifications/push/unsubscribe", auth, async (req, res) => {
     await prisma.pushSubscription.deleteMany({
       where: {
         endpoint,
-        orgId: req.user.orgId || null,
         userId: req.user.id,
       },
     });
@@ -8051,7 +8044,6 @@ app.post("/api/notifications/push/test", auth, async (req, res) => {
 
     const userSubsCount = await prisma.pushSubscription.count({
       where: {
-        orgId: req.user.orgId || null,
         userId: req.user.id,
       },
     });
