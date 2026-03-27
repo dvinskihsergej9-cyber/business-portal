@@ -367,9 +367,17 @@ export const apiFetch = async (path, options = {}) => {
   }
 
   const controller = new AbortController();
-  const timeoutId = setTimeout(() => controller.abort(), API_TIMEOUT_MS);
-
-  const { signal: externalSignal, ...restOptions } = options || {};
+  const {
+    signal: externalSignal,
+    timeoutMs,
+    suppressGlobalError = false,
+    ...restOptions
+  } = options || {};
+  const normalizedTimeoutMs =
+    Number.isFinite(Number(timeoutMs)) && Number(timeoutMs) > 0
+      ? Number(timeoutMs)
+      : API_TIMEOUT_MS;
+  const timeoutId = setTimeout(() => controller.abort(), normalizedTimeoutMs);
   if (externalSignal) {
     if (externalSignal.aborted) {
       controller.abort();
@@ -390,7 +398,9 @@ export const apiFetch = async (path, options = {}) => {
       err?.name === "AbortError"
         ? "Не удалось подключиться к серверу."
         : normalizeErrorMessage(err, "Не удалось подключиться к серверу.");
-    showGlobalError(message);
+    if (!suppressGlobalError) {
+      showGlobalError(message);
+    }
     throw new Error(message);
   } finally {
     clearTimeout(timeoutId);

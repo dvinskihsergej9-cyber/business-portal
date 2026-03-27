@@ -144,6 +144,73 @@ export default function Support() {
     [authHeaders]
   );
 
+  const applyCreatedTicket = useCallback(
+    (createdTicket, { deduped = false, recovered = false } = {}) => {
+      const createdTicketId = Number(createdTicket?.id || 0);
+      if (!createdTicketId) return;
+      resetComposer();
+      setSuccess(
+        recovered
+          ? "Обращение отправлено. Ответ сервера пришел с задержкой, открыли созданный чат."
+          : deduped
+            ? "Похожее обращение уже было создано ранее. Открыли существующий чат."
+            : "Обращение отправлено. Мы ответим в этом чате."
+      );
+      setIsComposerOpen(false);
+      setSelectedTicketId(createdTicketId);
+      if (isMobile) setMobileView("thread");
+      setSelectedTicket(createdTicket);
+      setMessages(createdTicket?.lastMessage ? [createdTicket.lastMessage] : []);
+      setTickets((prev) => {
+        const next = prev.filter((item) => Number(item.id) !== createdTicketId);
+        return [createdTicket, ...next];
+      });
+    },
+    [isMobile, resetComposer]
+  );
+
+  const recoverCreatedTicketAfterError = useCallback(
+    async ({ subject: requestedSubject, message: requestedMessage, category: requestedCategory, requestStartedAt }) => {
+      try {
+        const res = await apiFetch("/support/tickets/my", {
+          headers: authHeaders,
+        });
+        const data = await res.json().catch(() => ({}));
+        if (!res.ok) return null;
+        const items = Array.isArray(data?.items) ? data.items : [];
+        const windowStart = Number(requestStartedAt || Date.now()) - 120_000;
+        const normalizedSubject = String(requestedSubject || "").trim().toLowerCase();
+        const normalizedMessage = String(requestedMessage || "").trim().toLowerCase();
+        const normalizedCategory = String(requestedCategory || "")
+          .trim()
+          .toUpperCase();
+        return (
+          items.find((item) => {
+            const activityAt = new Date(item?.lastMessageAt || item?.updatedAt || item?.createdAt || 0).getTime();
+            if (!Number.isFinite(activityAt) || activityAt < windowStart) return false;
+            const itemSubject = String(item?.subject || "")
+              .trim()
+              .toLowerCase();
+            const itemCategory = String(item?.category || "")
+              .trim()
+              .toUpperCase();
+            const itemLastBody = String(item?.lastMessage?.body || "")
+              .trim()
+              .toLowerCase();
+            return (
+              itemSubject === normalizedSubject &&
+              itemCategory === normalizedCategory &&
+              itemLastBody === normalizedMessage
+            );
+          }) || null
+        );
+      } catch {
+        return null;
+      }
+    },
+    [authHeaders]
+  );
+
   useEffect(() => {
     loadTickets();
   }, [loadTickets]);
@@ -176,6 +243,10 @@ export default function Support() {
     }
     const preparedSubject = String(subject || "").trim();
     const preparedMessage = String(message || "").trim();
+    const preparedCategory = String(category || "OTHER")
+      .trim()
+      .toUpperCase();
+    const requestStartedAt = Date.now();
     if (!preparedSubject) {
       setError("Укажите тему обращения.");
       return;
@@ -192,45 +263,39 @@ export default function Support() {
       setSuccess("");
       const res = await apiFetch("/support/tickets", {
         method: "POST",
+        timeoutMs: 45_000,
+        suppressGlobalError: true,
         headers: {
           ...authHeaders,
           "Content-Type": "application/json",
         },
         body: JSON.stringify({
           subject: preparedSubject,
-          category,
+          category: preparedCategory,
           message: preparedMessage,
           currentPath: `${location.pathname}${location.search || ""}`,
         }),
       });
       const data = await res.json().catch(() => ({}));
-      if (!res.ok) {
+      const createdTicket = data?.ticket || null;
+      if (!res.ok && !createdTicket) {
         throw new Error(data?.message || "SUPPORT_TICKET_CREATE_ERROR");
       }
-      const createdTicket = data?.ticket || null;
-      const createdTicketId = Number(createdTicket?.id || 0);
-      resetComposer();
-      setSuccess(
-        data?.deduped
-          ? "Похожее обращение уже было создано ранее. Открыли существующий чат."
-          : "Обращение отправлено. Мы ответим в этом чате."
-      );
-      setIsComposerOpen(false);
-      if (createdTicketId) {
-        setSelectedTicketId(createdTicketId);
-        if (isMobile) setMobileView("thread");
+      if (!createdTicket) {
+        throw new Error("SUPPORT_TICKET_CREATE_ERROR");
       }
-      if (createdTicket) {
-        setSelectedTicket(createdTicket);
-        setMessages(createdTicket?.lastMessage ? [createdTicket.lastMessage] : []);
-        setTickets((prev) => {
-          const next = prev.filter((item) => Number(item.id) !== createdTicketId);
-          return [createdTicket, ...next];
-        });
-      } else {
-        loadTickets().catch(() => null);
-      }
+      applyCreatedTicket(createdTicket, { deduped: Boolean(data?.deduped) });
     } catch (err) {
+      const recoveredTicket = await recoverCreatedTicketAfterError({
+        subject: preparedSubject,
+        message: preparedMessage,
+        category: preparedCategory,
+        requestStartedAt,
+      });
+      if (recoveredTicket) {
+        applyCreatedTicket(recoveredTicket, { recovered: true });
+        return;
+      }
       setError(normalizeErrorMessage(err, "Не удалось отправить обращение."));
     } finally {
       createInFlightRef.current = false;

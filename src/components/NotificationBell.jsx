@@ -9,6 +9,7 @@ export default function NotificationBell() {
   const [unreadCount, setUnreadCount] = useState(0);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
+  const [isMobile, setIsMobile] = useState(false);
   const wrapperRef = useRef(null);
   const navigate = useNavigate();
 
@@ -131,6 +132,14 @@ export default function NotificationBell() {
   }, [open]);
 
   useEffect(() => {
+    const media = window.matchMedia("(max-width: 860px)");
+    const onChange = () => setIsMobile(media.matches);
+    onChange();
+    media.addEventListener("change", onChange);
+    return () => media.removeEventListener("change", onChange);
+  }, []);
+
+  useEffect(() => {
     const onDocClick = (event) => {
       if (!wrapperRef.current) return;
       if (!wrapperRef.current.contains(event.target)) {
@@ -143,7 +152,7 @@ export default function NotificationBell() {
 
   useEffect(() => {
     ensurePushSubscription({ interactive: false }).catch(() => {
-      setPushEnabled(false);
+      // no-op: push может быть недоступен в браузере/окружении.
     });
   }, [ensurePushSubscription]);
 
@@ -206,11 +215,12 @@ export default function NotificationBell() {
       {open && (
         <div
           style={{
-            position: "absolute",
-            right: 0,
-            top: 44,
-            width: "min(340px, calc(100vw - 20px))",
-            maxHeight: 420,
+            position: isMobile ? "fixed" : "absolute",
+            right: isMobile ? 8 : 0,
+            left: isMobile ? 8 : "auto",
+            top: isMobile ? 72 : 44,
+            width: isMobile ? "auto" : "min(340px, calc(100vw - 20px))",
+            maxHeight: "min(70vh, 420px)",
             overflow: "auto",
             border: "1px solid #dbeafe",
             borderRadius: 12,
