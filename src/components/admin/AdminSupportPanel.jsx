@@ -404,7 +404,7 @@ export default function AdminSupportPanel() {
                     className={`admin-support-inbox__message ${item.isStaff ? "is-staff" : "is-user"}`}
                   >
                     <div className="admin-support-inbox__message-head">
-                      <span>{item.isStaff ? "Поддержка" : item.author?.name || "Пользователь"}</span>
+                      <span>{item.isStaff ? "(Вы)" : "(Пользователь)"}</span>
                       <span>{formatDateTime(item.createdAt)}</span>
                     </div>
                     <div className="admin-support-inbox__message-body">{item.body}</div>

@@ -34,9 +34,8 @@ function getStatusLabel(value) {
 }
 
 function messageAuthorLabel(message) {
-  if (message?.isStaff) return "Поддержка";
-  const authorName = String(message?.author?.name || "").trim();
-  return authorName || "Вы";
+  if (message?.isStaff) return "(Поддержка)";
+  return "(Вы)";
 }
 
 export default function Support() {

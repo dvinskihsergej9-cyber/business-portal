@@ -743,6 +743,12 @@ const SUPPORT_TICKET_CATEGORIES = new Set([
   "INTEGRATION",
   "OTHER",
 ]);
+const SUPPORT_TICKET_STATUS_LABELS = {
+  OPEN: "Открыта",
+  IN_PROGRESS: "В работе",
+  WAITING_USER: "Ждёт ответа",
+  RESOLVED: "Решена",
+};
 
 function normalizeSupportTicketStatus(value, fallback = "OPEN") {
   const normalized = String(value || "").trim().toUpperCase();
@@ -757,6 +763,11 @@ function normalizeSupportTicketPriority(value, fallback = "NORMAL") {
 function normalizeSupportTicketCategory(value, fallback = "OTHER") {
   const normalized = String(value || "").trim().toUpperCase();
   return SUPPORT_TICKET_CATEGORIES.has(normalized) ? normalized : fallback;
+}
+
+function supportTicketStatusLabel(value) {
+  const normalized = normalizeSupportTicketStatus(value, "OPEN");
+  return SUPPORT_TICKET_STATUS_LABELS[normalized] || "Открыта";
 }
 
 function normalizeSupportText(value, maxLength = 4000) {
@@ -4665,7 +4676,7 @@ app.get("/api/profile", auth, async (req, res) => {
           userId: ticket.createdById,
           type: "SUPPORT",
           title: "Статус обращения обновлен",
-          message: `Новый статус: ${nextStatus}.`,
+          message: `Новый статус: ${supportTicketStatusLabel(nextStatus)}.`,
           linkUrl: SUPPORT_TICKETS_LINK,
           payloadJson: { ticketId: ticket.id, status: nextStatus },
         }).catch(() => null);
