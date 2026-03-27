@@ -53,13 +53,13 @@ export default function AdminConsole({ initialTab = "users" }) {
         canWarehouse
           ? BASE_TABS.find((item) => item.id === "org-profile")
           : null,
-        isAdmin ? SUPPORT_TAB : null,
+        isSystemOwner ? SUPPORT_TAB : null,
         canCompanyOwnerMarketing ? COMPANY_OWNER_MARKETING_TAB : null,
         canWarehouse
           ? BASE_TABS.find((item) => item.id === "picking-report")
           : null,
       ].filter(Boolean),
-    [canUsers, canWarehouse, canTenants, canCompanyOwnerMarketing, isAdmin]
+    [canUsers, canWarehouse, canTenants, canCompanyOwnerMarketing, isSystemOwner]
   );
 
   const initialTabId = tabs.some((tab) => tab.id === initialTab)
