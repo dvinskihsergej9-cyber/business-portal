@@ -16907,7 +16907,8 @@ if (TELEGRAM_POLLING_ENABLED) {
 // ================== ЗАПУСК СЕРВЕРА ==================
 
 const PORT = Number(process.env.PORT || 3001);
-const HOST = process.env.HOST || "0.0.0.0";
+// На Render и в контейнерах bind должен быть на 0.0.0.0.
+const HOST = "0.0.0.0";
 
 async function bootstrapServer() {
   try {
@@ -16936,8 +16937,11 @@ async function bootstrapServer() {
 
   logMailConfigStatus();
 
-  app.listen(PORT, HOST, () => {
+  const server = app.listen(PORT, HOST, () => {
     console.log(`🚀 API запущен: http://${HOST}:${PORT}`);
+  });
+  server.on("error", (err) => {
+    console.error(`[API LISTEN ERROR] host=${HOST} port=${PORT}`, err);
   });
 
   startBackgroundTasks().catch((err) =>
