@@ -42,9 +42,11 @@ function messageAuthorLabel(message) {
 export default function Support() {
   const navigate = useNavigate();
   const location = useLocation();
+
   const [subject, setSubject] = useState("");
   const [category, setCategory] = useState("TECHNICAL");
   const [message, setMessage] = useState("");
+  const [isComposerOpen, setIsComposerOpen] = useState(false);
 
   const [tickets, setTickets] = useState([]);
   const [ticketsLoading, setTicketsLoading] = useState(false);
@@ -66,6 +68,23 @@ export default function Support() {
     }),
     []
   );
+
+  const resetComposer = useCallback(() => {
+    setSubject("");
+    setCategory("TECHNICAL");
+    setMessage("");
+  }, []);
+
+  const openComposer = useCallback(() => {
+    setError("");
+    setSuccess("");
+    setIsComposerOpen(true);
+  }, []);
+
+  const closeComposer = useCallback(() => {
+    if (creating) return;
+    setIsComposerOpen(false);
+  }, [creating]);
 
   const loadTickets = useCallback(async () => {
     try {
@@ -167,9 +186,9 @@ export default function Support() {
         throw new Error(data?.message || "SUPPORT_TICKET_CREATE_ERROR");
       }
       const createdTicketId = Number(data?.ticket?.id || 0);
-      setSubject("");
-      setMessage("");
+      resetComposer();
       setSuccess("Обращение отправлено. Мы ответим в этом чате.");
+      setIsComposerOpen(false);
       await loadTickets();
       if (createdTicketId) {
         setSelectedTicketId(createdTicketId);
@@ -223,7 +242,7 @@ export default function Support() {
         <div>
           <h1 className="page-title">Поддержка</h1>
           <p className="page-subtitle">
-            Создайте обращение и ведите переписку с командой поддержки в одном месте.
+            Слева список обращений, справа чат по выбранному обращению.
           </p>
         </div>
         <button type="button" className="btn support-page__back-btn" onClick={() => navigate(-1)}>
@@ -231,81 +250,30 @@ export default function Support() {
         </button>
       </div>
 
-      <section className="card support-page__card">
-        <div className="support-page__section-title">Новое обращение</div>
-        <form className="support-page__form" onSubmit={handleCreateTicket}>
-          <label className="support-page__field">
-            <span>Тема</span>
-            <input
-              type="text"
-              value={subject}
-              onChange={(event) => setSubject(event.target.value)}
-              maxLength={160}
-              placeholder="Коротко опишите проблему"
-            />
-          </label>
-
-          <label className="support-page__field">
-            <span>Категория</span>
-            <select value={category} onChange={(event) => setCategory(event.target.value)}>
-              {CATEGORY_OPTIONS.map((option) => (
-                <option key={option.value} value={option.value}>
-                  {option.label}
-                </option>
-              ))}
-            </select>
-          </label>
-
-          <label className="support-page__field">
-            <span>Сообщение</span>
-            <textarea
-              value={message}
-              onChange={(event) => setMessage(event.target.value)}
-              maxLength={4000}
-              rows={4}
-              placeholder="Опишите проблему, что ожидали и что произошло"
-            />
-          </label>
-
-          <div className="support-page__actions">
-            <button type="submit" className="btn primary" disabled={creating}>
-              {creating ? "Отправляем..." : "Отправить обращение"}
-            </button>
-            <button
-              type="button"
-              className="btn"
-              onClick={() => {
-                setSubject("");
-                setCategory("TECHNICAL");
-                setMessage("");
-                setError("");
-                setSuccess("");
-              }}
-              disabled={creating}
-            >
-              Очистить
-            </button>
-          </div>
-        </form>
-      </section>
-
       {error ? <div className="alert alert--error support-page__alert">{error}</div> : null}
       {success ? <div className="alert support-page__alert">{success}</div> : null}
 
-      <section className="card support-page__card">
+      <section className="card support-page__card support-page__card--workspace">
         <div className="support-page__tickets-head">
-          <div className="support-page__section-title">Мои обращения</div>
-          <button type="button" className="btn" onClick={loadTickets} disabled={ticketsLoading}>
-            {ticketsLoading ? "Обновляем..." : "Обновить список"}
-          </button>
+          <div className="support-page__section-title">Чаты</div>
+          <div className="support-page__head-actions">
+            <button type="button" className="btn primary support-page__create-btn" onClick={openComposer}>
+              + Новое
+            </button>
+            <button type="button" className="btn" onClick={loadTickets} disabled={ticketsLoading}>
+              {ticketsLoading ? "Обновляем..." : "Обновить"}
+            </button>
+          </div>
         </div>
 
-        {!tickets.length ? (
-          <div className="support-page__empty">Пока нет обращений. Создайте первое выше.</div>
-        ) : (
-          <div className="support-page__layout">
-            <div className="support-page__tickets">
-              {tickets.map((ticket) => {
+        <div className="support-page__layout">
+          <div className="support-page__tickets">
+            {!tickets.length ? (
+              <div className="support-page__empty">
+                Чатов пока нет. Нажмите + Новое, чтобы создать первое обращение.
+              </div>
+            ) : (
+              tickets.map((ticket) => {
                 const isActive = Number(ticket.id) === Number(selectedTicketId);
                 return (
                   <button
@@ -329,75 +297,132 @@ export default function Support() {
                     ) : null}
                   </button>
                 );
-              })}
-            </div>
-
-            <div className="support-page__thread">
-              {!selectedTicketId ? (
-                <div className="support-page__empty">Выберите обращение из списка.</div>
-              ) : (
-                <>
-                  <div className="support-page__thread-head">
-                    <div>
-                      <div className="support-page__thread-title">
-                        {selectedTicket?.subject || "Обращение"}
-                      </div>
-                      <div className="support-page__thread-meta">
-                        Статус: {getStatusLabel(selectedTicket?.status)} • Сообщений:{" "}
-                        {Number(selectedTicket?.messagesCount || messages.length || 0)}
-                      </div>
-                    </div>
-                    <button
-                      type="button"
-                      className="btn"
-                      onClick={() => loadThread(selectedTicketId)}
-                      disabled={threadLoading}
-                    >
-                      {threadLoading ? "Обновляем..." : "Обновить чат"}
-                    </button>
-                  </div>
-
-                  <div className="support-page__messages">
-                    {messages.map((item) => (
-                      <div
-                        key={item.id}
-                        className={`support-page__message ${item.isStaff ? "support-page__message--staff" : ""}`}
-                      >
-                        <div className="support-page__message-head">
-                          <span>{messageAuthorLabel(item)}</span>
-                          <span>{formatDateTime(item.createdAt)}</span>
-                        </div>
-                        <div className="support-page__message-body">{item.body}</div>
-                      </div>
-                    ))}
-                    {!messages.length ? (
-                      <div className="support-page__empty">Сообщений пока нет.</div>
-                    ) : null}
-                  </div>
-
-                  <div className="support-page__reply">
-                    <textarea
-                      value={replyText}
-                      onChange={(event) => setReplyText(event.target.value)}
-                      rows={3}
-                      maxLength={4000}
-                      placeholder="Ответьте в обращении"
-                    />
-                    <button
-                      type="button"
-                      className="btn primary"
-                      onClick={handleSendReply}
-                      disabled={sendingReply || !selectedTicketId}
-                    >
-                      {sendingReply ? "Отправляем..." : "Отправить"}
-                    </button>
-                  </div>
-                </>
-              )}
-            </div>
+              })
+            )}
           </div>
-        )}
+
+          <div className="support-page__thread">
+            {!selectedTicketId ? (
+              <div className="support-page__empty">Выберите обращение из списка слева.</div>
+            ) : (
+              <>
+                <div className="support-page__thread-head">
+                  <div>
+                    <div className="support-page__thread-title">
+                      {selectedTicket?.subject || "Обращение"}
+                    </div>
+                    <div className="support-page__thread-meta">
+                      Статус: {getStatusLabel(selectedTicket?.status)} • Сообщений:{" "}
+                      {Number(selectedTicket?.messagesCount || messages.length || 0)}
+                    </div>
+                  </div>
+                  <button
+                    type="button"
+                    className="btn"
+                    onClick={() => loadThread(selectedTicketId)}
+                    disabled={threadLoading}
+                  >
+                    {threadLoading ? "Обновляем..." : "Обновить чат"}
+                  </button>
+                </div>
+
+                <div className="support-page__messages">
+                  {messages.map((item) => (
+                    <div
+                      key={item.id}
+                      className={`support-page__message ${item.isStaff ? "support-page__message--staff" : ""}`}
+                    >
+                      <div className="support-page__message-head">
+                        <span>{messageAuthorLabel(item)}</span>
+                        <span>{formatDateTime(item.createdAt)}</span>
+                      </div>
+                      <div className="support-page__message-body">{item.body}</div>
+                    </div>
+                  ))}
+                  {!messages.length ? (
+                    <div className="support-page__empty">Сообщений пока нет.</div>
+                  ) : null}
+                </div>
+
+                <div className="support-page__reply">
+                  <textarea
+                    value={replyText}
+                    onChange={(event) => setReplyText(event.target.value)}
+                    rows={3}
+                    maxLength={4000}
+                    placeholder="Напишите сообщение поддержке"
+                  />
+                  <button
+                    type="button"
+                    className="btn primary"
+                    onClick={handleSendReply}
+                    disabled={sendingReply || !selectedTicketId}
+                  >
+                    {sendingReply ? "Отправляем..." : "Отправить"}
+                  </button>
+                </div>
+              </>
+            )}
+          </div>
+        </div>
       </section>
+
+      {isComposerOpen ? (
+        <div className="support-page__modal-backdrop" onClick={closeComposer}>
+          <div className="support-page__modal card" onClick={(event) => event.stopPropagation()}>
+            <div className="support-page__modal-head">
+              <div className="support-page__section-title">Новое обращение</div>
+              <button type="button" className="btn support-page__modal-close" onClick={closeComposer} disabled={creating}>
+                Закрыть
+              </button>
+            </div>
+
+            <form className="support-page__form" onSubmit={handleCreateTicket}>
+              <label className="support-page__field">
+                <span>Тема</span>
+                <input
+                  type="text"
+                  value={subject}
+                  onChange={(event) => setSubject(event.target.value)}
+                  maxLength={160}
+                  placeholder="Коротко опишите проблему"
+                />
+              </label>
+
+              <label className="support-page__field">
+                <span>Категория</span>
+                <select value={category} onChange={(event) => setCategory(event.target.value)}>
+                  {CATEGORY_OPTIONS.map((option) => (
+                    <option key={option.value} value={option.value}>
+                      {option.label}
+                    </option>
+                  ))}
+                </select>
+              </label>
+
+              <label className="support-page__field">
+                <span>Сообщение</span>
+                <textarea
+                  value={message}
+                  onChange={(event) => setMessage(event.target.value)}
+                  maxLength={4000}
+                  rows={4}
+                  placeholder="Опишите проблему, что ожидали и что произошло"
+                />
+              </label>
+
+              <div className="support-page__actions">
+                <button type="submit" className="btn primary" disabled={creating}>
+                  {creating ? "Отправляем..." : "Отправить обращение"}
+                </button>
+                <button type="button" className="btn" onClick={resetComposer} disabled={creating}>
+                  Очистить
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      ) : null}
     </div>
   );
 }
