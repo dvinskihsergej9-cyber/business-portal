@@ -92,18 +92,14 @@ export default function Support() {
           </a>
         </p>
         <p className="support-mail__hint">
-          Рекомендуем отправлять письмо по кнопке ниже: тема и шаблон уже будут
+          Рекомендуем отправлять письмо по ссылке ниже: тема и шаблон уже будут
           заполнены.
         </p>
         <div className="support-mail__actions">
           <a href={mailtoHref} className="btn primary support-mail__primary-link">
             Открыть почтовое приложение
           </a>
-          <button type="button" className="btn" onClick={copyTemplate}>
-            Скопировать шаблон письма
-          </button>
         </div>
-        {copyResult ? <div className="alert support-mail__alert">{copyResult}</div> : null}
       </section>
 
       <section className="card support-mail__card">
@@ -114,12 +110,24 @@ export default function Support() {
           <li>Прикрепите скриншоты или видео.</li>
         </ul>
         <div className="support-mail__template-wrap">
-          <div className="support-mail__template-title">Готовый шаблон</div>
+          <div className="support-mail__template-title-row">
+            <div className="support-mail__template-title">Готовый шаблон</div>
+            <button
+              type="button"
+              className="support-mail__copy-icon-btn"
+              onClick={copyTemplate}
+              aria-label="Скопировать шаблон письма"
+              title="Скопировать шаблон письма"
+            >
+              ⧉
+            </button>
+          </div>
           <pre className="support-mail__template">{`Кому: ${SUPPORT_EMAIL}
 Тема: ${subject}
 
 ${body}`}</pre>
         </div>
+        {copyResult ? <div className="alert support-mail__alert">{copyResult}</div> : null}
       </section>
     </div>
   );

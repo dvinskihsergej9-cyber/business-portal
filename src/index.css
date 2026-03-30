@@ -2961,6 +2961,14 @@ input[type="number"] {
 .support-mail__back-btn {
   min-height: 34px;
   min-width: 110px;
+  padding: 7px 10px;
+  border-radius: 10px;
+  border: 1px solid #d1d5db;
+  background: #ffffff;
+  color: #334155;
+  font-size: 13px;
+  font-weight: 600;
+  box-shadow: none;
 }
 
 .support-mail__card {
@@ -3008,6 +3016,20 @@ input[type="number"] {
   text-decoration: none;
 }
 
+.support-mail__primary-link.btn,
+.support-mail .btn.primary {
+  background: #0ea5e9;
+  color: #ffffff;
+  border: 1px solid #0284c7;
+  box-shadow: 0 8px 18px rgba(14, 165, 233, 0.2);
+}
+
+.support-mail__primary-link.btn:hover:not(:disabled),
+.support-mail .btn.primary:hover:not(:disabled) {
+  background: #0284c7;
+  border-color: #0369a1;
+}
+
 .support-mail__alert {
   margin: 0;
 }
@@ -3033,6 +3055,36 @@ input[type="number"] {
   font-size: 13px;
   font-weight: 700;
   color: #0f3f7a;
+}
+
+.support-mail__template-title-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.support-mail__copy-icon-btn {
+  min-width: 28px;
+  min-height: 28px;
+  width: 28px;
+  height: 28px;
+  border-radius: 8px;
+  border: 1px solid #93c5fd;
+  background: #ffffff;
+  color: #1d4ed8;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 15px;
+  line-height: 1;
+  cursor: pointer;
+  box-shadow: none;
+}
+
+.support-mail__copy-icon-btn:hover {
+  background: #eff6ff;
+  border-color: #60a5fa;
 }
 
 .support-mail__template {
