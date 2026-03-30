@@ -4522,6 +4522,206 @@ app.get("/api/profile", auth, async (req, res) => {
     }
   });
 
+  app.post("/api/pallets/print-label", async (req, res) => {
+    try {
+      const orgId = Number(req.user?.orgId || 0);
+      if (!orgId) {
+        return res.status(400).json({ message: "ORG_REQUIRED" });
+      }
+
+      const palletCode = normalizePalletCode(req.body?.palletCode);
+      const qty = Math.max(1, Math.min(20, Number(req.body?.qty || 1)));
+      const layout = String(req.body?.layout || "LABEL_75X50")
+        .trim()
+        .toUpperCase();
+
+      if (!palletCode) {
+        return res.status(400).json({ message: "PALLET_CODE_REQUIRED" });
+      }
+
+      const pallet = await prisma.pallet.findFirst({
+        where: {
+          orgId,
+          palletCode,
+        },
+        include: {
+          currentLocation: true,
+        },
+      });
+      if (!pallet) {
+        return res.status(404).json({ message: "PALLET_NOT_FOUND" });
+      }
+
+      const labelPayload = `bp:pallet:${pallet.palletCode}`;
+      const qrBuffer = await renderQrPng(labelPayload);
+      const qrImg = `data:image/png;base64,${qrBuffer.toString("base64")}`;
+
+      const layoutPreset =
+        layout === "A6"
+          ? {
+              pageSize: "A6",
+              pageMargin: "6mm",
+              wrapperClass: "grid",
+              labelWidth: "136mm",
+              labelMinHeight: "86mm",
+              qrSize: "46mm",
+              titleSize: "22px",
+              subtitleSize: "13px",
+              codeSize: "15px",
+              breakAfter: false,
+            }
+          : {
+              pageSize: "75mm 50mm",
+              pageMargin: "0",
+              wrapperClass: "",
+              labelWidth: "75mm",
+              labelMinHeight: "50mm",
+              qrSize: "30mm",
+              titleSize: "13px",
+              subtitleSize: "9px",
+              codeSize: "11px",
+              breakAfter: true,
+            };
+
+      const subtitleParts = [pallet.supplierName, pallet.inboundRef].filter(Boolean);
+      const subtitle = subtitleParts.join(" • ");
+
+      const html = `
+        <html>
+          <head>
+            <meta charset="utf-8" />
+            <title>Паллетная этикетка ${escapeHtml(pallet.palletCode)}</title>
+            <style>
+              @page { size: ${layoutPreset.pageSize}; margin: ${layoutPreset.pageMargin}; }
+              body { font-family: Arial, sans-serif; margin: 0; color: #0f172a; }
+              .grid { display: grid; grid-template-columns: 1fr; justify-items: center; gap: 10mm; padding: 6mm; }
+              .label {
+                border: 1px solid #dbeafe;
+                background: #ffffff;
+                border-radius: ${layoutPreset.breakAfter ? "0" : "10px"};
+                width: ${layoutPreset.labelWidth};
+                min-height: ${layoutPreset.labelMinHeight};
+                box-sizing: border-box;
+                padding: 3mm;
+                display: grid;
+                align-content: space-between;
+                gap: 2mm;
+              }
+              .label--page-break {
+                break-after: page;
+                page-break-after: always;
+              }
+              .label--page-break:last-child {
+                break-after: auto;
+                page-break-after: auto;
+              }
+              .title {
+                font-size: ${layoutPreset.titleSize};
+                font-weight: 700;
+                line-height: 1.2;
+                color: #0f3f7a;
+              }
+              .subtitle {
+                font-size: ${layoutPreset.subtitleSize};
+                color: #475569;
+                min-height: 12px;
+              }
+              .row {
+                display: grid;
+                grid-template-columns: ${layoutPreset.breakAfter ? "1fr auto" : "1fr auto"};
+                gap: 3mm;
+                align-items: center;
+              }
+              .qr {
+                width: ${layoutPreset.qrSize};
+                height: ${layoutPreset.qrSize};
+                justify-self: end;
+              }
+              .code {
+                font-size: ${layoutPreset.codeSize};
+                letter-spacing: 0.3px;
+                font-weight: 700;
+                word-break: break-all;
+              }
+              .payload {
+                font-size: 8px;
+                color: #64748b;
+                word-break: break-all;
+              }
+              .print-actions { margin: 12px 8px 8px; display: flex; gap: 8px; flex-wrap: wrap; }
+              .print-btn { padding: 6px 14px; font-size: 13px; cursor: pointer; }
+              @media print { .print-actions { display: none; } }
+            </style>
+          </head>
+          <body>
+            <div class="${layoutPreset.wrapperClass}">
+              ${Array.from({ length: qty })
+                .map(
+                  () => `
+                    <div class="label ${layoutPreset.breakAfter ? "label--page-break" : ""}">
+                      <div class="title">Паллета</div>
+                      <div class="subtitle">${escapeHtml(subtitle || "Внутренний код паллеты")}</div>
+                      <div class="row">
+                        <div>
+                          <div class="code">${escapeHtml(pallet.palletCode)}</div>
+                          <div class="payload">${escapeHtml(labelPayload)}</div>
+                        </div>
+                        <img class="qr" src="${qrImg}" alt="QR ${escapeHtml(pallet.palletCode)}" />
+                      </div>
+                    </div>
+                  `
+                )
+                .join("")}
+            </div>
+            <div class="print-actions">
+              <button class="print-btn" onclick="window.print()">Печать</button>
+              <button class="print-btn" onclick="returnToApp()">Назад</button>
+            </div>
+            <script>
+              function returnToApp() {
+                try {
+                  if (window.opener && !window.opener.closed) {
+                    window.close();
+                    return;
+                  }
+                } catch (e) {}
+                if (window.history.length > 1) {
+                  window.history.back();
+                  return;
+                }
+                window.location.href = "/warehouse";
+              }
+              (function () {
+                const images = Array.from(document.images || []);
+                const finish = () => setTimeout(() => window.print(), 180);
+                if (!images.length) return finish();
+                let pending = images.length;
+                const done = () => {
+                  pending -= 1;
+                  if (pending <= 0) finish();
+                };
+                images.forEach((img) => {
+                  if (img.complete) {
+                    done();
+                  } else {
+                    img.addEventListener("load", done, { once: true });
+                    img.addEventListener("error", done, { once: true });
+                  }
+                });
+              })();
+            </script>
+          </body>
+        </html>
+      `;
+
+      res.setHeader("Content-Type", "text/html; charset=utf-8");
+      return res.send(html);
+    } catch (err) {
+      console.error("pallet print label error:", err);
+      return res.status(500).json({ message: "PALLET_PRINT_LABEL_ERROR" });
+    }
+  });
+
   app.post("/api/pallets/dispatch", async (req, res) => {
     try {
       const orgId = Number(req.user?.orgId || 0);
