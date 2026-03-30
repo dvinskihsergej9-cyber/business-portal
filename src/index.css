@@ -3097,8 +3097,24 @@ input[type="number"] {
 }
 
 @media (max-width: 620px) {
+  .support-mail__header {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto;
+    align-items: start;
+    gap: 8px;
+  }
+
+  .support-mail__header > div {
+    min-width: 0;
+  }
+
   .support-mail__back-btn {
-    width: 100%;
+    width: auto;
+    min-width: 74px;
+    min-height: 30px;
+    padding: 6px 10px;
+    font-size: 12px;
+    justify-self: end;
   }
 
   .support-mail__actions .btn,
