@@ -2,34 +2,21 @@ import { useMemo, useState } from "react";
 import { Navigate, useNavigate } from "react-router-dom";
 import { useAuth } from "../context/AuthContext";
 
-const SUPPORT_EMAIL = "dvinskihsergej9@gmail.com";
+const SUPPORT_EMAIL = "noreplyskladonline@mail.ru";
 
 function buildMailSubject(companyName) {
   return `[${companyName}] Обращение в поддержку`;
 }
 
-function buildMailBody({ companyName, userName, userEmail }) {
+function buildMailBody({ companyName, userName }) {
   return [
     `Компания: ${companyName}`,
     `Контакт: ${userName}`,
-    `Email для ответа: ${userEmail}`,
     "",
-    "Тема проблемы:",
+    "Опишите проблему:",
+    "Что не работает, где и при каких действиях.",
     "",
-    "Что делали по шагам:",
-    "1.",
-    "2.",
-    "3.",
-    "",
-    "Что ожидали:",
-    "",
-    "Что произошло фактически:",
-    "",
-    "Дата и время (по Москве):",
-    "",
-    "Ссылка на страницу:",
-    "",
-    "Приложения (скриншоты/видео):",
+    "Приложите скриншоты (или видео), если это возможно.",
     "",
   ].join("\n");
 }
@@ -49,19 +36,14 @@ export default function Support() {
 
   const companyName = String(user?.organization?.name || "Компания").trim();
   const userName = String(user?.name || "Не указано").trim();
-  const userEmail = String(
-    user?.email || user?.login || user?.username || "Не указано"
-  ).trim();
-
   const subject = useMemo(() => buildMailSubject(companyName), [companyName]);
   const body = useMemo(
     () =>
       buildMailBody({
         companyName,
         userName,
-        userEmail,
       }),
-    [companyName, userEmail, userName]
+    [companyName, userName]
   );
 
   const mailtoHref = useMemo(
@@ -127,11 +109,9 @@ export default function Support() {
       <section className="card support-mail__card">
         <div className="support-mail__section-title">Что указать в письме</div>
         <ul className="support-mail__list">
-          <li>Краткую тему проблемы.</li>
-          <li>Пошагово, что делали до ошибки.</li>
-          <li>Что ожидали получить и что получили фактически.</li>
-          <li>Скриншоты или видео (если есть).</li>
-          <li>Время инцидента и ссылку на страницу.</li>
+          <li>Кратко опишите, что не работает.</li>
+          <li>Укажите, где именно возникла проблема.</li>
+          <li>Прикрепите скриншоты или видео.</li>
         </ul>
         <div className="support-mail__template-wrap">
           <div className="support-mail__template-title">Готовый шаблон</div>
@@ -144,4 +124,3 @@ ${body}`}</pre>
     </div>
   );
 }
-
