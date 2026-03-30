@@ -10,6 +10,7 @@ import LocationCard from "../components/tsd/LocationCard";
 import OrderFulfillmentFlow from "../components/tsd/OrderFulfillmentFlow";
 import ReceivingByPo from "../components/tsd/ReceivingByPo";
 import ShipmentByPassport from "../components/tsd/ShipmentByPassport";
+import PalletFlow from "../components/tsd/PalletFlow";
 import TsdErrorAlert from "../components/tsd/TsdErrorAlert";
 import StockDiscrepanciesTab from "../components/StockDiscrepanciesTab";
 import "../components/tsd/tsd.css";
@@ -67,6 +68,12 @@ const MODES = [
     title: "Отгрузка",
     subtitle: "Скан паспорта и отгрузка",
     icon: "SHP",
+  },
+  {
+    id: "pallets",
+    title: "Паллеты",
+    subtitle: "LPN: приемка, размещение, отгрузка",
+    icon: "PLT",
   },
   {
     id: "discrepancies",
@@ -189,6 +196,9 @@ export default function MobileTsd() {
   }, []);
 
   const canUseMode = (modeId) => {
+    if (modeId === "pallets") {
+      return hasPermission(user, PERMISSION_KEYS.WAREHOUSE_TSD);
+    }
     const modePermission = TSD_MODE_PERMISSION_MAP[modeId];
     if (!modePermission) return false;
     if (!hasPermission(user, PERMISSION_KEYS.WAREHOUSE_TSD)) return false;
@@ -2610,6 +2620,10 @@ export default function MobileTsd() {
     <ShipmentByPassport authHeaders={authHeaders} onBack={() => setMode(null)} />
   );
 
+  const renderPallets = () => (
+    <PalletFlow authHeaders={authHeaders} onBack={() => setMode(null)} />
+  );
+
   const renderDiscrepancies = () => (
     <>
       <TsdHeader
@@ -2662,6 +2676,7 @@ export default function MobileTsd() {
     if (mode === "replenish") return renderReplenish();
     if (mode === "pick") return renderPick();
     if (mode === "ship") return renderShip();
+    if (mode === "pallets") return renderPallets();
     if (mode === "discrepancies") return renderDiscrepancies();
     return null;
   };
