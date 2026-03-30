@@ -102,6 +102,13 @@ export default function NotificationBell() {
     [token]
   );
 
+  const handleBellToggle = useCallback(() => {
+    setOpen((prev) => !prev);
+    // Клик по колокольчику — подходящий пользовательский жест для запроса разрешения
+    // и перепривязки push-подписки на текущий аккаунт/устройство.
+    ensurePushSubscription({ interactive: true }).catch(() => null);
+  }, [ensurePushSubscription]);
+
   const openNotificationLink = useCallback(
     (linkUrl) => {
       if (!linkUrl) return;
@@ -160,7 +167,7 @@ export default function NotificationBell() {
     <div ref={wrapperRef} style={{ position: "relative" }}>
       <button
         type="button"
-        onClick={() => setOpen((prev) => !prev)}
+        onClick={handleBellToggle}
         style={{
           width: 36,
           height: 36,
