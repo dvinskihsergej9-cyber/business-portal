@@ -196,9 +196,6 @@ export default function MobileTsd() {
   }, []);
 
   const canUseMode = (modeId) => {
-    if (modeId === "pallets") {
-      return hasPermission(user, PERMISSION_KEYS.WAREHOUSE_TSD);
-    }
     const modePermission = TSD_MODE_PERMISSION_MAP[modeId];
     if (!modePermission) return false;
     if (!hasPermission(user, PERMISSION_KEYS.WAREHOUSE_TSD)) return false;

@@ -1786,6 +1786,7 @@ const WAREHOUSE_TSD_ANY = [
   PERMISSION_KEYS.TSD_REPLENISH,
   PERMISSION_KEYS.TSD_PICK,
   PERMISSION_KEYS.TSD_SHIP,
+  PERMISSION_KEYS.TSD_PALLETS,
   PERMISSION_KEYS.TSD_DISCREPANCIES,
 ];
 
@@ -1834,7 +1835,12 @@ const isReadRequest = (req) =>
 app.use("/api/admin", auth, requirePermission(PERMISSION_KEYS.APP_ADMIN));
 app.use("/api/users", auth, requirePermission(PERMISSION_KEYS.ADMIN_USERS));
 app.use("/api/support", auth, enforceOperationalTenantScope, requireCompanyOwnerSupport);
-app.use("/api/pallets", auth, enforceOperationalTenantScope, requirePermission(PERMISSION_KEYS.WAREHOUSE_TSD));
+app.use(
+  "/api/pallets",
+  auth,
+  enforceOperationalTenantScope,
+  requireAnyPermission([PERMISSION_KEYS.WAREHOUSE_TSD, PERMISSION_KEYS.TSD_PALLETS])
+);
 app.use("/api/inventory", auth, enforceOperationalTenantScope, (req, res, next) => {
   if (hasPermission(req.user, PERMISSION_KEYS.WAREHOUSE_INVENTORY)) {
     return next();
