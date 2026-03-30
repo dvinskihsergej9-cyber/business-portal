@@ -26,9 +26,7 @@ export default function Support() {
   const { user } = useAuth();
   const [copyResult, setCopyResult] = useState("");
 
-  const canUseSupport = Boolean(
-    user?.role === "ADMIN" && user?.isSystemOwner !== true
-  );
+  const canUseSupport = Boolean(user?.role === "ADMIN");
 
   if (!canUseSupport) {
     return <Navigate to="/403" replace />;

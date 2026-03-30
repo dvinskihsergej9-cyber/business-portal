@@ -176,9 +176,7 @@ export default function Pricing() {
   const paidUntilDate = subscription?.paidUntil
     ? new Date(subscription.paidUntil).toLocaleDateString("ru-RU")
     : "—";
-  const canUseSupport = Boolean(
-    user?.role === "ADMIN" && user?.isSystemOwner !== true
-  );
+  const canUseSupport = Boolean(user?.role === "ADMIN");
   const visiblePlanCards = PLAN_CARDS.filter(
     (plan) => periodId === "1m" || plan.id !== "start-30"
   );

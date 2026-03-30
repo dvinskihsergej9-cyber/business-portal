@@ -249,9 +249,7 @@ export default function Layout() {
   const sidebarStyle = isMobile
     ? { ...styles.sidebar, display: "none" }
     : styles.sidebar;
-  const canUseSupport = Boolean(
-    user && user.role === "ADMIN" && user.isSystemOwner !== true
-  );
+  const canUseSupport = Boolean(user && user.role === "ADMIN");
   const supportBtnStyle = isMobile
     ? { ...styles.headerSupportBtn, ...styles.headerTopBtnMobile }
     : styles.headerSupportBtn;
