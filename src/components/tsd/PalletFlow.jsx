@@ -110,6 +110,8 @@ export default function PalletFlow({ authHeaders, onBack }) {
   const [error, setError] = useState("");
   const [success, setSuccess] = useState("");
   const receiveSubmitLockRef = useRef(false);
+  const storeSubmitLockRef = useRef(false);
+  const dispatchSubmitLockRef = useRef(false);
   const lastReceiveScanRef = useRef({ code: "", at: 0 });
 
   const [receiveForm, setReceiveForm] = useState(INITIAL_RECEIVE_FORM);
@@ -205,6 +207,10 @@ export default function PalletFlow({ authHeaders, onBack }) {
         ...prev,
         externalCode: "",
       }));
+      setStoreForm((prev) => ({
+        ...prev,
+        palletCode: nextPalletCode,
+      }));
       setSearchCode(nextPalletCode);
     } catch (err) {
       setError(normalizeErrorMessage(err, "Ошибка приемки паллеты."));
@@ -214,12 +220,21 @@ export default function PalletFlow({ authHeaders, onBack }) {
     }
   };
 
-  const handleStoreSubmit = async () => {
+  const handleStoreSubmit = async ({
+    palletCodeOverride = null,
+    locationCodeOverride = null,
+  } = {}) => {
+    if (storeSubmitLockRef.current) return;
     try {
+      storeSubmitLockRef.current = true;
       clearAlerts();
       setLoading(true);
-      const palletCode = normalizePalletCode(storeForm.palletCode);
-      const locationCode = normalizeLocationCode(storeForm.locationCode);
+      const palletCode = normalizePalletCode(
+        palletCodeOverride == null ? storeForm.palletCode : palletCodeOverride
+      );
+      const locationCode = normalizeLocationCode(
+        locationCodeOverride == null ? storeForm.locationCode : locationCodeOverride
+      );
       if (!palletCode) throw new Error("Отсканируйте паллету.");
       if (!locationCode) throw new Error("Отсканируйте зону размещения.");
 
@@ -235,19 +250,28 @@ export default function PalletFlow({ authHeaders, onBack }) {
 
       setSuccess(`Паллета ${palletCode} размещена в ${data?.pallet?.currentLocation?.code || locationCode}.`);
       setStoreForm(INITIAL_STORE_FORM);
+      setDispatchForm((prev) => ({
+        ...prev,
+        palletCode,
+      }));
       setSearchCode(palletCode);
     } catch (err) {
       setError(normalizeErrorMessage(err, "Ошибка размещения паллеты."));
     } finally {
+      storeSubmitLockRef.current = false;
       setLoading(false);
     }
   };
 
-  const handleDispatchSubmit = async () => {
+  const handleDispatchSubmit = async ({ palletCodeOverride = null } = {}) => {
+    if (dispatchSubmitLockRef.current) return;
     try {
+      dispatchSubmitLockRef.current = true;
       clearAlerts();
       setLoading(true);
-      const palletCode = normalizePalletCode(dispatchForm.palletCode);
+      const palletCode = normalizePalletCode(
+        palletCodeOverride == null ? dispatchForm.palletCode : palletCodeOverride
+      );
       if (!palletCode) throw new Error("Отсканируйте паллету.");
       if (!String(dispatchForm.destinationRc || "").trim()) {
         throw new Error("Укажите РЦ назначения.");
@@ -278,6 +302,7 @@ export default function PalletFlow({ authHeaders, onBack }) {
     } catch (err) {
       setError(normalizeErrorMessage(err, "Ошибка отгрузки паллеты."));
     } finally {
+      dispatchSubmitLockRef.current = false;
       setLoading(false);
     }
   };
@@ -452,18 +477,34 @@ export default function PalletFlow({ authHeaders, onBack }) {
               label="Скан паллеты"
               hint="Код формата bp:pallet:<код> или сам код"
               manualPlaceholder="bp:pallet:PLT-..."
-              onScan={(value) =>
-                setStoreForm((prev) => ({ ...prev, palletCode: normalizePalletCode(value) }))
-              }
+              onScan={async (value) => {
+                const scannedPalletCode = normalizePalletCode(value);
+                setStoreForm((prev) => ({ ...prev, palletCode: scannedPalletCode }));
+                const normalizedLocationCode = normalizeLocationCode(storeForm.locationCode);
+                if (scannedPalletCode && normalizedLocationCode) {
+                  await handleStoreSubmit({
+                    palletCodeOverride: scannedPalletCode,
+                    locationCodeOverride: normalizedLocationCode,
+                  });
+                }
+              }}
               disabled={loading}
             />
             <Scanner
               label="Скан паллетной зоны"
               hint="Например, YARD-A-03"
               manualPlaceholder="Код зоны"
-              onScan={(value) =>
-                setStoreForm((prev) => ({ ...prev, locationCode: normalizeLocationCode(value) }))
-              }
+              onScan={async (value) => {
+                const scannedLocationCode = normalizeLocationCode(value);
+                setStoreForm((prev) => ({ ...prev, locationCode: scannedLocationCode }));
+                const normalizedPalletCode = normalizePalletCode(storeForm.palletCode);
+                if (normalizedPalletCode && scannedLocationCode) {
+                  await handleStoreSubmit({
+                    palletCodeOverride: normalizedPalletCode,
+                    locationCodeOverride: scannedLocationCode,
+                  });
+                }
+              }}
               disabled={loading}
               scanKind="barcode"
             />
@@ -486,9 +527,14 @@ export default function PalletFlow({ authHeaders, onBack }) {
               label="Скан паллеты"
               hint="Паллета должна быть в статусе «Размещена»"
               manualPlaceholder="bp:pallet:PLT-..."
-              onScan={(value) =>
-                setDispatchForm((prev) => ({ ...prev, palletCode: normalizePalletCode(value) }))
-              }
+              onScan={async (value) => {
+                const scannedPalletCode = normalizePalletCode(value);
+                setDispatchForm((prev) => ({ ...prev, palletCode: scannedPalletCode }));
+                const destinationRc = String(dispatchForm.destinationRc || "").trim();
+                if (scannedPalletCode && destinationRc) {
+                  await handleDispatchSubmit({ palletCodeOverride: scannedPalletCode });
+                }
+              }}
               disabled={loading}
             />
             <div className="tsd-qty-input">

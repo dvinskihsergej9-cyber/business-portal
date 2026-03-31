@@ -20,6 +20,9 @@ export default function Scanner({
     []
   );
   const scannerRef = useRef(null);
+  const viewportRef = useRef(null);
+  const focusBusyRef = useRef(false);
+  const focusUnsupportedRef = useRef(false);
   const [manualValue, setManualValue] = useState("");
   const [cameraActive, setCameraActive] = useState(false);
   const [cameraError, setCameraError] = useState("");
@@ -113,7 +116,72 @@ export default function Scanner({
       scannerRef.current = null;
     }
     setCameraActive(false);
+    focusUnsupportedRef.current = false;
   }, []);
+
+  const requestCameraFocus = useCallback(async (clientX, clientY) => {
+    if (focusBusyRef.current) return;
+    const viewport = viewportRef.current;
+    if (!viewport) return;
+
+    const rect = viewport.getBoundingClientRect();
+    if (!rect?.width || !rect?.height) return;
+
+    const pointX = Math.min(1, Math.max(0, (clientX - rect.left) / rect.width));
+    const pointY = Math.min(1, Math.max(0, (clientY - rect.top) / rect.height));
+
+    const videoElement = viewport.querySelector("video");
+    const mediaStream = videoElement?.srcObject;
+    const track = mediaStream?.getVideoTracks?.()?.[0] || null;
+    if (!track) return;
+
+    const capabilities = typeof track.getCapabilities === "function" ? track.getCapabilities() : {};
+    const focusModes = Array.isArray(capabilities?.focusMode) ? capabilities.focusMode : [];
+
+    const advanced = [];
+    if (focusModes.includes("single-shot")) {
+      advanced.push({ focusMode: "single-shot" });
+    } else if (focusModes.includes("continuous")) {
+      advanced.push({ focusMode: "continuous" });
+    } else if (focusModes.includes("manual")) {
+      advanced.push({ focusMode: "manual" });
+    }
+
+    const canUsePointOfInterest =
+      Object.prototype.hasOwnProperty.call(capabilities || {}, "pointsOfInterest") ||
+      Object.prototype.hasOwnProperty.call(capabilities || {}, "pointOfInterest");
+
+    const focusConstraints = {};
+    if (advanced.length) {
+      focusConstraints.advanced = advanced;
+    }
+    if (canUsePointOfInterest) {
+      focusConstraints.pointsOfInterest = [{ x: pointX, y: pointY }];
+    }
+
+    if (!Object.keys(focusConstraints).length) {
+      if (!focusUnsupportedRef.current) {
+        setCameraError("Фокус по касанию не поддерживается этой камерой.");
+        focusUnsupportedRef.current = true;
+      }
+      return;
+    }
+
+    focusBusyRef.current = true;
+    try {
+      await track.applyConstraints(focusConstraints);
+      if (cameraError === "Фокус по касанию не поддерживается этой камерой.") {
+        setCameraError("");
+      }
+    } catch {
+      if (!focusUnsupportedRef.current) {
+        setCameraError("Не удалось изменить фокус камеры.");
+        focusUnsupportedRef.current = true;
+      }
+    } finally {
+      focusBusyRef.current = false;
+    }
+  }, [cameraError]);
 
   const startScanner = useCallback(async () => {
     if (scannerRef.current) return;
@@ -270,9 +338,23 @@ export default function Scanner({
         </button>
       </div>
 
-      <div className="tsd-scanner__viewport">
+      <div
+        ref={viewportRef}
+        className={`tsd-scanner__viewport ${cameraActive ? "tsd-scanner__viewport--camera" : ""}`}
+        onClick={
+          cameraActive
+            ? (event) => {
+                void requestCameraFocus(event.clientX, event.clientY);
+              }
+            : undefined
+        }
+        title={cameraActive ? "Нажмите для фокусировки" : undefined}
+      >
         {cameraActive ? (
-          <div id={scannerId} className="tsd-scanner__camera" />
+          <>
+            <div id={scannerId} className="tsd-scanner__camera" />
+            <div className="tsd-scanner__focus-tip">Нажмите для фокуса</div>
+          </>
         ) : (
           <div className="tsd-scanner__placeholder">Камера выключена</div>
         )}

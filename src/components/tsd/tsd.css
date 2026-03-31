@@ -281,10 +281,28 @@
   display: grid;
   place-items: center;
   overflow: hidden;
+  position: relative;
 }
 
 .tsd-scanner__camera {
   width: 100%;
+}
+
+.tsd-scanner__viewport--camera {
+  cursor: crosshair;
+}
+
+.tsd-scanner__focus-tip {
+  position: absolute;
+  right: 10px;
+  bottom: 10px;
+  padding: 4px 8px;
+  border-radius: 999px;
+  font-size: 11px;
+  color: #e2e8f0;
+  background: rgba(15, 23, 42, 0.55);
+  border: 1px solid rgba(148, 163, 184, 0.35);
+  pointer-events: none;
 }
 
 .tsd-scanner__placeholder {
