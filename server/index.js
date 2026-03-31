@@ -886,6 +886,13 @@ function toIsoDateOrNull(value) {
   return parsed;
 }
 
+function isPermissionDeniedForTable(err, tableName) {
+  const message = String(err?.message || "").toLowerCase();
+  const table = String(tableName || "").trim().toLowerCase();
+  if (!table) return message.includes("permission denied for table");
+  return message.includes(`permission denied for table ${table}`);
+}
+
 async function generateUniquePalletCode(orgId, tx = prisma) {
   const targetOrgId = Number(orgId || 0) || null;
   for (let attempt = 0; attempt < 8; attempt += 1) {
@@ -4428,6 +4435,9 @@ app.get("/api/profile", auth, async (req, res) => {
     } catch (err) {
       if (err?.code === "P2002") {
         return res.status(409).json({ message: "PALLET_CONFLICT" });
+      }
+      if (isPermissionDeniedForTable(err, "User")) {
+        return res.status(500).json({ message: "PALLET_DB_PERMISSION_USER_TABLE" });
       }
       console.error("pallet receive error:", err);
       return res.status(500).json({ message: "PALLET_RECEIVE_ERROR" });

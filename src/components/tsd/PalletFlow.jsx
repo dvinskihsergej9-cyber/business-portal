@@ -111,6 +111,8 @@ function mapPalletError(code, fallback = "Не удалось выполнить
     return "Отгрузить можно только паллету в статусе «Размещена».";
   if (normalized === "PALLET_LOCATION_MISMATCH")
     return "Скан ячейки не совпадает с текущей ячейкой паллеты.";
+  if (normalized === "PALLET_DB_PERMISSION_USER_TABLE")
+    return "Ошибка прав БД: нет доступа к таблице пользователей.";
   if (normalized === "PALLET_CONFLICT")
     return "Конфликт при создании паллеты. Повторите приемку.";
   if (normalized === "PALLET_STATE_CHANGED")
