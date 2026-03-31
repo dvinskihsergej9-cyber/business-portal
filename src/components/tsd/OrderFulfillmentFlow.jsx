@@ -553,15 +553,18 @@ export default function OrderFulfillmentFlow({ authHeaders, onBack }) {
     await ensurePdfFont(pdf);
     const pageWidth = pdf.internal.pageSize.getWidth();
     const pageHeight = pdf.internal.pageSize.getHeight();
-    const margin = 28;
+    const margin = 10;
+    const innerPadding = 8;
     const contentWidth = pageWidth - margin * 2;
+    const innerX = margin + innerPadding;
+    const innerWidth = contentWidth - innerPadding * 2;
 
     pdf.setDrawColor(28, 35, 64);
     pdf.setLineWidth(1.3);
     pdf.rect(margin, margin, contentWidth, pageHeight - margin * 2);
 
     pdf.setFillColor(241, 246, 255);
-    pdf.rect(margin + 10, margin + 10, contentWidth - 20, 96, "F");
+    pdf.rect(innerX, margin + 8, innerWidth, 112, "F");
 
     pdf.setTextColor(11, 18, 42);
     pdf.setFontSize(25);
@@ -579,8 +582,8 @@ export default function OrderFulfillmentFlow({ authHeaders, onBack }) {
           margin: 1,
           width: 220,
         });
-        const qrSize = 88;
-        const qrX = margin + contentWidth - qrSize - 22;
+        const qrSize = 98;
+        const qrX = innerX + innerWidth - qrSize - 12;
         const qrY = margin + 14;
         pdf.addImage(qrDataUrl, "PNG", qrX, qrY, qrSize, qrSize);
         pdf.setFontSize(9);
@@ -592,7 +595,7 @@ export default function OrderFulfillmentFlow({ authHeaders, onBack }) {
       }
     }
 
-    let y = margin + 132;
+    let y = margin + 142;
     pdf.setFontSize(15);
     pdf.text(`Получатель: ${order.customerName || "-"}`, margin + 20, y);
     y += 22;
@@ -624,7 +627,7 @@ export default function OrderFulfillmentFlow({ authHeaders, onBack }) {
 
     autoTable(pdf, {
       startY: y,
-      margin: { left: margin + 10, right: margin + 10 },
+      margin: { left: innerX, right: innerX },
       head: [["#", "Артикул", "Товар", "Заказано", "Отобрано", "Ед."]],
       body: rows.length ? rows : [["-", "-", "Нет позиций", "-", "-", "-"]],
       theme: "grid",
@@ -645,17 +648,17 @@ export default function OrderFulfillmentFlow({ authHeaders, onBack }) {
       },
       columnStyles: {
         0: { cellWidth: 34 },
-        1: { cellWidth: 88 },
-        2: { cellWidth: 206 },
-        3: { cellWidth: 72, halign: "center" },
-        4: { cellWidth: 72, halign: "center" },
-        5: { cellWidth: 44, halign: "center" },
+        1: { cellWidth: 92 },
+        2: { cellWidth: Math.max(180, innerWidth - (34 + 92 + 78 + 78 + 48)), minCellHeight: 24 },
+        3: { cellWidth: 78, halign: "center" },
+        4: { cellWidth: 78, halign: "center" },
+        5: { cellWidth: 48, halign: "center" },
       },
     });
 
     const finalY = pdf.lastAutoTable?.finalY || y;
-    const footerTop = Math.min(finalY + 16, pageHeight - 140);
-    const footerHeight = pageHeight - margin - footerTop - 10;
+    const footerTop = Math.min(finalY + 14, pageHeight - 172);
+    const footerHeight = Math.max(120, pageHeight - margin - footerTop - 10);
 
     pdf.setFillColor(248, 250, 255);
     pdf.rect(margin + 10, footerTop, contentWidth - 20, footerHeight, "F");
