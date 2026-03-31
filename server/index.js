@@ -4318,7 +4318,7 @@ app.get("/api/profile", auth, async (req, res) => {
     }
   });
 
-  app.post("/api/pallets/receive", async (req, res) => {
+  app.post("/api/pallets/receive", auth, async (req, res) => {
     try {
       const orgId = Number(req.user?.orgId || 0);
       if (!orgId) {
@@ -4418,7 +4418,7 @@ app.get("/api/profile", auth, async (req, res) => {
     }
   });
 
-  app.post("/api/pallets/store", async (req, res) => {
+  app.post("/api/pallets/store", auth, async (req, res) => {
     try {
       const orgId = Number(req.user?.orgId || 0);
       if (!orgId) {
@@ -4528,7 +4528,7 @@ app.get("/api/profile", auth, async (req, res) => {
     }
   });
 
-  app.post("/api/pallets/print-label", async (req, res) => {
+  app.post("/api/pallets/print-label", auth, async (req, res) => {
     try {
       const orgId = Number(req.user?.orgId || 0);
       if (!orgId) {
@@ -4728,7 +4728,7 @@ app.get("/api/profile", auth, async (req, res) => {
     }
   });
 
-  app.post("/api/pallets/dispatch", async (req, res) => {
+  app.post("/api/pallets/dispatch", auth, async (req, res) => {
     try {
       const orgId = Number(req.user?.orgId || 0);
       if (!orgId) {
@@ -4848,7 +4848,7 @@ app.get("/api/profile", auth, async (req, res) => {
     }
   });
 
-  app.get("/api/pallets", async (req, res) => {
+  app.get("/api/pallets", auth, async (req, res) => {
     try {
       const orgId = Number(req.user?.orgId || 0);
       if (!orgId) {
@@ -4930,7 +4930,7 @@ app.get("/api/profile", auth, async (req, res) => {
     }
   });
 
-  app.get("/api/pallets/:palletCode/history", async (req, res) => {
+  app.get("/api/pallets/:palletCode/history", auth, async (req, res) => {
     try {
       const orgId = Number(req.user?.orgId || 0);
       if (!orgId) {
