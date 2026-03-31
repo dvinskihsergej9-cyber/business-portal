@@ -24,7 +24,6 @@ const PALLET_EVENT_LABELS = {
 const INITIAL_RECEIVE_FORM = {
   supplierName: "",
   inboundRef: "",
-  createLabel: true,
 };
 
 const INITIAL_STORE_FORM = {
@@ -131,10 +130,10 @@ export default function PalletFlow({ authHeaders, onBack }) {
   };
 
   const printPalletLabel = async (palletCode) => {
-    const printWindow = prepareDocumentTab({ title: "Этикетка паллеты" });
+    const printWindow = prepareDocumentTab({ title: "Паспорт паллеты" });
     if (!printWindow) {
       throw new Error(
-        "Паллета создана, но окно печати не открылось. Разрешите всплывающие окна."
+        "Паллета создана, но окно печати паспорта не открылось. Разрешите всплывающие окна."
       );
     }
 
@@ -144,12 +143,12 @@ export default function PalletFlow({ authHeaders, onBack }) {
       body: JSON.stringify({
         palletCode,
         qty: 1,
-        layout: "LABEL_75X50",
+        layout: "A4_PASSPORT",
       }),
     });
     const html = await response.text();
     if (!response.ok) {
-      let message = "Паллета создана, но печать этикетки не выполнена.";
+      let message = "Паллета создана, но печать паспорта не выполнена.";
       try {
         const parsed = JSON.parse(html);
         message = mapPalletError(parsed?.message, message);
@@ -183,7 +182,6 @@ export default function PalletFlow({ authHeaders, onBack }) {
       const payload = {
         supplierName,
         inboundRef,
-        createLabel: Boolean(receiveForm.createLabel),
       };
 
       const response = await fetch(`${API_BASE}/pallets/receive`, {
@@ -201,9 +199,7 @@ export default function PalletFlow({ authHeaders, onBack }) {
         throw new Error("Паллета создана, но код не получен.");
       }
 
-      if (payload.createLabel) {
-        await printPalletLabel(nextPalletCode);
-      }
+      await printPalletLabel(nextPalletCode);
 
       setSuccess(`Паллета ${nextPalletCode} принята.`);
       setStoreForm((prev) => ({
@@ -419,19 +415,6 @@ export default function PalletFlow({ authHeaders, onBack }) {
                 placeholder="Например, А123ВС77 / ТТН-0001"
                 disabled={loading}
               />
-            </div>
-            <div className="tsd-switch">
-              <label className="tsd-switch__row">
-                <input
-                  type="checkbox"
-                  checked={receiveForm.createLabel}
-                  onChange={(event) =>
-                    setReceiveForm((prev) => ({ ...prev, createLabel: event.target.checked }))
-                  }
-                  disabled={loading}
-                />
-                <span>Сразу печатать этикетку</span>
-              </label>
             </div>
             <div className="tsd-action-bar">
               <button

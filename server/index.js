@@ -4326,7 +4326,6 @@ app.get("/api/profile", auth, async (req, res) => {
 
       const inboundRef = normalizePalletText(req.body?.inboundRef, 120) || null;
       const supplierName = normalizePalletText(req.body?.supplierName, 160) || null;
-      const createLabel = toBoolean(req.body?.createLabel);
       if (!supplierName) {
         return res.status(400).json({ message: "PALLET_SUPPLIER_REQUIRED" });
       }
@@ -4356,7 +4355,6 @@ app.get("/api/profile", auth, async (req, res) => {
             const baseMeta = {
               supplierName,
               inboundRef,
-              createLabel,
             };
 
             await createPalletEventTx(tx, {
@@ -4417,13 +4415,11 @@ app.get("/api/profile", auth, async (req, res) => {
 
       return res.status(201).json({
         pallet: palletToResponse(created),
-        label: createLabel
-          ? {
-              palletCode: created.palletCode,
-              payload: `bp:pallet:${created.palletCode}`,
-              layout: "LABEL_75X50",
-            }
-          : null,
+        label: {
+          palletCode: created.palletCode,
+          payload: `bp:pallet:${created.palletCode}`,
+          layout: "A4_PASSPORT",
+        },
       });
     } catch (err) {
       if (err?.code === "P2002") {
@@ -4559,7 +4555,7 @@ app.get("/api/profile", auth, async (req, res) => {
 
       const palletCode = normalizePalletCode(req.body?.palletCode);
       const qty = Math.max(1, Math.min(20, Number(req.body?.qty || 1)));
-      const layout = String(req.body?.layout || "LABEL_75X50")
+      const layout = String(req.body?.layout || "A4_PASSPORT")
         .trim()
         .toUpperCase();
 
@@ -4584,163 +4580,285 @@ app.get("/api/profile", auth, async (req, res) => {
       const qrBuffer = await renderQrPng(labelPayload);
       const qrImg = `data:image/png;base64,${qrBuffer.toString("base64")}`;
 
-      const layoutPreset =
-        layout === "A6"
-          ? {
-              pageSize: "A6",
-              pageMargin: "6mm",
-              wrapperClass: "grid",
-              labelWidth: "136mm",
-              labelMinHeight: "86mm",
-              qrSize: "46mm",
-              titleSize: "22px",
-              subtitleSize: "13px",
-              codeSize: "15px",
-              breakAfter: false,
-            }
-          : {
-              pageSize: "75mm 50mm",
-              pageMargin: "0",
-              wrapperClass: "",
-              labelWidth: "75mm",
-              labelMinHeight: "50mm",
-              qrSize: "30mm",
-              titleSize: "13px",
-              subtitleSize: "9px",
-              codeSize: "11px",
-              breakAfter: true,
-            };
-
+      const isA4Passport = layout === "A4_PASSPORT" || layout === "A4";
       const subtitleParts = [pallet.supplierName, pallet.inboundRef].filter(Boolean);
       const subtitle = subtitleParts.join(" • ");
+      const receivedAtText = pallet.receivedAt
+        ? new Date(pallet.receivedAt).toLocaleString("ru-RU")
+        : "-";
+      const locationCode = pallet.currentLocation?.code || "Не размещена";
 
-      const html = `
-        <html>
-          <head>
-            <meta charset="utf-8" />
-            <title>Паллетная этикетка ${escapeHtml(pallet.palletCode)}</title>
-            <style>
-              @page { size: ${layoutPreset.pageSize}; margin: ${layoutPreset.pageMargin}; }
-              body { font-family: Arial, sans-serif; margin: 0; color: #0f172a; }
-              .grid { display: grid; grid-template-columns: 1fr; justify-items: center; gap: 10mm; padding: 6mm; }
-              .label {
-                border: 1px solid #dbeafe;
-                background: #ffffff;
-                border-radius: ${layoutPreset.breakAfter ? "0" : "10px"};
-                width: ${layoutPreset.labelWidth};
-                min-height: ${layoutPreset.labelMinHeight};
-                box-sizing: border-box;
-                padding: 3mm;
-                display: grid;
-                align-content: space-between;
-                gap: 2mm;
-              }
-              .label--page-break {
-                break-after: page;
-                page-break-after: always;
-              }
-              .label--page-break:last-child {
-                break-after: auto;
-                page-break-after: auto;
-              }
-              .title {
-                font-size: ${layoutPreset.titleSize};
-                font-weight: 700;
-                line-height: 1.2;
-                color: #0f3f7a;
-              }
-              .subtitle {
-                font-size: ${layoutPreset.subtitleSize};
-                color: #475569;
-                min-height: 12px;
-              }
-              .row {
-                display: grid;
-                grid-template-columns: ${layoutPreset.breakAfter ? "1fr auto" : "1fr auto"};
-                gap: 3mm;
-                align-items: center;
-              }
-              .qr {
-                width: ${layoutPreset.qrSize};
-                height: ${layoutPreset.qrSize};
-                justify-self: end;
-              }
-              .code {
-                font-size: ${layoutPreset.codeSize};
-                letter-spacing: 0.3px;
-                font-weight: 700;
-                word-break: break-all;
-              }
-              .payload {
-                font-size: 8px;
-                color: #64748b;
-                word-break: break-all;
-              }
-              .print-actions { margin: 12px 8px 8px; display: flex; gap: 8px; flex-wrap: wrap; }
-              .print-btn { padding: 6px 14px; font-size: 13px; cursor: pointer; }
-              @media print { .print-actions { display: none; } }
-            </style>
-          </head>
-          <body>
-            <div class="${layoutPreset.wrapperClass}">
+      const html = isA4Passport
+        ? `
+          <html>
+            <head>
+              <meta charset="utf-8" />
+              <title>Паспорт паллеты ${escapeHtml(pallet.palletCode)}</title>
+              <style>
+                @page { size: A4; margin: 10mm; }
+                * { box-sizing: border-box; }
+                body { margin: 0; font-family: Arial, sans-serif; color: #0f172a; background: #fff; }
+                .page {
+                  min-height: 277mm;
+                  border: 2px solid #0f3f7a;
+                  border-radius: 8px;
+                  padding: 12mm;
+                  display: grid;
+                  grid-template-rows: auto auto 1fr auto;
+                  gap: 8mm;
+                }
+                .page-break { break-after: page; page-break-after: always; }
+                .header { display: grid; gap: 4mm; border-bottom: 2px solid #bfdbfe; padding-bottom: 5mm; }
+                .title { font-size: 36px; font-weight: 700; letter-spacing: 0.4px; color: #0f3f7a; }
+                .subtitle { font-size: 18px; color: #334155; }
+                .code-box {
+                  display: grid;
+                  grid-template-columns: 1fr auto;
+                  gap: 10mm;
+                  align-items: center;
+                  border: 1px solid #bfdbfe;
+                  border-radius: 8px;
+                  padding: 6mm;
+                }
+                .code { font-size: 38px; font-weight: 700; letter-spacing: 1.2px; line-height: 1.1; }
+                .payload { margin-top: 2mm; font-size: 13px; color: #334155; word-break: break-all; }
+                .qr { width: 58mm; height: 58mm; border: 1px solid #cbd5e1; }
+                .grid { display: grid; grid-template-columns: 1fr 1fr; gap: 4mm 8mm; align-content: start; }
+                .cell { border-bottom: 1px solid #e2e8f0; padding-bottom: 3mm; }
+                .label { font-size: 12px; color: #475569; margin-bottom: 1mm; }
+                .value { font-size: 20px; font-weight: 600; color: #0f172a; word-break: break-word; }
+                .rules {
+                  border: 1px dashed #94a3b8;
+                  border-radius: 8px;
+                  padding: 4mm;
+                  font-size: 16px;
+                  line-height: 1.45;
+                  color: #0f172a;
+                }
+                .rules strong { color: #0f3f7a; }
+                .footer { font-size: 13px; color: #475569; }
+                .print-actions { margin: 12px 8px 8px; display: flex; gap: 8px; flex-wrap: wrap; }
+                .print-btn { padding: 6px 14px; font-size: 13px; cursor: pointer; }
+                @media print { .print-actions { display: none; } }
+              </style>
+            </head>
+            <body>
               ${Array.from({ length: qty })
                 .map(
-                  () => `
-                    <div class="label ${layoutPreset.breakAfter ? "label--page-break" : ""}">
-                      <div class="title">Паллета</div>
-                      <div class="subtitle">${escapeHtml(subtitle || "Внутренний код паллеты")}</div>
-                      <div class="row">
+                  (_, index) => `
+                    <section class="page ${index < qty - 1 ? "page-break" : ""}">
+                      <div class="header">
+                        <div class="title">Паспорт паллеты</div>
+                        <div class="subtitle">Внутренний складской идентификатор LPN</div>
+                      </div>
+
+                      <div class="code-box">
                         <div>
                           <div class="code">${escapeHtml(pallet.palletCode)}</div>
                           <div class="payload">${escapeHtml(labelPayload)}</div>
                         </div>
                         <img class="qr" src="${qrImg}" alt="QR ${escapeHtml(pallet.palletCode)}" />
                       </div>
-                    </div>
+
+                      <div class="grid">
+                        <div class="cell">
+                          <div class="label">Поставщик</div>
+                          <div class="value">${escapeHtml(pallet.supplierName || "-")}</div>
+                        </div>
+                        <div class="cell">
+                          <div class="label">Машина / ТТН</div>
+                          <div class="value">${escapeHtml(pallet.inboundRef || "-")}</div>
+                        </div>
+                        <div class="cell">
+                          <div class="label">Дата приемки</div>
+                          <div class="value">${escapeHtml(receivedAtText)}</div>
+                        </div>
+                        <div class="cell">
+                          <div class="label">Текущая ячейка</div>
+                          <div class="value">${escapeHtml(locationCode)}</div>
+                        </div>
+                        <div class="cell">
+                          <div class="label">Статус</div>
+                          <div class="value">Принята</div>
+                        </div>
+                        <div class="cell">
+                          <div class="label">Партия</div>
+                          <div class="value">${escapeHtml(subtitle || "-")}</div>
+                        </div>
+                      </div>
+
+                      <div class="rules">
+                        <strong>Важно:</strong> все операции выполняются только по этому внутреннему коду паллеты.
+                        Внешние заводские штрихкоды не используются в складском процессе.
+                      </div>
+
+                      <div class="footer">Документ сформирован системой склада автоматически.</div>
+                    </section>
                   `
                 )
                 .join("")}
-            </div>
-            <div class="print-actions">
-              <button class="print-btn" onclick="window.print()">Печать</button>
-              <button class="print-btn" onclick="returnToApp()">Назад</button>
-            </div>
-            <script>
-              function returnToApp() {
-                try {
-                  if (window.opener && !window.opener.closed) {
-                    window.close();
+              <div class="print-actions">
+                <button class="print-btn" onclick="window.print()">Печать</button>
+                <button class="print-btn" onclick="returnToApp()">Назад</button>
+              </div>
+              <script>
+                function returnToApp() {
+                  try {
+                    if (window.opener && !window.opener.closed) {
+                      window.close();
+                      return;
+                    }
+                  } catch (e) {}
+                  if (window.history.length > 1) {
+                    window.history.back();
                     return;
                   }
-                } catch (e) {}
-                if (window.history.length > 1) {
-                  window.history.back();
-                  return;
+                  window.location.href = "/warehouse";
                 }
-                window.location.href = "/warehouse";
-              }
-              (function () {
-                const images = Array.from(document.images || []);
-                const finish = () => setTimeout(() => window.print(), 180);
-                if (!images.length) return finish();
-                let pending = images.length;
-                const done = () => {
-                  pending -= 1;
-                  if (pending <= 0) finish();
-                };
-                images.forEach((img) => {
-                  if (img.complete) {
-                    done();
-                  } else {
-                    img.addEventListener("load", done, { once: true });
-                    img.addEventListener("error", done, { once: true });
+                (function () {
+                  const images = Array.from(document.images || []);
+                  const finish = () => setTimeout(() => window.print(), 180);
+                  if (!images.length) return finish();
+                  let pending = images.length;
+                  const done = () => {
+                    pending -= 1;
+                    if (pending <= 0) finish();
+                  };
+                  images.forEach((img) => {
+                    if (img.complete) {
+                      done();
+                    } else {
+                      img.addEventListener("load", done, { once: true });
+                      img.addEventListener("error", done, { once: true });
+                    }
+                  });
+                })();
+              </script>
+            </body>
+          </html>
+        `
+        : `
+          <html>
+            <head>
+              <meta charset="utf-8" />
+              <title>Паллетная этикетка ${escapeHtml(pallet.palletCode)}</title>
+              <style>
+                @page { size: ${layout === "A6" ? "A6" : "75mm 50mm"}; margin: ${layout === "A6" ? "6mm" : "0"}; }
+                body { font-family: Arial, sans-serif; margin: 0; color: #0f172a; }
+                .grid { display: grid; grid-template-columns: 1fr; justify-items: center; gap: 10mm; padding: 6mm; }
+                .label {
+                  border: 1px solid #dbeafe;
+                  background: #ffffff;
+                  border-radius: ${layout === "A6" ? "10px" : "0"};
+                  width: ${layout === "A6" ? "136mm" : "75mm"};
+                  min-height: ${layout === "A6" ? "86mm" : "50mm"};
+                  box-sizing: border-box;
+                  padding: 3mm;
+                  display: grid;
+                  align-content: space-between;
+                  gap: 2mm;
+                }
+                .label--page-break {
+                  break-after: page;
+                  page-break-after: always;
+                }
+                .label--page-break:last-child {
+                  break-after: auto;
+                  page-break-after: auto;
+                }
+                .title {
+                  font-size: ${layout === "A6" ? "22px" : "13px"};
+                  font-weight: 700;
+                  line-height: 1.2;
+                  color: #0f3f7a;
+                }
+                .subtitle {
+                  font-size: ${layout === "A6" ? "13px" : "9px"};
+                  color: #475569;
+                  min-height: 12px;
+                }
+                .row { display: grid; grid-template-columns: 1fr auto; gap: 3mm; align-items: center; }
+                .qr {
+                  width: ${layout === "A6" ? "46mm" : "30mm"};
+                  height: ${layout === "A6" ? "46mm" : "30mm"};
+                  justify-self: end;
+                }
+                .code {
+                  font-size: ${layout === "A6" ? "15px" : "11px"};
+                  letter-spacing: 0.3px;
+                  font-weight: 700;
+                  word-break: break-all;
+                }
+                .payload {
+                  font-size: 8px;
+                  color: #64748b;
+                  word-break: break-all;
+                }
+                .print-actions { margin: 12px 8px 8px; display: flex; gap: 8px; flex-wrap: wrap; }
+                .print-btn { padding: 6px 14px; font-size: 13px; cursor: pointer; }
+                @media print { .print-actions { display: none; } }
+              </style>
+            </head>
+            <body>
+              <div class="${layout === "A6" ? "grid" : ""}">
+                ${Array.from({ length: qty })
+                  .map(
+                    () => `
+                      <div class="label ${layout === "A6" ? "" : "label--page-break"}">
+                        <div class="title">Паллета</div>
+                        <div class="subtitle">${escapeHtml(subtitle || "Внутренний код паллеты")}</div>
+                        <div class="row">
+                          <div>
+                            <div class="code">${escapeHtml(pallet.palletCode)}</div>
+                            <div class="payload">${escapeHtml(labelPayload)}</div>
+                          </div>
+                          <img class="qr" src="${qrImg}" alt="QR ${escapeHtml(pallet.palletCode)}" />
+                        </div>
+                      </div>
+                    `
+                  )
+                  .join("")}
+              </div>
+              <div class="print-actions">
+                <button class="print-btn" onclick="window.print()">Печать</button>
+                <button class="print-btn" onclick="returnToApp()">Назад</button>
+              </div>
+              <script>
+                function returnToApp() {
+                  try {
+                    if (window.opener && !window.opener.closed) {
+                      window.close();
+                      return;
+                    }
+                  } catch (e) {}
+                  if (window.history.length > 1) {
+                    window.history.back();
+                    return;
                   }
-                });
-              })();
-            </script>
-          </body>
-        </html>
-      `;
+                  window.location.href = "/warehouse";
+                }
+                (function () {
+                  const images = Array.from(document.images || []);
+                  const finish = () => setTimeout(() => window.print(), 180);
+                  if (!images.length) return finish();
+                  let pending = images.length;
+                  const done = () => {
+                    pending -= 1;
+                    if (pending <= 0) finish();
+                  };
+                  images.forEach((img) => {
+                    if (img.complete) {
+                      done();
+                    } else {
+                      img.addEventListener("load", done, { once: true });
+                      img.addEventListener("error", done, { once: true });
+                    }
+                  });
+                })();
+              </script>
+            </body>
+          </html>
+        `;
 
       res.setHeader("Content-Type", "text/html; charset=utf-8");
       return res.send(html);
