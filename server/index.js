@@ -4340,13 +4340,14 @@ app.get("/api/profile", auth, async (req, res) => {
           createdBase = await prisma.$transaction(async (tx) => {
             const now = new Date();
             const palletCode = await generateUniquePalletCode(orgId, tx);
+            const externalCompatCode = crypto.randomBytes(4).toString("hex").toUpperCase();
             const pallet = await tx.pallet.create({
               data: {
                 orgId,
                 palletCode,
-                // Compatibility fallback for deployments where externalCode remains NOT NULL in DB.
+                // Compatibility fallback for deployments where externalCode remains constrained in DB.
                 // Business flow still uses only internal palletCode.
-                externalCode: palletCode,
+                externalCode: externalCompatCode,
                 status: "RECEIVED",
                 supplierName,
                 inboundRef,
