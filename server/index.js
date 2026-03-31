@@ -4389,7 +4389,6 @@ app.get("/api/profile", auth, async (req, res) => {
           where: { id: pallet.id },
           include: {
             currentLocation: true,
-            createdBy: { select: { id: true, name: true, email: true } },
             dispatch: true,
           },
         });
@@ -4500,7 +4499,6 @@ app.get("/api/profile", auth, async (req, res) => {
           where: { id: pallet.id },
           include: {
             currentLocation: true,
-            createdBy: { select: { id: true, name: true, email: true } },
             dispatch: true,
           },
         });
@@ -4822,7 +4820,6 @@ app.get("/api/profile", auth, async (req, res) => {
           where: { id: pallet.id },
           include: {
             currentLocation: true,
-            createdBy: { select: { id: true, name: true, email: true } },
             dispatch: true,
           },
         });
@@ -4916,7 +4913,6 @@ app.get("/api/profile", auth, async (req, res) => {
         where,
         include: {
           currentLocation: true,
-          createdBy: { select: { id: true, name: true, email: true } },
           dispatch: true,
         },
         orderBy: [{ updatedAt: "desc" }, { id: "desc" }],
@@ -4949,7 +4945,6 @@ app.get("/api/profile", auth, async (req, res) => {
         },
         include: {
           currentLocation: true,
-          createdBy: { select: { id: true, name: true, email: true } },
           dispatch: true,
         },
       });
@@ -4961,9 +4956,6 @@ app.get("/api/profile", auth, async (req, res) => {
         where: {
           orgId,
           palletId: pallet.id,
-        },
-        include: {
-          user: { select: { id: true, name: true, email: true } },
         },
         orderBy: [{ createdAt: "asc" }, { id: "asc" }],
       });
