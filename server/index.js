@@ -5277,6 +5277,46 @@ app.get("/api/profile", auth, async (req, res) => {
     }
   });
 
+  app.get("/api/debug/db-permissions", auth, async (req, res) => {
+    try {
+      if (!(req.user?.isSystemOwner || req.user?.role === "ADMIN")) {
+        return res.status(403).json({ message: "FORBIDDEN" });
+      }
+
+      const sessionInfoRows = await prisma.$queryRawUnsafe(`
+        SELECT
+          current_user AS "currentUser",
+          current_database() AS "currentDatabase",
+          current_schema() AS "currentSchema",
+          current_setting('search_path') AS "searchPath"
+      `);
+
+      const tablePrivileges = await prisma.$queryRawUnsafe(`
+        SELECT
+          n.nspname AS "schema",
+          c.relname AS "table",
+          has_table_privilege(current_user, format('%I.%I', n.nspname, c.relname), 'SELECT') AS "canSelect",
+          has_table_privilege(current_user, format('%I.%I', n.nspname, c.relname), 'INSERT') AS "canInsert",
+          has_table_privilege(current_user, format('%I.%I', n.nspname, c.relname), 'UPDATE') AS "canUpdate",
+          has_table_privilege(current_user, format('%I.%I', n.nspname, c.relname), 'DELETE') AS "canDelete",
+          has_table_privilege(current_user, format('%I.%I', n.nspname, c.relname), 'REFERENCES') AS "canReferences"
+        FROM pg_class c
+        JOIN pg_namespace n ON n.oid = c.relnamespace
+        WHERE c.relkind IN ('r', 'p')
+          AND c.relname IN ('User', 'Organization', 'Pallet', 'PalletEvent', 'PalletDispatch', 'PalletLocation')
+        ORDER BY n.nspname, c.relname
+      `);
+
+      return res.json({
+        session: Array.isArray(sessionInfoRows) && sessionInfoRows.length ? sessionInfoRows[0] : null,
+        tables: Array.isArray(tablePrivileges) ? tablePrivileges : [],
+      });
+    } catch (err) {
+      console.error("debug db permissions error:", err);
+      return res.status(500).json({ message: "DEBUG_DB_PERMISSIONS_ERROR" });
+    }
+  });
+
   app.get("/api/support/tickets/my", async (req, res) => {
     try {
       const requestedStatus = String(req.query?.status || "").trim();
