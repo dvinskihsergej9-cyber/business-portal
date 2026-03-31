@@ -24,7 +24,6 @@ const PALLET_EVENT_LABELS = {
 const INITIAL_RECEIVE_FORM = {
   supplierName: "",
   inboundRef: "",
-  externalCode: "",
   createLabel: true,
 };
 
@@ -90,13 +89,13 @@ function mapPalletError(code, fallback = "Не удалось выполнить
   if (normalized === "PALLET_NOT_FOUND") return "Паллета не найдена.";
   if (normalized === "PALLET_CODE_REQUIRED") return "Отсканируйте код паллеты.";
   if (normalized === "PALLET_LOCATION_REQUIRED") return "Отсканируйте код паллетной зоны.";
+  if (normalized === "PALLET_SUPPLIER_REQUIRED") return "Укажите поставщика.";
+  if (normalized === "PALLET_INBOUND_REF_REQUIRED") return "Укажите машину/ТТН.";
   if (normalized === "PALLET_DESTINATION_REQUIRED") return "Укажите РЦ назначения.";
   if (normalized === "PALLET_STORE_STATUS_INVALID")
     return "Размещение возможно только для принятых/размещенных паллет.";
   if (normalized === "PALLET_DISPATCH_STATUS_INVALID")
     return "Отгрузить можно только паллету в статусе «Размещена».";
-  if (normalized === "PALLET_EXTERNAL_CODE_EXISTS")
-    return "Паллета с таким внешним кодом уже существует.";
   if (normalized === "PALLET_CONFLICT")
     return "Конфликт при создании паллеты. Повторите приемку.";
   if (normalized === "PALLET_STATE_CHANGED")
@@ -114,7 +113,6 @@ export default function PalletFlow({ authHeaders, onBack }) {
   const receiveSubmitLockRef = useRef(false);
   const storeSubmitLockRef = useRef(false);
   const dispatchSubmitLockRef = useRef(false);
-  const lastReceiveScanRef = useRef({ code: "", at: 0 });
 
   const [receiveForm, setReceiveForm] = useState(INITIAL_RECEIVE_FORM);
   const [storeForm, setStoreForm] = useState(INITIAL_STORE_FORM);
@@ -168,20 +166,23 @@ export default function PalletFlow({ authHeaders, onBack }) {
     openHtmlDocumentInNewTab(html, { targetWindow: printWindow });
   };
 
-  const handleReceiveSubmit = async ({ externalCodeOverride = null } = {}) => {
+  const handleReceiveSubmit = async () => {
     if (receiveSubmitLockRef.current) return;
     try {
       receiveSubmitLockRef.current = true;
       clearAlerts();
       setLoading(true);
-      const normalizedExternalCode = normalizePalletCode(
-        externalCodeOverride == null ? receiveForm.externalCode : externalCodeOverride
-      );
-
+      const supplierName = String(receiveForm.supplierName || "").trim();
+      const inboundRef = String(receiveForm.inboundRef || "").trim();
+      if (!supplierName) {
+        throw new Error("Укажите поставщика.");
+      }
+      if (!inboundRef) {
+        throw new Error("Укажите машину/ТТН.");
+      }
       const payload = {
-        supplierName: receiveForm.supplierName || null,
-        inboundRef: receiveForm.inboundRef || null,
-        externalCode: normalizedExternalCode || null,
+        supplierName,
+        inboundRef,
         createLabel: Boolean(receiveForm.createLabel),
       };
 
@@ -205,10 +206,6 @@ export default function PalletFlow({ authHeaders, onBack }) {
       }
 
       setSuccess(`Паллета ${nextPalletCode} принята.`);
-      setReceiveForm((prev) => ({
-        ...prev,
-        externalCode: "",
-      }));
       setStoreForm((prev) => ({
         ...prev,
         palletCode: nextPalletCode,
@@ -399,32 +396,8 @@ export default function PalletFlow({ authHeaders, onBack }) {
 
         {activeTab === "receive" ? (
           <div className="tsd-list">
-            <Scanner
-              label="Скан внешнего кода (необязательно)"
-              hint="Если есть SSCC/штрихкод производителя"
-              manualPlaceholder="SSCC или штрихкод"
-              onScan={async (value) => {
-                const scannedCode = normalizePalletCode(value);
-                setReceiveForm((prev) => ({
-                  ...prev,
-                  externalCode: scannedCode,
-                }));
-                if (!scannedCode) return;
-
-                const now = Date.now();
-                if (
-                  lastReceiveScanRef.current.code === scannedCode &&
-                  now - lastReceiveScanRef.current.at < 3000
-                ) {
-                  return;
-                }
-                lastReceiveScanRef.current = { code: scannedCode, at: now };
-                await handleReceiveSubmit({ externalCodeOverride: scannedCode });
-              }}
-              disabled={loading}
-            />
             <div className="tsd-qty-input">
-              <label className="tsd-scanner__label">Поставщик (необязательно)</label>
+              <label className="tsd-scanner__label">Поставщик *</label>
               <input
                 className="tsd-input"
                 value={receiveForm.supplierName}
@@ -436,7 +409,7 @@ export default function PalletFlow({ authHeaders, onBack }) {
               />
             </div>
             <div className="tsd-qty-input">
-              <label className="tsd-scanner__label">Машина / ТТН (необязательно)</label>
+              <label className="tsd-scanner__label">Машина / ТТН *</label>
               <input
                 className="tsd-input"
                 value={receiveForm.inboundRef}

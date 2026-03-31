@@ -948,7 +948,6 @@ function palletToResponse(pallet) {
     id: pallet?.id,
     orgId: pallet?.orgId || null,
     palletCode: pallet?.palletCode || "",
-    externalCode: pallet?.externalCode || null,
     status: pallet?.status || "RECEIVED",
     supplierName: pallet?.supplierName || null,
     inboundRef: pallet?.inboundRef || null,
@@ -4327,19 +4326,12 @@ app.get("/api/profile", auth, async (req, res) => {
 
       const inboundRef = normalizePalletText(req.body?.inboundRef, 120) || null;
       const supplierName = normalizePalletText(req.body?.supplierName, 160) || null;
-      const externalCode = normalizePalletCode(req.body?.externalCode || null) || null;
       const createLabel = toBoolean(req.body?.createLabel);
-
-      if (externalCode) {
-        const duplicateExternal = await prisma.pallet.findFirst({
-          where: { orgId, externalCode },
-          select: { id: true },
-        });
-        if (duplicateExternal) {
-          return res.status(409).json({
-            message: "PALLET_EXTERNAL_CODE_EXISTS",
-          });
-        }
+      if (!supplierName) {
+        return res.status(400).json({ message: "PALLET_SUPPLIER_REQUIRED" });
+      }
+      if (!inboundRef) {
+        return res.status(400).json({ message: "PALLET_INBOUND_REF_REQUIRED" });
       }
 
       let createdBase = null;
@@ -4353,7 +4345,6 @@ app.get("/api/profile", auth, async (req, res) => {
               data: {
                 orgId,
                 palletCode,
-                externalCode,
                 status: "RECEIVED",
                 supplierName,
                 inboundRef,
@@ -4365,7 +4356,6 @@ app.get("/api/profile", auth, async (req, res) => {
             const baseMeta = {
               supplierName,
               inboundRef,
-              externalCode,
               createLabel,
             };
 
