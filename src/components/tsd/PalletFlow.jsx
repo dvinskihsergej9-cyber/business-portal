@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { API_BASE, normalizeErrorMessage } from "../../apiConfig";
 import { openHtmlDocumentInNewTab, prepareDocumentTab } from "../../utils/openInNewTab";
 import Scanner from "./Scanner";
@@ -109,6 +109,8 @@ export default function PalletFlow({ authHeaders, onBack }) {
   const [historyLoading, setHistoryLoading] = useState(false);
   const [error, setError] = useState("");
   const [success, setSuccess] = useState("");
+  const receiveSubmitLockRef = useRef(false);
+  const lastReceiveScanRef = useRef({ code: "", at: 0 });
 
   const [receiveForm, setReceiveForm] = useState(INITIAL_RECEIVE_FORM);
   const [storeForm, setStoreForm] = useState(INITIAL_STORE_FORM);
@@ -162,15 +164,20 @@ export default function PalletFlow({ authHeaders, onBack }) {
     openHtmlDocumentInNewTab(html, { targetWindow: printWindow });
   };
 
-  const handleReceiveSubmit = async () => {
+  const handleReceiveSubmit = async ({ externalCodeOverride = null } = {}) => {
+    if (receiveSubmitLockRef.current) return;
     try {
+      receiveSubmitLockRef.current = true;
       clearAlerts();
       setLoading(true);
+      const normalizedExternalCode = normalizePalletCode(
+        externalCodeOverride == null ? receiveForm.externalCode : externalCodeOverride
+      );
 
       const payload = {
         supplierName: receiveForm.supplierName || null,
         inboundRef: receiveForm.inboundRef || null,
-        externalCode: normalizePalletCode(receiveForm.externalCode) || null,
+        externalCode: normalizedExternalCode || null,
         createLabel: Boolean(receiveForm.createLabel),
       };
 
@@ -202,6 +209,7 @@ export default function PalletFlow({ authHeaders, onBack }) {
     } catch (err) {
       setError(normalizeErrorMessage(err, "Ошибка приемки паллеты."));
     } finally {
+      receiveSubmitLockRef.current = false;
       setLoading(false);
     }
   };
@@ -368,12 +376,24 @@ export default function PalletFlow({ authHeaders, onBack }) {
               label="Скан внешнего кода (необязательно)"
               hint="Если есть SSCC/штрихкод производителя"
               manualPlaceholder="SSCC или штрихкод"
-              onScan={(value) =>
+              onScan={async (value) => {
+                const scannedCode = normalizePalletCode(value);
                 setReceiveForm((prev) => ({
                   ...prev,
-                  externalCode: normalizePalletCode(value),
-                }))
-              }
+                  externalCode: scannedCode,
+                }));
+                if (!scannedCode) return;
+
+                const now = Date.now();
+                if (
+                  lastReceiveScanRef.current.code === scannedCode &&
+                  now - lastReceiveScanRef.current.at < 3000
+                ) {
+                  return;
+                }
+                lastReceiveScanRef.current = { code: scannedCode, at: now };
+                await handleReceiveSubmit({ externalCodeOverride: scannedCode });
+              }}
               disabled={loading}
             />
             <div className="tsd-qty-input">
