@@ -5014,6 +5014,94 @@ app.get("/api/profile", auth, async (req, res) => {
     }
   });
 
+  app.get("/api/pallets/dispatch-sheet", auth, async (req, res) => {
+    try {
+      const orgId = Number(req.user?.orgId || 0);
+      if (!orgId) {
+        return res.status(400).json({ message: "ORG_REQUIRED" });
+      }
+
+      const destinationRc = normalizePalletText(req.query?.destinationRc, 120);
+      const route = normalizePalletText(req.query?.route, 120) || null;
+      const supplierName = normalizePalletText(req.query?.supplierName, 160);
+      const inboundRef = normalizePalletText(req.query?.inboundRef, 120);
+      const locationCode = normalizePalletCode(req.query?.locationCode);
+      const limit = Math.max(1, Math.min(300, Number(req.query?.limit || 120)));
+
+      if (!destinationRc) {
+        return res.status(400).json({ message: "PALLET_DESTINATION_REQUIRED" });
+      }
+
+      let currentLocationId = null;
+      if (locationCode) {
+        const location = await prisma.palletLocation.findFirst({
+          where: {
+            orgId,
+            code: locationCode,
+          },
+          select: { id: true },
+        });
+        if (!location) {
+          return res.json({
+            destinationRc,
+            route,
+            summary: { total: 0, byLocation: [] },
+            items: [],
+          });
+        }
+        currentLocationId = location.id;
+      }
+
+      const where = {
+        orgId,
+        status: "STORED",
+        ...(currentLocationId ? { currentLocationId } : {}),
+        ...(supplierName
+          ? { supplierName: { contains: supplierName, mode: "insensitive" } }
+          : {}),
+        ...(inboundRef
+          ? { inboundRef: { contains: inboundRef, mode: "insensitive" } }
+          : {}),
+      };
+
+      const items = await prisma.pallet.findMany({
+        where,
+        include: {
+          currentLocation: true,
+          dispatch: true,
+        },
+        orderBy: [{ currentLocationId: "asc" }, { receivedAt: "asc" }, { id: "asc" }],
+        take: limit,
+      });
+
+      const locationMap = new Map();
+      for (const item of items) {
+        const code = item?.currentLocation?.code || "БЕЗ_ЯЧЕЙКИ";
+        locationMap.set(code, (locationMap.get(code) || 0) + 1);
+      }
+      const byLocation = Array.from(locationMap.entries())
+        .map(([code, count]) => ({ code, count }))
+        .sort((a, b) => {
+          if (a.code < b.code) return -1;
+          if (a.code > b.code) return 1;
+          return 0;
+        });
+
+      return res.json({
+        destinationRc,
+        route,
+        summary: {
+          total: items.length,
+          byLocation,
+        },
+        items: items.map((item) => palletToResponse(item)),
+      });
+    } catch (err) {
+      console.error("pallet dispatch-sheet error:", err);
+      return res.status(500).json({ message: "PALLET_DISPATCH_SHEET_ERROR" });
+    }
+  });
+
   app.get("/api/pallets", auth, async (req, res) => {
     try {
       const orgId = Number(req.user?.orgId || 0);

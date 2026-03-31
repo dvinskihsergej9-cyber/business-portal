@@ -102,6 +102,8 @@ function mapPalletError(code, fallback = "Не удалось выполнить
     return "Конфликт при создании паллеты. Повторите приемку.";
   if (normalized === "PALLET_STATE_CHANGED")
     return "Состояние паллеты изменилось другим сотрудником. Обновите данные.";
+  if (normalized === "PALLET_DISPATCH_SHEET_ERROR")
+    return "Не удалось загрузить маршрутный лист.";
   if (normalized.startsWith("DATE_")) return "Проверьте корректность даты фильтра.";
   return fallback;
 }
@@ -128,6 +130,9 @@ export default function PalletFlow({ authHeaders, onBack }) {
   const [historyEvents, setHistoryEvents] = useState([]);
   const [recentItems, setRecentItems] = useState([]);
   const [recentLoading, setRecentLoading] = useState(false);
+  const [routeSheetItems, setRouteSheetItems] = useState([]);
+  const [routeSheetSummary, setRouteSheetSummary] = useState(null);
+  const [routeSheetLoading, setRouteSheetLoading] = useState(false);
 
   const clearAlerts = () => {
     setError("");
@@ -330,13 +335,58 @@ export default function PalletFlow({ authHeaders, onBack }) {
       setSuccess(
         `Паллета ${palletCode} отгружена в РЦ ${data?.pallet?.dispatch?.destinationRc || dispatchForm.destinationRc}.`
       );
-      setDispatchForm(INITIAL_DISPATCH_FORM);
+      setDispatchForm((prev) => ({
+        ...prev,
+        palletCode: "",
+        locationCode: "",
+      }));
+      await loadDispatchSheet({ silent: true, locationCodeOverride: "" });
       setSearchCode(palletCode);
     } catch (err) {
       setError(normalizeErrorMessage(err, "Ошибка отгрузки паллеты."));
     } finally {
       dispatchSubmitLockRef.current = false;
       setLoading(false);
+    }
+  };
+
+  const loadDispatchSheet = async ({ silent = false, locationCodeOverride = null } = {}) => {
+    const destinationRc = String(dispatchForm.destinationRc || "").trim();
+    if (!destinationRc) {
+      if (!silent) {
+        throw new Error("Укажите РЦ назначения, чтобы получить маршрутный лист.");
+      }
+      return;
+    }
+    setRouteSheetLoading(true);
+    try {
+      const params = new URLSearchParams();
+      params.set("destinationRc", destinationRc);
+      if (dispatchForm.route) params.set("route", String(dispatchForm.route).trim());
+      const locationCode =
+        locationCodeOverride == null ? dispatchForm.locationCode : locationCodeOverride;
+      if (locationCode) {
+        params.set("locationCode", normalizeLocationCode(locationCode));
+      }
+      const response = await fetch(`${API_BASE}/pallets/dispatch-sheet?${params.toString()}`, {
+        headers: authHeaders,
+      });
+      const data = await readJsonSafe(response);
+      if (!response.ok) {
+        throw new Error(mapPalletError(data?.message, "Не удалось загрузить маршрутный лист."));
+      }
+      const items = Array.isArray(data?.items) ? data.items : [];
+      setRouteSheetItems(items);
+      setRouteSheetSummary(data?.summary || { total: items.length, byLocation: [] });
+      if (!silent) {
+        if (!items.length) {
+          setSuccess("По заданным параметрам маршрутный лист пуст.");
+        } else {
+          setSuccess(`Маршрутный лист загружен: ${items.length} паллет.`);
+        }
+      }
+    } finally {
+      setRouteSheetLoading(false);
     }
   };
 
@@ -389,6 +439,13 @@ export default function PalletFlow({ authHeaders, onBack }) {
     loadRecentPallets();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [activeTab, searchStatus]);
+
+  useEffect(() => {
+    if (activeTab !== "dispatch") return;
+    if (String(dispatchForm.destinationRc || "").trim()) return;
+    setRouteSheetItems([]);
+    setRouteSheetSummary(null);
+  }, [activeTab, dispatchForm.destinationRc]);
 
   const tabs = useMemo(
     () => [
@@ -593,6 +650,23 @@ export default function PalletFlow({ authHeaders, onBack }) {
                 />
               </div>
             </div>
+            <div className="tsd-action-bar">
+              <button
+                type="button"
+                className="tsd-btn tsd-btn--secondary"
+                onClick={async () => {
+                  try {
+                    clearAlerts();
+                    await loadDispatchSheet();
+                  } catch (err) {
+                    setError(normalizeErrorMessage(err, "Не удалось загрузить маршрутный лист."));
+                  }
+                }}
+                disabled={loading || routeSheetLoading}
+              >
+                {routeSheetLoading ? "Загружаем лист..." : "Показать маршрутный лист"}
+              </button>
+            </div>
             <div className="tsd-qty-input">
               <label className="tsd-scanner__label">Водитель (необязательно)</label>
               <input
@@ -628,6 +702,47 @@ export default function PalletFlow({ authHeaders, onBack }) {
                 {loading ? "Отгружаем..." : "Отгрузить"}
               </button>
             </div>
+            {routeSheetSummary ? (
+              <div className="tsd-card">
+                <div className="tsd-card__title">
+                  Маршрутный лист: {dispatchForm.route ? dispatchForm.route : "без номера"}
+                </div>
+                <div className="tsd-card__meta">РЦ назначения: {dispatchForm.destinationRc || "-"}</div>
+                <div className="tsd-card__meta">Паллет к отбору: {routeSheetSummary.total || 0}</div>
+              </div>
+            ) : null}
+            {routeSheetItems.length ? (
+              <div className="tsd-list">
+                {routeSheetItems.map((item) => (
+                  <button
+                    key={item.id}
+                    type="button"
+                    className={`tsd-card tsd-pallet-list-btn ${
+                      dispatchForm.palletCode === item.palletCode ? "tsd-route-sheet-item--active" : ""
+                    }`}
+                    onClick={() => {
+                      setDispatchForm((prev) => ({
+                        ...prev,
+                        palletCode: item.palletCode || "",
+                        locationCode: item.currentLocation?.code || prev.locationCode || "",
+                      }));
+                      setSuccess(
+                        `Выбрана паллета ${item.palletCode || "-"} из ячейки ${
+                          item.currentLocation?.code || "-"
+                        }.`
+                      );
+                    }}
+                  >
+                    <div className="tsd-card__title">{item.palletCode}</div>
+                    <div className="tsd-card__meta">Ячейка: {item.currentLocation?.code || "-"}</div>
+                    <div className="tsd-card__meta">Куда везти: {dispatchForm.destinationRc || "-"}</div>
+                    <div className="tsd-card__meta">
+                      Поставщик: {item.supplierName || "-"} • Машина/ТТН: {item.inboundRef || "-"}
+                    </div>
+                  </button>
+                ))}
+              </div>
+            ) : null}
           </div>
         ) : null}
 
