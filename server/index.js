@@ -5117,9 +5117,12 @@ app.get("/api/profile", auth, async (req, res) => {
         return res.status(400).json({ message: "PALLET_STATUS_INVALID" });
       }
 
+      const qText = normalizePalletText(req.query?.q, 160);
+      const qCode = normalizePalletCode(req.query?.q);
       const inboundRef = normalizePalletText(req.query?.inboundRef, 120);
       const supplierName = normalizePalletText(req.query?.supplierName, 160);
       const locationCode = normalizePalletCode(req.query?.locationCode);
+      const excludeTest = toBoolean(req.query?.excludeTest);
       const dateFromRaw = String(req.query?.dateFrom || "").trim();
       const dateToRaw = String(req.query?.dateTo || "").trim();
       const dateFrom = toIsoDateOrNull(dateFromRaw);
@@ -5146,6 +5149,33 @@ app.get("/api/profile", auth, async (req, res) => {
         currentLocationId = location.id;
       }
 
+      const andFilters = [];
+      if (qText || qCode) {
+        andFilters.push({
+          OR: [
+            ...(qCode ? [{ palletCode: { contains: qCode, mode: "insensitive" } }] : []),
+            ...(qText
+              ? [
+                  { supplierName: { contains: qText, mode: "insensitive" } },
+                  { inboundRef: { contains: qText, mode: "insensitive" } },
+                ]
+              : []),
+          ],
+        });
+      }
+      if (excludeTest) {
+        andFilters.push({
+          NOT: [
+            { supplierName: { contains: "test", mode: "insensitive" } },
+            { supplierName: { contains: "тест", mode: "insensitive" } },
+            { supplierName: { contains: "demo", mode: "insensitive" } },
+            { inboundRef: { contains: "test", mode: "insensitive" } },
+            { inboundRef: { contains: "тест", mode: "insensitive" } },
+            { inboundRef: { contains: "demo", mode: "insensitive" } },
+          ],
+        });
+      }
+
       const where = {
         orgId,
         ...(status ? { status } : {}),
@@ -5164,6 +5194,7 @@ app.get("/api/profile", auth, async (req, res) => {
               },
             }
           : {}),
+        ...(andFilters.length ? { AND: andFilters } : {}),
       };
 
       const items = await prisma.pallet.findMany({
@@ -5213,6 +5244,11 @@ app.get("/api/profile", auth, async (req, res) => {
         where: {
           orgId,
           palletId: pallet.id,
+        },
+        include: {
+          user: {
+            select: { id: true, name: true, email: true },
+          },
         },
         orderBy: [{ createdAt: "asc" }, { id: "asc" }],
       });

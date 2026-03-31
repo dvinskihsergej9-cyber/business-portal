@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+﻿import { useEffect, useMemo, useRef, useState } from "react";
 import { API_BASE, normalizeErrorMessage } from "../../apiConfig";
 import { openHtmlDocumentInNewTab, prepareDocumentTab } from "../../utils/openInNewTab";
 import Scanner from "./Scanner";
@@ -70,10 +70,23 @@ function normalizeLocationCode(rawValue) {
 
 function renderMeta(metaJson) {
   if (!metaJson || typeof metaJson !== "object") return "";
+  const metaLabels = {
+    supplierName: "Поставщик",
+    inboundRef: "Машина/ТТН",
+    fromLocationCode: "Из ячейки",
+    toLocationCode: "В ячейку",
+    toLocationName: "Ячейка",
+    destinationRc: "РЦ назначения",
+    route: "Маршрут",
+    vehicle: "Машина",
+    driver: "Водитель",
+    notes: "Комментарий",
+    scanLocationCode: "Скан ячейки",
+  };
   const parts = Object.entries(metaJson)
     .filter(([, value]) => value != null && String(value).trim() !== "")
-    .map(([key, value]) => `${key}: ${String(value)}`);
-  return parts.join(" • ");
+    .map(([key, value]) => `${metaLabels[key] || key}: ${String(value)}`);
+  return parts.join(" | ");
 }
 
 async function readJsonSafe(res) {
@@ -126,6 +139,8 @@ export default function PalletFlow({ authHeaders, onBack }) {
 
   const [searchCode, setSearchCode] = useState("");
   const [searchStatus, setSearchStatus] = useState("");
+  const [searchQuery, setSearchQuery] = useState("");
+  const [excludeTest, setExcludeTest] = useState(true);
   const [historyPallet, setHistoryPallet] = useState(null);
   const [historyEvents, setHistoryEvents] = useState([]);
   const [recentItems, setRecentItems] = useState([]);
@@ -419,6 +434,8 @@ export default function PalletFlow({ authHeaders, onBack }) {
     try {
       const params = new URLSearchParams();
       if (searchStatus) params.set("status", searchStatus);
+      if (searchQuery) params.set("q", searchQuery.trim());
+      if (excludeTest) params.set("excludeTest", "1");
       const response = await fetch(`${API_BASE}/pallets?${params.toString()}`, {
         headers: authHeaders,
       });
@@ -438,7 +455,7 @@ export default function PalletFlow({ authHeaders, onBack }) {
     if (activeTab !== "search") return;
     loadRecentPallets();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [activeTab, searchStatus]);
+  }, [activeTab, searchStatus, searchQuery, excludeTest]);
 
   useEffect(() => {
     if (activeTab !== "dispatch") return;
@@ -811,6 +828,31 @@ export default function PalletFlow({ authHeaders, onBack }) {
                 {recentLoading ? "Обновляем..." : "Обновить"}
               </button>
             </div>
+            <div className="tsd-inline tsd-inline--two">
+              <input
+                className="tsd-input"
+                value={searchQuery}
+                onChange={(event) => setSearchQuery(event.target.value)}
+                placeholder="Фильтр: код, поставщик, ТТН"
+                disabled={recentLoading}
+              />
+              <label className="tsd-switch__row">
+                <input
+                  type="checkbox"
+                  checked={excludeTest}
+                  onChange={(event) => setExcludeTest(event.target.checked)}
+                  disabled={recentLoading}
+                />
+                <span>Скрыть тестовые</span>
+              </label>
+            </div>
+            <div className="tsd-card">
+              <div className="tsd-card__meta">Найдено в списке: {recentItems.length}</div>
+              <div className="tsd-card__meta">
+                Фильтры: {searchStatus ? statusLabel(searchStatus) : "все статусы"},{" "}
+                {excludeTest ? "без тестовых" : "с тестовыми"}
+              </div>
+            </div>
 
             {historyPallet ? (
               <div className="tsd-card">
@@ -822,9 +864,17 @@ export default function PalletFlow({ authHeaders, onBack }) {
                 <div className="tsd-card__meta">
                   Принята: {formatDateTime(historyPallet.receivedAt)}
                 </div>
+                <div className="tsd-card__meta">
+                  Принял: {historyPallet.createdBy?.name || historyPallet.createdBy?.email || "-"}
+                </div>
                 {historyPallet.dispatch?.destinationRc ? (
                   <div className="tsd-card__meta">
                     РЦ: {historyPallet.dispatch.destinationRc}
+                  </div>
+                ) : null}
+                {historyPallet.dispatchedAt ? (
+                  <div className="tsd-card__meta">
+                    Отгружена: {formatDateTime(historyPallet.dispatchedAt)}
                   </div>
                 ) : null}
               </div>
@@ -839,7 +889,7 @@ export default function PalletFlow({ authHeaders, onBack }) {
                       <span className="tsd-pallet-event__date">{formatDateTime(event.createdAt)}</span>
                     </div>
                     <div className="tsd-pallet-event__meta">
-                      {event.user?.name || "Система"} • {statusLabel(event.fromStatus)} →{" "}
+                      {event.user?.name || event.user?.email || "Система"} • {statusLabel(event.fromStatus)} →{" "}
                       {statusLabel(event.toStatus)}
                     </div>
                     {renderMeta(event.metaJson) ? (
@@ -852,7 +902,7 @@ export default function PalletFlow({ authHeaders, onBack }) {
 
             {recentItems.length ? (
               <div className="tsd-list">
-                {recentItems.slice(0, 20).map((item) => (
+                {recentItems.slice(0, 40).map((item) => (
                   <button
                     key={item.id}
                     type="button"
@@ -872,6 +922,9 @@ export default function PalletFlow({ authHeaders, onBack }) {
                     <div className="tsd-card__meta">
                       Локация: {item.currentLocation?.code || "-"}
                     </div>
+                    <div className="tsd-card__meta">
+                      Поставщик: {item.supplierName || "-"} • Машина/ТТН: {item.inboundRef || "-"}
+                    </div>
                   </button>
                 ))}
               </div>
@@ -882,3 +935,4 @@ export default function PalletFlow({ authHeaders, onBack }) {
     </>
   );
 }
+
