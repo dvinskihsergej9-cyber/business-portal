@@ -18067,7 +18067,7 @@ if (TELEGRAM_POLLING_ENABLED) {
 
 // ================== ЗАПУСК СЕРВЕРА ==================
 
-const PORT = Number(process.env.PORT || 3001);
+const PORT = Number(process.env.PORT || 3000);
 // На Render и в контейнерах bind должен быть на 0.0.0.0.
 const HOST = "0.0.0.0";
 
