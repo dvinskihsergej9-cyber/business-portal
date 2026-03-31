@@ -4344,6 +4344,9 @@ app.get("/api/profile", auth, async (req, res) => {
               data: {
                 orgId,
                 palletCode,
+                // Compatibility fallback for deployments where externalCode remains NOT NULL in DB.
+                // Business flow still uses only internal palletCode.
+                externalCode: palletCode,
                 status: "RECEIVED",
                 supplierName,
                 inboundRef,
