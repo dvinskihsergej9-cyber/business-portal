@@ -219,6 +219,10 @@ export default function Layout() {
     logout();
   };
 
+  const handleSupportOpen = () => {
+    navigate("/support");
+  };
+
   const handleBack = () => {
     if (!showBack) return;
 
@@ -245,6 +249,13 @@ export default function Layout() {
   const sidebarStyle = isMobile
     ? { ...styles.sidebar, display: "none" }
     : styles.sidebar;
+  const canUseSupport = Boolean(user && user.role === "ADMIN");
+  const supportBtnStyle = isMobile
+    ? { ...styles.headerSupportBtn, ...styles.headerTopBtnMobile }
+    : styles.headerSupportBtn;
+  const logoutBtnStyle = isMobile
+    ? { ...styles.headerLogoutBtn, ...styles.headerTopBtnMobile }
+    : styles.headerLogoutBtn;
 
   return (
     <div style={rootStyle}>
@@ -314,7 +325,12 @@ export default function Layout() {
 
           <div style={styles.topBarActions}>
             {user && <NotificationBell />}
-            <button type="button" style={styles.headerLogoutBtn} onClick={handleLogout}>
+            {canUseSupport && (
+              <button type="button" style={supportBtnStyle} onClick={handleSupportOpen}>
+                Поддержка
+              </button>
+            )}
+            <button type="button" style={logoutBtnStyle} onClick={handleLogout}>
               Выйти
             </button>
           </div>
@@ -524,6 +540,7 @@ const styles = {
     justifySelf: "end",
     display: "inline-flex",
     alignItems: "center",
+    flexWrap: "nowrap",
     gap: 8,
   },
   headerLogoutBtn: {
@@ -538,6 +555,24 @@ const styles = {
     textAlign: "center",
     whiteSpace: "nowrap",
     boxShadow: "none",
+  },
+  headerSupportBtn: {
+    padding: "7px 12px",
+    borderRadius: 10,
+    border: "1px solid #d1d5db",
+    background: "#ffffff",
+    color: "#111827",
+    fontSize: 13,
+    fontWeight: 600,
+    cursor: "pointer",
+    textAlign: "center",
+    whiteSpace: "nowrap",
+    boxShadow: "none",
+  },
+  headerTopBtnMobile: {
+    minHeight: 34,
+    padding: "6px 9px",
+    fontSize: 12,
   },
   content: {
     padding: 0,

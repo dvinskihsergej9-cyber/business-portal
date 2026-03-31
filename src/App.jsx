@@ -30,6 +30,7 @@ import MarketingUnsubscribe from "./pages/MarketingUnsubscribe";
 import Page403 from "./pages/Page403";
 import AdminConsole from "./pages/AdminConsole";
 import PlatformNews from "./pages/PlatformNews";
+import Support from "./pages/Support";
 
 import Warehouse from "./pages/Warehouse";
 import MobileTsd from "./pages/MobileTsd";
@@ -173,6 +174,14 @@ function AppRoutesWithBackground() {
               element={
                 <ProtectedRoute>
                   <PlatformNews />
+                </ProtectedRoute>
+              }
+            />
+            <Route
+              path="support"
+              element={
+                <ProtectedRoute roles={["ADMIN"]}>
+                  <Support />
                 </ProtectedRoute>
               }
             />
