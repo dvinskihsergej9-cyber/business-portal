@@ -4342,7 +4342,7 @@ app.get("/api/profile", auth, async (req, res) => {
         }
       }
 
-      const created = await prisma.$transaction(async (tx) => {
+      const createdBase = await prisma.$transaction(async (tx) => {
         const now = new Date();
         const palletCode = await generateUniquePalletCode(orgId, tx);
         const pallet = await tx.pallet.create({
@@ -4385,16 +4385,22 @@ app.get("/api/profile", auth, async (req, res) => {
           metaJson: baseMeta,
         });
 
-        return tx.pallet.findUnique({
-          where: { id: pallet.id },
+        return pallet;
+      });
+
+      const created =
+        (await prisma.pallet.findFirst({
+          where: {
+            orgId,
+            id: createdBase?.id,
+          },
           include: {
             currentLocation: true,
             dispatch: true,
           },
-        });
-      });
+        })) || createdBase;
 
-      if (!created) {
+      if (!created || !created.id) {
         return res.status(500).json({ message: "PALLET_CREATE_FAILED" });
       }
 
@@ -4433,7 +4439,7 @@ app.get("/api/profile", auth, async (req, res) => {
         return res.status(400).json({ message: "PALLET_LOCATION_REQUIRED" });
       }
 
-      const updatedPallet = await prisma.$transaction(async (tx) => {
+      const updatedPalletId = await prisma.$transaction(async (tx) => {
         const now = new Date();
         const pallet = await tx.pallet.findFirst({
           where: {
@@ -4495,14 +4501,21 @@ app.get("/api/profile", auth, async (req, res) => {
           },
         });
 
-        return tx.pallet.findUnique({
-          where: { id: pallet.id },
-          include: {
-            currentLocation: true,
-            dispatch: true,
-          },
-        });
+        return pallet.id;
       });
+
+      const updatedPallet = updatedPalletId
+        ? await prisma.pallet.findFirst({
+            where: {
+              orgId,
+              id: updatedPalletId,
+            },
+            include: {
+              currentLocation: true,
+              dispatch: true,
+            },
+          })
+        : null;
 
       if (!updatedPallet) {
         return res.status(500).json({ message: "PALLET_STORE_FAILED" });
@@ -4747,7 +4760,7 @@ app.get("/api/profile", auth, async (req, res) => {
         return res.status(400).json({ message: "PALLET_DESTINATION_REQUIRED" });
       }
 
-      const dispatched = await prisma.$transaction(async (tx) => {
+      const dispatchedId = await prisma.$transaction(async (tx) => {
         const now = new Date();
         const pallet = await tx.pallet.findFirst({
           where: {
@@ -4816,14 +4829,21 @@ app.get("/api/profile", auth, async (req, res) => {
           },
         });
 
-        return tx.pallet.findUnique({
-          where: { id: pallet.id },
-          include: {
-            currentLocation: true,
-            dispatch: true,
-          },
-        });
+        return pallet.id;
       });
+
+      const dispatched = dispatchedId
+        ? await prisma.pallet.findFirst({
+            where: {
+              orgId,
+              id: dispatchedId,
+            },
+            include: {
+              currentLocation: true,
+              dispatch: true,
+            },
+          })
+        : null;
 
       if (!dispatched) {
         return res.status(500).json({ message: "PALLET_DISPATCH_FAILED" });
