@@ -97,6 +97,8 @@ function mapPalletError(code, fallback = "Не удалось выполнить
     return "Отгрузить можно только паллету в статусе «Размещена».";
   if (normalized === "PALLET_EXTERNAL_CODE_EXISTS")
     return "Паллета с таким внешним кодом уже существует.";
+  if (normalized === "PALLET_CONFLICT")
+    return "Конфликт при создании паллеты. Повторите приемку.";
   if (normalized === "PALLET_STATE_CHANGED")
     return "Состояние паллеты изменилось другим сотрудником. Обновите данные.";
   if (normalized.startsWith("DATE_")) return "Проверьте корректность даты фильтра.";

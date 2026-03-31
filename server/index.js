@@ -4342,51 +4342,72 @@ app.get("/api/profile", auth, async (req, res) => {
         }
       }
 
-      const createdBase = await prisma.$transaction(async (tx) => {
-        const now = new Date();
-        const palletCode = await generateUniquePalletCode(orgId, tx);
-        const pallet = await tx.pallet.create({
-          data: {
-            orgId,
-            palletCode,
-            externalCode,
-            status: "RECEIVED",
-            supplierName,
-            inboundRef,
-            createdByUserId: req.user.id,
-            receivedAt: now,
-          },
-        });
+      let createdBase = null;
+      let conflictError = null;
+      for (let attempt = 0; attempt < 4; attempt += 1) {
+        try {
+          createdBase = await prisma.$transaction(async (tx) => {
+            const now = new Date();
+            const palletCode = await generateUniquePalletCode(orgId, tx);
+            const pallet = await tx.pallet.create({
+              data: {
+                orgId,
+                palletCode,
+                externalCode,
+                status: "RECEIVED",
+                supplierName,
+                inboundRef,
+                createdByUserId: req.user.id,
+                receivedAt: now,
+              },
+            });
 
-        const baseMeta = {
-          supplierName,
-          inboundRef,
-          externalCode,
-          createLabel,
-        };
+            const baseMeta = {
+              supplierName,
+              inboundRef,
+              externalCode,
+              createLabel,
+            };
 
-        await createPalletEventTx(tx, {
-          orgId,
-          palletId: pallet.id,
-          type: "CREATE",
-          fromStatus: null,
-          toStatus: "RECEIVED",
-          userId: req.user.id,
-          metaJson: baseMeta,
-        });
+            await createPalletEventTx(tx, {
+              orgId,
+              palletId: pallet.id,
+              type: "CREATE",
+              fromStatus: null,
+              toStatus: "RECEIVED",
+              userId: req.user.id,
+              metaJson: baseMeta,
+            });
 
-        await createPalletEventTx(tx, {
-          orgId,
-          palletId: pallet.id,
-          type: "RECEIVE",
-          fromStatus: null,
-          toStatus: "RECEIVED",
-          userId: req.user.id,
-          metaJson: baseMeta,
-        });
+            await createPalletEventTx(tx, {
+              orgId,
+              palletId: pallet.id,
+              type: "RECEIVE",
+              fromStatus: null,
+              toStatus: "RECEIVED",
+              userId: req.user.id,
+              metaJson: baseMeta,
+            });
 
-        return pallet;
-      });
+            return pallet;
+          });
+          conflictError = null;
+          break;
+        } catch (txErr) {
+          if (txErr?.code === "P2002") {
+            conflictError = txErr;
+            continue;
+          }
+          throw txErr;
+        }
+      }
+
+      if (!createdBase) {
+        if (conflictError) {
+          return res.status(409).json({ message: "PALLET_CONFLICT" });
+        }
+        return res.status(500).json({ message: "PALLET_CREATE_FAILED" });
+      }
 
       const created =
         (await prisma.pallet.findFirst({
