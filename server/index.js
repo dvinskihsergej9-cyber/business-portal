@@ -4446,7 +4446,7 @@ app.get("/api/profile", auth, async (req, res) => {
         return res.status(400).json({ message: "PALLET_LOCATION_REQUIRED" });
       }
 
-      const updatedPalletId = await prisma.$transaction(async (tx) => {
+      const storeResult = await prisma.$transaction(async (tx) => {
         const now = new Date();
         const pallet = await tx.pallet.findFirst({
           where: {
@@ -4474,6 +4474,10 @@ app.get("/api/profile", auth, async (req, res) => {
           const error = new Error("PALLET_LOCATION_NOT_FOUND");
           error.code = "PALLET_LOCATION_NOT_FOUND";
           throw error;
+        }
+
+        if (pallet.status === "STORED" && pallet.currentLocationId === targetLocation.id) {
+          return { palletId: pallet.id, idempotent: true };
         }
 
         const updateResult = await tx.pallet.updateMany({
@@ -4508,14 +4512,14 @@ app.get("/api/profile", auth, async (req, res) => {
           },
         });
 
-        return pallet.id;
+        return { palletId: pallet.id, idempotent: false };
       });
 
-      const updatedPallet = updatedPalletId
+      const updatedPallet = storeResult?.palletId
         ? await prisma.pallet.findFirst({
             where: {
               orgId,
-              id: updatedPalletId,
+              id: storeResult.palletId,
             },
             include: {
               currentLocation: true,
@@ -4527,7 +4531,10 @@ app.get("/api/profile", auth, async (req, res) => {
       if (!updatedPallet) {
         return res.status(500).json({ message: "PALLET_STORE_FAILED" });
       }
-      return res.json({ pallet: palletToResponse(updatedPallet) });
+      return res.json({
+        pallet: palletToResponse(updatedPallet),
+        idempotent: Boolean(storeResult?.idempotent),
+      });
     } catch (err) {
       if (err?.code === "PALLET_NOT_FOUND") {
         return res.status(404).json({ message: "PALLET_NOT_FOUND" });
@@ -4876,6 +4883,7 @@ app.get("/api/profile", auth, async (req, res) => {
       }
 
       const palletCode = normalizePalletCode(req.body?.palletCode);
+      const locationCode = normalizePalletCode(req.body?.locationCode);
       const destinationRc = normalizePalletText(req.body?.destinationRc, 120);
       const route = normalizePalletText(req.body?.route, 120) || null;
       const vehicle = normalizePalletText(req.body?.vehicle, 120) || null;
@@ -4884,6 +4892,9 @@ app.get("/api/profile", auth, async (req, res) => {
 
       if (!palletCode) {
         return res.status(400).json({ message: "PALLET_CODE_REQUIRED" });
+      }
+      if (!locationCode) {
+        return res.status(400).json({ message: "PALLET_LOCATION_REQUIRED" });
       }
       if (!destinationRc) {
         return res.status(400).json({ message: "PALLET_DESTINATION_REQUIRED" });
@@ -4908,6 +4919,11 @@ app.get("/api/profile", auth, async (req, res) => {
         if (pallet.status !== "STORED") {
           const error = new Error("PALLET_DISPATCH_STATUS_INVALID");
           error.code = "PALLET_DISPATCH_STATUS_INVALID";
+          throw error;
+        }
+        if (!pallet.currentLocation?.code || pallet.currentLocation.code !== locationCode) {
+          const error = new Error("PALLET_LOCATION_MISMATCH");
+          error.code = "PALLET_LOCATION_MISMATCH";
           throw error;
         }
 
@@ -4955,6 +4971,7 @@ app.get("/api/profile", auth, async (req, res) => {
             driver,
             notes,
             fromLocationCode: pallet.currentLocation?.code || null,
+            scanLocationCode: locationCode,
           },
         });
 
@@ -4985,6 +5002,9 @@ app.get("/api/profile", auth, async (req, res) => {
       }
       if (err?.code === "PALLET_DISPATCH_STATUS_INVALID") {
         return res.status(409).json({ message: "PALLET_DISPATCH_STATUS_INVALID" });
+      }
+      if (err?.code === "PALLET_LOCATION_MISMATCH") {
+        return res.status(409).json({ message: "PALLET_LOCATION_MISMATCH" });
       }
       if (err?.code === "PALLET_STATE_CHANGED" || err?.code === "P2002") {
         return res.status(409).json({ message: "PALLET_STATE_CHANGED" });

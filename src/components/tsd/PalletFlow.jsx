@@ -32,6 +32,7 @@ const INITIAL_STORE_FORM = {
 };
 
 const INITIAL_DISPATCH_FORM = {
+  locationCode: "",
   palletCode: "",
   destinationRc: "",
   route: "",
@@ -95,6 +96,8 @@ function mapPalletError(code, fallback = "Не удалось выполнить
     return "Размещение возможно только для принятых/размещенных паллет.";
   if (normalized === "PALLET_DISPATCH_STATUS_INVALID")
     return "Отгрузить можно только паллету в статусе «Размещена».";
+  if (normalized === "PALLET_LOCATION_MISMATCH")
+    return "Скан ячейки не совпадает с текущей ячейкой паллеты.";
   if (normalized === "PALLET_CONFLICT")
     return "Конфликт при создании паллеты. Повторите приемку.";
   if (normalized === "PALLET_STATE_CHANGED")
@@ -112,6 +115,8 @@ export default function PalletFlow({ authHeaders, onBack }) {
   const receiveSubmitLockRef = useRef(false);
   const storeSubmitLockRef = useRef(false);
   const dispatchSubmitLockRef = useRef(false);
+  const lastStoreSubmitRef = useRef({ key: "", at: 0 });
+  const lastDispatchSubmitRef = useRef({ key: "", at: 0 });
 
   const [receiveForm, setReceiveForm] = useState(INITIAL_RECEIVE_FORM);
   const [storeForm, setStoreForm] = useState(INITIAL_STORE_FORM);
@@ -232,6 +237,15 @@ export default function PalletFlow({ authHeaders, onBack }) {
       );
       if (!palletCode) throw new Error("Отсканируйте паллету.");
       if (!locationCode) throw new Error("Отсканируйте зону размещения.");
+      const dedupeKey = `${locationCode}|${palletCode}`;
+      const now = Date.now();
+      if (
+        lastStoreSubmitRef.current.key === dedupeKey &&
+        now - lastStoreSubmitRef.current.at < 2000
+      ) {
+        return;
+      }
+      lastStoreSubmitRef.current = { key: dedupeKey, at: now };
 
       const response = await fetch(`${API_BASE}/pallets/store`, {
         method: "POST",
@@ -243,7 +257,13 @@ export default function PalletFlow({ authHeaders, onBack }) {
         throw new Error(mapPalletError(data?.message, "Не удалось разместить паллету."));
       }
 
-      setSuccess(`Паллета ${palletCode} размещена в ${data?.pallet?.currentLocation?.code || locationCode}.`);
+      if (data?.idempotent) {
+        setSuccess(
+          `Паллета ${palletCode} уже была размещена в ${data?.pallet?.currentLocation?.code || locationCode}.`
+        );
+      } else {
+        setSuccess(`Паллета ${palletCode} размещена в ${data?.pallet?.currentLocation?.code || locationCode}.`);
+      }
       setStoreForm(INITIAL_STORE_FORM);
       setDispatchForm((prev) => ({
         ...prev,
@@ -258,26 +278,44 @@ export default function PalletFlow({ authHeaders, onBack }) {
     }
   };
 
-  const handleDispatchSubmit = async ({ palletCodeOverride = null } = {}) => {
+  const handleDispatchSubmit = async ({
+    palletCodeOverride = null,
+    locationCodeOverride = null,
+  } = {}) => {
     if (dispatchSubmitLockRef.current) return;
     try {
       dispatchSubmitLockRef.current = true;
       clearAlerts();
       setLoading(true);
+      const locationCode = normalizeLocationCode(
+        locationCodeOverride == null ? dispatchForm.locationCode : locationCodeOverride
+      );
       const palletCode = normalizePalletCode(
         palletCodeOverride == null ? dispatchForm.palletCode : palletCodeOverride
       );
+      if (!locationCode) throw new Error("Отсканируйте ячейку отбора.");
       if (!palletCode) throw new Error("Отсканируйте паллету.");
-      if (!String(dispatchForm.destinationRc || "").trim()) {
+      const destinationRc = String(dispatchForm.destinationRc || "").trim();
+      if (!destinationRc) {
         throw new Error("Укажите РЦ назначения.");
       }
+      const dedupeKey = `${locationCode}|${palletCode}|${destinationRc}`;
+      const now = Date.now();
+      if (
+        lastDispatchSubmitRef.current.key === dedupeKey &&
+        now - lastDispatchSubmitRef.current.at < 2000
+      ) {
+        return;
+      }
+      lastDispatchSubmitRef.current = { key: dedupeKey, at: now };
 
       const response = await fetch(`${API_BASE}/pallets/dispatch`, {
         method: "POST",
         headers: authHeaders,
         body: JSON.stringify({
+          locationCode,
           palletCode,
-          destinationRc: dispatchForm.destinationRc,
+          destinationRc,
           route: dispatchForm.route || null,
           vehicle: dispatchForm.vehicle || null,
           driver: dispatchForm.driver || null,
@@ -432,14 +470,32 @@ export default function PalletFlow({ authHeaders, onBack }) {
         {activeTab === "store" ? (
           <div className="tsd-list">
             <Scanner
-              label="Скан паллеты"
-              hint="Код формата bp:pallet:<код> или сам код"
+              label="1. Скан ячейки размещения"
+              hint="Сначала сканируйте паспорт ячейки (например, YARD-A-03)"
+              manualPlaceholder="Код ячейки"
+              onScan={async (value) => {
+                const scannedLocationCode = normalizeLocationCode(value);
+                setStoreForm((prev) => ({ ...prev, locationCode: scannedLocationCode }));
+                if (scannedLocationCode) {
+                  setSuccess(`Ячейка ${scannedLocationCode} принята. Сканируйте паллету.`);
+                }
+              }}
+              disabled={loading}
+              scanKind="barcode"
+            />
+            <Scanner
+              label="2. Скан паллеты"
+              hint="После скана ячейки отсканируйте паспорт паллеты"
               manualPlaceholder="bp:pallet:PLT-..."
               onScan={async (value) => {
                 const scannedPalletCode = normalizePalletCode(value);
                 setStoreForm((prev) => ({ ...prev, palletCode: scannedPalletCode }));
                 const normalizedLocationCode = normalizeLocationCode(storeForm.locationCode);
-                if (scannedPalletCode && normalizedLocationCode) {
+                if (!normalizedLocationCode) {
+                  setError("Сначала отсканируйте ячейку размещения.");
+                  return;
+                }
+                if (scannedPalletCode) {
                   await handleStoreSubmit({
                     palletCodeOverride: scannedPalletCode,
                     locationCodeOverride: normalizedLocationCode,
@@ -447,24 +503,6 @@ export default function PalletFlow({ authHeaders, onBack }) {
                 }
               }}
               disabled={loading}
-            />
-            <Scanner
-              label="Скан паллетной зоны"
-              hint="Например, YARD-A-03"
-              manualPlaceholder="Код зоны"
-              onScan={async (value) => {
-                const scannedLocationCode = normalizeLocationCode(value);
-                setStoreForm((prev) => ({ ...prev, locationCode: scannedLocationCode }));
-                const normalizedPalletCode = normalizePalletCode(storeForm.palletCode);
-                if (normalizedPalletCode && scannedLocationCode) {
-                  await handleStoreSubmit({
-                    palletCodeOverride: normalizedPalletCode,
-                    locationCodeOverride: scannedLocationCode,
-                  });
-                }
-              }}
-              disabled={loading}
-              scanKind="barcode"
             />
             <div className="tsd-action-bar">
               <button
@@ -482,15 +520,37 @@ export default function PalletFlow({ authHeaders, onBack }) {
         {activeTab === "dispatch" ? (
           <div className="tsd-list">
             <Scanner
-              label="Скан паллеты"
-              hint="Паллета должна быть в статусе «Размещена»"
+              label="1. Скан ячейки отбора"
+              hint="Отсканируйте текущую ячейку паллеты перед отгрузкой"
+              manualPlaceholder="Код ячейки"
+              onScan={async (value) => {
+                const scannedLocationCode = normalizeLocationCode(value);
+                setDispatchForm((prev) => ({ ...prev, locationCode: scannedLocationCode }));
+                if (scannedLocationCode) {
+                  setSuccess(`Ячейка ${scannedLocationCode} принята. Сканируйте паллету.`);
+                }
+              }}
+              disabled={loading}
+              scanKind="barcode"
+            />
+            <Scanner
+              label="2. Скан паллеты"
+              hint="Паллета должна быть в статусе «Размещена» и в этой ячейке"
               manualPlaceholder="bp:pallet:PLT-..."
               onScan={async (value) => {
                 const scannedPalletCode = normalizePalletCode(value);
                 setDispatchForm((prev) => ({ ...prev, palletCode: scannedPalletCode }));
+                const locationCode = normalizeLocationCode(dispatchForm.locationCode);
+                if (!locationCode) {
+                  setError("Сначала отсканируйте ячейку отбора.");
+                  return;
+                }
                 const destinationRc = String(dispatchForm.destinationRc || "").trim();
                 if (scannedPalletCode && destinationRc) {
-                  await handleDispatchSubmit({ palletCodeOverride: scannedPalletCode });
+                  await handleDispatchSubmit({
+                    palletCodeOverride: scannedPalletCode,
+                    locationCodeOverride: locationCode,
+                  });
                 }
               }}
               disabled={loading}
