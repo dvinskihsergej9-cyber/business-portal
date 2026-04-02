@@ -249,8 +249,14 @@ export default function PalletFlow({ authHeaders, onBack }) {
           ${sharedStyle}
           <style>
             .passport-batch-page {
-              break-after: page;
-              page-break-after: always;
+              margin: 0;
+              padding: 0;
+              break-before: page;
+              page-break-before: always;
+            }
+            .passport-batch-page:first-child {
+              break-before: auto;
+              page-break-before: auto;
             }
             .passport-batch-page:last-child {
               break-after: auto;
@@ -258,8 +264,14 @@ export default function PalletFlow({ authHeaders, onBack }) {
             }
             @media print {
               .passport-batch-page {
-                break-after: page;
-                page-break-after: always;
+                margin: 0;
+                padding: 0;
+                break-before: page;
+                page-break-before: always;
+              }
+              .passport-batch-page:first-child {
+                break-before: auto;
+                page-break-before: auto;
               }
               .passport-batch-page:last-child {
                 break-after: auto;
