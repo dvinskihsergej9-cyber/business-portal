@@ -5445,6 +5445,38 @@ app.get("/api/profile", auth, async (req, res) => {
           ORDER BY p.polname
         `);
 
+        const userTablesBySchema = await tx.$queryRawUnsafe(`
+          SELECT
+            n.nspname AS "schema",
+            c.relname AS "table",
+            has_table_privilege(current_user, format('%I.%I', n.nspname, c.relname), 'SELECT') AS "canSelect",
+            has_table_privilege(current_user, format('%I.%I', n.nspname, c.relname), 'REFERENCES') AS "canReferences"
+          FROM pg_class c
+          JOIN pg_namespace n ON n.oid = c.relnamespace
+          WHERE c.relkind IN ('r', 'p')
+            AND c.relname = 'User'
+          ORDER BY n.nspname
+        `);
+
+        const palletForeignKeys = await tx.$queryRawUnsafe(`
+          SELECT
+            con.conname AS "constraintName",
+            src_ns.nspname AS "sourceSchema",
+            src.relname AS "sourceTable",
+            ref_ns.nspname AS "refSchema",
+            ref.relname AS "refTable",
+            pg_get_constraintdef(con.oid, true) AS "definition"
+          FROM pg_constraint con
+          JOIN pg_class src ON src.oid = con.conrelid
+          JOIN pg_namespace src_ns ON src_ns.oid = src.relnamespace
+          JOIN pg_class ref ON ref.oid = con.confrelid
+          JOIN pg_namespace ref_ns ON ref_ns.oid = ref.relnamespace
+          WHERE con.contype = 'f'
+            AND src_ns.nspname = 'public'
+            AND src.relname = 'Pallet'
+          ORDER BY con.conname
+        `);
+
         probe.dbChecks = {
           privileges:
             Array.isArray(privilegeRows) && privilegeRows.length ? privilegeRows[0] : null,
@@ -5452,6 +5484,8 @@ app.get("/api/profile", auth, async (req, res) => {
           userRls:
             Array.isArray(userRlsRows) && userRlsRows.length ? userRlsRows[0] : null,
           userPolicies: Array.isArray(userPolicies) ? userPolicies : [],
+          userTablesBySchema: Array.isArray(userTablesBySchema) ? userTablesBySchema : [],
+          palletForeignKeys: Array.isArray(palletForeignKeys) ? palletForeignKeys : [],
         };
 
         const userSelect = await tx.$queryRaw`
@@ -5472,9 +5506,23 @@ app.get("/api/profile", auth, async (req, res) => {
           rows: Array.isArray(userKeyShare) ? userKeyShare.length : 0,
         });
 
+        const rawPalletCode = await generateUniquePalletCode(orgId, tx);
+        const rawExternalCompatCode = crypto.randomBytes(4).toString("hex").toUpperCase();
+        const now = new Date();
+        await tx.$executeRaw`
+          INSERT INTO "Pallet"
+            ("orgId", "palletCode", "externalCode", "status", "supplierName", "inboundRef", "createdByUserId", "receivedAt")
+          VALUES
+            (${orgId}, ${rawPalletCode}, ${rawExternalCompatCode}, 'RECEIVED', ${supplierName}, ${inboundRef}, ${probe.userId}, ${now})
+        `;
+        probe.steps.push({
+          step: "pallet_raw_insert",
+          ok: true,
+          palletCode: rawPalletCode,
+        });
+
         const palletCode = await generateUniquePalletCode(orgId, tx);
         const externalCompatCode = crypto.randomBytes(4).toString("hex").toUpperCase();
-        const now = new Date();
         const pallet = await tx.pallet.create({
           data: {
             orgId,
