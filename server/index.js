@@ -907,6 +907,20 @@ function isPermissionDeniedForTable(err, tableName) {
   return joined.includes(`permission denied for table ${table}`);
 }
 
+function toErrorDetails(err) {
+  const details = {
+    name: String(err?.name || ""),
+    code: String(err?.code || ""),
+    clientVersion: String(err?.clientVersion || ""),
+    message: String(err?.message || ""),
+  };
+  const causeMessage = String(err?.cause?.message || err?.meta?.cause || "").trim();
+  if (causeMessage) {
+    details.cause = causeMessage;
+  }
+  return details;
+}
+
 async function generateUniquePalletCode(orgId, tx = prisma) {
   const targetOrgId = Number(orgId || 0) || null;
   for (let attempt = 0; attempt < 8; attempt += 1) {
@@ -4456,11 +4470,18 @@ app.get("/api/profile", auth, async (req, res) => {
         },
       });
     } catch (err) {
+      console.error("pallet receive error details:", toErrorDetails(err));
       if (err?.code === "P2002") {
         return res.status(409).json({ message: "PALLET_CONFLICT" });
       }
+      if (err?.code === "P2003") {
+        return res.status(500).json({ message: "PALLET_USER_FK_ERROR" });
+      }
       if (isPermissionDeniedForTable(err, "User")) {
         return res.status(500).json({ message: "PALLET_DB_PERMISSION_USER_TABLE" });
+      }
+      if (String(err?.name || "").includes("PrismaClientUnknownRequestError")) {
+        return res.status(500).json({ message: "PALLET_DB_QUERY_ERROR" });
       }
       console.error("pallet receive error:", err);
       return res.status(500).json({ message: "PALLET_RECEIVE_ERROR" });
@@ -5337,6 +5358,105 @@ app.get("/api/profile", auth, async (req, res) => {
     } catch (err) {
       console.error("debug db permissions error:", err);
       return res.status(500).json({ message: "DEBUG_DB_PERMISSIONS_ERROR" });
+    }
+  });
+
+  app.post("/api/debug/pallet-receive-probe", auth, async (req, res) => {
+    if (!(req.user?.isSystemOwner || req.user?.role === "ADMIN")) {
+      return res.status(403).json({ message: "FORBIDDEN" });
+    }
+
+    const orgId = Number(req.user?.orgId || 0);
+    if (!orgId) {
+      return res.status(400).json({ message: "ORG_REQUIRED" });
+    }
+
+    const supplierName = normalizePalletText(req.body?.supplierName, 160) || "PROBE_SUPPLIER";
+    const inboundRef = normalizePalletText(req.body?.inboundRef, 120) || "PROBE_INBOUND";
+    const probe = {
+      orgId,
+      userId: Number(req.user?.id || 0),
+      currentUser: null,
+      steps: [],
+    };
+
+    try {
+      await prisma.$transaction(async (tx) => {
+        const sessionRows = await tx.$queryRaw`
+          SELECT current_user AS "currentUser"
+        `;
+        probe.currentUser = Array.isArray(sessionRows) && sessionRows.length
+          ? String(sessionRows[0]?.currentUser || "")
+          : "";
+
+        const userSelect = await tx.$queryRaw`
+          SELECT id FROM "User" WHERE id = ${probe.userId} LIMIT 1
+        `;
+        probe.steps.push({
+          step: "user_select",
+          ok: true,
+          rows: Array.isArray(userSelect) ? userSelect.length : 0,
+        });
+
+        const userKeyShare = await tx.$queryRaw`
+          SELECT id FROM "User" WHERE id = ${probe.userId} FOR KEY SHARE
+        `;
+        probe.steps.push({
+          step: "user_select_for_key_share",
+          ok: true,
+          rows: Array.isArray(userKeyShare) ? userKeyShare.length : 0,
+        });
+
+        const palletCode = await generateUniquePalletCode(orgId, tx);
+        const externalCompatCode = crypto.randomBytes(4).toString("hex").toUpperCase();
+        const now = new Date();
+        const pallet = await tx.pallet.create({
+          data: {
+            orgId,
+            palletCode,
+            externalCode: externalCompatCode,
+            status: "RECEIVED",
+            supplierName,
+            inboundRef,
+            createdByUserId: probe.userId,
+            receivedAt: now,
+          },
+        });
+        probe.steps.push({
+          step: "pallet_create",
+          ok: true,
+          palletId: pallet.id,
+          palletCode: pallet.palletCode,
+        });
+
+        await createPalletEventTx(tx, {
+          orgId,
+          palletId: pallet.id,
+          type: "CREATE",
+          fromStatus: null,
+          toStatus: "RECEIVED",
+          userId: probe.userId,
+          metaJson: { supplierName, inboundRef, probe: true },
+        });
+        probe.steps.push({
+          step: "pallet_event_create",
+          ok: true,
+        });
+
+        const rollback = new Error("PROBE_ROLLBACK");
+        rollback.code = "PROBE_ROLLBACK";
+        throw rollback;
+      });
+      return res.json({ ok: true, probe });
+    } catch (err) {
+      if (err?.code === "PROBE_ROLLBACK") {
+        return res.json({ ok: true, probe });
+      }
+      return res.status(500).json({
+        ok: false,
+        probe,
+        error: toErrorDetails(err),
+      });
     }
   });
 

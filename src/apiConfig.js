@@ -143,6 +143,10 @@ const EXTRA_ERROR_MESSAGES = {
   USER_NOT_FOUND: "Пользователь не найден.",
   PALLET_DB_PERMISSION_USER_TABLE:
     "Сервер БД не выдал права на таблицу User для паллетного контура. Проверьте GRANT для роли подключения.",
+  PALLET_USER_FK_ERROR:
+    "Сервер БД не смог проверить связь с пользователем при создании паллеты. Проверьте целостность таблицы User.",
+  PALLET_DB_QUERY_ERROR:
+    "Ошибка запроса к БД при приёмке паллеты. Проверьте права роли подключения и схему БД.",
   TENANT_GRANT_FREE_ACCESS_ERROR: "Не удалось продлить бесплатный доступ клиенту.",
   TENANT_TOGGLE_ACCESS_ERROR: "Не удалось изменить состояние доступа клиента.",
   TENANT_SUBSCRIPTION_NOT_FOUND:

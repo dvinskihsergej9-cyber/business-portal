@@ -113,6 +113,10 @@ function mapPalletError(code, fallback = "Не удалось выполнить
     return "Скан ячейки не совпадает с текущей ячейкой паллеты.";
   if (normalized === "PALLET_DB_PERMISSION_USER_TABLE")
     return "Ошибка прав БД: нет доступа к таблице пользователей.";
+  if (normalized === "PALLET_USER_FK_ERROR")
+    return "Ошибка связей БД: пользователь не найден для фиксации события приемки.";
+  if (normalized === "PALLET_DB_QUERY_ERROR")
+    return "Ошибка запроса к БД при приемке паллеты. Проверьте права и схему БД.";
   if (normalized === "PALLET_CONFLICT")
     return "Конфликт при создании паллеты. Повторите приемку.";
   if (normalized === "PALLET_STATE_CHANGED")
