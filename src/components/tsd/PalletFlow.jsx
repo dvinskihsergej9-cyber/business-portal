@@ -24,6 +24,7 @@ const PALLET_EVENT_LABELS = {
 const INITIAL_RECEIVE_FORM = {
   supplierName: "",
   inboundRef: "",
+  qty: "1",
 };
 
 const INITIAL_STORE_FORM = {
@@ -133,7 +134,7 @@ export default function PalletFlow({ authHeaders, onBack }) {
   const [historyLoading, setHistoryLoading] = useState(false);
   const [error, setError] = useState("");
   const [success, setSuccess] = useState("");
-  const [printFallback, setPrintFallback] = useState({ palletCode: "", html: "" });
+  const [printFallback, setPrintFallback] = useState({ label: "", html: "" });
   const receiveSubmitLockRef = useRef(false);
   const storeSubmitLockRef = useRef(false);
   const dispatchSubmitLockRef = useRef(false);
@@ -143,7 +144,7 @@ export default function PalletFlow({ authHeaders, onBack }) {
   const [receiveForm, setReceiveForm] = useState(INITIAL_RECEIVE_FORM);
   const [storeForm, setStoreForm] = useState(INITIAL_STORE_FORM);
   const [dispatchForm, setDispatchForm] = useState(INITIAL_DISPATCH_FORM);
-  const [storeStep, setStoreStep] = useState("location");
+  const [storeStep, setStoreStep] = useState("pallet");
   const [dispatchStep, setDispatchStep] = useState("location");
 
   const [searchCode, setSearchCode] = useState("");
@@ -165,7 +166,7 @@ export default function PalletFlow({ authHeaders, onBack }) {
   };
 
   const resetStoreScanFlow = () => {
-    setStoreStep("location");
+    setStoreStep("pallet");
     setStoreForm(INITIAL_STORE_FORM);
   };
 
@@ -191,12 +192,10 @@ export default function PalletFlow({ authHeaders, onBack }) {
       window.location.href = url;
       window.setTimeout(() => URL.revokeObjectURL(url), 60_000);
     }
-    setPrintFallback({ palletCode: "", html: "" });
+    setPrintFallback({ label: "", html: "" });
   };
 
-  const printPalletLabel = async (palletCode) => {
-    const printWindow = prepareDocumentTab({ title: "Паспорт паллеты" });
-
+  const fetchPalletPassportHtml = async (palletCode) => {
     const response = await fetch(`${API_BASE}/pallets/print-label`, {
       method: "POST",
       headers: authHeaders,
@@ -215,22 +214,86 @@ export default function PalletFlow({ authHeaders, onBack }) {
       } catch {
         // ignore raw html
       }
+      throw new Error(message);
+    }
+    return html;
+  };
+
+  const mergePassportHtml = (htmlList, palletCodes) => {
+    const firstHtml = String(htmlList?.[0] || "");
+    const styleMatch = firstHtml.match(/<style[\s\S]*?<\/style>/i);
+    const sharedStyle = styleMatch ? styleMatch[0] : "";
+
+    const pages = htmlList
+      .map((html) => {
+        const bodyMatch = String(html || "").match(/<body[^>]*>([\s\S]*?)<\/body>/i);
+        const body = bodyMatch ? bodyMatch[1] : String(html || "");
+        return body
+          .replace(/<div class="print-actions"[\s\S]*?<\/div>/gi, "")
+          .replace(/<script[\s\S]*?<\/script>/gi, "");
+      })
+      .join("");
+
+    return `
+      <html>
+        <head>
+          <meta charset="utf-8" />
+          <title>Паспорта паллет (${palletCodes.length})</title>
+          ${sharedStyle}
+        </head>
+        <body>
+          ${pages}
+          <div class="print-actions">
+            <button class="print-btn" onclick="window.print()">Печать</button>
+            <button class="print-btn" onclick="window.history.back()">Назад</button>
+          </div>
+          <script>
+            window.setTimeout(() => window.print(), 180);
+          </script>
+        </body>
+      </html>
+    `;
+  };
+
+  const printPalletLabelsBatch = async (palletCodes) => {
+    const codes = Array.from(
+      new Set(
+        (Array.isArray(palletCodes) ? palletCodes : [])
+          .map((item) => normalizePalletCode(item))
+          .filter(Boolean)
+      )
+    );
+    if (!codes.length) {
+      throw new Error("Нет паллет для печати.");
+    }
+
+    const printWindow = prepareDocumentTab({
+      title: codes.length > 1 ? `Паспорта паллет (${codes.length})` : "Паспорт паллеты",
+    });
+    try {
+      const htmlList = [];
+      for (const code of codes) {
+        htmlList.push(await fetchPalletPassportHtml(code));
+      }
+      const finalHtml = codes.length > 1 ? mergePassportHtml(htmlList, codes) : htmlList[0];
+
+      if (printWindow) {
+        openHtmlDocumentInNewTab(finalHtml, { targetWindow: printWindow });
+        setPrintFallback({ label: "", html: "" });
+        return { mode: "popup" };
+      }
+
+      const label = codes.length > 1 ? `Паллет: ${codes.length}` : codes[0];
+      setPrintFallback({ label, html: finalHtml });
+      return { mode: "fallback" };
+    } catch (err) {
       try {
         if (printWindow && !printWindow.closed) printWindow.close();
       } catch {
         // ignore
       }
-      throw new Error(message);
+      throw err;
     }
-
-    if (printWindow) {
-      openHtmlDocumentInNewTab(html, { targetWindow: printWindow });
-      setPrintFallback({ palletCode: "", html: "" });
-      return { mode: "popup" };
-    }
-
-    setPrintFallback({ palletCode, html });
-    return { mode: "fallback" };
   };
 
   const handleReceiveSubmit = async () => {
@@ -247,42 +310,46 @@ export default function PalletFlow({ authHeaders, onBack }) {
       if (!inboundRef) {
         throw new Error("Укажите машину/ТТН.");
       }
-      const payload = {
-        supplierName,
-        inboundRef,
-      };
-      setPrintFallback({ palletCode: "", html: "" });
-
-      const response = await fetch(`${API_BASE}/pallets/receive`, {
-        method: "POST",
-        headers: authHeaders,
-        body: JSON.stringify(payload),
-      });
-      const data = await readJsonSafe(response);
-      if (!response.ok) {
-        throw new Error(mapPalletError(data?.message, "Не удалось принять паллету."));
+      const qtyRaw = String(receiveForm.qty || "").trim();
+      const qty = Number.parseInt(qtyRaw, 10);
+      if (!Number.isInteger(qty) || qty < 1 || qty > 30) {
+        throw new Error("Укажите количество паллет от 1 до 30.");
       }
 
-      const nextPalletCode = data?.pallet?.palletCode || "";
-      if (!nextPalletCode) {
-        throw new Error("Паллета создана, но код не получен.");
+      setPrintFallback({ label: "", html: "" });
+      const createdCodes = [];
+      for (let index = 0; index < qty; index += 1) {
+        const response = await fetch(`${API_BASE}/pallets/receive`, {
+          method: "POST",
+          headers: authHeaders,
+          body: JSON.stringify({ supplierName, inboundRef }),
+        });
+        const data = await readJsonSafe(response);
+        if (!response.ok) {
+          throw new Error(mapPalletError(data?.message, "Не удалось принять паллету."));
+        }
+        const code = data?.pallet?.palletCode || "";
+        if (!code) {
+          throw new Error("Паллета создана, но код не получен.");
+        }
+        createdCodes.push(code);
       }
 
-      const printResult = await printPalletLabel(nextPalletCode);
-
+      const printResult = await printPalletLabelsBatch(createdCodes);
+      const lastCode = createdCodes[createdCodes.length - 1] || "";
       if (printResult?.mode === "fallback") {
         setSuccess(
-          `Паллета ${nextPalletCode} принята. Паспорт готов, нажмите «Открыть паспорт A4».`
+          `Принято паллет: ${createdCodes.length}. Паспорта готовы, нажмите «Открыть паспорт A4».`
         );
       } else {
-        setSuccess(`Паллета ${nextPalletCode} принята.`);
+        setSuccess(`Принято паллет: ${createdCodes.length}. Паспорта отправлены на печать.`);
       }
       setStoreForm((prev) => ({
         ...prev,
-        palletCode: nextPalletCode,
+        palletCode: lastCode,
       }));
-      setStoreStep("location");
-      setSearchCode(nextPalletCode);
+      setStoreStep("pallet");
+      setSearchCode(lastCode);
     } catch (err) {
       setError(normalizeErrorMessage(err, "Ошибка приемки паллеты."));
     } finally {
@@ -335,7 +402,7 @@ export default function PalletFlow({ authHeaders, onBack }) {
       } else {
         setSuccess(`Паллета ${palletCode} размещена в ${data?.pallet?.currentLocation?.code || locationCode}.`);
       }
-      setStoreStep("location");
+      setStoreStep("pallet");
       setStoreForm(INITIAL_STORE_FORM);
       setDispatchForm((prev) => ({
         ...prev,
@@ -588,6 +655,21 @@ export default function PalletFlow({ authHeaders, onBack }) {
                 disabled={loading}
               />
             </div>
+            <div className="tsd-qty-input">
+              <label className="tsd-scanner__label">Сколько паллет привезли? *</label>
+              <input
+                className="tsd-input"
+                type="number"
+                min={1}
+                max={30}
+                value={receiveForm.qty}
+                onChange={(event) =>
+                  setReceiveForm((prev) => ({ ...prev, qty: event.target.value }))
+                }
+                placeholder="Например, 3"
+                disabled={loading}
+              />
+            </div>
             <div className="tsd-action-bar">
               <button
                 type="button"
@@ -602,7 +684,7 @@ export default function PalletFlow({ authHeaders, onBack }) {
               <div className="tsd-card">
                 <div className="tsd-card__title">Паспорт паллеты готов</div>
                 <div className="tsd-card__meta">
-                  Паллета: {printFallback.palletCode || "-"}.
+                  {printFallback.label ? `${printFallback.label}.` : ""}
                   Автооткрытие не сработало в мобильном браузере.
                 </div>
                 <div className="tsd-action-inline">
@@ -624,35 +706,38 @@ export default function PalletFlow({ authHeaders, onBack }) {
             <div className="tsd-card">
               <div className="tsd-card__title">Пошаговое размещение</div>
               <div className="tsd-card__meta">
-                {storeStep === "location"
-                  ? "Шаг 1 из 2: отсканируйте QR/ШК ячейки размещения."
-                  : "Шаг 2 из 2: отсканируйте паллету для подтверждения размещения."}
+                {storeStep === "pallet"
+                  ? "Шаг 1 из 2: отсканируйте паллету."
+                  : "Шаг 2 из 2: отсканируйте ячейку размещения для подтверждения."}
               </div>
               <div className="tsd-card__meta">
                 Ячейка: {storeForm.locationCode || "-"} • Паллета: {storeForm.palletCode || "-"}
               </div>
             </div>
 
-            {storeStep === "location" ? (
+            {storeStep === "pallet" ? (
               <Scanner
-                label="Шаг 1. Скан ячейки размещения"
-                hint="Сканируйте паспорт ячейки (например, YARD-A-03)"
-                manualPlaceholder="Код ячейки"
+                label="Шаг 1. Скан паллеты"
+                hint="Сканируйте паспорт паллеты"
+                manualPlaceholder="bp:pallet:PLT-..."
                 onScan={async (value) => {
-                  const scannedLocationCode = normalizeLocationCode(value);
-                  if (!scannedLocationCode) return;
-                  setStoreForm((prev) => ({ ...prev, locationCode: scannedLocationCode, palletCode: "" }));
-                  setStoreStep("pallet");
-                  setSuccess(`Ячейка ${scannedLocationCode} принята. Теперь сканируйте паллету.`);
+                  const scannedPalletCode = normalizePalletCode(value);
+                  if (!scannedPalletCode) return;
+                  setStoreForm((prev) => ({
+                    ...prev,
+                    palletCode: scannedPalletCode,
+                    locationCode: "",
+                  }));
+                  setStoreStep("location");
+                  setSuccess(`Паллета ${scannedPalletCode} принята. Теперь сканируйте ячейку.`);
                 }}
                 disabled={loading}
                 autoStart
-                scanKind="barcode"
                 showManual={false}
               />
             ) : null}
 
-            {storeStep === "pallet" ? (
+            {storeStep === "location" ? (
               <>
                 <div className="tsd-action-inline">
                   <button
@@ -661,30 +746,31 @@ export default function PalletFlow({ authHeaders, onBack }) {
                     onClick={resetStoreScanFlow}
                     disabled={loading}
                   >
-                    Сканировать другую ячейку
+                    Сканировать другую паллету
                   </button>
                 </div>
                 <Scanner
-                  label="Шаг 2. Скан паллеты"
-                  hint={`Ячейка ${storeForm.locationCode || "-"} принята. Сканируйте паллету.`}
-                  manualPlaceholder="bp:pallet:PLT-..."
+                  label="Шаг 2. Скан ячейки размещения"
+                  hint={`Паллета ${storeForm.palletCode || "-"} принята. Сканируйте ячейку.`}
+                  manualPlaceholder="Код ячейки"
                   onScan={async (value) => {
-                    const scannedPalletCode = normalizePalletCode(value);
-                    if (!scannedPalletCode) return;
-                    const normalizedLocationCode = normalizeLocationCode(storeForm.locationCode);
-                    if (!normalizedLocationCode) {
-                      setError("Сначала отсканируйте ячейку размещения.");
-                      setStoreStep("location");
+                    const scannedLocationCode = normalizeLocationCode(value);
+                    if (!scannedLocationCode) return;
+                    const normalizedPalletCode = normalizePalletCode(storeForm.palletCode);
+                    if (!normalizedPalletCode) {
+                      setError("Сначала отсканируйте паллету.");
+                      setStoreStep("pallet");
                       return;
                     }
-                    setStoreForm((prev) => ({ ...prev, palletCode: scannedPalletCode }));
+                    setStoreForm((prev) => ({ ...prev, locationCode: scannedLocationCode }));
                     await handleStoreSubmit({
-                      palletCodeOverride: scannedPalletCode,
-                      locationCodeOverride: normalizedLocationCode,
+                      palletCodeOverride: normalizedPalletCode,
+                      locationCodeOverride: scannedLocationCode,
                     });
                   }}
                   disabled={loading}
                   autoStart
+                  scanKind="barcode"
                   showManual={false}
                 />
               </>
