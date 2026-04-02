@@ -142,6 +142,7 @@ export default function PalletFlow({ authHeaders, onBack }) {
   const lastDispatchSubmitRef = useRef({ key: "", at: 0 });
 
   const [receiveForm, setReceiveForm] = useState(INITIAL_RECEIVE_FORM);
+  const [receiveStep, setReceiveStep] = useState("supplier");
   const [storeForm, setStoreForm] = useState(INITIAL_STORE_FORM);
   const [dispatchForm, setDispatchForm] = useState(INITIAL_DISPATCH_FORM);
   const [storeStep, setStoreStep] = useState("pallet");
@@ -168,6 +169,14 @@ export default function PalletFlow({ authHeaders, onBack }) {
   const resetStoreScanFlow = () => {
     setStoreStep("pallet");
     setStoreForm(INITIAL_STORE_FORM);
+  };
+
+  const resetReceiveScanFlow = () => {
+    setReceiveStep("supplier");
+    setReceiveForm((prev) => ({
+      ...prev,
+      qty: prev.qty && String(prev.qty).trim() ? prev.qty : "1",
+    }));
   };
 
   const resetDispatchScanFlow = () => {
@@ -228,9 +237,10 @@ export default function PalletFlow({ authHeaders, onBack }) {
       .map((html) => {
         const bodyMatch = String(html || "").match(/<body[^>]*>([\s\S]*?)<\/body>/i);
         const body = bodyMatch ? bodyMatch[1] : String(html || "");
-        return body
+        const cleanedBody = body
           .replace(/<div class="print-actions"[\s\S]*?<\/div>/gi, "")
           .replace(/<script[\s\S]*?<\/script>/gi, "");
+        return `<article class="passport-batch-page">${cleanedBody}</article>`;
       })
       .join("");
 
@@ -240,6 +250,26 @@ export default function PalletFlow({ authHeaders, onBack }) {
           <meta charset="utf-8" />
           <title>Паспорта паллет (${palletCodes.length})</title>
           ${sharedStyle}
+          <style>
+            .passport-batch-page {
+              break-after: page;
+              page-break-after: always;
+            }
+            .passport-batch-page:last-child {
+              break-after: auto;
+              page-break-after: auto;
+            }
+            @media print {
+              .passport-batch-page {
+                break-after: page;
+                page-break-after: always;
+              }
+              .passport-batch-page:last-child {
+                break-after: auto;
+                page-break-after: auto;
+              }
+            }
+          </style>
         </head>
         <body>
           ${pages}
@@ -348,6 +378,7 @@ export default function PalletFlow({ authHeaders, onBack }) {
         ...prev,
         palletCode: lastCode,
       }));
+      setReceiveStep("qty");
       setStoreStep("pallet");
       setSearchCode(lastCode);
     } catch (err) {
@@ -611,6 +642,9 @@ export default function PalletFlow({ authHeaders, onBack }) {
             className={`tsd-pallet-tab ${activeTab === tab.id ? "tsd-pallet-tab--active" : ""}`}
             onClick={() => {
               clearAlerts();
+              if (tab.id === "receive") {
+                resetReceiveScanFlow();
+              }
               if (tab.id === "store") {
                 resetStoreScanFlow();
               }
@@ -631,55 +665,141 @@ export default function PalletFlow({ authHeaders, onBack }) {
 
         {activeTab === "receive" ? (
           <div className="tsd-list">
-            <div className="tsd-qty-input">
-              <label className="tsd-scanner__label">Поставщик *</label>
-              <input
-                className="tsd-input"
-                value={receiveForm.supplierName}
-                onChange={(event) =>
-                  setReceiveForm((prev) => ({ ...prev, supplierName: event.target.value }))
-                }
-                placeholder="Название поставщика"
-                disabled={loading}
-              />
+            <div className="tsd-card">
+              <div className="tsd-card__title">Пошаговая приемка</div>
+              <div className="tsd-card__meta">
+                {receiveStep === "supplier"
+                  ? "Шаг 1 из 3: укажите поставщика."
+                  : receiveStep === "inbound"
+                    ? "Шаг 2 из 3: укажите машину / ТТН."
+                    : "Шаг 3 из 3: укажите количество паллет."}
+              </div>
+              <div className="tsd-card__meta">
+                Поставщик: {String(receiveForm.supplierName || "").trim() || "-"} • Машина/ТТН:{" "}
+                {String(receiveForm.inboundRef || "").trim() || "-"} • Кол-во:{" "}
+                {String(receiveForm.qty || "").trim() || "-"}
+              </div>
             </div>
-            <div className="tsd-qty-input">
-              <label className="tsd-scanner__label">Машина / ТТН *</label>
-              <input
-                className="tsd-input"
-                value={receiveForm.inboundRef}
-                onChange={(event) =>
-                  setReceiveForm((prev) => ({ ...prev, inboundRef: event.target.value }))
-                }
-                placeholder="Например, А123ВС77 / ТТН-0001"
-                disabled={loading}
-              />
-            </div>
-            <div className="tsd-qty-input">
-              <label className="tsd-scanner__label">Сколько паллет привезли? *</label>
-              <input
-                className="tsd-input"
-                type="number"
-                min={1}
-                max={30}
-                value={receiveForm.qty}
-                onChange={(event) =>
-                  setReceiveForm((prev) => ({ ...prev, qty: event.target.value }))
-                }
-                placeholder="Например, 3"
-                disabled={loading}
-              />
-            </div>
-            <div className="tsd-action-bar">
-              <button
-                type="button"
-                className="tsd-btn tsd-btn--primary"
-                onClick={handleReceiveSubmit}
-                disabled={loading}
-              >
-                {loading ? "Создаем..." : "Создать и напечатать"}
-              </button>
-            </div>
+
+            {receiveStep === "supplier" ? (
+              <>
+                <div className="tsd-qty-input">
+                  <label className="tsd-scanner__label">Поставщик *</label>
+                  <input
+                    className="tsd-input"
+                    value={receiveForm.supplierName}
+                    onChange={(event) =>
+                      setReceiveForm((prev) => ({ ...prev, supplierName: event.target.value }))
+                    }
+                    placeholder="Название поставщика"
+                    disabled={loading}
+                  />
+                </div>
+                <div className="tsd-action-bar">
+                  <button
+                    type="button"
+                    className="tsd-btn tsd-btn--primary"
+                    onClick={() => {
+                      if (!String(receiveForm.supplierName || "").trim()) {
+                        setError("Укажите поставщика.");
+                        return;
+                      }
+                      clearAlerts();
+                      setReceiveStep("inbound");
+                    }}
+                    disabled={loading}
+                  >
+                    Далее: машина / ТТН
+                  </button>
+                </div>
+              </>
+            ) : null}
+
+            {receiveStep === "inbound" ? (
+              <>
+                <div className="tsd-qty-input">
+                  <label className="tsd-scanner__label">Машина / ТТН *</label>
+                  <input
+                    className="tsd-input"
+                    value={receiveForm.inboundRef}
+                    onChange={(event) =>
+                      setReceiveForm((prev) => ({ ...prev, inboundRef: event.target.value }))
+                    }
+                    placeholder="Например, А123ВС77 / ТТН-0001"
+                    disabled={loading}
+                  />
+                </div>
+                <div className="tsd-action-bar">
+                  <button
+                    type="button"
+                    className="tsd-btn tsd-btn--ghost"
+                    onClick={() => {
+                      clearAlerts();
+                      setReceiveStep("supplier");
+                    }}
+                    disabled={loading}
+                  >
+                    Назад
+                  </button>
+                  <button
+                    type="button"
+                    className="tsd-btn tsd-btn--primary"
+                    onClick={() => {
+                      if (!String(receiveForm.inboundRef || "").trim()) {
+                        setError("Укажите машину/ТТН.");
+                        return;
+                      }
+                      clearAlerts();
+                      setReceiveStep("qty");
+                    }}
+                    disabled={loading}
+                  >
+                    Далее: количество
+                  </button>
+                </div>
+              </>
+            ) : null}
+
+            {receiveStep === "qty" ? (
+              <>
+                <div className="tsd-qty-input">
+                  <label className="tsd-scanner__label">Сколько паллет привезли? *</label>
+                  <input
+                    className="tsd-input"
+                    type="number"
+                    min={1}
+                    max={30}
+                    value={receiveForm.qty}
+                    onChange={(event) =>
+                      setReceiveForm((prev) => ({ ...prev, qty: event.target.value }))
+                    }
+                    placeholder="Например, 3"
+                    disabled={loading}
+                  />
+                </div>
+                <div className="tsd-action-bar">
+                  <button
+                    type="button"
+                    className="tsd-btn tsd-btn--ghost"
+                    onClick={() => {
+                      clearAlerts();
+                      setReceiveStep("inbound");
+                    }}
+                    disabled={loading}
+                  >
+                    Назад
+                  </button>
+                  <button
+                    type="button"
+                    className="tsd-btn tsd-btn--primary"
+                    onClick={handleReceiveSubmit}
+                    disabled={loading}
+                  >
+                    {loading ? "Создаем..." : "Создать и напечатать"}
+                  </button>
+                </div>
+              </>
+            ) : null}
             {printFallback.html ? (
               <div className="tsd-card">
                 <div className="tsd-card__title">Паспорт паллеты готов</div>
