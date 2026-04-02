@@ -4708,13 +4708,15 @@ app.get("/api/profile", auth, async (req, res) => {
                 * { box-sizing: border-box; }
                 body { margin: 0; font-family: Arial, sans-serif; color: #0f172a; background: #fff; }
                 .page {
-                  min-height: 260mm;
+                  min-height: 277mm;
                   border: 2px solid #0f3f7a;
                   border-radius: 8px;
                   padding: 12mm;
-                  display: grid;
-                  grid-template-rows: auto auto 1fr auto;
+                  display: flex;
+                  flex-direction: column;
                   gap: 8mm;
+                  break-inside: avoid;
+                  page-break-inside: avoid;
                 }
                 .page-break { break-after: page; page-break-after: always; }
                 .header { display: grid; gap: 4mm; border-bottom: 2px solid #bfdbfe; padding-bottom: 5mm; }
@@ -4743,6 +4745,7 @@ app.get("/api/profile", auth, async (req, res) => {
                   font-size: 16px;
                   line-height: 1.45;
                   color: #0f172a;
+                  margin-top: auto;
                 }
                 .rules strong { color: #0f3f7a; }
                 .footer { font-size: 13px; color: #475569; }

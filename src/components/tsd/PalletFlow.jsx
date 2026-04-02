@@ -252,11 +252,6 @@ export default function PalletFlow({ authHeaders, onBack }) {
               break-after: page;
               page-break-after: always;
             }
-            .passport-batch-page .page {
-              min-height: 260mm !important;
-              break-inside: avoid;
-              page-break-inside: avoid;
-            }
             .passport-batch-page:last-child {
               break-after: auto;
               page-break-after: auto;
@@ -265,11 +260,6 @@ export default function PalletFlow({ authHeaders, onBack }) {
               .passport-batch-page {
                 break-after: page;
                 page-break-after: always;
-              }
-              .passport-batch-page .page {
-                min-height: 260mm !important;
-                break-inside: avoid;
-                page-break-inside: avoid;
               }
               .passport-batch-page:last-child {
                 break-after: auto;
