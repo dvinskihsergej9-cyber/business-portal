@@ -5336,6 +5336,9 @@ app.get("/api/profile", auth, async (req, res) => {
         include: {
           currentLocation: true,
           dispatch: true,
+          createdBy: {
+            select: { id: true, name: true, email: true },
+          },
         },
       });
       if (!pallet) {

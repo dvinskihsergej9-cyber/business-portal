@@ -133,6 +133,7 @@ export default function PalletFlow({ authHeaders, onBack }) {
   const [historyLoading, setHistoryLoading] = useState(false);
   const [error, setError] = useState("");
   const [success, setSuccess] = useState("");
+  const [printFallback, setPrintFallback] = useState({ palletCode: "", html: "" });
   const receiveSubmitLockRef = useRef(false);
   const storeSubmitLockRef = useRef(false);
   const dispatchSubmitLockRef = useRef(false);
@@ -142,13 +143,16 @@ export default function PalletFlow({ authHeaders, onBack }) {
   const [receiveForm, setReceiveForm] = useState(INITIAL_RECEIVE_FORM);
   const [storeForm, setStoreForm] = useState(INITIAL_STORE_FORM);
   const [dispatchForm, setDispatchForm] = useState(INITIAL_DISPATCH_FORM);
+  const [storeStep, setStoreStep] = useState("location");
+  const [dispatchStep, setDispatchStep] = useState("location");
 
   const [searchCode, setSearchCode] = useState("");
   const [searchStatus, setSearchStatus] = useState("");
   const [searchQuery, setSearchQuery] = useState("");
-  const [excludeTest, setExcludeTest] = useState(true);
   const [historyPallet, setHistoryPallet] = useState(null);
   const [historyEvents, setHistoryEvents] = useState([]);
+  const [historyCollapsed, setHistoryCollapsed] = useState(false);
+  const [selectedPalletId, setSelectedPalletId] = useState(null);
   const [recentItems, setRecentItems] = useState([]);
   const [recentLoading, setRecentLoading] = useState(false);
   const [routeSheetItems, setRouteSheetItems] = useState([]);
@@ -160,13 +164,38 @@ export default function PalletFlow({ authHeaders, onBack }) {
     setSuccess("");
   };
 
+  const resetStoreScanFlow = () => {
+    setStoreStep("location");
+    setStoreForm(INITIAL_STORE_FORM);
+  };
+
+  const resetDispatchScanFlow = () => {
+    setDispatchStep("location");
+    setDispatchForm((prev) => ({
+      ...prev,
+      locationCode: "",
+      palletCode: "",
+    }));
+  };
+
+  const openPrintFallback = () => {
+    if (!printFallback.html) return;
+    try {
+      openHtmlDocumentInNewTab(printFallback.html, {
+        popupBlockedMessage:
+          "Не удалось открыть новый таб. Документ откроется в текущем окне.",
+      });
+    } catch {
+      const blob = new Blob([printFallback.html], { type: "text/html;charset=utf-8" });
+      const url = URL.createObjectURL(blob);
+      window.location.href = url;
+      window.setTimeout(() => URL.revokeObjectURL(url), 60_000);
+    }
+    setPrintFallback({ palletCode: "", html: "" });
+  };
+
   const printPalletLabel = async (palletCode) => {
     const printWindow = prepareDocumentTab({ title: "Паспорт паллеты" });
-    if (!printWindow) {
-      throw new Error(
-        "Паллета создана, но окно печати паспорта не открылось. Разрешите всплывающие окна."
-      );
-    }
 
     const response = await fetch(`${API_BASE}/pallets/print-label`, {
       method: "POST",
@@ -187,13 +216,21 @@ export default function PalletFlow({ authHeaders, onBack }) {
         // ignore raw html
       }
       try {
-        if (!printWindow.closed) printWindow.close();
+        if (printWindow && !printWindow.closed) printWindow.close();
       } catch {
         // ignore
       }
       throw new Error(message);
     }
-    openHtmlDocumentInNewTab(html, { targetWindow: printWindow });
+
+    if (printWindow) {
+      openHtmlDocumentInNewTab(html, { targetWindow: printWindow });
+      setPrintFallback({ palletCode: "", html: "" });
+      return { mode: "popup" };
+    }
+
+    setPrintFallback({ palletCode, html });
+    return { mode: "fallback" };
   };
 
   const handleReceiveSubmit = async () => {
@@ -214,6 +251,7 @@ export default function PalletFlow({ authHeaders, onBack }) {
         supplierName,
         inboundRef,
       };
+      setPrintFallback({ palletCode: "", html: "" });
 
       const response = await fetch(`${API_BASE}/pallets/receive`, {
         method: "POST",
@@ -230,13 +268,20 @@ export default function PalletFlow({ authHeaders, onBack }) {
         throw new Error("Паллета создана, но код не получен.");
       }
 
-      await printPalletLabel(nextPalletCode);
+      const printResult = await printPalletLabel(nextPalletCode);
 
-      setSuccess(`Паллета ${nextPalletCode} принята.`);
+      if (printResult?.mode === "fallback") {
+        setSuccess(
+          `Паллета ${nextPalletCode} принята. Паспорт готов, нажмите «Открыть паспорт A4».`
+        );
+      } else {
+        setSuccess(`Паллета ${nextPalletCode} принята.`);
+      }
       setStoreForm((prev) => ({
         ...prev,
         palletCode: nextPalletCode,
       }));
+      setStoreStep("location");
       setSearchCode(nextPalletCode);
     } catch (err) {
       setError(normalizeErrorMessage(err, "Ошибка приемки паллеты."));
@@ -290,6 +335,7 @@ export default function PalletFlow({ authHeaders, onBack }) {
       } else {
         setSuccess(`Паллета ${palletCode} размещена в ${data?.pallet?.currentLocation?.code || locationCode}.`);
       }
+      setStoreStep("location");
       setStoreForm(INITIAL_STORE_FORM);
       setDispatchForm((prev) => ({
         ...prev,
@@ -356,6 +402,7 @@ export default function PalletFlow({ authHeaders, onBack }) {
       setSuccess(
         `Паллета ${palletCode} отгружена в РЦ ${data?.pallet?.dispatch?.destinationRc || dispatchForm.destinationRc}.`
       );
+      setDispatchStep("location");
       setDispatchForm((prev) => ({
         ...prev,
         palletCode: "",
@@ -429,6 +476,8 @@ export default function PalletFlow({ authHeaders, onBack }) {
       }
       setHistoryPallet(data?.pallet || null);
       setHistoryEvents(Array.isArray(data?.events) ? data.events : []);
+      setHistoryCollapsed(false);
+      setSelectedPalletId(data?.pallet?.id || null);
       return data?.pallet || null;
     } finally {
       setHistoryLoading(false);
@@ -441,7 +490,6 @@ export default function PalletFlow({ authHeaders, onBack }) {
       const params = new URLSearchParams();
       if (searchStatus) params.set("status", searchStatus);
       if (searchQuery) params.set("q", searchQuery.trim());
-      if (excludeTest) params.set("excludeTest", "1");
       const response = await fetch(`${API_BASE}/pallets?${params.toString()}`, {
         headers: authHeaders,
       });
@@ -461,7 +509,7 @@ export default function PalletFlow({ authHeaders, onBack }) {
     if (activeTab !== "search") return;
     loadRecentPallets();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [activeTab, searchStatus, searchQuery, excludeTest]);
+  }, [activeTab, searchStatus, searchQuery]);
 
   useEffect(() => {
     if (activeTab !== "dispatch") return;
@@ -496,6 +544,12 @@ export default function PalletFlow({ authHeaders, onBack }) {
             className={`tsd-pallet-tab ${activeTab === tab.id ? "tsd-pallet-tab--active" : ""}`}
             onClick={() => {
               clearAlerts();
+              if (tab.id === "store") {
+                resetStoreScanFlow();
+              }
+              if (tab.id === "dispatch") {
+                resetDispatchScanFlow();
+              }
               setActiveTab(tab.id);
             }}
           >
@@ -544,99 +598,115 @@ export default function PalletFlow({ authHeaders, onBack }) {
                 {loading ? "Создаем..." : "Создать и напечатать"}
               </button>
             </div>
+            {printFallback.html ? (
+              <div className="tsd-card">
+                <div className="tsd-card__title">Паспорт паллеты готов</div>
+                <div className="tsd-card__meta">
+                  Паллета: {printFallback.palletCode || "-"}.
+                  Автооткрытие не сработало в мобильном браузере.
+                </div>
+                <div className="tsd-action-inline">
+                  <button
+                    type="button"
+                    className="tsd-btn tsd-btn--primary tsd-btn--center"
+                    onClick={openPrintFallback}
+                  >
+                    Открыть паспорт A4
+                  </button>
+                </div>
+              </div>
+            ) : null}
           </div>
         ) : null}
 
         {activeTab === "store" ? (
           <div className="tsd-list">
-            <Scanner
-              label="1. Скан ячейки размещения"
-              hint="Сначала сканируйте паспорт ячейки (например, YARD-A-03)"
-              manualPlaceholder="Код ячейки"
-              onScan={async (value) => {
-                const scannedLocationCode = normalizeLocationCode(value);
-                setStoreForm((prev) => ({ ...prev, locationCode: scannedLocationCode }));
-                if (scannedLocationCode) {
-                  setSuccess(`Ячейка ${scannedLocationCode} принята. Сканируйте паллету.`);
-                }
-              }}
-              disabled={loading}
-              scanKind="barcode"
-            />
-            <Scanner
-              label="2. Скан паллеты"
-              hint="После скана ячейки отсканируйте паспорт паллеты"
-              manualPlaceholder="bp:pallet:PLT-..."
-              onScan={async (value) => {
-                const scannedPalletCode = normalizePalletCode(value);
-                setStoreForm((prev) => ({ ...prev, palletCode: scannedPalletCode }));
-                const normalizedLocationCode = normalizeLocationCode(storeForm.locationCode);
-                if (!normalizedLocationCode) {
-                  setError("Сначала отсканируйте ячейку размещения.");
-                  return;
-                }
-                if (scannedPalletCode) {
-                  await handleStoreSubmit({
-                    palletCodeOverride: scannedPalletCode,
-                    locationCodeOverride: normalizedLocationCode,
-                  });
-                }
-              }}
-              disabled={loading}
-            />
-            <div className="tsd-action-bar">
-              <button
-                type="button"
-                className="tsd-btn tsd-btn--primary"
-                onClick={handleStoreSubmit}
-                disabled={loading}
-              >
-                {loading ? "Сохраняем..." : "Разместить"}
-              </button>
+            <div className="tsd-card">
+              <div className="tsd-card__title">Пошаговое размещение</div>
+              <div className="tsd-card__meta">
+                {storeStep === "location"
+                  ? "Шаг 1 из 2: отсканируйте QR/ШК ячейки размещения."
+                  : "Шаг 2 из 2: отсканируйте паллету для подтверждения размещения."}
+              </div>
+              <div className="tsd-card__meta">
+                Ячейка: {storeForm.locationCode || "-"} • Паллета: {storeForm.palletCode || "-"}
+              </div>
             </div>
+
+            {storeStep === "location" ? (
+              <Scanner
+                label="Шаг 1. Скан ячейки размещения"
+                hint="Сканируйте паспорт ячейки (например, YARD-A-03)"
+                manualPlaceholder="Код ячейки"
+                onScan={async (value) => {
+                  const scannedLocationCode = normalizeLocationCode(value);
+                  if (!scannedLocationCode) return;
+                  setStoreForm((prev) => ({ ...prev, locationCode: scannedLocationCode, palletCode: "" }));
+                  setStoreStep("pallet");
+                  setSuccess(`Ячейка ${scannedLocationCode} принята. Теперь сканируйте паллету.`);
+                }}
+                disabled={loading}
+                autoStart
+                scanKind="barcode"
+                showManual={false}
+              />
+            ) : null}
+
+            {storeStep === "pallet" ? (
+              <>
+                <div className="tsd-action-inline">
+                  <button
+                    type="button"
+                    className="tsd-btn tsd-btn--ghost tsd-btn--center"
+                    onClick={resetStoreScanFlow}
+                    disabled={loading}
+                  >
+                    Сканировать другую ячейку
+                  </button>
+                </div>
+                <Scanner
+                  label="Шаг 2. Скан паллеты"
+                  hint={`Ячейка ${storeForm.locationCode || "-"} принята. Сканируйте паллету.`}
+                  manualPlaceholder="bp:pallet:PLT-..."
+                  onScan={async (value) => {
+                    const scannedPalletCode = normalizePalletCode(value);
+                    if (!scannedPalletCode) return;
+                    const normalizedLocationCode = normalizeLocationCode(storeForm.locationCode);
+                    if (!normalizedLocationCode) {
+                      setError("Сначала отсканируйте ячейку размещения.");
+                      setStoreStep("location");
+                      return;
+                    }
+                    setStoreForm((prev) => ({ ...prev, palletCode: scannedPalletCode }));
+                    await handleStoreSubmit({
+                      palletCodeOverride: scannedPalletCode,
+                      locationCodeOverride: normalizedLocationCode,
+                    });
+                  }}
+                  disabled={loading}
+                  autoStart
+                  showManual={false}
+                />
+              </>
+            ) : null}
           </div>
         ) : null}
 
         {activeTab === "dispatch" ? (
           <div className="tsd-list">
-            <Scanner
-              label="1. Скан ячейки отбора"
-              hint="Отсканируйте текущую ячейку паллеты перед отгрузкой"
-              manualPlaceholder="Код ячейки"
-              onScan={async (value) => {
-                const scannedLocationCode = normalizeLocationCode(value);
-                setDispatchForm((prev) => ({ ...prev, locationCode: scannedLocationCode }));
-                if (scannedLocationCode) {
-                  setSuccess(`Ячейка ${scannedLocationCode} принята. Сканируйте паллету.`);
-                }
-              }}
-              disabled={loading}
-              scanKind="barcode"
-            />
-            <Scanner
-              label="2. Скан паллеты"
-              hint="Паллета должна быть в статусе «Размещена» и в этой ячейке"
-              manualPlaceholder="bp:pallet:PLT-..."
-              onScan={async (value) => {
-                const scannedPalletCode = normalizePalletCode(value);
-                setDispatchForm((prev) => ({ ...prev, palletCode: scannedPalletCode }));
-                const locationCode = normalizeLocationCode(dispatchForm.locationCode);
-                if (!locationCode) {
-                  setError("Сначала отсканируйте ячейку отбора.");
-                  return;
-                }
-                const destinationRc = String(dispatchForm.destinationRc || "").trim();
-                if (scannedPalletCode && destinationRc) {
-                  await handleDispatchSubmit({
-                    palletCodeOverride: scannedPalletCode,
-                    locationCodeOverride: locationCode,
-                  });
-                }
-              }}
-              disabled={loading}
-            />
+            <div className="tsd-card">
+              <div className="tsd-card__title">Пошаговая отгрузка</div>
+              <div className="tsd-card__meta">
+                {dispatchStep === "location"
+                  ? "Шаг 1 из 2: отсканируйте ячейку отбора."
+                  : "Шаг 2 из 2: отсканируйте паллету для подтверждения отгрузки."}
+              </div>
+              <div className="tsd-card__meta">
+                Ячейка: {dispatchForm.locationCode || "-"} • Паллета: {dispatchForm.palletCode || "-"}
+              </div>
+            </div>
             <div className="tsd-qty-input">
-              <label className="tsd-scanner__label">РЦ назначения</label>
+              <label className="tsd-scanner__label">РЦ назначения *</label>
               <input
                 className="tsd-input"
                 value={dispatchForm.destinationRc}
@@ -673,6 +743,70 @@ export default function PalletFlow({ authHeaders, onBack }) {
                 />
               </div>
             </div>
+            {dispatchStep === "location" ? (
+              <Scanner
+                label="Шаг 1. Скан ячейки отбора"
+                hint="Отсканируйте текущую ячейку паллеты перед отгрузкой"
+                manualPlaceholder="Код ячейки"
+                onScan={async (value) => {
+                  const scannedLocationCode = normalizeLocationCode(value);
+                  if (!scannedLocationCode) return;
+                  setDispatchForm((prev) => ({
+                    ...prev,
+                    locationCode: scannedLocationCode,
+                    palletCode: "",
+                  }));
+                  setDispatchStep("pallet");
+                  setSuccess(`Ячейка ${scannedLocationCode} принята. Теперь сканируйте паллету.`);
+                }}
+                disabled={loading}
+                autoStart
+                scanKind="barcode"
+                showManual={false}
+              />
+            ) : null}
+            {dispatchStep === "pallet" ? (
+              <>
+                <div className="tsd-action-inline">
+                  <button
+                    type="button"
+                    className="tsd-btn tsd-btn--ghost tsd-btn--center"
+                    onClick={resetDispatchScanFlow}
+                    disabled={loading}
+                  >
+                    Сканировать другую ячейку
+                  </button>
+                </div>
+                <Scanner
+                  label="Шаг 2. Скан паллеты"
+                  hint={`Ячейка ${dispatchForm.locationCode || "-"} принята. Сканируйте паллету.`}
+                  manualPlaceholder="bp:pallet:PLT-..."
+                  onScan={async (value) => {
+                    const scannedPalletCode = normalizePalletCode(value);
+                    if (!scannedPalletCode) return;
+                    const locationCode = normalizeLocationCode(dispatchForm.locationCode);
+                    if (!locationCode) {
+                      setError("Сначала отсканируйте ячейку отбора.");
+                      setDispatchStep("location");
+                      return;
+                    }
+                    const destinationRc = String(dispatchForm.destinationRc || "").trim();
+                    if (!destinationRc) {
+                      setError("Сначала укажите РЦ назначения.");
+                      return;
+                    }
+                    setDispatchForm((prev) => ({ ...prev, palletCode: scannedPalletCode }));
+                    await handleDispatchSubmit({
+                      palletCodeOverride: scannedPalletCode,
+                      locationCodeOverride: locationCode,
+                    });
+                  }}
+                  disabled={loading}
+                  autoStart
+                  showManual={false}
+                />
+              </>
+            ) : null}
             <div className="tsd-action-bar">
               <button
                 type="button"
@@ -715,16 +849,6 @@ export default function PalletFlow({ authHeaders, onBack }) {
                 disabled={loading}
               />
             </div>
-            <div className="tsd-action-bar">
-              <button
-                type="button"
-                className="tsd-btn tsd-btn--primary"
-                onClick={handleDispatchSubmit}
-                disabled={loading}
-              >
-                {loading ? "Отгружаем..." : "Отгрузить"}
-              </button>
-            </div>
             {routeSheetSummary ? (
               <div className="tsd-card">
                 <div className="tsd-card__title">
@@ -749,10 +873,11 @@ export default function PalletFlow({ authHeaders, onBack }) {
                         palletCode: item.palletCode || "",
                         locationCode: item.currentLocation?.code || prev.locationCode || "",
                       }));
+                      setDispatchStep("pallet");
                       setSuccess(
                         `Выбрана паллета ${item.palletCode || "-"} из ячейки ${
                           item.currentLocation?.code || "-"
-                        }.`
+                        }. Подтвердите отгрузку повторным сканированием паллеты.`
                       );
                     }}
                   >
@@ -773,7 +898,7 @@ export default function PalletFlow({ authHeaders, onBack }) {
           <div className="tsd-list">
             <Scanner
               label="Скан паллеты"
-              hint="Найти статус и историю по palletCode"
+              hint="Сканируйте паллету, чтобы открыть полную историю движения"
               manualPlaceholder="bp:pallet:PLT-..."
               onScan={async (value) => {
                 try {
@@ -842,51 +967,66 @@ export default function PalletFlow({ authHeaders, onBack }) {
                 placeholder="Фильтр: код, поставщик, ТТН"
                 disabled={recentLoading}
               />
-              <label className="tsd-switch__row">
-                <input
-                  type="checkbox"
-                  checked={excludeTest}
-                  onChange={(event) => setExcludeTest(event.target.checked)}
-                  disabled={recentLoading}
-                />
-                <span>Скрыть тестовые</span>
-              </label>
+              <div className="tsd-card__meta">Найдено: {recentItems.length}</div>
             </div>
             <div className="tsd-card">
-              <div className="tsd-card__meta">Найдено в списке: {recentItems.length}</div>
               <div className="tsd-card__meta">
-                Фильтры: {searchStatus ? statusLabel(searchStatus) : "все статусы"},{" "}
-                {excludeTest ? "без тестовых" : "с тестовыми"}
+                Фильтр статуса: {searchStatus ? statusLabel(searchStatus) : "все статусы"}
+              </div>
+              <div className="tsd-card__meta">
+                Выберите паллету из списка или отсканируйте код, чтобы открыть карточку.
               </div>
             </div>
 
             {historyPallet ? (
               <div className="tsd-card">
-                <div className="tsd-card__title">Паллета {historyPallet.palletCode}</div>
-                <div className="tsd-card__meta">Статус: {statusLabel(historyPallet.status)}</div>
-                <div className="tsd-card__meta">
-                  Локация: {historyPallet.currentLocation?.code || "-"}
+                <div className="tsd-inline tsd-inline--two">
+                  <div className="tsd-card__title">Паллета {historyPallet.palletCode}</div>
+                  <button
+                    type="button"
+                    className="tsd-btn tsd-btn--ghost"
+                    onClick={() => setHistoryCollapsed((prev) => !prev)}
+                  >
+                    {historyCollapsed ? "Развернуть" : "Свернуть"}
+                  </button>
                 </div>
-                <div className="tsd-card__meta">
-                  Принята: {formatDateTime(historyPallet.receivedAt)}
-                </div>
-                <div className="tsd-card__meta">
-                  Принял: {historyPallet.createdBy?.name || historyPallet.createdBy?.email || "-"}
-                </div>
-                {historyPallet.dispatch?.destinationRc ? (
-                  <div className="tsd-card__meta">
-                    РЦ: {historyPallet.dispatch.destinationRc}
-                  </div>
-                ) : null}
-                {historyPallet.dispatchedAt ? (
-                  <div className="tsd-card__meta">
-                    Отгружена: {formatDateTime(historyPallet.dispatchedAt)}
-                  </div>
+                {!historyCollapsed ? (
+                  <>
+                    <div className="tsd-card__meta">Статус: {statusLabel(historyPallet.status)}</div>
+                    <div className="tsd-card__meta">
+                      Поставщик: {historyPallet.supplierName || "-"} • Машина/ТТН:{" "}
+                      {historyPallet.inboundRef || "-"}
+                    </div>
+                    <div className="tsd-card__meta">
+                      Текущая ячейка: {historyPallet.currentLocation?.code || "-"}
+                    </div>
+                    <div className="tsd-card__meta">
+                      Принята: {formatDateTime(historyPallet.receivedAt)}
+                    </div>
+                    <div className="tsd-card__meta">
+                      Принял: {historyPallet.createdBy?.name || historyPallet.createdBy?.email || "-"}
+                    </div>
+                    {historyPallet.storedAt ? (
+                      <div className="tsd-card__meta">
+                        Размещена: {formatDateTime(historyPallet.storedAt)}
+                      </div>
+                    ) : null}
+                    {historyPallet.dispatch?.destinationRc ? (
+                      <div className="tsd-card__meta">
+                        РЦ назначения: {historyPallet.dispatch.destinationRc}
+                      </div>
+                    ) : null}
+                    {historyPallet.dispatchedAt ? (
+                      <div className="tsd-card__meta">
+                        Отгружена: {formatDateTime(historyPallet.dispatchedAt)}
+                      </div>
+                    ) : null}
+                  </>
                 ) : null}
               </div>
             ) : null}
 
-            {historyEvents.length ? (
+            {historyEvents.length && !historyCollapsed ? (
               <div className="tsd-pallet-history">
                 {historyEvents.map((event) => (
                   <div key={event.id} className="tsd-pallet-event">
@@ -912,10 +1052,14 @@ export default function PalletFlow({ authHeaders, onBack }) {
                   <button
                     key={item.id}
                     type="button"
-                    className="tsd-card tsd-pallet-list-btn"
+                    className={`tsd-card tsd-pallet-list-btn ${
+                      selectedPalletId === item.id ? "tsd-pallet-list-btn--selected" : ""
+                    }`}
                     onClick={async () => {
                       try {
                         clearAlerts();
+                        setSelectedPalletId(item.id);
+                        setHistoryCollapsed(false);
                         setSearchCode(item.palletCode || "");
                         await loadHistoryByCode(item.palletCode || "");
                       } catch (err) {
