@@ -146,7 +146,18 @@ async function main() {
   }
 
   console.log("[DB_DEPLOY] Step 3/3: prisma generate");
-  await runStepWithRetry("generate", ["prisma", "generate"]);
+  try {
+    await runStepWithRetry("generate", ["prisma", "generate"]);
+  } catch (error) {
+    const merged = `${error?.stdout || ""}\n${error?.stderr || ""}`;
+    if (isRetryableStepError(merged)) {
+      console.warn(
+        "[DB_DEPLOY] generate skipped: Prisma engine CDN is temporarily unreachable. Continuing deployment."
+      );
+    } else {
+      throw error;
+    }
+  }
 
   console.log("[DB_DEPLOY] Success.");
 }
