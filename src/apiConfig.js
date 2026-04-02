@@ -79,6 +79,10 @@ const EXTRA_ERROR_MESSAGES = {
   BAD_TOKEN: "Некорректный токен.",
   BAD_USER_ID: "Некорректный идентификатор пользователя.",
   BOX_CODE_REQUIRED: "Введите код короба.",
+  AUTH_DB_PERMISSION_USER_TABLE:
+    "Сервер БД не выдал доступ к таблице пользователей (User). Проверьте права роли подключения.",
+  AUTH_DB_PERMISSION_ORG_TABLE:
+    "Сервер БД не выдал доступ к таблице организаций (Organization). Проверьте права роли подключения.",
   COUNT_CELL_NOT_EMPTY: "Ячейка не пуста. Операция недоступна.",
   COUNT_DATE_MISMATCH: "Дата не совпадает с остатком в ячейке.",
   COUNT_ITEM_NOT_IN_LOCATION: "Товар отсутствует в выбранной ячейке.",
@@ -135,6 +139,8 @@ const EXTRA_ERROR_MESSAGES = {
   TRIAL_CONFIG_INVALID: "Некорректная конфигурация пробного периода.",
   USER_INACTIVE: "Пользователь отключен.",
   USER_NOT_FOUND: "Пользователь не найден.",
+  PALLET_DB_PERMISSION_USER_TABLE:
+    "Сервер БД не выдал права на таблицу User для паллетного контура. Проверьте GRANT для роли подключения.",
   TENANT_GRANT_FREE_ACCESS_ERROR: "Не удалось продлить бесплатный доступ клиенту.",
   TENANT_TOGGLE_ACCESS_ERROR: "Не удалось изменить состояние доступа клиента.",
   TENANT_SUBSCRIPTION_NOT_FOUND:

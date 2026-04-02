@@ -4086,6 +4086,12 @@ app.post("/api/login", async (req, res) => {
       },
     });
   } catch (err) {
+    if (isPermissionDeniedForTable(err, "User")) {
+      return res.status(500).json({ message: "AUTH_DB_PERMISSION_USER_TABLE" });
+    }
+    if (isPermissionDeniedForTable(err, "Organization")) {
+      return res.status(500).json({ message: "AUTH_DB_PERMISSION_ORG_TABLE" });
+    }
     console.error("login error:", err);
     res.status(500).json({ message: "Ошибка сервера при входе" });
   }
