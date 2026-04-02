@@ -14,6 +14,7 @@ export default function Scanner({
   autoStart = false,
   onUserAction,
   scanKind = "mixed",
+  showManual = true,
 }) {
   const scannerId = useMemo(
     () => `tsd-scan-${Math.random().toString(36).slice(2)}`,
@@ -23,9 +24,11 @@ export default function Scanner({
   const viewportRef = useRef(null);
   const focusBusyRef = useRef(false);
   const focusUnsupportedRef = useRef(false);
+  const focusPulseTimeoutRef = useRef(null);
   const [manualValue, setManualValue] = useState("");
   const [cameraActive, setCameraActive] = useState(false);
   const [cameraError, setCameraError] = useState("");
+  const [focusPulse, setFocusPulse] = useState(false);
   const autoStartAttemptedRef = useRef(false);
 
   const getHtml5QrcodeClass = useCallback(() => {
@@ -82,15 +85,34 @@ export default function Scanner({
       .map(resolveFormat)
       .filter((value) => Number.isInteger(value));
 
+    const viewportRect = viewportRef.current?.getBoundingClientRect?.() || null;
+    const fallbackWidth =
+      typeof window !== "undefined" ? Math.max(300, Math.floor(window.innerWidth * 0.92)) : 360;
+    const fallbackHeight =
+      typeof window !== "undefined" ? Math.max(260, Math.floor(window.innerHeight * 0.36)) : 320;
+    const viewportWidth = Math.max(260, Math.floor(viewportRect?.width || fallbackWidth));
+    const viewportHeight = Math.max(220, Math.floor(viewportRect?.height || fallbackHeight));
+
+    const barcodeBox = {
+      width: Math.min(520, Math.floor(viewportWidth * 0.9)),
+      height: Math.max(140, Math.min(220, Math.floor(viewportHeight * 0.38))),
+    };
+    const mixedBox = {
+      width: Math.min(460, Math.floor(viewportWidth * 0.86)),
+      height: Math.max(180, Math.min(300, Math.floor(viewportHeight * 0.7))),
+    };
+    const qrSize = Math.max(220, Math.min(360, Math.floor(viewportWidth * 0.76)));
+
     const scanConfig = {
-      fps: 10,
+      fps: 14,
       qrbox:
         scanKind === "barcode"
-          ? { width: 320, height: 140 }
+          ? barcodeBox
           : scanKind === "mixed"
-            ? { width: 300, height: 180 }
-            : { width: 240, height: 240 },
+            ? mixedBox
+            : { width: qrSize, height: qrSize },
       experimentalFeatures: { useBarCodeDetectorIfSupported: true },
+      rememberLastUsedCamera: true,
     };
 
     if (formatsToSupport.length) {
@@ -129,6 +151,11 @@ export default function Scanner({
 
     const pointX = Math.min(1, Math.max(0, (clientX - rect.left) / rect.width));
     const pointY = Math.min(1, Math.max(0, (clientY - rect.top) / rect.height));
+    setFocusPulse(true);
+    if (focusPulseTimeoutRef.current) {
+      clearTimeout(focusPulseTimeoutRef.current);
+    }
+    focusPulseTimeoutRef.current = setTimeout(() => setFocusPulse(false), 260);
 
     const videoElement = viewport.querySelector("video");
     const mediaStream = videoElement?.srcObject;
@@ -170,7 +197,10 @@ export default function Scanner({
     focusBusyRef.current = true;
     try {
       await track.applyConstraints(focusConstraints);
-      if (cameraError === "Фокус по касанию не поддерживается этой камерой.") {
+      if (
+        cameraError === "Фокус по касанию не поддерживается этой камерой." ||
+        cameraError === "Не удалось изменить фокус камеры."
+      ) {
         setCameraError("");
       }
     } catch {
@@ -222,6 +252,23 @@ export default function Scanner({
       };
       const handleError = () => {};
       const scanConfig = buildScanConfig();
+      const applyContinuousAutofocus = async () => {
+        try {
+          const viewport = viewportRef.current;
+          const videoElement = viewport?.querySelector("video");
+          const mediaStream = videoElement?.srcObject;
+          const track = mediaStream?.getVideoTracks?.()?.[0] || null;
+          if (!track || typeof track.getCapabilities !== "function") return;
+          const capabilities = track.getCapabilities() || {};
+          const focusModes = Array.isArray(capabilities.focusMode) ? capabilities.focusMode : [];
+          if (!focusModes.includes("continuous")) return;
+          await track.applyConstraints({
+            advanced: [{ focusMode: "continuous" }],
+          });
+        } catch {
+          // ignore autofocus unsupported errors
+        }
+      };
 
       const tryStart = async (cameraConfig) => {
         await scanner.start(cameraConfig, scanConfig, handleSuccess, handleError);
@@ -264,6 +311,8 @@ export default function Scanner({
       if (!started) {
         throw lastError || new Error("CAMERA_START_FAILED");
       }
+
+      await applyContinuousAutofocus();
     } catch (err) {
       console.error(err);
       const errCode = String(err?.message || err?.name || "").toLowerCase();
@@ -290,6 +339,9 @@ export default function Scanner({
 
   useEffect(() => {
     return () => {
+      if (focusPulseTimeoutRef.current) {
+        clearTimeout(focusPulseTimeoutRef.current);
+      }
       stopScanner();
     };
   }, [stopScanner]);
@@ -340,7 +392,9 @@ export default function Scanner({
 
       <div
         ref={viewportRef}
-        className={`tsd-scanner__viewport ${cameraActive ? "tsd-scanner__viewport--camera" : ""}`}
+        className={`tsd-scanner__viewport ${cameraActive ? "tsd-scanner__viewport--camera" : ""} ${
+          focusPulse ? "tsd-scanner__viewport--focus-pulse" : ""
+        }`}
         onClick={
           cameraActive
             ? (event) => {
@@ -353,6 +407,7 @@ export default function Scanner({
         {cameraActive ? (
           <>
             <div id={scannerId} className="tsd-scanner__camera" />
+            <div className="tsd-scanner__frame" />
             <div className="tsd-scanner__focus-tip">Нажмите для фокуса</div>
           </>
         ) : (
@@ -362,22 +417,24 @@ export default function Scanner({
 
       <TsdErrorAlert message={cameraError} />
 
-      <form className="tsd-manual" onSubmit={handleManualSubmit}>
-        <input
-          className="tsd-input"
-          value={manualValue}
-          onChange={(event) => setManualValue(event.target.value)}
-          placeholder={manualPlaceholder}
-          disabled={disabled}
-        />
-        <button
-          type="submit"
-          className="tsd-btn tsd-btn--primary"
-          disabled={disabled}
-        >
-          Ввести
-        </button>
-      </form>
+      {showManual ? (
+        <form className="tsd-manual" onSubmit={handleManualSubmit}>
+          <input
+            className="tsd-input"
+            value={manualValue}
+            onChange={(event) => setManualValue(event.target.value)}
+            placeholder={manualPlaceholder}
+            disabled={disabled}
+          />
+          <button
+            type="submit"
+            className="tsd-btn tsd-btn--primary"
+            disabled={disabled}
+          >
+            Ввести
+          </button>
+        </form>
+      ) : null}
     </div>
   );
 }

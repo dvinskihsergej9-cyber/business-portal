@@ -277,19 +277,60 @@
 .tsd-scanner__viewport {
   background: #0f172a;
   border-radius: 12px;
-  min-height: 220px;
+  min-height: 320px;
   display: grid;
   place-items: center;
   overflow: hidden;
   position: relative;
+  border: 1px solid rgba(148, 163, 184, 0.35);
 }
 
 .tsd-scanner__camera {
   width: 100%;
+  height: 100%;
+}
+
+.tsd-scanner__camera > div {
+  width: 100% !important;
+  height: 100% !important;
+}
+
+.tsd-scanner__camera video {
+  width: 100% !important;
+  height: 100% !important;
+  object-fit: cover !important;
+}
+
+.tsd-scanner__camera img {
+  display: none !important;
 }
 
 .tsd-scanner__viewport--camera {
-  cursor: crosshair;
+  cursor: pointer;
+}
+
+.tsd-scanner__viewport--focus-pulse::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  box-shadow: inset 0 0 0 3px rgba(56, 189, 248, 0.6);
+  pointer-events: none;
+  animation: tsdFocusPulse 0.28s ease-out;
+}
+
+.tsd-scanner__frame {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  width: min(86%, 420px);
+  height: min(68%, 240px);
+  transform: translate(-50%, -50%);
+  border: 2px solid rgba(56, 189, 248, 0.72);
+  border-radius: 14px;
+  box-shadow:
+    0 0 0 200vmax rgba(15, 23, 42, 0.18),
+    inset 0 0 0 1px rgba(14, 165, 233, 0.35);
+  pointer-events: none;
 }
 
 .tsd-scanner__focus-tip {
@@ -645,20 +686,21 @@
 }
 
 .tsd-pallet-tab {
-  border: 1px solid var(--tsd-border);
-  background: #ffffff;
+  border: 1px solid #cbd5e1 !important;
+  background: #ffffff !important;
   border-radius: 12px;
   min-height: 42px;
   font-size: 14px;
   font-weight: 600;
-  color: #0f172a;
+  color: #0f172a !important;
   cursor: pointer;
 }
 
 .tsd-pallet-tab--active {
-  background: var(--tsd-accent);
-  color: #ffffff;
-  border-color: transparent;
+  background: var(--tsd-accent) !important;
+  color: #ffffff !important;
+  border-color: transparent !important;
+  box-shadow: 0 0 0 2px rgba(14, 165, 233, 0.18);
 }
 
 .tsd-pallet-history {
@@ -710,9 +752,23 @@
   box-shadow: 0 0 0 2px rgba(14, 165, 233, 0.15);
 }
 
+.tsd-pallet-list-btn--selected {
+  border-color: #38bdf8;
+  box-shadow: 0 0 0 2px rgba(14, 165, 233, 0.22);
+}
+
 .tsd-route-sheet-item--active {
   border-color: #38bdf8;
   box-shadow: 0 0 0 2px rgba(14, 165, 233, 0.18);
+}
+
+@keyframes tsdFocusPulse {
+  from {
+    opacity: 0.85;
+  }
+  to {
+    opacity: 0;
+  }
 }
 
 .tsd-action-inline {
@@ -811,5 +867,16 @@
 
   .tsd-pallet-tabs {
     grid-template-columns: repeat(4, minmax(0, 1fr));
+  }
+}
+
+@media (max-width: 600px) {
+  .tsd-scanner__viewport {
+    min-height: 280px;
+  }
+
+  .tsd-scanner__frame {
+    width: min(90%, 360px);
+    height: min(66%, 220px);
   }
 }
