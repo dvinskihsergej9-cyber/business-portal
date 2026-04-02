@@ -3,7 +3,7 @@
 const envBase = import.meta.env.VITE_API_BASE?.trim();
 
 const devFallbackBase = `${window.location.protocol}//${window.location.hostname}:3001`;
-const prodFallbackBase = "https://business-portal-8nba.onrender.com";
+const prodFallbackBase = "https://api.skladonline.tw1.su";
 const prodFallbackOrigin = prodFallbackBase.replace(/\/+$/, "");
 export const FALLBACK_API_BASE = `${prodFallbackOrigin}/api`;
 
