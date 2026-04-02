@@ -4738,17 +4738,6 @@ app.get("/api/profile", auth, async (req, res) => {
                 .cell { border-bottom: 1px solid #e2e8f0; padding-bottom: 3mm; }
                 .label { font-size: 12px; color: #475569; margin-bottom: 1mm; }
                 .value { font-size: 20px; font-weight: 600; color: #0f172a; word-break: break-word; }
-                .rules {
-                  border: 1px dashed #94a3b8;
-                  border-radius: 8px;
-                  padding: 4mm;
-                  font-size: 16px;
-                  line-height: 1.45;
-                  color: #0f172a;
-                  margin-top: auto;
-                }
-                .rules strong { color: #0f3f7a; }
-                .footer { font-size: 13px; color: #475569; }
                 .print-actions { margin: 12px 8px 8px; display: flex; gap: 8px; flex-wrap: wrap; }
                 .print-btn { padding: 6px 14px; font-size: 13px; cursor: pointer; }
                 @media print { .print-actions { display: none; } }
@@ -4799,12 +4788,6 @@ app.get("/api/profile", auth, async (req, res) => {
                         </div>
                       </div>
 
-                      <div class="rules">
-                        <strong>Важно:</strong> все операции выполняются только по этому внутреннему коду паллеты.
-                        Внешние заводские штрихкоды не используются в складском процессе.
-                      </div>
-
-                      <div class="footer">Документ сформирован системой склада автоматически.</div>
                     </section>
                   `
                 )
