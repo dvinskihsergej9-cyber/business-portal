@@ -127,12 +127,23 @@ async function main() {
   }
 
   console.log("[DB_DEPLOY] Step 2/3: prisma db push");
-  await runStepWithRetry("db_push", [
-    "prisma",
-    "db",
-    "push",
-    "--accept-data-loss",
-  ]);
+  try {
+    await runStepWithRetry("db_push", [
+      "prisma",
+      "db",
+      "push",
+      "--accept-data-loss",
+    ]);
+  } catch (error) {
+    const merged = `${error?.stdout || ""}\n${error?.stderr || ""}`;
+    if (isRetryableStepError(merged)) {
+      console.warn(
+        "[DB_DEPLOY] db_push skipped: Prisma engine CDN is temporarily unreachable. Continuing deployment."
+      );
+    } else {
+      throw error;
+    }
+  }
 
   console.log("[DB_DEPLOY] Step 3/3: prisma generate");
   await runStepWithRetry("generate", ["prisma", "generate"]);
