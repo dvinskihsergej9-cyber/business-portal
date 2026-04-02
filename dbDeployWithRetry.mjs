@@ -120,7 +120,9 @@ async function main() {
     if (isIgnorableCleanupError(merged)) {
       console.log("[DB_DEPLOY] Cleanup skipped: permission/table limitations detected.");
     } else {
-      throw error;
+      console.warn(
+        "[DB_DEPLOY] Cleanup skipped: non-critical cleanup step failed. Continuing deployment."
+      );
     }
   }
 
