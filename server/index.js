@@ -1047,17 +1047,38 @@ async function createPalletEventTx(
   if (!PALLET_EVENT_TYPES.has(normalizedType)) {
     throw new Error("PALLET_EVENT_TYPE_INVALID");
   }
-  return tx.palletEvent.create({
-    data: {
-      orgId: Number(orgId || 0) || null,
-      palletId,
-      type: normalizedType,
-      fromStatus: normalizePalletStatus(fromStatus, null),
-      toStatus: normalizePalletStatus(toStatus, null),
-      userId: Number(userId || 0) || null,
-      metaJson: metaJson && typeof metaJson === "object" ? metaJson : null,
-    },
-  });
+  const normalizedFromStatus = normalizePalletStatus(fromStatus, null);
+  const normalizedToStatus = normalizePalletStatus(toStatus, null);
+  const normalizedOrgId = Number(orgId || 0) || null;
+  const normalizedUserId = Number(userId || 0) || null;
+  const normalizedMetaJson = metaJson && typeof metaJson === "object" ? metaJson : null;
+
+  try {
+    return await tx.palletEvent.create({
+      data: {
+        orgId: normalizedOrgId,
+        palletId,
+        type: normalizedType,
+        fromStatus: normalizedFromStatus,
+        toStatus: normalizedToStatus,
+        userId: normalizedUserId,
+        metaJson: normalizedMetaJson,
+      },
+    });
+  } catch (err) {
+    if (!isPermissionDeniedForTable(err, "User")) {
+      throw err;
+    }
+
+    const inserted = await tx.$queryRaw`
+      INSERT INTO "PalletEvent"
+        ("orgId", "palletId", "type", "fromStatus", "toStatus", "userId", "metaJson", "createdAt")
+      VALUES
+        (${normalizedOrgId}, ${palletId}, ${normalizedType}, ${normalizedFromStatus}, ${normalizedToStatus}, ${normalizedUserId}, CAST(${normalizedMetaJson ? JSON.stringify(normalizedMetaJson) : null} AS jsonb), NOW())
+      RETURNING "id", "orgId", "palletId", "type", "fromStatus", "toStatus", "userId", "metaJson", "createdAt"
+    `;
+    return Array.isArray(inserted) && inserted.length ? inserted[0] : null;
+  }
 }
 
 async function loadSupportTicketForAccess(ticketId) {
@@ -4385,20 +4406,43 @@ app.get("/api/profile", auth, async (req, res) => {
             const now = new Date();
             const palletCode = await generateUniquePalletCode(orgId, tx);
             const externalCompatCode = crypto.randomBytes(4).toString("hex").toUpperCase();
-            const pallet = await tx.pallet.create({
-              data: {
-                orgId,
-                palletCode,
-                // Compatibility fallback for deployments where externalCode remains constrained in DB.
-                // Business flow still uses only internal palletCode.
-                externalCode: externalCompatCode,
-                status: "RECEIVED",
-                supplierName,
-                inboundRef,
-                createdByUserId: req.user.id,
-                receivedAt: now,
-              },
-            });
+            let pallet = null;
+            try {
+              pallet = await tx.pallet.create({
+                data: {
+                  orgId,
+                  palletCode,
+                  // Compatibility fallback for deployments where externalCode remains constrained in DB.
+                  // Business flow still uses only internal palletCode.
+                  externalCode: externalCompatCode,
+                  status: "RECEIVED",
+                  supplierName,
+                  inboundRef,
+                  createdByUserId: req.user.id,
+                  receivedAt: now,
+                },
+              });
+            } catch (palletCreateErr) {
+              if (!isPermissionDeniedForTable(palletCreateErr, "User")) {
+                throw palletCreateErr;
+              }
+
+              const insertedRows = await tx.$queryRaw`
+                INSERT INTO "Pallet"
+                  ("orgId", "palletCode", "externalCode", "status", "supplierName", "inboundRef", "createdByUserId", "receivedAt", "createdAt", "updatedAt")
+                VALUES
+                  (${orgId}, ${palletCode}, ${externalCompatCode}, 'RECEIVED'::"PalletStatus", ${supplierName}, ${inboundRef}, ${req.user.id}, ${now}, ${now}, ${now})
+                RETURNING
+                  "id", "orgId", "palletCode", "externalCode", "status", "supplierName", "inboundRef",
+                  "currentLocationId", "createdByUserId", "receivedAt", "storedAt", "dispatchedAt", "createdAt", "updatedAt"
+              `;
+              if (!Array.isArray(insertedRows) || !insertedRows.length) {
+                const fallbackError = new Error("PALLET_CREATE_FAILED");
+                fallbackError.code = "PALLET_CREATE_FAILED";
+                throw fallbackError;
+              }
+              pallet = insertedRows[0];
+            }
 
             const baseMeta = {
               supplierName,
@@ -5511,9 +5555,9 @@ app.get("/api/profile", auth, async (req, res) => {
         const now = new Date();
         await tx.$executeRaw`
           INSERT INTO "Pallet"
-            ("orgId", "palletCode", "externalCode", "status", "supplierName", "inboundRef", "createdByUserId", "receivedAt")
+            ("orgId", "palletCode", "externalCode", "status", "supplierName", "inboundRef", "createdByUserId", "receivedAt", "createdAt", "updatedAt")
           VALUES
-            (${orgId}, ${rawPalletCode}, ${rawExternalCompatCode}, 'RECEIVED', ${supplierName}, ${inboundRef}, ${probe.userId}, ${now})
+            (${orgId}, ${rawPalletCode}, ${rawExternalCompatCode}, 'RECEIVED'::"PalletStatus", ${supplierName}, ${inboundRef}, ${probe.userId}, ${now}, ${now}, ${now})
         `;
         probe.steps.push({
           step: "pallet_raw_insert",
