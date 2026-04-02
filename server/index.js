@@ -5378,6 +5378,7 @@ app.get("/api/profile", auth, async (req, res) => {
       userId: Number(req.user?.id || 0),
       currentUser: null,
       steps: [],
+      dbChecks: null,
     };
 
     try {
@@ -5388,6 +5389,70 @@ app.get("/api/profile", auth, async (req, res) => {
         probe.currentUser = Array.isArray(sessionRows) && sessionRows.length
           ? String(sessionRows[0]?.currentUser || "")
           : "";
+
+        const privilegeRows = await tx.$queryRawUnsafe(`
+          SELECT
+            current_user AS "currentUser",
+            has_table_privilege(current_user, 'public."User"', 'SELECT') AS "userTableSelect",
+            has_table_privilege(current_user, 'public."User"', 'INSERT') AS "userTableInsert",
+            has_table_privilege(current_user, 'public."User"', 'UPDATE') AS "userTableUpdate",
+            has_table_privilege(current_user, 'public."User"', 'DELETE') AS "userTableDelete",
+            has_table_privilege(current_user, 'public."User"', 'REFERENCES') AS "userTableReferences",
+            has_table_privilege(current_user, 'public."User"', 'TRIGGER') AS "userTableTrigger",
+            has_column_privilege(current_user, 'public."User"', 'id', 'SELECT') AS "userIdColumnSelect",
+            has_column_privilege(current_user, 'public."User"', 'id', 'REFERENCES') AS "userIdColumnReferences",
+            has_table_privilege(current_user, 'public."Pallet"', 'INSERT') AS "palletTableInsert",
+            has_table_privilege(current_user, 'public."PalletEvent"', 'INSERT') AS "palletEventTableInsert"
+        `);
+
+        const palletCustomTriggers = await tx.$queryRawUnsafe(`
+          SELECT
+            t.tgname AS "name",
+            pg_get_triggerdef(t.oid, true) AS "definition",
+            pn.nspname AS "functionSchema",
+            p.proname AS "functionName"
+          FROM pg_trigger t
+          JOIN pg_class c ON c.oid = t.tgrelid
+          JOIN pg_namespace n ON n.oid = c.relnamespace
+          JOIN pg_proc p ON p.oid = t.tgfoid
+          JOIN pg_namespace pn ON pn.oid = p.pronamespace
+          WHERE n.nspname = 'public'
+            AND c.relname = 'Pallet'
+            AND NOT t.tgisinternal
+          ORDER BY t.tgname
+        `);
+
+        const userRlsRows = await tx.$queryRawUnsafe(`
+          SELECT
+            c.relrowsecurity AS "rlsEnabled",
+            c.relforcerowsecurity AS "forceRls"
+          FROM pg_class c
+          JOIN pg_namespace n ON n.oid = c.relnamespace
+          WHERE n.nspname = 'public' AND c.relname = 'User'
+          LIMIT 1
+        `);
+
+        const userPolicies = await tx.$queryRawUnsafe(`
+          SELECT
+            p.polname AS "policyName",
+            p.polpermissive AS "permissive",
+            pg_get_expr(p.polqual, p.polrelid) AS "usingExpr",
+            pg_get_expr(p.polwithcheck, p.polrelid) AS "withCheckExpr"
+          FROM pg_policy p
+          JOIN pg_class c ON c.oid = p.polrelid
+          JOIN pg_namespace n ON n.oid = c.relnamespace
+          WHERE n.nspname = 'public' AND c.relname = 'User'
+          ORDER BY p.polname
+        `);
+
+        probe.dbChecks = {
+          privileges:
+            Array.isArray(privilegeRows) && privilegeRows.length ? privilegeRows[0] : null,
+          palletCustomTriggers: Array.isArray(palletCustomTriggers) ? palletCustomTriggers : [],
+          userRls:
+            Array.isArray(userRlsRows) && userRlsRows.length ? userRlsRows[0] : null,
+          userPolicies: Array.isArray(userPolicies) ? userPolicies : [],
+        };
 
         const userSelect = await tx.$queryRaw`
           SELECT id FROM "User" WHERE id = ${probe.userId} LIMIT 1
