@@ -1,6 +1,6 @@
 ﻿import { useEffect, useMemo, useRef, useState } from "react";
 import { API_BASE, normalizeErrorMessage } from "../../apiConfig";
-import { openHtmlDocumentInNewTab, prepareDocumentTab } from "../../utils/openInNewTab";
+import { openHtmlDocumentInNewTab } from "../../utils/openInNewTab";
 import Scanner from "./Scanner";
 import TsdErrorAlert from "./TsdErrorAlert";
 import TsdHeader from "./TsdHeader";
@@ -173,10 +173,8 @@ export default function PalletFlow({ authHeaders, onBack }) {
 
   const resetReceiveScanFlow = () => {
     setReceiveStep("supplier");
-    setReceiveForm((prev) => ({
-      ...prev,
-      qty: prev.qty && String(prev.qty).trim() ? prev.qty : "1",
-    }));
+    setReceiveForm(INITIAL_RECEIVE_FORM);
+    setPrintFallback({ label: "", html: "" });
   };
 
   const resetDispatchScanFlow = () => {
@@ -201,7 +199,6 @@ export default function PalletFlow({ authHeaders, onBack }) {
       window.location.href = url;
       window.setTimeout(() => URL.revokeObjectURL(url), 60_000);
     }
-    setPrintFallback({ label: "", html: "" });
   };
 
   const fetchPalletPassportHtml = async (palletCode) => {
@@ -255,6 +252,11 @@ export default function PalletFlow({ authHeaders, onBack }) {
               break-after: page;
               page-break-after: always;
             }
+            .passport-batch-page .page {
+              min-height: 260mm !important;
+              break-inside: avoid;
+              page-break-inside: avoid;
+            }
             .passport-batch-page:last-child {
               break-after: auto;
               page-break-after: auto;
@@ -263,6 +265,11 @@ export default function PalletFlow({ authHeaders, onBack }) {
               .passport-batch-page {
                 break-after: page;
                 page-break-after: always;
+              }
+              .passport-batch-page .page {
+                min-height: 260mm !important;
+                break-inside: avoid;
+                page-break-inside: avoid;
               }
               .passport-batch-page:last-child {
                 break-after: auto;
@@ -275,9 +282,22 @@ export default function PalletFlow({ authHeaders, onBack }) {
           ${pages}
           <div class="print-actions">
             <button class="print-btn" onclick="window.print()">Печать</button>
-            <button class="print-btn" onclick="window.history.back()">Назад</button>
+            <button class="print-btn" onclick="returnToApp()">Закрыть</button>
           </div>
           <script>
+            function returnToApp() {
+              try {
+                if (window.opener && !window.opener.closed) {
+                  window.close();
+                  return;
+                }
+              } catch (e) {}
+              if (window.history.length > 1) {
+                window.history.back();
+                return;
+              }
+              window.location.href = "/warehouse?section=tsd";
+            }
             window.setTimeout(() => window.print(), 180);
           </script>
         </body>
@@ -285,7 +305,7 @@ export default function PalletFlow({ authHeaders, onBack }) {
     `;
   };
 
-  const printPalletLabelsBatch = async (palletCodes) => {
+  const buildPalletLabelsBatchHtml = async (palletCodes) => {
     const codes = Array.from(
       new Set(
         (Array.isArray(palletCodes) ? palletCodes : [])
@@ -297,33 +317,15 @@ export default function PalletFlow({ authHeaders, onBack }) {
       throw new Error("Нет паллет для печати.");
     }
 
-    const printWindow = prepareDocumentTab({
-      title: codes.length > 1 ? `Паспорта паллет (${codes.length})` : "Паспорт паллеты",
-    });
-    try {
-      const htmlList = [];
-      for (const code of codes) {
-        htmlList.push(await fetchPalletPassportHtml(code));
-      }
-      const finalHtml = codes.length > 1 ? mergePassportHtml(htmlList, codes) : htmlList[0];
-
-      if (printWindow) {
-        openHtmlDocumentInNewTab(finalHtml, { targetWindow: printWindow });
-        setPrintFallback({ label: "", html: "" });
-        return { mode: "popup" };
-      }
-
-      const label = codes.length > 1 ? `Паллет: ${codes.length}` : codes[0];
-      setPrintFallback({ label, html: finalHtml });
-      return { mode: "fallback" };
-    } catch (err) {
-      try {
-        if (printWindow && !printWindow.closed) printWindow.close();
-      } catch {
-        // ignore
-      }
-      throw err;
+    const htmlList = [];
+    for (const code of codes) {
+      htmlList.push(await fetchPalletPassportHtml(code));
     }
+    const finalHtml = codes.length > 1 ? mergePassportHtml(htmlList, codes) : htmlList[0];
+    return {
+      label: codes.length > 1 ? `Паллет: ${codes.length}` : codes[0],
+      html: finalHtml,
+    };
   };
 
   const handleReceiveSubmit = async () => {
@@ -365,20 +367,15 @@ export default function PalletFlow({ authHeaders, onBack }) {
         createdCodes.push(code);
       }
 
-      const printResult = await printPalletLabelsBatch(createdCodes);
+      const printReady = await buildPalletLabelsBatchHtml(createdCodes);
+      setPrintFallback(printReady);
       const lastCode = createdCodes[createdCodes.length - 1] || "";
-      if (printResult?.mode === "fallback") {
-        setSuccess(
-          `Принято паллет: ${createdCodes.length}. Паспорта готовы, нажмите «Открыть паспорт A4».`
-        );
-      } else {
-        setSuccess(`Принято паллет: ${createdCodes.length}. Паспорта отправлены на печать.`);
-      }
+      setSuccess(`Принято паллет: ${createdCodes.length}. Нажмите «Открыть паспорт A4».`);
       setStoreForm((prev) => ({
         ...prev,
         palletCode: lastCode,
       }));
-      setReceiveStep("qty");
+      setReceiveStep("print");
       setStoreStep("pallet");
       setSearchCode(lastCode);
     } catch (err) {
@@ -672,7 +669,9 @@ export default function PalletFlow({ authHeaders, onBack }) {
                   ? "Шаг 1 из 3: укажите поставщика."
                   : receiveStep === "inbound"
                     ? "Шаг 2 из 3: укажите машину / ТТН."
-                    : "Шаг 3 из 3: укажите количество паллет."}
+                    : receiveStep === "qty"
+                      ? "Шаг 3 из 3: укажите количество паллет."
+                      : "Паспорта сформированы. Откройте и распечатайте."}
               </div>
               <div className="tsd-card__meta">
                 Поставщик: {String(receiveForm.supplierName || "").trim() || "-"} • Машина/ТТН:{" "}
@@ -800,14 +799,22 @@ export default function PalletFlow({ authHeaders, onBack }) {
                 </div>
               </>
             ) : null}
-            {printFallback.html ? (
+            {receiveStep === "print" ? (
               <div className="tsd-card">
-                <div className="tsd-card__title">Паспорт паллеты готов</div>
+                <div className="tsd-card__title">Паспорта готовы</div>
                 <div className="tsd-card__meta">
                   {printFallback.label ? `${printFallback.label}.` : ""}
-                  Автооткрытие не сработало в мобильном браузере.
+                  Нажмите кнопку, чтобы открыть и распечатать.
                 </div>
-                <div className="tsd-action-inline">
+                <div className="tsd-action-bar">
+                  <button
+                    type="button"
+                    className="tsd-btn tsd-btn--ghost"
+                    onClick={resetReceiveScanFlow}
+                    disabled={loading}
+                  >
+                    Новая приемка
+                  </button>
                   <button
                     type="button"
                     className="tsd-btn tsd-btn--primary tsd-btn--center"

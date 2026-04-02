@@ -4708,7 +4708,7 @@ app.get("/api/profile", auth, async (req, res) => {
                 * { box-sizing: border-box; }
                 body { margin: 0; font-family: Arial, sans-serif; color: #0f172a; background: #fff; }
                 .page {
-                  min-height: 277mm;
+                  min-height: 260mm;
                   border: 2px solid #0f3f7a;
                   border-radius: 8px;
                   padding: 12mm;
@@ -4808,7 +4808,7 @@ app.get("/api/profile", auth, async (req, res) => {
                 .join("")}
               <div class="print-actions">
                 <button class="print-btn" onclick="window.print()">Печать</button>
-                <button class="print-btn" onclick="returnToApp()">Назад</button>
+                <button class="print-btn" onclick="returnToApp()">Закрыть</button>
               </div>
               <script>
                 function returnToApp() {
@@ -4822,7 +4822,7 @@ app.get("/api/profile", auth, async (req, res) => {
                     window.history.back();
                     return;
                   }
-                  window.location.href = "/warehouse";
+                  window.location.href = "/warehouse?section=tsd";
                 }
                 (function () {
                   const images = Array.from(document.images || []);
@@ -4930,7 +4930,7 @@ app.get("/api/profile", auth, async (req, res) => {
               </div>
               <div class="print-actions">
                 <button class="print-btn" onclick="window.print()">Печать</button>
-                <button class="print-btn" onclick="returnToApp()">Назад</button>
+                <button class="print-btn" onclick="returnToApp()">Закрыть</button>
               </div>
               <script>
                 function returnToApp() {
@@ -4944,7 +4944,7 @@ app.get("/api/profile", auth, async (req, res) => {
                     window.history.back();
                     return;
                   }
-                  window.location.href = "/warehouse";
+                  window.location.href = "/warehouse?section=tsd";
                 }
                 (function () {
                   const images = Array.from(document.images || []);
