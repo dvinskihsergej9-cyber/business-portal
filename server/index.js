@@ -887,10 +887,24 @@ function toIsoDateOrNull(value) {
 }
 
 function isPermissionDeniedForTable(err, tableName) {
-  const message = String(err?.message || "").toLowerCase();
+  const joined = [
+    String(err?.message || ""),
+    String(err?.stack || ""),
+    String(err?.cause?.message || ""),
+    String(err?.meta?.cause || ""),
+    (() => {
+      try {
+        return JSON.stringify(err || {});
+      } catch {
+        return "";
+      }
+    })(),
+  ]
+    .join(" ")
+    .toLowerCase();
   const table = String(tableName || "").trim().toLowerCase();
-  if (!table) return message.includes("permission denied for table");
-  return message.includes(`permission denied for table ${table}`);
+  if (!table) return joined.includes("permission denied for table");
+  return joined.includes(`permission denied for table ${table}`);
 }
 
 async function generateUniquePalletCode(orgId, tx = prisma) {
@@ -4091,6 +4105,9 @@ app.post("/api/login", async (req, res) => {
     }
     if (isPermissionDeniedForTable(err, "Organization")) {
       return res.status(500).json({ message: "AUTH_DB_PERMISSION_ORG_TABLE" });
+    }
+    if (String(err?.name || "").includes("PrismaClientUnknownRequestError")) {
+      return res.status(500).json({ message: "AUTH_DB_QUERY_ERROR" });
     }
     console.error("login error:", err);
     res.status(500).json({ message: "Ошибка сервера при входе" });
