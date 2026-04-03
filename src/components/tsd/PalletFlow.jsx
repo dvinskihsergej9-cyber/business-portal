@@ -171,6 +171,35 @@ export default function PalletFlow({ authHeaders, onBack, showInternalBack = tru
     setSuccess("");
   };
 
+  const resetToCrossdockStart = () => {
+    setActiveTab("receive");
+    setReceiveStep("supplier");
+    setReceiveForm(INITIAL_RECEIVE_FORM);
+    setPrintFallback({ label: "", html: "" });
+    setStoreStep("pallet");
+    setStoreForm(INITIAL_STORE_FORM);
+    setDispatchStep("setup");
+    setDispatchForm(INITIAL_DISPATCH_FORM);
+    setRouteSheetItems([]);
+    setRouteSheetSummary(null);
+    setActiveReceivePalletCodes([]);
+    receiveSubmitLockRef.current = false;
+    storeSubmitLockRef.current = false;
+    dispatchSubmitLockRef.current = false;
+    lastStoreSubmitRef.current = { key: "", at: 0 };
+    lastDispatchSubmitRef.current = { key: "", at: 0 };
+  };
+
+  const handleFlowError = (rawError, fallbackMessage) => {
+    const message =
+      typeof rawError === "string"
+        ? rawError
+        : normalizeErrorMessage(rawError, fallbackMessage || "Ошибка в кросс-докинге.");
+    setSuccess("");
+    setError(message);
+    resetToCrossdockStart();
+  };
+
   const resetStoreScanFlow = () => {
     setStoreStep("pallet");
     setStoreForm(INITIAL_STORE_FORM);
@@ -369,7 +398,7 @@ export default function PalletFlow({ authHeaders, onBack, showInternalBack = tru
       setStoreStep("pallet");
       setSearchCode(lastCode);
     } catch (err) {
-      setError(normalizeErrorMessage(err, "Ошибка приемки паллеты."));
+      handleFlowError(err, "Ошибка приемки паллеты.");
     } finally {
       receiveSubmitLockRef.current = false;
       setLoading(false);
@@ -428,7 +457,7 @@ export default function PalletFlow({ authHeaders, onBack, showInternalBack = tru
       }));
       setSearchCode(palletCode);
     } catch (err) {
-      setError(normalizeErrorMessage(err, "Ошибка размещения паллеты."));
+      handleFlowError(err, "Ошибка размещения паллеты.");
     } finally {
       storeSubmitLockRef.current = false;
       setLoading(false);
@@ -494,7 +523,7 @@ export default function PalletFlow({ authHeaders, onBack, showInternalBack = tru
       await loadDispatchSheet({ silent: true, locationCodeOverride: "" });
       setSearchCode(palletCode);
     } catch (err) {
-      setError(normalizeErrorMessage(err, "Ошибка отгрузки паллеты."));
+      handleFlowError(err, "Ошибка отгрузки паллеты.");
     } finally {
       dispatchSubmitLockRef.current = false;
       setLoading(false);
@@ -578,7 +607,7 @@ export default function PalletFlow({ authHeaders, onBack, showInternalBack = tru
       }
       setRecentItems(Array.isArray(data?.items) ? data.items : []);
     } catch (err) {
-      setError(normalizeErrorMessage(err, "Ошибка загрузки списка паллет."));
+      handleFlowError(err, "Ошибка загрузки списка паллет.");
     } finally {
       setRecentLoading(false);
     }
@@ -763,7 +792,7 @@ export default function PalletFlow({ authHeaders, onBack, showInternalBack = tru
                     className="tsd-btn tsd-btn--primary"
                     onClick={() => {
                       if (!String(receiveForm.supplierName || "").trim()) {
-                        setError("Укажите поставщика.");
+                        handleFlowError("Укажите поставщика.");
                         return;
                       }
                       clearAlerts();
@@ -800,7 +829,7 @@ export default function PalletFlow({ authHeaders, onBack, showInternalBack = tru
                     className="tsd-btn tsd-btn--primary"
                     onClick={() => {
                       if (!String(receiveForm.inboundRef || "").trim()) {
-                        setError("Укажите машину/ТТН.");
+                        handleFlowError("Укажите машину/ТТН.");
                         return;
                       }
                       clearAlerts();
@@ -905,7 +934,7 @@ export default function PalletFlow({ authHeaders, onBack, showInternalBack = tru
                   const scannedPalletCode = normalizePalletCode(value);
                   if (!scannedPalletCode) return;
                   if (!activeReceivePalletCodes.includes(scannedPalletCode)) {
-                    setError(
+                    handleFlowError(
                       "Эта паллета не относится к текущей приемке. Отсканируйте паллету из текущих паспортов."
                     );
                     return;
@@ -944,8 +973,7 @@ export default function PalletFlow({ authHeaders, onBack, showInternalBack = tru
                     if (!scannedLocationCode) return;
                     const normalizedPalletCode = normalizePalletCode(storeForm.palletCode);
                     if (!normalizedPalletCode) {
-                      setError("Сначала отсканируйте паллету.");
-                      setStoreStep("pallet");
+                      handleFlowError("Сначала отсканируйте паллету.");
                       return;
                     }
                     setStoreForm((prev) => ({ ...prev, locationCode: scannedLocationCode }));
@@ -1063,7 +1091,7 @@ export default function PalletFlow({ authHeaders, onBack, showInternalBack = tru
                         clearAlerts();
                         await loadDispatchSheet();
                       } catch (err) {
-                        setError(normalizeErrorMessage(err, "Не удалось загрузить маршрутный лист."));
+                        handleFlowError(err, "Не удалось загрузить маршрутный лист.");
                       }
                     }}
                     disabled={loading || routeSheetLoading}
@@ -1082,7 +1110,7 @@ export default function PalletFlow({ authHeaders, onBack, showInternalBack = tru
                         await loadDispatchSheet({ silent: true });
                         setDispatchStep("location");
                       } catch (err) {
-                        setError(normalizeErrorMessage(err, "Не удалось начать отгрузку."));
+                        handleFlowError(err, "Не удалось начать отгрузку.");
                       }
                     }}
                     disabled={loading || routeSheetLoading}
@@ -1191,14 +1219,12 @@ export default function PalletFlow({ authHeaders, onBack, showInternalBack = tru
                     if (!scannedPalletCode) return;
                     const locationCode = normalizeLocationCode(dispatchForm.locationCode);
                     if (!locationCode) {
-                      setError("Сначала отсканируйте ячейку отбора.");
-                      setDispatchStep("location");
+                      handleFlowError("Сначала отсканируйте ячейку отбора.");
                       return;
                     }
                     const destinationRc = String(dispatchForm.destinationRc || "").trim();
                     if (!destinationRc) {
-                      setError("Сначала укажите РЦ назначения.");
-                      setDispatchStep("setup");
+                      handleFlowError("Сначала укажите РЦ назначения.");
                       return;
                     }
                     setDispatchForm((prev) => ({ ...prev, palletCode: scannedPalletCode }));
@@ -1229,7 +1255,7 @@ export default function PalletFlow({ authHeaders, onBack, showInternalBack = tru
                   setSearchCode(code);
                   await loadHistoryByCode(code);
                 } catch (err) {
-                  setError(normalizeErrorMessage(err, "Не удалось найти паллету."));
+                  handleFlowError(err, "Не удалось найти паллету.");
                 }
               }}
               disabled={historyLoading}
@@ -1251,7 +1277,7 @@ export default function PalletFlow({ authHeaders, onBack, showInternalBack = tru
                     clearAlerts();
                     await loadHistoryByCode(searchCode);
                   } catch (err) {
-                    setError(normalizeErrorMessage(err, "Не удалось найти паллету."));
+                    handleFlowError(err, "Не удалось найти паллету.");
                   }
                 }}
                 disabled={historyLoading}
@@ -1385,7 +1411,7 @@ export default function PalletFlow({ authHeaders, onBack, showInternalBack = tru
                         setSearchCode(item.palletCode || "");
                         await loadHistoryByCode(item.palletCode || "");
                       } catch (err) {
-                        setError(normalizeErrorMessage(err, "Не удалось открыть паллету."));
+                        handleFlowError(err, "Не удалось открыть паллету.");
                       }
                     }}
                   >
