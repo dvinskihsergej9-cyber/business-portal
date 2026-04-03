@@ -2694,6 +2694,16 @@ export default function Warehouse({
   useEffect(() => {
     const handleTopBack = (event) => {
       if (!section) return;
+      if (section === "crossdock") {
+        const crossdockEvent = new CustomEvent("crossdock:back-request", { cancelable: true });
+        window.dispatchEvent(crossdockEvent);
+        if (crossdockEvent.defaultPrevented) {
+          if (typeof event?.preventDefault === "function") {
+            event.preventDefault();
+          }
+          return;
+        }
+      }
       closeSection();
       if (typeof event?.preventDefault === "function") {
         event.preventDefault();
@@ -4127,7 +4137,11 @@ export default function Warehouse({
 
       {sectionSet.has("crossdock") && section === "crossdock" && (
         <div className="tsd-section">
-          <PalletFlow authHeaders={authHeaders} onBack={closeSection} />
+          <PalletFlow
+            authHeaders={authHeaders}
+            onBack={closeSection}
+            showInternalBack={false}
+          />
         </div>
       )}
 

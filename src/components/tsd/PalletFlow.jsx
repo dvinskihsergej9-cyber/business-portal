@@ -1,5 +1,6 @@
 ﻿import { useEffect, useMemo, useRef, useState } from "react";
 import { API_BASE, normalizeErrorMessage } from "../../apiConfig";
+import { useCallback } from "react";
 import { openHtmlDocumentInNewTab } from "../../utils/openInNewTab";
 import Scanner from "./Scanner";
 import TsdErrorAlert from "./TsdErrorAlert";
@@ -132,7 +133,7 @@ function mapPalletError(code, fallback = "Не удалось выполнить
   return fallback;
 }
 
-export default function PalletFlow({ authHeaders, onBack }) {
+export default function PalletFlow({ authHeaders, onBack, showInternalBack = true }) {
   const [activeTab, setActiveTab] = useState("receive");
   const [loading, setLoading] = useState(false);
   const [historyLoading, setHistoryLoading] = useState(false);
@@ -606,8 +607,9 @@ export default function PalletFlow({ authHeaders, onBack }) {
   );
   const strictStepLock = activeTab === "store" || (activeTab === "dispatch" && dispatchStep !== "setup");
 
-  const handleHeaderBack = () => {
-    clearAlerts();
+  const handleHeaderBack = useCallback(() => {
+    setError("");
+    setSuccess("");
 
     if (activeTab === "receive") {
       if (receiveStep === "inbound") {
@@ -630,7 +632,8 @@ export default function PalletFlow({ authHeaders, onBack }) {
         setStoreForm((prev) => ({ ...prev, locationCode: "" }));
         return;
       }
-      resetStoreScanFlow();
+      setStoreStep("pallet");
+      setStoreForm(INITIAL_STORE_FORM);
       setActiveTab("receive");
       return;
     }
@@ -658,7 +661,19 @@ export default function PalletFlow({ authHeaders, onBack }) {
     if (typeof onBack === "function") {
       onBack();
     }
-  };
+  }, [activeTab, dispatchStep, onBack, receiveStep, storeStep]);
+
+  useEffect(() => {
+    const handleExternalBack = (event) => {
+      handleHeaderBack();
+      if (typeof event?.preventDefault === "function") {
+        event.preventDefault();
+      }
+    };
+
+    window.addEventListener("crossdock:back-request", handleExternalBack);
+    return () => window.removeEventListener("crossdock:back-request", handleExternalBack);
+  }, [handleHeaderBack]);
 
   return (
     <>
@@ -666,6 +681,7 @@ export default function PalletFlow({ authHeaders, onBack }) {
         title="Кросс-докинг"
         subtitle="Паллетный контур: приемка, размещение, отгрузка"
         onBack={handleHeaderBack}
+        showBackButton={showInternalBack}
       />
 
       {!strictStepLock ? (
