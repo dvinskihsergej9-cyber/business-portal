@@ -146,7 +146,7 @@ export default function PalletFlow({ authHeaders, onBack }) {
   const [storeForm, setStoreForm] = useState(INITIAL_STORE_FORM);
   const [dispatchForm, setDispatchForm] = useState(INITIAL_DISPATCH_FORM);
   const [storeStep, setStoreStep] = useState("pallet");
-  const [dispatchStep, setDispatchStep] = useState("location");
+  const [dispatchStep, setDispatchStep] = useState("setup");
 
   const [searchCode, setSearchCode] = useState("");
   const [searchStatus, setSearchStatus] = useState("");
@@ -178,12 +178,10 @@ export default function PalletFlow({ authHeaders, onBack }) {
   };
 
   const resetDispatchScanFlow = () => {
-    setDispatchStep("location");
-    setDispatchForm((prev) => ({
-      ...prev,
-      locationCode: "",
-      palletCode: "",
-    }));
+    setDispatchStep("setup");
+    setDispatchForm(INITIAL_DISPATCH_FORM);
+    setRouteSheetItems([]);
+    setRouteSheetSummary(null);
   };
 
   const openPrintFallback = () => {
@@ -594,7 +592,7 @@ export default function PalletFlow({ authHeaders, onBack }) {
     ],
     []
   );
-  const strictStepLock = activeTab === "store" || activeTab === "dispatch";
+  const strictStepLock = activeTab === "store" || (activeTab === "dispatch" && dispatchStep !== "setup");
 
   return (
     <>
@@ -884,88 +882,220 @@ export default function PalletFlow({ authHeaders, onBack }) {
             <div className="tsd-card">
               <div className="tsd-card__title">Пошаговая отгрузка</div>
               <div className="tsd-card__meta">
-                {dispatchStep === "location"
-                  ? "Шаг 1 из 2: отсканируйте ячейку отбора."
-                  : "Шаг 2 из 2: отсканируйте паллету для подтверждения отгрузки."}
+                {dispatchStep === "setup"
+                  ? "Шаг 1 из 3: задайте параметры маршрутного листа."
+                  : dispatchStep === "location"
+                    ? "Шаг 2 из 3: отсканируйте ячейку отбора."
+                    : "Шаг 3 из 3: отсканируйте паллету для подтверждения отгрузки."}
               </div>
               <div className="tsd-card__meta">
-                Ячейка: {dispatchForm.locationCode || "-"} • Паллета: {dispatchForm.palletCode || "-"}
+                РЦ: {dispatchForm.destinationRc || "-"} • Ячейка: {dispatchForm.locationCode || "-"} •
+                Паллета: {dispatchForm.palletCode || "-"}
               </div>
             </div>
-            <div className="tsd-qty-input">
-              <label className="tsd-scanner__label">РЦ назначения *</label>
-              <input
-                className="tsd-input"
-                value={dispatchForm.destinationRc}
-                onChange={(event) =>
-                  setDispatchForm((prev) => ({ ...prev, destinationRc: event.target.value }))
-                }
-                placeholder="Например, РЦ-ЮГ-02"
-                disabled={loading}
-              />
-            </div>
-            <div className="tsd-inline tsd-inline--two">
-              <div>
-                <label className="tsd-scanner__label">Маршрут</label>
-                <input
-                  className="tsd-input"
-                  value={dispatchForm.route}
-                  onChange={(event) =>
-                    setDispatchForm((prev) => ({ ...prev, route: event.target.value }))
-                  }
-                  placeholder="Маршрут"
-                  disabled={loading}
-                />
-              </div>
-              <div>
-                <label className="tsd-scanner__label">Машина</label>
-                <input
-                  className="tsd-input"
-                  value={dispatchForm.vehicle}
-                  onChange={(event) =>
-                    setDispatchForm((prev) => ({ ...prev, vehicle: event.target.value }))
-                  }
-                  placeholder="Гос. номер"
-                  disabled={loading}
-                />
-              </div>
-            </div>
-            {dispatchStep === "location" ? (
-              <Scanner
-                label="Шаг 1. Скан ячейки отбора"
-                hint="Отсканируйте текущую ячейку паллеты перед отгрузкой"
-                manualPlaceholder="Код ячейки"
-                onScan={async (value) => {
-                  const scannedLocationCode = normalizeLocationCode(value);
-                  if (!scannedLocationCode) return;
-                  setDispatchForm((prev) => ({
-                    ...prev,
-                    locationCode: scannedLocationCode,
-                    palletCode: "",
-                  }));
-                  setDispatchStep("pallet");
-                  setSuccess("Успешно");
-                }}
-                disabled={loading}
-                autoStart
-                scanKind="barcode"
-                showManual={false}
-              />
+            {dispatchStep === "setup" ? (
+              <>
+                <div className="tsd-info">
+                  <div className="tsd-info__title">Планирование листа</div>
+                  <div className="tsd-info__text">
+                    Сначала задайте РЦ и маршрут, загрузите маршрутный лист, затем переходите в скан-режим.
+                  </div>
+                </div>
+                <div className="tsd-qty-input">
+                  <label className="tsd-scanner__label">РЦ назначения *</label>
+                  <input
+                    className="tsd-input"
+                    value={dispatchForm.destinationRc}
+                    onChange={(event) =>
+                      setDispatchForm((prev) => ({ ...prev, destinationRc: event.target.value }))
+                    }
+                    placeholder="Например, РЦ-ЮГ-02"
+                    disabled={loading}
+                  />
+                </div>
+                <div className="tsd-inline tsd-inline--two">
+                  <div>
+                    <label className="tsd-scanner__label">Маршрут</label>
+                    <input
+                      className="tsd-input"
+                      value={dispatchForm.route}
+                      onChange={(event) =>
+                        setDispatchForm((prev) => ({ ...prev, route: event.target.value }))
+                      }
+                      placeholder="Маршрут"
+                      disabled={loading}
+                    />
+                  </div>
+                  <div>
+                    <label className="tsd-scanner__label">Машина</label>
+                    <input
+                      className="tsd-input"
+                      value={dispatchForm.vehicle}
+                      onChange={(event) =>
+                        setDispatchForm((prev) => ({ ...prev, vehicle: event.target.value }))
+                      }
+                      placeholder="Гос. номер"
+                      disabled={loading}
+                    />
+                  </div>
+                </div>
+                <div className="tsd-qty-input">
+                  <label className="tsd-scanner__label">Водитель (необязательно)</label>
+                  <input
+                    className="tsd-input"
+                    value={dispatchForm.driver}
+                    onChange={(event) =>
+                      setDispatchForm((prev) => ({ ...prev, driver: event.target.value }))
+                    }
+                    placeholder="ФИО водителя"
+                    disabled={loading}
+                  />
+                </div>
+                <div className="tsd-qty-input">
+                  <label className="tsd-scanner__label">Комментарий (необязательно)</label>
+                  <textarea
+                    className="tsd-input"
+                    rows={3}
+                    value={dispatchForm.notes}
+                    onChange={(event) =>
+                      setDispatchForm((prev) => ({ ...prev, notes: event.target.value }))
+                    }
+                    placeholder="Комментарий к отгрузке"
+                    disabled={loading}
+                  />
+                </div>
+                <div className="tsd-action-bar">
+                  <button
+                    type="button"
+                    className="tsd-btn tsd-btn--secondary"
+                    onClick={async () => {
+                      try {
+                        clearAlerts();
+                        await loadDispatchSheet();
+                      } catch (err) {
+                        setError(normalizeErrorMessage(err, "Не удалось загрузить маршрутный лист."));
+                      }
+                    }}
+                    disabled={loading || routeSheetLoading}
+                  >
+                    {routeSheetLoading ? "Загружаем лист..." : "Показать маршрутный лист"}
+                  </button>
+                  <button
+                    type="button"
+                    className="tsd-btn tsd-btn--primary"
+                    onClick={async () => {
+                      try {
+                        clearAlerts();
+                        if (!String(dispatchForm.destinationRc || "").trim()) {
+                          throw new Error("Укажите РЦ назначения.");
+                        }
+                        await loadDispatchSheet({ silent: true });
+                        setDispatchStep("location");
+                      } catch (err) {
+                        setError(normalizeErrorMessage(err, "Не удалось начать отгрузку."));
+                      }
+                    }}
+                    disabled={loading || routeSheetLoading}
+                  >
+                    Начать отгрузку
+                  </button>
+                </div>
+                {routeSheetSummary ? (
+                  <div className="tsd-card">
+                    <div className="tsd-card__title">
+                      Маршрутный лист: {dispatchForm.route ? dispatchForm.route : "без номера"}
+                    </div>
+                    <div className="tsd-card__meta">РЦ назначения: {dispatchForm.destinationRc || "-"}</div>
+                    <div className="tsd-card__meta">Паллет к отбору: {routeSheetSummary.total || 0}</div>
+                  </div>
+                ) : null}
+                {routeSheetItems.length ? (
+                  <div className="tsd-list">
+                    {routeSheetItems.map((item) => (
+                      <button
+                        key={item.id}
+                        type="button"
+                        className={`tsd-card tsd-pallet-list-btn ${
+                          dispatchForm.palletCode === item.palletCode ? "tsd-route-sheet-item--active" : ""
+                        }`}
+                        onClick={() => {
+                          setDispatchForm((prev) => ({
+                            ...prev,
+                            palletCode: item.palletCode || "",
+                            locationCode: item.currentLocation?.code || "",
+                          }));
+                          setDispatchStep("location");
+                          setSuccess("Успешно");
+                        }}
+                      >
+                        <div className="tsd-card__title">{item.palletCode}</div>
+                        <div className="tsd-card__meta">Ячейка: {item.currentLocation?.code || "-"}</div>
+                        <div className="tsd-card__meta">Куда везти: {dispatchForm.destinationRc || "-"}</div>
+                        <div className="tsd-card__meta">
+                          Поставщик: {item.supplierName || "-"} • Машина/ТТН: {item.inboundRef || "-"}
+                        </div>
+                      </button>
+                    ))}
+                  </div>
+                ) : null}
+              </>
             ) : null}
+
+            {dispatchStep === "location" ? (
+              <>
+                <div className="tsd-action-inline">
+                  <button
+                    type="button"
+                    className="tsd-btn tsd-btn--ghost tsd-btn--center"
+                    onClick={() => {
+                      setDispatchStep("setup");
+                      setDispatchForm((prev) => ({ ...prev, locationCode: "", palletCode: "" }));
+                    }}
+                    disabled={loading}
+                  >
+                    Назад к параметрам
+                  </button>
+                </div>
+                <Scanner
+                  label="Шаг 2. Скан ячейки отбора"
+                  hint="Отсканируйте текущую ячейку паллеты перед отгрузкой"
+                  manualPlaceholder="Код ячейки"
+                  onScan={async (value) => {
+                    const scannedLocationCode = normalizeLocationCode(value);
+                    if (!scannedLocationCode) return;
+                    setDispatchForm((prev) => ({
+                      ...prev,
+                      locationCode: scannedLocationCode,
+                      palletCode: "",
+                    }));
+                    setDispatchStep("pallet");
+                    setSuccess("Успешно");
+                  }}
+                  disabled={loading}
+                  autoStart
+                  scanKind="barcode"
+                  showManual={false}
+                />
+              </>
+            ) : null}
+
             {dispatchStep === "pallet" ? (
               <>
                 <div className="tsd-action-inline">
                   <button
                     type="button"
                     className="tsd-btn tsd-btn--ghost tsd-btn--center"
-                    onClick={resetDispatchScanFlow}
+                    onClick={() => {
+                      setDispatchStep("location");
+                      setDispatchForm((prev) => ({ ...prev, palletCode: "" }));
+                    }}
                     disabled={loading}
                   >
                     Сканировать другую ячейку
                   </button>
                 </div>
                 <Scanner
-                  label="Шаг 2. Скан паллеты"
+                  label="Шаг 3. Скан паллеты"
                   hint={`Ячейка ${dispatchForm.locationCode || "-"} принята. Сканируйте паллету.`}
                   manualPlaceholder="bp:pallet:PLT-..."
                   onScan={async (value) => {
@@ -980,6 +1110,7 @@ export default function PalletFlow({ authHeaders, onBack }) {
                     const destinationRc = String(dispatchForm.destinationRc || "").trim();
                     if (!destinationRc) {
                       setError("Сначала укажите РЦ назначения.");
+                      setDispatchStep("setup");
                       return;
                     }
                     setDispatchForm((prev) => ({ ...prev, palletCode: scannedPalletCode }));
@@ -993,86 +1124,6 @@ export default function PalletFlow({ authHeaders, onBack }) {
                   showManual={false}
                 />
               </>
-            ) : null}
-            <div className="tsd-action-bar">
-              <button
-                type="button"
-                className="tsd-btn tsd-btn--secondary"
-                onClick={async () => {
-                  try {
-                    clearAlerts();
-                    await loadDispatchSheet();
-                  } catch (err) {
-                    setError(normalizeErrorMessage(err, "Не удалось загрузить маршрутный лист."));
-                  }
-                }}
-                disabled={loading || routeSheetLoading}
-              >
-                {routeSheetLoading ? "Загружаем лист..." : "Показать маршрутный лист"}
-              </button>
-            </div>
-            <div className="tsd-qty-input">
-              <label className="tsd-scanner__label">Водитель (необязательно)</label>
-              <input
-                className="tsd-input"
-                value={dispatchForm.driver}
-                onChange={(event) =>
-                  setDispatchForm((prev) => ({ ...prev, driver: event.target.value }))
-                }
-                placeholder="ФИО водителя"
-                disabled={loading}
-              />
-            </div>
-            <div className="tsd-qty-input">
-              <label className="tsd-scanner__label">Комментарий (необязательно)</label>
-              <textarea
-                className="tsd-input"
-                rows={3}
-                value={dispatchForm.notes}
-                onChange={(event) =>
-                  setDispatchForm((prev) => ({ ...prev, notes: event.target.value }))
-                }
-                placeholder="Комментарий к отгрузке"
-                disabled={loading}
-              />
-            </div>
-            {routeSheetSummary ? (
-              <div className="tsd-card">
-                <div className="tsd-card__title">
-                  Маршрутный лист: {dispatchForm.route ? dispatchForm.route : "без номера"}
-                </div>
-                <div className="tsd-card__meta">РЦ назначения: {dispatchForm.destinationRc || "-"}</div>
-                <div className="tsd-card__meta">Паллет к отбору: {routeSheetSummary.total || 0}</div>
-              </div>
-            ) : null}
-            {routeSheetItems.length ? (
-              <div className="tsd-list">
-                {routeSheetItems.map((item) => (
-                  <button
-                    key={item.id}
-                    type="button"
-                    className={`tsd-card tsd-pallet-list-btn ${
-                      dispatchForm.palletCode === item.palletCode ? "tsd-route-sheet-item--active" : ""
-                    }`}
-                    onClick={() => {
-                      setDispatchForm((prev) => ({
-                        ...prev,
-                        palletCode: item.palletCode || "",
-                        locationCode: item.currentLocation?.code || prev.locationCode || "",
-                      }));
-                      setDispatchStep("pallet");
-                      setSuccess("Успешно");
-                    }}
-                  >
-                    <div className="tsd-card__title">{item.palletCode}</div>
-                    <div className="tsd-card__meta">Ячейка: {item.currentLocation?.code || "-"}</div>
-                    <div className="tsd-card__meta">Куда везти: {dispatchForm.destinationRc || "-"}</div>
-                    <div className="tsd-card__meta">
-                      Поставщик: {item.supplierName || "-"} • Машина/ТТН: {item.inboundRef || "-"}
-                    </div>
-                  </button>
-                ))}
-              </div>
             ) : null}
           </div>
         ) : null}
