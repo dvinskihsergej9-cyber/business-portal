@@ -385,6 +385,7 @@ export const WAREHOUSE_SECTION_PERMISSION_MAP = Object.freeze(
       ])
     ),
     items: PERMISSION_KEYS.WAREHOUSE_LOCATIONS,
+    crossdock: PERMISSION_KEYS.WAREHOUSE_TSD,
     holds: PERMISSION_KEYS.WAREHOUSE_MANAGE,
   }
 );
