@@ -760,9 +760,9 @@ export default function PalletFlow({ authHeaders, onBack, showInternalBack = tru
                       clearAlerts();
                       setReceiveStep("inbound");
                     }}
-                    disabled={loading}
+                    disabled={loading || !String(receiveForm.supplierName || "").trim()}
                   >
-                    Далее: машина / ТТН
+                    Далее
                   </button>
                 </div>
               </>
@@ -794,9 +794,9 @@ export default function PalletFlow({ authHeaders, onBack, showInternalBack = tru
                       clearAlerts();
                       setReceiveStep("qty");
                     }}
-                    disabled={loading}
+                    disabled={loading || !String(receiveForm.inboundRef || "").trim()}
                   >
-                    Далее: количество
+                    Далее
                   </button>
                 </div>
               </>
@@ -824,7 +824,14 @@ export default function PalletFlow({ authHeaders, onBack, showInternalBack = tru
                     type="button"
                     className="tsd-btn tsd-btn--primary"
                     onClick={handleReceiveSubmit}
-                    disabled={loading}
+                    disabled={
+                      loading ||
+                      !String(receiveForm.supplierName || "").trim() ||
+                      !String(receiveForm.inboundRef || "").trim() ||
+                      !Number.isInteger(Number.parseInt(String(receiveForm.qty || "").trim(), 10)) ||
+                      Number.parseInt(String(receiveForm.qty || "").trim(), 10) < 1 ||
+                      Number.parseInt(String(receiveForm.qty || "").trim(), 10) > 30
+                    }
                   >
                     {loading ? "Создаем..." : "Создать и напечатать"}
                   </button>
@@ -888,7 +895,6 @@ export default function PalletFlow({ authHeaders, onBack, showInternalBack = tru
                     locationCode: "",
                   }));
                   setStoreStep("location");
-                  setSuccess("Успешно");
                 }}
                 disabled={loading}
                 autoStart
@@ -1085,7 +1091,6 @@ export default function PalletFlow({ authHeaders, onBack, showInternalBack = tru
                             locationCode: item.currentLocation?.code || "",
                           }));
                           setDispatchStep("location");
-                          setSuccess("Успешно");
                         }}
                       >
                         <div className="tsd-card__title">{item.palletCode}</div>
@@ -1129,7 +1134,6 @@ export default function PalletFlow({ authHeaders, onBack, showInternalBack = tru
                       palletCode: "",
                     }));
                     setDispatchStep("pallet");
-                    setSuccess("Успешно");
                   }}
                   disabled={loading}
                   autoStart
