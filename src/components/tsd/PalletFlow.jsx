@@ -21,6 +21,20 @@ const PALLET_EVENT_LABELS = {
   CANCEL: "Отмена",
 };
 
+const ROUTE_SHEET_STATUS_LABELS = {
+  DRAFT: "Черновик",
+  PUBLISHED: "Опубликован",
+  LOADING: "В погрузке",
+  COMPLETED: "Завершен",
+  CANCELLED: "Отменен",
+};
+
+const ROUTE_SHEET_ITEM_STATUS_LABELS = {
+  PLANNED: "К погрузке",
+  LOADED: "Погружена",
+  CANCELLED: "Убрана",
+};
+
 const INITIAL_RECEIVE_FORM = {
   supplierName: "",
   inboundRef: "",
@@ -42,12 +56,30 @@ const INITIAL_DISPATCH_FORM = {
   notes: "",
 };
 
+const INITIAL_PLANNING_FORM = {
+  clientName: "",
+  destinationRc: "",
+  route: "",
+  vehicle: "",
+  driver: "",
+  plannedDate: "",
+  notes: "",
+};
+
 function statusLabel(status) {
   return PALLET_STATUS_LABELS[String(status || "").trim()] || String(status || "-");
 }
 
 function eventTypeLabel(type) {
   return PALLET_EVENT_LABELS[String(type || "").trim()] || String(type || "-");
+}
+
+function routeSheetStatusLabel(status) {
+  return ROUTE_SHEET_STATUS_LABELS[String(status || "").trim()] || String(status || "-");
+}
+
+function routeSheetItemStatusLabel(status) {
+  return ROUTE_SHEET_ITEM_STATUS_LABELS[String(status || "").trim()] || String(status || "-");
 }
 
 function formatDateTime(value) {
@@ -128,6 +160,38 @@ function mapPalletError(code, fallback = "Не удалось выполнить
     return "Состояние паллеты изменилось другим сотрудником. Обновите данные.";
   if (normalized === "PALLET_DISPATCH_SHEET_ERROR")
     return "Не удалось загрузить маршрутный лист.";
+  if (normalized === "ROUTE_SHEET_NOT_FOUND") return "Маршрутный лист не найден.";
+  if (normalized === "ROUTE_SHEET_ID_REQUIRED") return "Не указан маршрутный лист.";
+  if (normalized === "ROUTE_SHEET_STATUS_INVALID")
+    return "Маршрутный лист в неподходящем статусе для этого действия.";
+  if (normalized === "ROUTE_SHEET_CLIENT_REQUIRED") return "Укажите клиента.";
+  if (normalized === "ROUTE_SHEET_VEHICLE_REQUIRED") return "Укажите номер машины.";
+  if (normalized === "ROUTE_SHEET_DRIVER_REQUIRED") return "Укажите водителя.";
+  if (normalized === "ROUTE_SHEET_DATE_REQUIRED") return "Укажите дату отгрузки.";
+  if (normalized === "ROUTE_SHEET_EMPTY")
+    return "Нельзя выгрузить пустой маршрутный лист. Добавьте паллеты.";
+  if (normalized === "ROUTE_SHEET_PALLET_NOT_STORED")
+    return "Некоторые паллеты уже не в статусе «Размещена». Обновите список.";
+  if (normalized === "ROUTE_SHEET_PALLET_ALREADY_PLANNED")
+    return "Некоторые паллеты уже включены в другой активный маршрутный лист.";
+  if (normalized === "ROUTE_SHEET_PALLET_NOT_IN_SHEET")
+    return "Эта паллета не входит в выбранный маршрутный лист.";
+  if (normalized === "ROUTE_SHEET_PALLET_ALREADY_LOADED")
+    return "Эта паллета уже погружена по выбранному маршрутному листу.";
+  if (normalized === "ROUTE_SHEET_ITEM_NOT_FOUND") return "Позиция маршрутного листа не найдена.";
+  if (normalized === "ROUTE_SHEET_ITEM_STATUS_INVALID")
+    return "Позиция маршрутного листа в неподходящем статусе.";
+  if (normalized === "ROUTE_SHEET_LIST_ERROR") return "Не удалось загрузить список маршрутных листов.";
+  if (normalized === "ROUTE_SHEET_DETAIL_ERROR") return "Не удалось загрузить маршрутный лист.";
+  if (normalized === "ROUTE_SHEET_CREATE_ERROR") return "Не удалось создать маршрутный лист.";
+  if (normalized === "ROUTE_SHEET_ADD_ITEMS_ERROR")
+    return "Не удалось добавить паллеты в маршрутный лист.";
+  if (normalized === "ROUTE_SHEET_REMOVE_ITEM_ERROR")
+    return "Не удалось удалить паллету из маршрутного листа.";
+  if (normalized === "ROUTE_SHEET_PUBLISH_ERROR")
+    return "Не удалось выгрузить маршрутный лист на склад.";
+  if (normalized === "ROUTE_SHEET_DISPATCH_ERROR")
+    return "Не удалось выполнить отгрузку по маршрутному листу.";
   if (normalized.startsWith("DATE_")) return "Проверьте корректность даты фильтра.";
   return fallback;
 }
@@ -155,12 +219,25 @@ export default function PalletFlow({ authHeaders, onBack, showInternalBack = tru
   const [searchCode, setSearchCode] = useState("");
   const [searchStatus, setSearchStatus] = useState("");
   const [searchQuery, setSearchQuery] = useState("");
+  const [searchView, setSearchView] = useState("list");
   const [historyPallet, setHistoryPallet] = useState(null);
   const [historyEvents, setHistoryEvents] = useState([]);
   const [historyCollapsed, setHistoryCollapsed] = useState(false);
   const [selectedPalletId, setSelectedPalletId] = useState(null);
   const [recentItems, setRecentItems] = useState([]);
   const [recentLoading, setRecentLoading] = useState(false);
+  const [planningForm, setPlanningForm] = useState(INITIAL_PLANNING_FORM);
+  const [planningSheet, setPlanningSheet] = useState(null);
+  const [planningSheets, setPlanningSheets] = useState([]);
+  const [planningSheetsLoading, setPlanningSheetsLoading] = useState(false);
+  const [planningCandidates, setPlanningCandidates] = useState([]);
+  const [planningCandidatesLoading, setPlanningCandidatesLoading] = useState(false);
+  const [planningCandidateQuery, setPlanningCandidateQuery] = useState("");
+  const [planningSelectedCodes, setPlanningSelectedCodes] = useState([]);
+  const [planningBusy, setPlanningBusy] = useState(false);
+  const [dispatchSheets, setDispatchSheets] = useState([]);
+  const [dispatchSheetsLoading, setDispatchSheetsLoading] = useState(false);
+  const [dispatchRouteSheetId, setDispatchRouteSheetId] = useState(null);
   const [routeSheetItems, setRouteSheetItems] = useState([]);
   const [routeSheetSummary, setRouteSheetSummary] = useState(null);
   const [routeSheetLoading, setRouteSheetLoading] = useState(false);
@@ -180,8 +257,17 @@ export default function PalletFlow({ authHeaders, onBack, showInternalBack = tru
     setStoreForm(INITIAL_STORE_FORM);
     setDispatchStep("setup");
     setDispatchForm(INITIAL_DISPATCH_FORM);
+    setDispatchRouteSheetId(null);
+    setDispatchSheets([]);
     setRouteSheetItems([]);
     setRouteSheetSummary(null);
+    setPlanningForm(INITIAL_PLANNING_FORM);
+    setPlanningSheet(null);
+    setPlanningSheets([]);
+    setPlanningCandidates([]);
+    setPlanningCandidateQuery("");
+    setPlanningSelectedCodes([]);
+    setSearchView("list");
     setActiveReceivePalletCodes([]);
     receiveSubmitLockRef.current = false;
     storeSubmitLockRef.current = false;
@@ -214,6 +300,7 @@ export default function PalletFlow({ authHeaders, onBack, showInternalBack = tru
   const resetDispatchScanFlow = () => {
     setDispatchStep("setup");
     setDispatchForm(INITIAL_DISPATCH_FORM);
+    setDispatchRouteSheetId(null);
     setRouteSheetItems([]);
     setRouteSheetSummary(null);
   };
@@ -230,6 +317,30 @@ export default function PalletFlow({ authHeaders, onBack, showInternalBack = tru
       const url = URL.createObjectURL(blob);
       window.location.href = url;
       window.setTimeout(() => URL.revokeObjectURL(url), 60_000);
+    }
+  };
+
+  const printPalletPassports = async (palletCodes) => {
+    clearAlerts();
+    setLoading(true);
+    try {
+      const printReady = await buildPalletLabelsBatchHtml(palletCodes);
+      setPrintFallback(printReady);
+      try {
+        openHtmlDocumentInNewTab(printReady.html, {
+          popupBlockedMessage:
+            "Не удалось открыть новый таб. Документ откроется в текущем окне.",
+        });
+      } catch {
+        const blob = new Blob([printReady.html], { type: "text/html;charset=utf-8" });
+        const url = URL.createObjectURL(blob);
+        window.location.href = url;
+        window.setTimeout(() => URL.revokeObjectURL(url), 60_000);
+      }
+    } catch (err) {
+      handleFlowError(err, "Не удалось подготовить паспорт паллеты.");
+    } finally {
+      setLoading(false);
     }
   };
 
@@ -481,11 +592,11 @@ export default function PalletFlow({ authHeaders, onBack, showInternalBack = tru
       );
       if (!locationCode) throw new Error("Отсканируйте ячейку отбора.");
       if (!palletCode) throw new Error("Отсканируйте паллету.");
-      const destinationRc = String(dispatchForm.destinationRc || "").trim();
-      if (!destinationRc) {
-        throw new Error("Укажите РЦ назначения.");
+      const routeSheetId = Number(dispatchRouteSheetId || 0);
+      if (!routeSheetId) {
+        throw new Error("Сначала выберите маршрутный лист.");
       }
-      const dedupeKey = `${locationCode}|${palletCode}|${destinationRc}`;
+      const dedupeKey = `${routeSheetId}|${locationCode}|${palletCode}`;
       const now = Date.now();
       if (
         lastDispatchSubmitRef.current.key === dedupeKey &&
@@ -495,17 +606,12 @@ export default function PalletFlow({ authHeaders, onBack, showInternalBack = tru
       }
       lastDispatchSubmitRef.current = { key: dedupeKey, at: now };
 
-      const response = await fetch(`${API_BASE}/pallets/dispatch`, {
+      const response = await fetch(`${API_BASE}/pallets/route-sheets/${routeSheetId}/dispatch`, {
         method: "POST",
         headers: authHeaders,
         body: JSON.stringify({
           locationCode,
           palletCode,
-          destinationRc,
-          route: dispatchForm.route || null,
-          vehicle: dispatchForm.vehicle || null,
-          driver: dispatchForm.driver || null,
-          notes: dispatchForm.notes || null,
         }),
       });
       const data = await readJsonSafe(response);
@@ -514,13 +620,36 @@ export default function PalletFlow({ authHeaders, onBack, showInternalBack = tru
       }
 
       setSuccess("Успешно");
-      setDispatchStep("location");
+      const updatedSheet = data?.routeSheet || null;
+      if (updatedSheet) {
+        setRouteSheetItems(Array.isArray(updatedSheet.items) ? updatedSheet.items : []);
+        setRouteSheetSummary(updatedSheet.summary || null);
+        setDispatchForm((prev) => ({
+          ...prev,
+          destinationRc: updatedSheet.destinationRc || "",
+          route: updatedSheet.route || "",
+          vehicle: updatedSheet.vehicle || "",
+          driver: updatedSheet.driver || "",
+          notes: updatedSheet.notes || "",
+        }));
+        if (updatedSheet.status === "COMPLETED") {
+          setDispatchStep("setup");
+          setDispatchRouteSheetId(null);
+          setRouteSheetItems([]);
+          setRouteSheetSummary(null);
+          await loadDispatchSheets();
+        } else {
+          setDispatchStep("location");
+        }
+      } else {
+        setDispatchStep("location");
+        await loadRouteSheetDetails(routeSheetId, { target: "dispatch", silent: true });
+      }
       setDispatchForm((prev) => ({
         ...prev,
         palletCode: "",
         locationCode: "",
       }));
-      await loadDispatchSheet({ silent: true, locationCodeOverride: "" });
       setSearchCode(palletCode);
     } catch (err) {
       handleFlowError(err, "Ошибка отгрузки паллеты.");
@@ -530,43 +659,269 @@ export default function PalletFlow({ authHeaders, onBack, showInternalBack = tru
     }
   };
 
-  const loadDispatchSheet = async ({ silent = false, locationCodeOverride = null } = {}) => {
-    const destinationRc = String(dispatchForm.destinationRc || "").trim();
-    if (!destinationRc) {
+  const loadRouteSheetDetails = async (routeSheetId, { target = "dispatch", silent = false } = {}) => {
+    const normalizedRouteSheetId = Number(routeSheetId || 0);
+    if (!normalizedRouteSheetId) {
       if (!silent) {
-        throw new Error("Укажите РЦ назначения, чтобы получить маршрутный лист.");
+        throw new Error("Маршрутный лист не выбран.");
       }
-      return;
+      return null;
     }
     setRouteSheetLoading(true);
     try {
-      const params = new URLSearchParams();
-      params.set("destinationRc", destinationRc);
-      if (dispatchForm.route) params.set("route", String(dispatchForm.route).trim());
-      const locationCode =
-        locationCodeOverride == null ? dispatchForm.locationCode : locationCodeOverride;
-      if (locationCode) {
-        params.set("locationCode", normalizeLocationCode(locationCode));
-      }
-      const response = await fetch(`${API_BASE}/pallets/dispatch-sheet?${params.toString()}`, {
+      const response = await fetch(`${API_BASE}/pallets/route-sheets/${normalizedRouteSheetId}`, {
         headers: authHeaders,
       });
       const data = await readJsonSafe(response);
       if (!response.ok) {
         throw new Error(mapPalletError(data?.message, "Не удалось загрузить маршрутный лист."));
       }
-      const items = Array.isArray(data?.items) ? data.items : [];
-      setRouteSheetItems(items);
-      setRouteSheetSummary(data?.summary || { total: items.length, byLocation: [] });
-      if (!silent && !items.length) {
-        setSuccess("Маршрутный лист пуст.");
+      const routeSheet = data?.routeSheet || null;
+      if (!routeSheet) {
+        throw new Error("Маршрутный лист не найден.");
       }
+      const items = Array.isArray(routeSheet.items) ? routeSheet.items : [];
+      const summary = routeSheet.summary || {
+        total: items.length,
+        planned: items.filter((item) => item.status === "PLANNED").length,
+        loaded: items.filter((item) => item.status === "LOADED").length,
+        cancelled: items.filter((item) => item.status === "CANCELLED").length,
+        remainingToLoad: items.filter((item) => item.status === "PLANNED").length,
+      };
+      setRouteSheetItems(items);
+      setRouteSheetSummary(summary);
+      if (target === "planning") {
+        setPlanningSheet(routeSheet);
+      }
+      if (target === "dispatch") {
+        setDispatchRouteSheetId(routeSheet.id);
+        setDispatchForm((prev) => ({
+          ...prev,
+          destinationRc: routeSheet.destinationRc || "",
+          route: routeSheet.route || "",
+          vehicle: routeSheet.vehicle || "",
+          driver: routeSheet.driver || "",
+          notes: routeSheet.notes || "",
+        }));
+      }
+      return routeSheet;
     } finally {
       setRouteSheetLoading(false);
     }
   };
 
-  const loadHistoryByCode = async (rawCode) => {
+  const loadPlanningSheets = async () => {
+    setPlanningSheetsLoading(true);
+    try {
+      const params = new URLSearchParams();
+      params.set("statuses", "DRAFT,PUBLISHED,LOADING,COMPLETED");
+      params.set("limit", "120");
+      const response = await fetch(`${API_BASE}/pallets/route-sheets?${params.toString()}`, {
+        headers: authHeaders,
+      });
+      const data = await readJsonSafe(response);
+      if (!response.ok) {
+        throw new Error(mapPalletError(data?.message, "Не удалось загрузить маршрутные листы."));
+      }
+      setPlanningSheets(Array.isArray(data?.items) ? data.items : []);
+    } catch (err) {
+      handleFlowError(err, "Не удалось загрузить маршрутные листы.");
+    } finally {
+      setPlanningSheetsLoading(false);
+    }
+  };
+
+  const loadDispatchSheets = async () => {
+    setDispatchSheetsLoading(true);
+    try {
+      const params = new URLSearchParams();
+      params.set("statuses", "PUBLISHED,LOADING");
+      params.set("limit", "80");
+      const response = await fetch(`${API_BASE}/pallets/route-sheets?${params.toString()}`, {
+        headers: authHeaders,
+      });
+      const data = await readJsonSafe(response);
+      if (!response.ok) {
+        throw new Error(mapPalletError(data?.message, "Не удалось загрузить маршрутные листы."));
+      }
+      setDispatchSheets(Array.isArray(data?.items) ? data.items : []);
+    } catch (err) {
+      handleFlowError(err, "Не удалось загрузить маршрутные листы.");
+    } finally {
+      setDispatchSheetsLoading(false);
+    }
+  };
+
+  const createPlanningRouteSheet = async () => {
+    setPlanningBusy(true);
+    try {
+      clearAlerts();
+      const payload = {
+        clientName: String(planningForm.clientName || "").trim(),
+        destinationRc: String(planningForm.destinationRc || "").trim(),
+        route: String(planningForm.route || "").trim() || null,
+        vehicle: String(planningForm.vehicle || "").trim().toUpperCase(),
+        driver: String(planningForm.driver || "").trim(),
+        plannedDate: planningForm.plannedDate ? new Date(planningForm.plannedDate).toISOString() : "",
+        notes: String(planningForm.notes || "").trim() || null,
+      };
+      const response = await fetch(`${API_BASE}/pallets/route-sheets`, {
+        method: "POST",
+        headers: authHeaders,
+        body: JSON.stringify(payload),
+      });
+      const data = await readJsonSafe(response);
+      if (!response.ok) {
+        throw new Error(mapPalletError(data?.message, "Не удалось создать маршрутный лист."));
+      }
+      const routeSheet = data?.routeSheet || null;
+      if (!routeSheet?.id) {
+        throw new Error("Маршрутный лист создан, но карточка не получена.");
+      }
+      setPlanningSheet(routeSheet);
+      setPlanningSelectedCodes([]);
+      setPlanningCandidates([]);
+      setPlanningCandidateQuery("");
+      setSuccess("Маршрутный лист создан.");
+      await loadPlanningSheets();
+      await loadRouteSheetDetails(routeSheet.id, { target: "planning", silent: true });
+    } catch (err) {
+      handleFlowError(err, "Не удалось создать маршрутный лист.");
+    } finally {
+      setPlanningBusy(false);
+    }
+  };
+
+  const loadPlanningCandidates = async () => {
+    setPlanningCandidatesLoading(true);
+    try {
+      const params = new URLSearchParams();
+      params.set("status", "STORED");
+      if (planningCandidateQuery) {
+        params.set("q", planningCandidateQuery.trim());
+      }
+      const response = await fetch(`${API_BASE}/pallets?${params.toString()}`, {
+        headers: authHeaders,
+      });
+      const data = await readJsonSafe(response);
+      if (!response.ok) {
+        throw new Error(mapPalletError(data?.message, "Не удалось загрузить паллеты для МЛ."));
+      }
+      const items = Array.isArray(data?.items) ? data.items : [];
+      const plannedCodes = new Set(
+        Array.isArray(planningSheet?.items)
+          ? planningSheet.items
+              .filter((item) => item?.status === "PLANNED")
+              .map((item) => normalizePalletCode(item?.pallet?.palletCode || ""))
+              .filter(Boolean)
+          : []
+      );
+      setPlanningCandidates(
+        items.filter((item) => !plannedCodes.has(normalizePalletCode(item?.palletCode || "")))
+      );
+    } catch (err) {
+      handleFlowError(err, "Не удалось загрузить паллеты для МЛ.");
+    } finally {
+      setPlanningCandidatesLoading(false);
+    }
+  };
+
+  const addSelectedPalletsToPlanningSheet = async () => {
+    const routeSheetId = Number(planningSheet?.id || 0);
+    if (!routeSheetId) {
+      handleFlowError("Сначала создайте или выберите маршрутный лист.");
+      return;
+    }
+    const palletCodes = planningSelectedCodes
+      .map((code) => normalizePalletCode(code))
+      .filter(Boolean);
+    if (!palletCodes.length) {
+      handleFlowError("Выберите хотя бы одну паллету для добавления.");
+      return;
+    }
+
+    setPlanningBusy(true);
+    try {
+      clearAlerts();
+      const response = await fetch(`${API_BASE}/pallets/route-sheets/${routeSheetId}/items`, {
+        method: "POST",
+        headers: authHeaders,
+        body: JSON.stringify({ palletCodes }),
+      });
+      const data = await readJsonSafe(response);
+      if (!response.ok) {
+        throw new Error(mapPalletError(data?.message, "Не удалось добавить паллеты в маршрутный лист."));
+      }
+      setPlanningSelectedCodes([]);
+      setSuccess("Паллеты добавлены в маршрутный лист.");
+      await loadRouteSheetDetails(routeSheetId, { target: "planning", silent: true });
+      await loadPlanningCandidates();
+      await loadPlanningSheets();
+    } catch (err) {
+      handleFlowError(err, "Не удалось добавить паллеты в маршрутный лист.");
+    } finally {
+      setPlanningBusy(false);
+    }
+  };
+
+  const removePlanningSheetItem = async (itemId) => {
+    const routeSheetId = Number(planningSheet?.id || 0);
+    const normalizedItemId = Number(itemId || 0);
+    if (!routeSheetId || !normalizedItemId) return;
+    setPlanningBusy(true);
+    try {
+      clearAlerts();
+      const response = await fetch(
+        `${API_BASE}/pallets/route-sheets/${routeSheetId}/items/${normalizedItemId}`,
+        {
+          method: "DELETE",
+          headers: authHeaders,
+        }
+      );
+      const data = await readJsonSafe(response);
+      if (!response.ok) {
+        throw new Error(mapPalletError(data?.message, "Не удалось удалить паллету из маршрутного листа."));
+      }
+      setSuccess("Паллета удалена из маршрутного листа.");
+      await loadRouteSheetDetails(routeSheetId, { target: "planning", silent: true });
+      await loadPlanningCandidates();
+      await loadPlanningSheets();
+    } catch (err) {
+      handleFlowError(err, "Не удалось удалить паллету из маршрутного листа.");
+    } finally {
+      setPlanningBusy(false);
+    }
+  };
+
+  const publishPlanningSheet = async () => {
+    const routeSheetId = Number(planningSheet?.id || 0);
+    if (!routeSheetId) {
+      handleFlowError("Маршрутный лист не выбран.");
+      return;
+    }
+    setPlanningBusy(true);
+    try {
+      clearAlerts();
+      const response = await fetch(`${API_BASE}/pallets/route-sheets/${routeSheetId}/publish`, {
+        method: "POST",
+        headers: authHeaders,
+      });
+      const data = await readJsonSafe(response);
+      if (!response.ok) {
+        throw new Error(mapPalletError(data?.message, "Не удалось выгрузить маршрутный лист на склад."));
+      }
+      setPlanningSheet(data?.routeSheet || null);
+      setSuccess("Маршрутный лист выгружен на склад.");
+      await loadPlanningSheets();
+      await loadDispatchSheets();
+    } catch (err) {
+      handleFlowError(err, "Не удалось выгрузить маршрутный лист на склад.");
+    } finally {
+      setPlanningBusy(false);
+    }
+  };
+
+  const loadHistoryByCode = async (rawCode, { openDetail = true } = {}) => {
     const palletCode = normalizePalletCode(rawCode);
     if (!palletCode) {
       throw new Error("Отсканируйте код паллеты.");
@@ -586,6 +941,9 @@ export default function PalletFlow({ authHeaders, onBack, showInternalBack = tru
       setHistoryEvents(Array.isArray(data?.events) ? data.events : []);
       setHistoryCollapsed(false);
       setSelectedPalletId(data?.pallet?.id || null);
+      if (openDetail) {
+        setSearchView("detail");
+      }
       return data?.pallet || null;
     } finally {
       setHistoryLoading(false);
@@ -615,16 +973,30 @@ export default function PalletFlow({ authHeaders, onBack, showInternalBack = tru
 
   useEffect(() => {
     if (activeTab !== "search") return;
+    if (searchView !== "list") return;
     loadRecentPallets();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [activeTab, searchStatus, searchQuery]);
+  }, [activeTab, searchStatus, searchQuery, searchView]);
 
   useEffect(() => {
     if (activeTab !== "dispatch") return;
-    if (String(dispatchForm.destinationRc || "").trim()) return;
-    setRouteSheetItems([]);
-    setRouteSheetSummary(null);
-  }, [activeTab, dispatchForm.destinationRc]);
+    loadDispatchSheets();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [activeTab]);
+
+  useEffect(() => {
+    if (activeTab !== "planning") return;
+    loadPlanningSheets();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [activeTab]);
+
+  useEffect(() => {
+    if (activeTab !== "planning") return;
+    if (!planningSheet?.id) return;
+    if (planningSheet.status !== "DRAFT") return;
+    loadPlanningCandidates();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [activeTab, planningSheet?.id, planningSheet?.status]);
 
   useEffect(() => {
     if (!success) return;
@@ -638,6 +1010,7 @@ export default function PalletFlow({ authHeaders, onBack, showInternalBack = tru
     () => [
       { id: "receive", label: "Приемка" },
       { id: "store", label: "Размещение" },
+      { id: "planning", label: "Планирование МЛ" },
       { id: "dispatch", label: "Отгрузка" },
       { id: "search", label: "Поиск" },
     ],
@@ -687,11 +1060,33 @@ export default function PalletFlow({ authHeaders, onBack, showInternalBack = tru
         setDispatchForm((prev) => ({ ...prev, locationCode: "", palletCode: "" }));
         return;
       }
+      if (dispatchRouteSheetId) {
+        setDispatchRouteSheetId(null);
+        setRouteSheetItems([]);
+        setRouteSheetSummary(null);
+        setDispatchForm(INITIAL_DISPATCH_FORM);
+        return;
+      }
+      setActiveTab("receive");
+      return;
+    }
+
+    if (activeTab === "planning") {
+      if (planningSheet?.id) {
+        setPlanningSheet(null);
+        setPlanningSelectedCodes([]);
+        setPlanningCandidates([]);
+        return;
+      }
       setActiveTab("receive");
       return;
     }
 
     if (activeTab === "search") {
+      if (searchView === "detail") {
+        setSearchView("list");
+        return;
+      }
       setActiveTab("receive");
       return;
     }
@@ -699,7 +1094,16 @@ export default function PalletFlow({ authHeaders, onBack, showInternalBack = tru
     if (typeof onBack === "function") {
       onBack();
     }
-  }, [activeTab, dispatchStep, onBack, receiveStep, storeStep]);
+  }, [
+    activeTab,
+    dispatchRouteSheetId,
+    dispatchStep,
+    onBack,
+    planningSheet,
+    receiveStep,
+    searchView,
+    storeStep,
+  ]);
 
   useEffect(() => {
     const handleExternalBack = (event) => {
@@ -739,6 +1143,15 @@ export default function PalletFlow({ authHeaders, onBack, showInternalBack = tru
                 }
                 if (tab.id === "dispatch") {
                   resetDispatchScanFlow();
+                }
+                if (tab.id === "planning") {
+                  setPlanningSheet(null);
+                  setPlanningSelectedCodes([]);
+                  setPlanningCandidates([]);
+                  setPlanningCandidateQuery("");
+                }
+                if (tab.id === "search") {
+                  setSearchView("list");
                 }
                 setActiveTab(tab.id);
               }}
@@ -992,164 +1405,368 @@ export default function PalletFlow({ authHeaders, onBack, showInternalBack = tru
           </div>
         ) : null}
 
-        {activeTab === "dispatch" ? (
+        {activeTab === "planning" ? (
           <div className="tsd-list">
-            <div className="tsd-card">
-              <div className="tsd-card__title">Пошаговая отгрузка</div>
-              <div className="tsd-card__meta">
-                {dispatchStep === "setup"
-                  ? "Шаг 1 из 3: задайте параметры маршрутного листа."
-                  : dispatchStep === "location"
-                    ? "Шаг 2 из 3: отсканируйте ячейку отбора."
-                    : "Шаг 3 из 3: отсканируйте паллету для подтверждения отгрузки."}
-              </div>
-              <div className="tsd-card__meta">
-                РЦ: {dispatchForm.destinationRc || "-"} • Ячейка: {dispatchForm.locationCode || "-"} •
-                Паллета: {dispatchForm.palletCode || "-"}
-              </div>
-            </div>
-            {dispatchStep === "setup" ? (
+            {!planningSheet?.id ? (
               <>
-                <div className="tsd-info">
-                  <div className="tsd-info__title">Планирование листа</div>
-                  <div className="tsd-info__text">
-                    Сначала задайте РЦ и маршрут, загрузите маршрутный лист, затем переходите в скан-режим.
+                <div className="tsd-card">
+                  <div className="tsd-card__title">Планирование маршрутного листа</div>
+                  <div className="tsd-card__meta">
+                    Заполните рейс, затем добавьте паллеты и выгрузите МЛ на склад.
                   </div>
                 </div>
                 <div className="tsd-qty-input">
-                  <label className="tsd-scanner__label">РЦ назначения *</label>
+                  <label className="tsd-scanner__label">Клиент *</label>
                   <input
                     className="tsd-input"
-                    value={dispatchForm.destinationRc}
+                    value={planningForm.clientName}
                     onChange={(event) =>
-                      setDispatchForm((prev) => ({ ...prev, destinationRc: event.target.value }))
+                      setPlanningForm((prev) => ({ ...prev, clientName: event.target.value }))
                     }
-                    placeholder="Например, РЦ-ЮГ-02"
-                    disabled={loading}
+                    placeholder="Клиент"
+                    disabled={planningBusy}
                   />
                 </div>
                 <div className="tsd-inline tsd-inline--two">
-                  <div>
-                    <label className="tsd-scanner__label">Маршрут</label>
-                    <input
-                      className="tsd-input"
-                      value={dispatchForm.route}
-                      onChange={(event) =>
-                        setDispatchForm((prev) => ({ ...prev, route: event.target.value }))
-                      }
-                      placeholder="Маршрут"
-                      disabled={loading}
-                    />
-                  </div>
-                  <div>
-                    <label className="tsd-scanner__label">Машина</label>
-                    <input
-                      className="tsd-input"
-                      value={dispatchForm.vehicle}
-                      onChange={(event) =>
-                        setDispatchForm((prev) => ({
-                          ...prev,
-                          vehicle: String(event.target.value || "").toUpperCase(),
-                        }))
-                      }
-                      placeholder="Гос. номер"
-                      disabled={loading}
-                    />
-                  </div>
-                </div>
-                <div className="tsd-qty-input">
-                  <label className="tsd-scanner__label">Водитель (необязательно)</label>
                   <input
                     className="tsd-input"
-                    value={dispatchForm.driver}
+                    value={planningForm.destinationRc}
                     onChange={(event) =>
-                      setDispatchForm((prev) => ({ ...prev, driver: event.target.value }))
+                      setPlanningForm((prev) => ({ ...prev, destinationRc: event.target.value }))
                     }
-                    placeholder="ФИО водителя"
-                    disabled={loading}
+                    placeholder="РЦ назначения *"
+                    disabled={planningBusy}
+                  />
+                  <input
+                    className="tsd-input"
+                    type="date"
+                    value={planningForm.plannedDate}
+                    onChange={(event) =>
+                      setPlanningForm((prev) => ({ ...prev, plannedDate: event.target.value }))
+                    }
+                    disabled={planningBusy}
+                  />
+                </div>
+                <div className="tsd-inline tsd-inline--two">
+                  <input
+                    className="tsd-input"
+                    value={planningForm.vehicle}
+                    onChange={(event) =>
+                      setPlanningForm((prev) => ({
+                        ...prev,
+                        vehicle: String(event.target.value || "").toUpperCase(),
+                      }))
+                    }
+                    placeholder="Машина *"
+                    disabled={planningBusy}
+                  />
+                  <input
+                    className="tsd-input"
+                    value={planningForm.driver}
+                    onChange={(event) =>
+                      setPlanningForm((prev) => ({ ...prev, driver: event.target.value }))
+                    }
+                    placeholder="Водитель *"
+                    disabled={planningBusy}
                   />
                 </div>
                 <div className="tsd-qty-input">
-                  <label className="tsd-scanner__label">Комментарий (необязательно)</label>
+                  <input
+                    className="tsd-input"
+                    value={planningForm.route}
+                    onChange={(event) =>
+                      setPlanningForm((prev) => ({ ...prev, route: event.target.value }))
+                    }
+                    placeholder="Маршрут (необязательно)"
+                    disabled={planningBusy}
+                  />
+                </div>
+                <div className="tsd-qty-input">
                   <textarea
                     className="tsd-input"
-                    rows={3}
-                    value={dispatchForm.notes}
+                    rows={2}
+                    value={planningForm.notes}
                     onChange={(event) =>
-                      setDispatchForm((prev) => ({ ...prev, notes: event.target.value }))
+                      setPlanningForm((prev) => ({ ...prev, notes: event.target.value }))
                     }
-                    placeholder="Комментарий к отгрузке"
-                    disabled={loading}
+                    placeholder="Комментарий к маршруту (необязательно)"
+                    disabled={planningBusy}
                   />
                 </div>
                 <div className="tsd-action-bar">
                   <button
                     type="button"
-                    className="tsd-btn tsd-btn--secondary"
-                    onClick={async () => {
-                      try {
-                        clearAlerts();
-                        await loadDispatchSheet();
-                      } catch (err) {
-                        handleFlowError(err, "Не удалось загрузить маршрутный лист.");
-                      }
-                    }}
-                    disabled={loading || routeSheetLoading}
+                    className="tsd-btn tsd-btn--primary"
+                    onClick={createPlanningRouteSheet}
+                    disabled={planningBusy}
                   >
-                    {routeSheetLoading ? "Загружаем лист..." : "Показать маршрутный лист"}
+                    {planningBusy ? "Создаем..." : "Создать МЛ"}
                   </button>
                   <button
                     type="button"
-                    className="tsd-btn tsd-btn--primary"
-                    onClick={async () => {
-                      try {
-                        clearAlerts();
-                        if (!String(dispatchForm.destinationRc || "").trim()) {
-                          throw new Error("Укажите РЦ назначения.");
-                        }
-                        await loadDispatchSheet({ silent: true });
-                        setDispatchStep("location");
-                      } catch (err) {
-                        handleFlowError(err, "Не удалось начать отгрузку.");
-                      }
-                    }}
-                    disabled={loading || routeSheetLoading}
+                    className="tsd-btn tsd-btn--secondary"
+                    onClick={loadPlanningSheets}
+                    disabled={planningSheetsLoading}
                   >
-                    Начать отгрузку
+                    {planningSheetsLoading ? "Обновляем..." : "Обновить список МЛ"}
                   </button>
                 </div>
-                {routeSheetSummary ? (
-                  <div className="tsd-card">
-                    <div className="tsd-card__title">
-                      Маршрутный лист: {dispatchForm.route ? dispatchForm.route : "без номера"}
-                    </div>
-                    <div className="tsd-card__meta">РЦ назначения: {dispatchForm.destinationRc || "-"}</div>
-                    <div className="tsd-card__meta">Паллет к отбору: {routeSheetSummary.total || 0}</div>
+                {planningSheets.length ? (
+                  <div className="tsd-list">
+                    {planningSheets
+                      .filter((sheet) => ["DRAFT", "PUBLISHED", "LOADING"].includes(sheet.status))
+                      .map((sheet) => (
+                        <button
+                          key={sheet.id}
+                          type="button"
+                          className="tsd-card tsd-pallet-list-btn"
+                          onClick={async () => {
+                            try {
+                              clearAlerts();
+                              await loadRouteSheetDetails(sheet.id, { target: "planning" });
+                            } catch (err) {
+                              handleFlowError(err, "Не удалось открыть маршрутный лист.");
+                            }
+                          }}
+                        >
+                          <div className="tsd-card__title">{sheet.sheetNumber}</div>
+                          <div className="tsd-card__meta">
+                            {routeSheetStatusLabel(sheet.status)} • Клиент: {sheet.clientName || "-"}
+                          </div>
+                          <div className="tsd-card__meta">
+                            К погрузке: {sheet.summary?.planned || 0} • Погружено:{" "}
+                            {sheet.summary?.loaded || 0}
+                          </div>
+                        </button>
+                      ))}
                   </div>
                 ) : null}
-                {routeSheetItems.length ? (
-                  <div className="tsd-list">
-                    {routeSheetItems.map((item) => (
+              </>
+            ) : (
+              <>
+                <div className="tsd-card">
+                  <div className="tsd-inline tsd-inline--two">
+                    <div className="tsd-card__title">МЛ {planningSheet.sheetNumber}</div>
+                    <button
+                      type="button"
+                      className="tsd-btn tsd-btn--ghost"
+                      onClick={() => {
+                        setPlanningSheet(null);
+                        setPlanningSelectedCodes([]);
+                        setPlanningCandidates([]);
+                      }}
+                    >
+                      К списку
+                    </button>
+                  </div>
+                  <div className="tsd-card__meta">
+                    {routeSheetStatusLabel(planningSheet.status)} • Клиент: {planningSheet.clientName || "-"}
+                  </div>
+                  <div className="tsd-card__meta">
+                    РЦ: {planningSheet.destinationRc || "-"} • Машина: {planningSheet.vehicle || "-"}
+                  </div>
+                  <div className="tsd-card__meta">
+                    К погрузке: {planningSheet.summary?.planned || 0} • Погружено:{" "}
+                    {planningSheet.summary?.loaded || 0}
+                  </div>
+                </div>
+
+                {planningSheet.status === "DRAFT" ? (
+                  <>
+                    <div className="tsd-inline tsd-inline--two">
+                      <input
+                        className="tsd-input"
+                        value={planningCandidateQuery}
+                        onChange={(event) => setPlanningCandidateQuery(event.target.value)}
+                        placeholder="Поиск паллет: код, поставщик, ТТН"
+                        disabled={planningCandidatesLoading || planningBusy}
+                      />
                       <button
-                        key={item.id}
+                        type="button"
+                        className="tsd-btn tsd-btn--secondary"
+                        onClick={loadPlanningCandidates}
+                        disabled={planningCandidatesLoading || planningBusy}
+                      >
+                        {planningCandidatesLoading ? "Загружаем..." : "Найти паллеты"}
+                      </button>
+                    </div>
+
+                    {planningCandidates.length ? (
+                      <div className="tsd-list">
+                        {planningCandidates.slice(0, 120).map((item) => {
+                          const code = normalizePalletCode(item?.palletCode || "");
+                          const checked = planningSelectedCodes.includes(code);
+                          return (
+                            <label key={item.id} className="tsd-card tsd-pallet-list-btn">
+                              <div className="tsd-inline tsd-inline--two">
+                                <div className="tsd-card__title">{item.palletCode}</div>
+                                <input
+                                  type="checkbox"
+                                  checked={checked}
+                                  onChange={(event) => {
+                                    setPlanningSelectedCodes((prev) => {
+                                      if (!event.target.checked) return prev.filter((value) => value !== code);
+                                      return prev.includes(code) ? prev : [...prev, code];
+                                    });
+                                  }}
+                                  disabled={planningBusy}
+                                />
+                              </div>
+                              <div className="tsd-card__meta">Ячейка: {item.currentLocation?.code || "-"}</div>
+                              <div className="tsd-card__meta">
+                                Поставщик: {item.supplierName || "-"} • Машина/ТТН: {item.inboundRef || "-"}
+                              </div>
+                            </label>
+                          );
+                        })}
+                      </div>
+                    ) : null}
+
+                    <div className="tsd-action-bar">
+                      <button
+                        type="button"
+                        className="tsd-btn tsd-btn--primary"
+                        onClick={addSelectedPalletsToPlanningSheet}
+                        disabled={planningBusy || !planningSelectedCodes.length}
+                      >
+                        Добавить выбранные ({planningSelectedCodes.length})
+                      </button>
+                      <button
+                        type="button"
+                        className="tsd-btn tsd-btn--secondary"
+                        onClick={publishPlanningSheet}
+                        disabled={planningBusy}
+                      >
+                        Выгрузить МЛ на склад
+                      </button>
+                    </div>
+                  </>
+                ) : null}
+
+                {Array.isArray(planningSheet.items) && planningSheet.items.length ? (
+                  <div className="tsd-list">
+                    {planningSheet.items.map((item) => (
+                      <div key={item.id} className="tsd-card">
+                        <div className="tsd-inline tsd-inline--two">
+                          <div className="tsd-card__title">{item.pallet?.palletCode || "-"}</div>
+                          <div className="tsd-card__meta">{routeSheetItemStatusLabel(item.status)}</div>
+                        </div>
+                        <div className="tsd-card__meta">
+                          Ячейка: {item.pallet?.currentLocation?.code || "-"} • Поставщик:{" "}
+                          {item.pallet?.supplierName || "-"}
+                        </div>
+                        <div className="tsd-card__meta">Добавлена: {formatDateTime(item.plannedAt)}</div>
+                        {planningSheet.status === "DRAFT" && item.status === "PLANNED" ? (
+                          <div className="tsd-action-inline">
+                            <button
+                              type="button"
+                              className="tsd-btn tsd-btn--ghost"
+                              onClick={() => removePlanningSheetItem(item.id)}
+                              disabled={planningBusy}
+                            >
+                              Удалить из МЛ
+                            </button>
+                          </div>
+                        ) : null}
+                      </div>
+                    ))}
+                  </div>
+                ) : null}
+              </>
+            )}
+          </div>
+        ) : null}
+
+        {activeTab === "dispatch" ? (
+          <div className="tsd-list">
+            <div className="tsd-card">
+              <div className="tsd-card__title">Пошаговая отгрузка по МЛ</div>
+              <div className="tsd-card__meta">
+                {dispatchStep === "setup"
+                  ? "Шаг 1 из 3: выберите маршрутный лист."
+                  : dispatchStep === "location"
+                    ? "Шаг 2 из 3: отсканируйте ячейку отбора."
+                    : "Шаг 3 из 3: отсканируйте паллету для подтверждения отгрузки."}
+              </div>
+              <div className="tsd-card__meta">
+                МЛ: {dispatchRouteSheetId || "-"} • РЦ: {dispatchForm.destinationRc || "-"} • Ячейка:{" "}
+                {dispatchForm.locationCode || "-"} • Паллета: {dispatchForm.palletCode || "-"}
+              </div>
+            </div>
+            {dispatchStep === "setup" ? (
+              <>
+                <div className="tsd-action-bar">
+                  <button
+                    type="button"
+                    className="tsd-btn tsd-btn--secondary"
+                    onClick={loadDispatchSheets}
+                    disabled={loading || dispatchSheetsLoading}
+                  >
+                    {dispatchSheetsLoading ? "Обновляем..." : "Обновить МЛ"}
+                  </button>
+                </div>
+
+                {dispatchRouteSheetId && routeSheetSummary ? (
+                  <div className="tsd-card">
+                    <div className="tsd-card__title">Выбранный маршрутный лист #{dispatchRouteSheetId}</div>
+                    <div className="tsd-card__meta">РЦ назначения: {dispatchForm.destinationRc || "-"}</div>
+                    <div className="tsd-card__meta">
+                      Машина: {dispatchForm.vehicle || "-"} • Водитель: {dispatchForm.driver || "-"}
+                    </div>
+                    <div className="tsd-card__meta">
+                      К погрузке: {routeSheetSummary.planned || 0} • Погружено: {routeSheetSummary.loaded || 0}
+                    </div>
+                    <div className="tsd-action-bar">
+                      <button
+                        type="button"
+                        className="tsd-btn tsd-btn--primary"
+                        onClick={() => setDispatchStep("location")}
+                        disabled={loading}
+                      >
+                        Начать отгрузку
+                      </button>
+                      <button
+                        type="button"
+                        className="tsd-btn tsd-btn--ghost"
+                        onClick={() => {
+                          setDispatchRouteSheetId(null);
+                          setDispatchForm(INITIAL_DISPATCH_FORM);
+                          setRouteSheetItems([]);
+                          setRouteSheetSummary(null);
+                        }}
+                        disabled={loading}
+                      >
+                        Сменить МЛ
+                      </button>
+                    </div>
+                  </div>
+                ) : null}
+
+                {dispatchSheets.length ? (
+                  <div className="tsd-list">
+                    {dispatchSheets.map((sheet) => (
+                      <button
+                        key={sheet.id}
                         type="button"
                         className={`tsd-card tsd-pallet-list-btn ${
-                          dispatchForm.palletCode === item.palletCode ? "tsd-route-sheet-item--active" : ""
+                          dispatchRouteSheetId === sheet.id ? "tsd-route-sheet-item--active" : ""
                         }`}
-                        onClick={() => {
-                          setDispatchForm((prev) => ({
-                            ...prev,
-                            palletCode: item.palletCode || "",
-                            locationCode: item.currentLocation?.code || "",
-                          }));
-                          setDispatchStep("location");
+                        onClick={async () => {
+                          try {
+                            clearAlerts();
+                            await loadRouteSheetDetails(sheet.id, { target: "dispatch" });
+                          } catch (err) {
+                            handleFlowError(err, "Не удалось открыть маршрутный лист.");
+                          }
                         }}
                       >
-                        <div className="tsd-card__title">{item.palletCode}</div>
-                        <div className="tsd-card__meta">Ячейка: {item.currentLocation?.code || "-"}</div>
-                        <div className="tsd-card__meta">Куда везти: {dispatchForm.destinationRc || "-"}</div>
+                        <div className="tsd-card__title">{sheet.sheetNumber || `МЛ ${sheet.id}`}</div>
                         <div className="tsd-card__meta">
-                          Поставщик: {item.supplierName || "-"} • Машина/ТТН: {item.inboundRef || "-"}
+                          Статус: {routeSheetStatusLabel(sheet.status)} • Клиент: {sheet.clientName || "-"}
+                        </div>
+                        <div className="tsd-card__meta">РЦ: {sheet.destinationRc || "-"}</div>
+                        <div className="tsd-card__meta">
+                          К погрузке: {sheet.summary?.planned || 0} • Погружено: {sheet.summary?.loaded || 0}
                         </div>
                       </button>
                     ))}
@@ -1170,7 +1787,7 @@ export default function PalletFlow({ authHeaders, onBack, showInternalBack = tru
                     }}
                     disabled={loading}
                   >
-                    Изменить параметры
+                    Сменить МЛ
                   </button>
                 </div>
                 <Scanner
@@ -1222,9 +1839,19 @@ export default function PalletFlow({ authHeaders, onBack, showInternalBack = tru
                       handleFlowError("Сначала отсканируйте ячейку отбора.");
                       return;
                     }
-                    const destinationRc = String(dispatchForm.destinationRc || "").trim();
-                    if (!destinationRc) {
-                      handleFlowError("Сначала укажите РЦ назначения.");
+                    const routeSheetId = Number(dispatchRouteSheetId || 0);
+                    if (!routeSheetId) {
+                      handleFlowError("Сначала выберите маршрутный лист.");
+                      return;
+                    }
+                    const plannedPalletCodes = new Set(
+                      routeSheetItems
+                        .filter((item) => item?.status === "PLANNED")
+                        .map((item) => normalizePalletCode(item?.pallet?.palletCode || ""))
+                        .filter(Boolean)
+                    );
+                    if (!plannedPalletCodes.has(scannedPalletCode)) {
+                      handleFlowError("Эта паллета не входит в выбранный маршрутный лист.");
                       return;
                     }
                     setDispatchForm((prev) => ({ ...prev, palletCode: scannedPalletCode }));
@@ -1244,99 +1871,119 @@ export default function PalletFlow({ authHeaders, onBack, showInternalBack = tru
 
         {activeTab === "search" ? (
           <div className="tsd-list">
-            <Scanner
-              label="Скан паллеты"
-              hint="Сканируйте паллету, чтобы открыть полную историю движения"
-              manualPlaceholder="bp:pallet:PLT-..."
-              onScan={async (value) => {
-                try {
-                  clearAlerts();
-                  const code = normalizePalletCode(value);
-                  setSearchCode(code);
-                  await loadHistoryByCode(code);
-                } catch (err) {
-                  handleFlowError(err, "Не удалось найти паллету.");
-                }
-              }}
-              disabled={historyLoading}
-            />
-
-            <div className="tsd-inline tsd-inline--two">
-              <input
-                className="tsd-input"
-                value={searchCode}
-                onChange={(event) => setSearchCode(event.target.value)}
-                placeholder="Введите palletCode"
-                disabled={historyLoading}
-              />
-              <button
-                type="button"
-                className="tsd-btn tsd-btn--primary"
-                onClick={async () => {
+            {searchView === "list" ? (
+              <Scanner
+                label="Скан паллеты"
+                hint="Сканируйте паллету, чтобы открыть полную историю движения"
+                manualPlaceholder="bp:pallet:PLT-..."
+                onScan={async (value) => {
                   try {
                     clearAlerts();
-                    await loadHistoryByCode(searchCode);
+                    const code = normalizePalletCode(value);
+                    setSearchCode(code);
+                    await loadHistoryByCode(code, { openDetail: true });
                   } catch (err) {
                     handleFlowError(err, "Не удалось найти паллету.");
                   }
                 }}
                 disabled={historyLoading}
-              >
-                {historyLoading ? "Ищем..." : "Найти"}
-              </button>
-            </div>
-
-            <div className="tsd-inline tsd-inline--two">
-              <select
-                className="tsd-input"
-                value={searchStatus}
-                onChange={(event) => setSearchStatus(event.target.value)}
-              >
-                <option value="">Все статусы</option>
-                <option value="RECEIVED">Принята</option>
-                <option value="STORED">Размещена</option>
-                <option value="DISPATCHED">Отгружена</option>
-                <option value="CANCELLED">Отменена</option>
-              </select>
-              <button
-                type="button"
-                className="tsd-btn tsd-btn--secondary"
-                onClick={loadRecentPallets}
-                disabled={recentLoading}
-              >
-                {recentLoading ? "Обновляем..." : "Обновить"}
-              </button>
-            </div>
-            <div className="tsd-inline tsd-inline--two">
-              <input
-                className="tsd-input"
-                value={searchQuery}
-                onChange={(event) => setSearchQuery(event.target.value)}
-                placeholder="Фильтр: код, поставщик, ТТН"
-                disabled={recentLoading}
               />
-              <div className="tsd-card__meta">Найдено: {recentItems.length}</div>
-            </div>
-            <div className="tsd-card">
-              <div className="tsd-card__meta">
-                Фильтр статуса: {searchStatus ? statusLabel(searchStatus) : "все статусы"}
-              </div>
-              <div className="tsd-card__meta">
-                Выберите паллету из списка или отсканируйте код, чтобы открыть карточку.
-              </div>
-            </div>
+            ) : null}
 
-            {historyPallet ? (
+            {searchView === "list" ? (
+              <div className="tsd-inline tsd-inline--two">
+                <input
+                  className="tsd-input"
+                  value={searchCode}
+                  onChange={(event) => setSearchCode(event.target.value)}
+                  placeholder="Введите palletCode"
+                  disabled={historyLoading}
+                />
+                <button
+                  type="button"
+                  className="tsd-btn tsd-btn--primary"
+                  onClick={async () => {
+                    try {
+                      clearAlerts();
+                      await loadHistoryByCode(searchCode, { openDetail: true });
+                    } catch (err) {
+                      handleFlowError(err, "Не удалось найти паллету.");
+                    }
+                  }}
+                  disabled={historyLoading}
+                >
+                  {historyLoading ? "Ищем..." : "Найти"}
+                </button>
+              </div>
+            ) : null}
+
+            {searchView === "list" ? (
+              <>
+                <div className="tsd-inline tsd-inline--two">
+                  <select
+                    className="tsd-input"
+                    value={searchStatus}
+                    onChange={(event) => setSearchStatus(event.target.value)}
+                  >
+                    <option value="">Все статусы</option>
+                    <option value="RECEIVED">Принята</option>
+                    <option value="STORED">Размещена</option>
+                    <option value="DISPATCHED">Отгружена</option>
+                    <option value="CANCELLED">Отменена</option>
+                  </select>
+                  <button
+                    type="button"
+                    className="tsd-btn tsd-btn--secondary"
+                    onClick={loadRecentPallets}
+                    disabled={recentLoading}
+                  >
+                    {recentLoading ? "Обновляем..." : "Обновить"}
+                  </button>
+                </div>
+                <div className="tsd-inline tsd-inline--two">
+                  <input
+                    className="tsd-input"
+                    value={searchQuery}
+                    onChange={(event) => setSearchQuery(event.target.value)}
+                    placeholder="Фильтр: код, поставщик, ТТН"
+                    disabled={recentLoading}
+                  />
+                  <div className="tsd-card__meta">Найдено: {recentItems.length}</div>
+                </div>
+                <div className="tsd-card">
+                  <div className="tsd-card__meta">
+                    Фильтр статуса: {searchStatus ? statusLabel(searchStatus) : "все статусы"}
+                  </div>
+                  <div className="tsd-card__meta">
+                    Выберите паллету из списка или отсканируйте код, чтобы открыть карточку.
+                  </div>
+                </div>
+              </>
+            ) : null}
+
+            {historyPallet && searchView === "detail" ? (
               <div className="tsd-card">
                 <div className="tsd-inline tsd-inline--two">
                   <div className="tsd-card__title">Паллета {historyPallet.palletCode}</div>
-                  <button
-                    type="button"
-                    className="tsd-btn tsd-btn--ghost"
-                    onClick={() => setHistoryCollapsed((prev) => !prev)}
-                  >
-                    {historyCollapsed ? "Развернуть" : "Свернуть"}
-                  </button>
+                  <div className="tsd-inline tsd-inline--two">
+                    <button
+                      type="button"
+                      className="tsd-btn tsd-btn--ghost"
+                      onClick={() => setSearchView("list")}
+                    >
+                      К списку
+                    </button>
+                    <button
+                      type="button"
+                      className="tsd-btn tsd-btn--secondary"
+                      onClick={async () => {
+                        await printPalletPassports([historyPallet.palletCode]);
+                      }}
+                      disabled={loading}
+                    >
+                      Печать паспорта
+                    </button>
+                  </div>
                 </div>
                 {!historyCollapsed ? (
                   <>
@@ -1374,7 +2021,7 @@ export default function PalletFlow({ authHeaders, onBack, showInternalBack = tru
               </div>
             ) : null}
 
-            {historyEvents.length && !historyCollapsed ? (
+            {historyEvents.length && !historyCollapsed && searchView === "detail" ? (
               <div className="tsd-pallet-history">
                 {historyEvents.map((event) => (
                   <div key={event.id} className="tsd-pallet-event">
@@ -1394,7 +2041,7 @@ export default function PalletFlow({ authHeaders, onBack, showInternalBack = tru
               </div>
             ) : null}
 
-            {recentItems.length ? (
+            {recentItems.length && searchView === "list" ? (
               <div className="tsd-list">
                 {recentItems.slice(0, 40).map((item) => (
                   <button
@@ -1409,7 +2056,7 @@ export default function PalletFlow({ authHeaders, onBack, showInternalBack = tru
                         setSelectedPalletId(item.id);
                         setHistoryCollapsed(false);
                         setSearchCode(item.palletCode || "");
-                        await loadHistoryByCode(item.palletCode || "");
+                        await loadHistoryByCode(item.palletCode || "", { openDetail: true });
                       } catch (err) {
                         handleFlowError(err, "Не удалось открыть паллету.");
                       }
