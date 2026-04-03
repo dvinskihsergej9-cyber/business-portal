@@ -108,6 +108,10 @@ function mapPalletError(code, fallback = "Не удалось выполнить
   if (normalized === "PALLET_DESTINATION_REQUIRED") return "Укажите РЦ назначения.";
   if (normalized === "PALLET_STORE_STATUS_INVALID")
     return "Размещение возможно только для принятых/размещенных паллет.";
+  if (normalized === "PALLET_STORE_RECEIVE_EXPIRED")
+    return "Размещение разрешено только для паллет текущей приемки (до 24 часов).";
+  if (normalized === "PALLET_ALREADY_STORED")
+    return "Паллета уже размещена. Повторное размещение через этот шаг недоступно.";
   if (normalized === "PALLET_DISPATCH_STATUS_INVALID")
     return "Отгрузить можно только паллету в статусе «Размещена».";
   if (normalized === "PALLET_LOCATION_MISMATCH")

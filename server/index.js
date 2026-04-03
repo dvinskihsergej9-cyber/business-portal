@@ -4550,6 +4550,7 @@ app.get("/api/profile", auth, async (req, res) => {
 
       const storeResult = await prisma.$transaction(async (tx) => {
         const now = new Date();
+        const maxStoreAgeMs = 24 * 60 * 60 * 1000;
         const pallet = await tx.pallet.findFirst({
           where: {
             orgId,
@@ -4565,12 +4566,6 @@ app.get("/api/profile", auth, async (req, res) => {
           error.code = "PALLET_NOT_FOUND";
           throw error;
         }
-        if (!["RECEIVED", "STORED"].includes(String(pallet.status || ""))) {
-          const error = new Error("PALLET_STORE_STATUS_INVALID");
-          error.code = "PALLET_STORE_STATUS_INVALID";
-          throw error;
-        }
-
         const targetLocation = await getOrCreatePalletLocationByCode(orgId, locationCode, tx);
         if (!targetLocation) {
           const error = new Error("PALLET_LOCATION_NOT_FOUND");
@@ -4578,14 +4573,32 @@ app.get("/api/profile", auth, async (req, res) => {
           throw error;
         }
 
-        if (pallet.status === "STORED" && pallet.currentLocationId === targetLocation.id) {
-          return { palletId: pallet.id, idempotent: true };
+        const receivedAtMs = pallet.receivedAt ? new Date(pallet.receivedAt).getTime() : NaN;
+        if (!Number.isFinite(receivedAtMs) || now.getTime() - receivedAtMs > maxStoreAgeMs) {
+          const error = new Error("PALLET_STORE_RECEIVE_EXPIRED");
+          error.code = "PALLET_STORE_RECEIVE_EXPIRED";
+          throw error;
+        }
+
+        if (String(pallet.status || "") === "STORED") {
+          if (pallet.currentLocationId === targetLocation.id) {
+            return { palletId: pallet.id, idempotent: true };
+          }
+          const error = new Error("PALLET_ALREADY_STORED");
+          error.code = "PALLET_ALREADY_STORED";
+          throw error;
+        }
+
+        if (String(pallet.status || "") !== "RECEIVED") {
+          const error = new Error("PALLET_STORE_STATUS_INVALID");
+          error.code = "PALLET_STORE_STATUS_INVALID";
+          throw error;
         }
 
         const updateResult = await tx.pallet.updateMany({
           where: {
             id: pallet.id,
-            status: { in: ["RECEIVED", "STORED"] },
+            status: "RECEIVED",
           },
           data: {
             currentLocationId: targetLocation.id,
@@ -4599,11 +4612,10 @@ app.get("/api/profile", auth, async (req, res) => {
           throw error;
         }
 
-        const eventType = pallet.status === "STORED" ? "MOVE" : "STORE";
         await createPalletEventTx(tx, {
           orgId,
           palletId: pallet.id,
-          type: eventType,
+          type: "STORE",
           fromStatus: pallet.status,
           toStatus: "STORED",
           userId: req.user.id,
@@ -4643,6 +4655,12 @@ app.get("/api/profile", auth, async (req, res) => {
       }
       if (err?.code === "PALLET_STORE_STATUS_INVALID") {
         return res.status(409).json({ message: "PALLET_STORE_STATUS_INVALID" });
+      }
+      if (err?.code === "PALLET_STORE_RECEIVE_EXPIRED") {
+        return res.status(409).json({ message: "PALLET_STORE_RECEIVE_EXPIRED" });
+      }
+      if (err?.code === "PALLET_ALREADY_STORED") {
+        return res.status(409).json({ message: "PALLET_ALREADY_STORED" });
       }
       if (err?.code === "PALLET_LOCATION_REQUIRED") {
         return res.status(400).json({ message: "PALLET_LOCATION_REQUIRED" });
@@ -4746,11 +4764,11 @@ app.get("/api/profile", auth, async (req, res) => {
                   z-index: 1000;
                 }
                 .print-btn {
-                  min-height: 54px;
-                  font-size: 18px;
+                  min-height: 60px;
+                  font-size: 20px;
                   font-weight: 700;
                   border: none;
-                  border-radius: 14px;
+                  border-radius: 16px;
                   cursor: pointer;
                   background: #0ea5e9;
                   color: #fff;
@@ -4919,11 +4937,11 @@ app.get("/api/profile", auth, async (req, res) => {
                   z-index: 1000;
                 }
                 .print-btn {
-                  min-height: 54px;
-                  font-size: 18px;
+                  min-height: 60px;
+                  font-size: 20px;
                   font-weight: 700;
                   border: none;
-                  border-radius: 14px;
+                  border-radius: 16px;
                   cursor: pointer;
                   background: #0ea5e9;
                   color: #fff;
