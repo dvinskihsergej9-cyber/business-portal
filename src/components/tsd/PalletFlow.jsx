@@ -1547,17 +1547,6 @@ export default function PalletFlow({ authHeaders, onBack, showInternalBack = tru
                 <div className="tsd-card">
                   <div className="tsd-inline tsd-inline--two">
                     <div className="tsd-card__title">МЛ {planningSheet.sheetNumber}</div>
-                    <button
-                      type="button"
-                      className="tsd-btn tsd-btn--ghost"
-                      onClick={() => {
-                        setPlanningSheet(null);
-                        setPlanningSelectedCodes([]);
-                        setPlanningCandidates([]);
-                      }}
-                    >
-                      К списку
-                    </button>
                   </div>
                   <div className="tsd-card__meta">
                     {routeSheetStatusLabel(planningSheet.status)} • Клиент: {planningSheet.clientName || "-"}
@@ -1844,14 +1833,26 @@ export default function PalletFlow({ authHeaders, onBack, showInternalBack = tru
                       handleFlowError("Сначала выберите маршрутный лист.");
                       return;
                     }
-                    const plannedPalletCodes = new Set(
+                    const itemByCode = new Map(
                       routeSheetItems
-                        .filter((item) => item?.status === "PLANNED")
-                        .map((item) => normalizePalletCode(item?.pallet?.palletCode || ""))
-                        .filter(Boolean)
+                        .map((item) => ({
+                          code: normalizePalletCode(item?.pallet?.palletCode || ""),
+                          status: String(item?.status || "").trim().toUpperCase(),
+                        }))
+                        .filter((item) => item.code)
+                        .map((item) => [item.code, item.status])
                     );
-                    if (!plannedPalletCodes.has(scannedPalletCode)) {
+                    const scannedStatus = itemByCode.get(scannedPalletCode);
+                    if (!scannedStatus) {
                       handleFlowError("Эта паллета не входит в выбранный маршрутный лист.");
+                      return;
+                    }
+                    if (scannedStatus === "LOADED") {
+                      handleFlowError("Эта паллета уже загружена по выбранному маршрутному листу.");
+                      return;
+                    }
+                    if (scannedStatus !== "PLANNED") {
+                      handleFlowError("Эта паллета недоступна для погрузки в текущем маршрутном листе.");
                       return;
                     }
                     setDispatchForm((prev) => ({ ...prev, palletCode: scannedPalletCode }));
@@ -1968,14 +1969,7 @@ export default function PalletFlow({ authHeaders, onBack, showInternalBack = tru
                   <div className="tsd-inline tsd-inline--two">
                     <button
                       type="button"
-                      className="tsd-btn tsd-btn--ghost"
-                      onClick={() => setSearchView("list")}
-                    >
-                      К списку
-                    </button>
-                    <button
-                      type="button"
-                      className="tsd-btn tsd-btn--secondary"
+                      className="tsd-btn tsd-btn--secondary tsd-btn--compact"
                       onClick={async () => {
                         await printPalletPassports([historyPallet.palletCode]);
                       }}

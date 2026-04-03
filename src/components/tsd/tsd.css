@@ -778,6 +778,13 @@
   width: min(420px, 100%);
 }
 
+.tsd-btn--compact {
+  min-height: 34px;
+  padding: 6px 10px;
+  font-size: 12px;
+  border-radius: 10px;
+}
+
 
 .tsd-modal {
   position: fixed;
