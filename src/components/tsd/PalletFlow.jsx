@@ -1,6 +1,5 @@
-﻿import { useEffect, useMemo, useRef, useState } from "react";
+﻿import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { API_BASE, normalizeErrorMessage } from "../../apiConfig";
-import { useCallback } from "react";
 import { openHtmlDocumentInNewTab } from "../../utils/openInNewTab";
 import Scanner from "./Scanner";
 import TsdErrorAlert from "./TsdErrorAlert";
@@ -165,6 +164,7 @@ export default function PalletFlow({ authHeaders, onBack, showInternalBack = tru
   const [routeSheetItems, setRouteSheetItems] = useState([]);
   const [routeSheetSummary, setRouteSheetSummary] = useState(null);
   const [routeSheetLoading, setRouteSheetLoading] = useState(false);
+  const [activeReceivePalletCodes, setActiveReceivePalletCodes] = useState([]);
 
   const clearAlerts = () => {
     setError("");
@@ -356,6 +356,9 @@ export default function PalletFlow({ authHeaders, onBack, showInternalBack = tru
 
       const printReady = await buildPalletLabelsBatchHtml(createdCodes);
       setPrintFallback(printReady);
+      setActiveReceivePalletCodes(
+        Array.from(new Set(createdCodes.map((code) => normalizePalletCode(code)).filter(Boolean)))
+      );
       const lastCode = createdCodes[createdCodes.length - 1] || "";
       setSuccess("Успешно");
       setStoreForm((prev) => ({
@@ -390,6 +393,11 @@ export default function PalletFlow({ authHeaders, onBack, showInternalBack = tru
       );
       if (!palletCode) throw new Error("Отсканируйте паллету.");
       if (!locationCode) throw new Error("Отсканируйте зону размещения.");
+      if (!activeReceivePalletCodes.includes(palletCode)) {
+        throw new Error(
+          "Паллета не из текущей приемки. Используйте только паспорта, созданные в текущей приемке."
+        );
+      }
       const dedupeKey = `${locationCode}|${palletCode}`;
       const now = Date.now();
       if (
@@ -413,6 +421,7 @@ export default function PalletFlow({ authHeaders, onBack, showInternalBack = tru
       setSuccess("Успешно");
       setStoreStep("pallet");
       setStoreForm(INITIAL_STORE_FORM);
+      setActiveReceivePalletCodes((prev) => prev.filter((code) => code !== palletCode));
       setDispatchForm((prev) => ({
         ...prev,
         palletCode,
@@ -776,7 +785,10 @@ export default function PalletFlow({ authHeaders, onBack, showInternalBack = tru
                     className="tsd-input"
                     value={receiveForm.inboundRef}
                     onChange={(event) =>
-                      setReceiveForm((prev) => ({ ...prev, inboundRef: event.target.value }))
+                      setReceiveForm((prev) => ({
+                        ...prev,
+                        inboundRef: String(event.target.value || "").toUpperCase(),
+                      }))
                     }
                     placeholder="Например, А123ВС77 / ТТН-0001"
                     disabled={loading}
@@ -879,6 +891,9 @@ export default function PalletFlow({ authHeaders, onBack, showInternalBack = tru
               <div className="tsd-card__meta">
                 Ячейка: {storeForm.locationCode || "-"} • Паллета: {storeForm.palletCode || "-"}
               </div>
+              <div className="tsd-card__meta">
+                Паллет текущей приемки: {activeReceivePalletCodes.length}
+              </div>
             </div>
 
             {storeStep === "pallet" ? (
@@ -889,6 +904,12 @@ export default function PalletFlow({ authHeaders, onBack, showInternalBack = tru
                 onScan={async (value) => {
                   const scannedPalletCode = normalizePalletCode(value);
                   if (!scannedPalletCode) return;
+                  if (!activeReceivePalletCodes.includes(scannedPalletCode)) {
+                    setError(
+                      "Эта паллета не относится к текущей приемке. Отсканируйте паллету из текущих паспортов."
+                    );
+                    return;
+                  }
                   setStoreForm((prev) => ({
                     ...prev,
                     palletCode: scannedPalletCode,
@@ -998,7 +1019,10 @@ export default function PalletFlow({ authHeaders, onBack, showInternalBack = tru
                       className="tsd-input"
                       value={dispatchForm.vehicle}
                       onChange={(event) =>
-                        setDispatchForm((prev) => ({ ...prev, vehicle: event.target.value }))
+                        setDispatchForm((prev) => ({
+                          ...prev,
+                          vehicle: String(event.target.value || "").toUpperCase(),
+                        }))
                       }
                       placeholder="Гос. номер"
                       disabled={loading}
@@ -1408,4 +1432,5 @@ export default function PalletFlow({ authHeaders, onBack, showInternalBack = tru
     </>
   );
 }
+
 
