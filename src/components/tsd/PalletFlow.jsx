@@ -602,12 +602,66 @@ export default function PalletFlow({ authHeaders, onBack }) {
   );
   const strictStepLock = activeTab === "store" || (activeTab === "dispatch" && dispatchStep !== "setup");
 
+  const handleHeaderBack = () => {
+    clearAlerts();
+
+    if (activeTab === "receive") {
+      if (receiveStep === "inbound") {
+        setReceiveStep("supplier");
+        return;
+      }
+      if (receiveStep === "qty") {
+        setReceiveStep("inbound");
+        return;
+      }
+      if (receiveStep === "print") {
+        setReceiveStep("qty");
+        return;
+      }
+    }
+
+    if (activeTab === "store") {
+      if (storeStep === "location") {
+        setStoreStep("pallet");
+        setStoreForm((prev) => ({ ...prev, locationCode: "" }));
+        return;
+      }
+      resetStoreScanFlow();
+      setActiveTab("receive");
+      return;
+    }
+
+    if (activeTab === "dispatch") {
+      if (dispatchStep === "pallet") {
+        setDispatchStep("location");
+        setDispatchForm((prev) => ({ ...prev, palletCode: "" }));
+        return;
+      }
+      if (dispatchStep === "location") {
+        setDispatchStep("setup");
+        setDispatchForm((prev) => ({ ...prev, locationCode: "", palletCode: "" }));
+        return;
+      }
+      setActiveTab("receive");
+      return;
+    }
+
+    if (activeTab === "search") {
+      setActiveTab("receive");
+      return;
+    }
+
+    if (typeof onBack === "function") {
+      onBack();
+    }
+  };
+
   return (
     <>
       <TsdHeader
         title="Кросс-докинг"
         subtitle="Паллетный контур: приемка, размещение, отгрузка"
-        onBack={onBack}
+        onBack={handleHeaderBack}
       />
 
       {!strictStepLock ? (
@@ -711,17 +765,6 @@ export default function PalletFlow({ authHeaders, onBack }) {
                 <div className="tsd-action-bar">
                   <button
                     type="button"
-                    className="tsd-btn tsd-btn--ghost"
-                    onClick={() => {
-                      clearAlerts();
-                      setReceiveStep("supplier");
-                    }}
-                    disabled={loading}
-                  >
-                    Назад
-                  </button>
-                  <button
-                    type="button"
                     className="tsd-btn tsd-btn--primary"
                     onClick={() => {
                       if (!String(receiveForm.inboundRef || "").trim()) {
@@ -757,17 +800,6 @@ export default function PalletFlow({ authHeaders, onBack }) {
                   />
                 </div>
                 <div className="tsd-action-bar">
-                  <button
-                    type="button"
-                    className="tsd-btn tsd-btn--ghost"
-                    onClick={() => {
-                      clearAlerts();
-                      setReceiveStep("inbound");
-                    }}
-                    disabled={loading}
-                  >
-                    Назад
-                  </button>
                   <button
                     type="button"
                     className="tsd-btn tsd-btn--primary"
@@ -1061,7 +1093,7 @@ export default function PalletFlow({ authHeaders, onBack }) {
                     }}
                     disabled={loading}
                   >
-                    Назад к параметрам
+                    Изменить параметры
                   </button>
                 </div>
                 <Scanner
