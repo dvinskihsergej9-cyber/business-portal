@@ -87,21 +87,21 @@ export default function Scanner({
 
     const viewportRect = viewportRef.current?.getBoundingClientRect?.() || null;
     const fallbackWidth =
-      typeof window !== "undefined" ? Math.max(300, Math.floor(window.innerWidth * 0.92)) : 360;
+      typeof window !== "undefined" ? Math.max(320, Math.floor(window.innerWidth * 0.96)) : 380;
     const fallbackHeight =
-      typeof window !== "undefined" ? Math.max(260, Math.floor(window.innerHeight * 0.36)) : 320;
-    const viewportWidth = Math.max(260, Math.floor(viewportRect?.width || fallbackWidth));
-    const viewportHeight = Math.max(220, Math.floor(viewportRect?.height || fallbackHeight));
+      typeof window !== "undefined" ? Math.max(300, Math.floor(window.innerHeight * 0.52)) : 360;
+    const viewportWidth = Math.max(280, Math.floor(viewportRect?.width || fallbackWidth));
+    const viewportHeight = Math.max(260, Math.floor(viewportRect?.height || fallbackHeight));
 
     const barcodeBox = {
-      width: Math.min(520, Math.floor(viewportWidth * 0.9)),
-      height: Math.max(140, Math.min(220, Math.floor(viewportHeight * 0.38))),
+      width: Math.min(640, Math.floor(viewportWidth * 0.96)),
+      height: Math.max(180, Math.min(360, Math.floor(viewportHeight * 0.72))),
     };
     const mixedBox = {
-      width: Math.min(460, Math.floor(viewportWidth * 0.86)),
-      height: Math.max(180, Math.min(300, Math.floor(viewportHeight * 0.7))),
+      width: Math.min(620, Math.floor(viewportWidth * 0.94)),
+      height: Math.max(220, Math.min(420, Math.floor(viewportHeight * 0.86))),
     };
-    const qrSize = Math.max(220, Math.min(360, Math.floor(viewportWidth * 0.76)));
+    const qrSize = Math.max(260, Math.min(440, Math.floor(viewportWidth * 0.92)));
 
     const scanConfig = {
       fps: 14,

@@ -277,7 +277,7 @@
 .tsd-scanner__viewport {
   background: #0f172a;
   border-radius: 12px;
-  min-height: 320px;
+  min-height: 390px;
   display: grid;
   place-items: center;
   overflow: hidden;
@@ -320,16 +320,13 @@
 
 .tsd-scanner__frame {
   position: absolute;
-  left: 50%;
-  top: 50%;
-  width: min(86%, 420px);
-  height: min(68%, 240px);
-  transform: translate(-50%, -50%);
+  left: 4%;
+  right: 4%;
+  top: 8%;
+  bottom: 8%;
   border: 2px solid rgba(56, 189, 248, 0.72);
   border-radius: 14px;
-  box-shadow:
-    0 0 0 200vmax rgba(15, 23, 42, 0.18),
-    inset 0 0 0 1px rgba(14, 165, 233, 0.35);
+  box-shadow: inset 0 0 0 1px rgba(14, 165, 233, 0.35);
   pointer-events: none;
 }
 
@@ -877,11 +874,13 @@
 
 @media (max-width: 600px) {
   .tsd-scanner__viewport {
-    min-height: 280px;
+    min-height: 360px;
   }
 
   .tsd-scanner__frame {
-    width: min(90%, 360px);
-    height: min(66%, 220px);
+    left: 3%;
+    right: 3%;
+    top: 7%;
+    bottom: 7%;
   }
 }

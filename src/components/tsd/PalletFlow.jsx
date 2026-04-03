@@ -594,6 +594,7 @@ export default function PalletFlow({ authHeaders, onBack }) {
     ],
     []
   );
+  const strictStepLock = activeTab === "store" || activeTab === "dispatch";
 
   return (
     <>
@@ -603,30 +604,32 @@ export default function PalletFlow({ authHeaders, onBack }) {
         onBack={onBack}
       />
 
-      <div className="tsd-pallet-tabs">
-        {tabs.map((tab) => (
-          <button
-            key={tab.id}
-            type="button"
-            className={`tsd-pallet-tab ${activeTab === tab.id ? "tsd-pallet-tab--active" : ""}`}
-            onClick={() => {
-              clearAlerts();
-              if (tab.id === "receive") {
-                resetReceiveScanFlow();
-              }
-              if (tab.id === "store") {
-                resetStoreScanFlow();
-              }
-              if (tab.id === "dispatch") {
-                resetDispatchScanFlow();
-              }
-              setActiveTab(tab.id);
-            }}
-          >
-            {tab.label}
-          </button>
-        ))}
-      </div>
+      {!strictStepLock ? (
+        <div className="tsd-pallet-tabs">
+          {tabs.map((tab) => (
+            <button
+              key={tab.id}
+              type="button"
+              className={`tsd-pallet-tab ${activeTab === tab.id ? "tsd-pallet-tab--active" : ""}`}
+              onClick={() => {
+                clearAlerts();
+                if (tab.id === "receive") {
+                  resetReceiveScanFlow();
+                }
+                if (tab.id === "store") {
+                  resetStoreScanFlow();
+                }
+                if (tab.id === "dispatch") {
+                  resetDispatchScanFlow();
+                }
+                setActiveTab(tab.id);
+              }}
+            >
+              {tab.label}
+            </button>
+          ))}
+        </div>
+      ) : null}
 
       <div className="tsd-section">
         <TsdErrorAlert message={error} />
