@@ -4735,8 +4735,26 @@ app.get("/api/profile", auth, async (req, res) => {
                 .cell { border-bottom: 1px solid #e2e8f0; padding-bottom: 3mm; }
                 .label { font-size: 12px; color: #475569; margin-bottom: 1mm; }
                 .value { font-size: 18px; font-weight: 600; color: #0f172a; word-break: break-word; }
-                .print-actions { margin: 12px 8px 8px; display: flex; gap: 8px; flex-wrap: wrap; }
-                .print-btn { padding: 6px 14px; font-size: 13px; cursor: pointer; }
+                .print-actions {
+                  position: fixed;
+                  left: 10px;
+                  right: 10px;
+                  bottom: calc(env(safe-area-inset-bottom, 0px) + 10px);
+                  display: grid;
+                  grid-template-columns: 1fr 1fr;
+                  gap: 10px;
+                  z-index: 1000;
+                }
+                .print-btn {
+                  min-height: 54px;
+                  font-size: 18px;
+                  font-weight: 700;
+                  border: none;
+                  border-radius: 14px;
+                  cursor: pointer;
+                  background: #0ea5e9;
+                  color: #fff;
+                }
                 @media print {
                   html, body { margin: 0; padding: 0; height: auto; }
                   .page { min-height: auto !important; height: auto !important; }
@@ -4890,8 +4908,26 @@ app.get("/api/profile", auth, async (req, res) => {
                   color: #64748b;
                   word-break: break-all;
                 }
-                .print-actions { margin: 12px 8px 8px; display: flex; gap: 8px; flex-wrap: wrap; }
-                .print-btn { padding: 6px 14px; font-size: 13px; cursor: pointer; }
+                .print-actions {
+                  position: fixed;
+                  left: 10px;
+                  right: 10px;
+                  bottom: calc(env(safe-area-inset-bottom, 0px) + 10px);
+                  display: grid;
+                  grid-template-columns: 1fr 1fr;
+                  gap: 10px;
+                  z-index: 1000;
+                }
+                .print-btn {
+                  min-height: 54px;
+                  font-size: 18px;
+                  font-weight: 700;
+                  border: none;
+                  border-radius: 14px;
+                  cursor: pointer;
+                  background: #0ea5e9;
+                  color: #fff;
+                }
                 @media print { .print-actions { display: none; } }
               </style>
             </head>

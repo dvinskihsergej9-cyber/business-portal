@@ -354,7 +354,7 @@ export default function PalletFlow({ authHeaders, onBack }) {
       const printReady = await buildPalletLabelsBatchHtml(createdCodes);
       setPrintFallback(printReady);
       const lastCode = createdCodes[createdCodes.length - 1] || "";
-      setSuccess(`Принято паллет: ${createdCodes.length}. Нажмите «Открыть паспорт A4».`);
+      setSuccess("Успешно");
       setStoreForm((prev) => ({
         ...prev,
         palletCode: lastCode,
@@ -407,13 +407,7 @@ export default function PalletFlow({ authHeaders, onBack }) {
         throw new Error(mapPalletError(data?.message, "Не удалось разместить паллету."));
       }
 
-      if (data?.idempotent) {
-        setSuccess(
-          `Паллета ${palletCode} уже была размещена в ${data?.pallet?.currentLocation?.code || locationCode}.`
-        );
-      } else {
-        setSuccess(`Паллета ${palletCode} размещена в ${data?.pallet?.currentLocation?.code || locationCode}.`);
-      }
+      setSuccess("Успешно");
       setStoreStep("pallet");
       setStoreForm(INITIAL_STORE_FORM);
       setDispatchForm((prev) => ({
@@ -478,9 +472,7 @@ export default function PalletFlow({ authHeaders, onBack }) {
         throw new Error(mapPalletError(data?.message, "Не удалось отгрузить паллету."));
       }
 
-      setSuccess(
-        `Паллета ${palletCode} отгружена в РЦ ${data?.pallet?.dispatch?.destinationRc || dispatchForm.destinationRc}.`
-      );
+      setSuccess("Успешно");
       setDispatchStep("location");
       setDispatchForm((prev) => ({
         ...prev,
@@ -525,12 +517,8 @@ export default function PalletFlow({ authHeaders, onBack }) {
       const items = Array.isArray(data?.items) ? data.items : [];
       setRouteSheetItems(items);
       setRouteSheetSummary(data?.summary || { total: items.length, byLocation: [] });
-      if (!silent) {
-        if (!items.length) {
-          setSuccess("По заданным параметрам маршрутный лист пуст.");
-        } else {
-          setSuccess(`Маршрутный лист загружен: ${items.length} паллет.`);
-        }
+      if (!silent && !items.length) {
+        setSuccess("Маршрутный лист пуст.");
       }
     } finally {
       setRouteSheetLoading(false);
@@ -642,7 +630,6 @@ export default function PalletFlow({ authHeaders, onBack }) {
 
       <div className="tsd-section">
         <TsdErrorAlert message={error} />
-        {success ? <div className="tsd-alert tsd-alert--success">{success}</div> : null}
 
         {activeTab === "receive" ? (
           <div className="tsd-list">
@@ -840,7 +827,7 @@ export default function PalletFlow({ authHeaders, onBack }) {
                     locationCode: "",
                   }));
                   setStoreStep("location");
-                  setSuccess(`Паллета ${scannedPalletCode} принята. Теперь сканируйте ячейку.`);
+                  setSuccess("Успешно");
                 }}
                 disabled={loading}
                 autoStart
@@ -954,7 +941,7 @@ export default function PalletFlow({ authHeaders, onBack }) {
                     palletCode: "",
                   }));
                   setDispatchStep("pallet");
-                  setSuccess(`Ячейка ${scannedLocationCode} принята. Теперь сканируйте паллету.`);
+                  setSuccess("Успешно");
                 }}
                 disabled={loading}
                 autoStart
@@ -1071,11 +1058,7 @@ export default function PalletFlow({ authHeaders, onBack }) {
                         locationCode: item.currentLocation?.code || prev.locationCode || "",
                       }));
                       setDispatchStep("pallet");
-                      setSuccess(
-                        `Выбрана паллета ${item.palletCode || "-"} из ячейки ${
-                          item.currentLocation?.code || "-"
-                        }. Подтвердите отгрузку повторным сканированием паллеты.`
-                      );
+                      setSuccess("Успешно");
                     }}
                   >
                     <div className="tsd-card__title">{item.palletCode}</div>
@@ -1279,6 +1262,31 @@ export default function PalletFlow({ authHeaders, onBack }) {
           </div>
         ) : null}
       </div>
+
+      {success ? (
+        <div
+          className="tsd-modal"
+          role="dialog"
+          aria-modal="true"
+          onClick={(event) => {
+            if (event.target === event.currentTarget) setSuccess("");
+          }}
+        >
+          <div className="tsd-modal__card tsd-modal__card--success">
+            <div className="tsd-modal__title">Успешно</div>
+            <div className="tsd-modal__text">{success}</div>
+            <div className="tsd-modal__actions">
+              <button
+                type="button"
+                className="tsd-btn tsd-btn--primary"
+                onClick={() => setSuccess("")}
+              >
+                Закрыть
+              </button>
+            </div>
+          </div>
+        </div>
+      ) : null}
     </>
   );
 }

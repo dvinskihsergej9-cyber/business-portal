@@ -803,6 +803,11 @@
   gap: 12px;
 }
 
+.tsd-modal__card--success {
+  border: 1px solid rgba(16, 185, 129, 0.45);
+  box-shadow: 0 12px 30px rgba(16, 185, 129, 0.18);
+}
+
 .tsd-modal__title {
   font-weight: 700;
   font-size: 16px;
