@@ -860,10 +860,40 @@ const PALLET_EVENT_TYPES = new Set([
   "DISPATCH",
   "CANCEL",
 ]);
+const ROUTE_SHEET_STATUSES = new Set(["DRAFT", "PUBLISHED", "LOADING", "COMPLETED", "CANCELLED"]);
+const ROUTE_SHEET_ITEM_STATUSES = new Set(["PLANNED", "LOADED", "CANCELLED"]);
+const ROUTE_SHEET_EVENT_TYPES = new Set([
+  "CREATE",
+  "ADD_ITEM",
+  "REMOVE_ITEM",
+  "PUBLISH",
+  "START_LOADING",
+  "LOAD_PALLET",
+  "COMPLETE",
+  "CANCEL",
+]);
 
 function normalizePalletStatus(value, fallback = "") {
   const normalized = String(value || "").trim().toUpperCase();
   return PALLET_STATUSES.has(normalized) ? normalized : fallback;
+}
+
+function normalizeRouteSheetStatus(value, fallback = "") {
+  const normalized = String(value || "").trim().toUpperCase();
+  return ROUTE_SHEET_STATUSES.has(normalized) ? normalized : fallback;
+}
+
+function normalizeRouteSheetItemStatus(value, fallback = "") {
+  const normalized = String(value || "").trim().toUpperCase();
+  return ROUTE_SHEET_ITEM_STATUSES.has(normalized) ? normalized : fallback;
+}
+
+function parseRouteSheetStatuses(rawValue) {
+  const raw = String(rawValue || "")
+    .split(",")
+    .map((item) => normalizeRouteSheetStatus(item, ""))
+    .filter(Boolean);
+  return Array.from(new Set(raw));
 }
 
 function normalizePalletCode(value) {
@@ -942,6 +972,27 @@ async function generateUniquePalletCode(orgId, tx = prisma) {
   throw new Error("PALLET_CODE_GENERATION_FAILED");
 }
 
+async function generateUniqueRouteSheetNumber(orgId, tx = prisma) {
+  const targetOrgId = Number(orgId || 0) || null;
+  for (let attempt = 0; attempt < 8; attempt += 1) {
+    const now = new Date();
+    const dateToken = `${now.getUTCFullYear()}${String(now.getUTCMonth() + 1).padStart(2, "0")}${String(
+      now.getUTCDate()
+    ).padStart(2, "0")}`;
+    const randomPart = crypto.randomBytes(2).toString("hex").toUpperCase();
+    const candidate = `ML-${dateToken}-${randomPart}`;
+    const exists = await tx.palletRouteSheet.findFirst({
+      where: {
+        orgId: targetOrgId,
+        sheetNumber: candidate,
+      },
+      select: { id: true },
+    });
+    if (!exists) return candidate;
+  }
+  throw new Error("ROUTE_SHEET_NUMBER_GENERATION_FAILED");
+}
+
 async function getOrCreatePalletLocationByCode(orgId, rawCode, tx = prisma) {
   const orgIdValue = Number(orgId || 0) || null;
   const code = normalizePalletCode(rawCode);
@@ -1008,6 +1059,8 @@ function palletToResponse(pallet) {
     dispatch: pallet?.dispatch
       ? {
           id: pallet.dispatch.id,
+          routeSheetId: pallet.dispatch.routeSheetId || null,
+          routeSheetItemId: pallet.dispatch.routeSheetItemId || null,
           destinationRc: pallet.dispatch.destinationRc || "",
           route: pallet.dispatch.route || null,
           vehicle: pallet.dispatch.vehicle || null,
@@ -1036,6 +1089,115 @@ function palletEventToResponse(event) {
           email: event.user.email || "",
         }
       : null,
+  };
+}
+
+function routeSheetItemToResponse(item) {
+  return {
+    id: item?.id,
+    routeSheetId: item?.routeSheetId || null,
+    status: item?.status || "PLANNED",
+    plannedAt: item?.plannedAt || null,
+    loadedAt: item?.loadedAt || null,
+    createdAt: item?.createdAt || null,
+    updatedAt: item?.updatedAt || null,
+    loadedBy: item?.loadedBy
+      ? {
+          id: item.loadedBy.id,
+          name: item.loadedBy.name || "",
+          email: item.loadedBy.email || "",
+        }
+      : null,
+    pallet: item?.pallet ? palletToResponse(item.pallet) : null,
+  };
+}
+
+function routeSheetToResponse(routeSheet) {
+  return {
+    id: routeSheet?.id,
+    orgId: routeSheet?.orgId || null,
+    sheetNumber: routeSheet?.sheetNumber || "",
+    clientName: routeSheet?.clientName || "",
+    destinationRc: routeSheet?.destinationRc || "",
+    route: routeSheet?.route || null,
+    vehicle: routeSheet?.vehicle || null,
+    driver: routeSheet?.driver || null,
+    plannedDate: routeSheet?.plannedDate || null,
+    notes: routeSheet?.notes || null,
+    status: routeSheet?.status || "DRAFT",
+    createdAt: routeSheet?.createdAt || null,
+    updatedAt: routeSheet?.updatedAt || null,
+    publishedAt: routeSheet?.publishedAt || null,
+    startedAt: routeSheet?.startedAt || null,
+    completedAt: routeSheet?.completedAt || null,
+    createdBy: routeSheet?.createdBy
+      ? {
+          id: routeSheet.createdBy.id,
+          name: routeSheet.createdBy.name || "",
+          email: routeSheet.createdBy.email || "",
+        }
+      : null,
+    publishedBy: routeSheet?.publishedBy
+      ? {
+          id: routeSheet.publishedBy.id,
+          name: routeSheet.publishedBy.name || "",
+          email: routeSheet.publishedBy.email || "",
+        }
+      : null,
+    startedBy: routeSheet?.startedBy
+      ? {
+          id: routeSheet.startedBy.id,
+          name: routeSheet.startedBy.name || "",
+          email: routeSheet.startedBy.email || "",
+        }
+      : null,
+    completedBy: routeSheet?.completedBy
+      ? {
+          id: routeSheet.completedBy.id,
+          name: routeSheet.completedBy.name || "",
+          email: routeSheet.completedBy.email || "",
+        }
+      : null,
+    items: Array.isArray(routeSheet?.items) ? routeSheet.items.map((item) => routeSheetItemToResponse(item)) : [],
+    summary: routeSheet?.summary || null,
+  };
+}
+
+function routeSheetEventToResponse(event) {
+  return {
+    id: event?.id,
+    routeSheetId: event?.routeSheetId || null,
+    itemId: event?.itemId || null,
+    type: event?.type || "",
+    metaJson: event?.metaJson || null,
+    createdAt: event?.createdAt || null,
+    user: event?.user
+      ? {
+          id: event.user.id,
+          name: event.user.name || "",
+          email: event.user.email || "",
+        }
+      : null,
+  };
+}
+
+function summarizeRouteSheetItems(items) {
+  const normalizedItems = Array.isArray(items) ? items : [];
+  const byStatus = normalizedItems.reduce(
+    (acc, item) => {
+      const status = normalizeRouteSheetItemStatus(item?.status, "PLANNED");
+      if (!acc[status]) acc[status] = 0;
+      acc[status] += 1;
+      return acc;
+    },
+    { PLANNED: 0, LOADED: 0, CANCELLED: 0 }
+  );
+  return {
+    total: normalizedItems.length,
+    planned: Number(byStatus.PLANNED || 0),
+    loaded: Number(byStatus.LOADED || 0),
+    cancelled: Number(byStatus.CANCELLED || 0),
+    remainingToLoad: Number(byStatus.PLANNED || 0),
   };
 }
 
@@ -1079,6 +1241,31 @@ async function createPalletEventTx(
     `;
     return Array.isArray(inserted) && inserted.length ? inserted[0] : null;
   }
+}
+
+async function createRouteSheetEventTx(
+  tx,
+  { orgId, routeSheetId, itemId = null, type, userId = null, metaJson = null }
+) {
+  const normalizedType = String(type || "").trim().toUpperCase();
+  if (!ROUTE_SHEET_EVENT_TYPES.has(normalizedType)) {
+    throw new Error("ROUTE_SHEET_EVENT_TYPE_INVALID");
+  }
+  const normalizedOrgId = Number(orgId || 0) || null;
+  const normalizedUserId = Number(userId || 0) || null;
+  const normalizedItemId = Number(itemId || 0) || null;
+  const normalizedMetaJson = metaJson && typeof metaJson === "object" ? metaJson : null;
+
+  return tx.palletRouteSheetEvent.create({
+    data: {
+      orgId: normalizedOrgId,
+      routeSheetId,
+      itemId: normalizedItemId,
+      type: normalizedType,
+      userId: normalizedUserId,
+      metaJson: normalizedMetaJson,
+    },
+  });
 }
 
 async function loadSupportTicketForAccess(ticketId) {
@@ -5015,6 +5202,899 @@ app.get("/api/profile", auth, async (req, res) => {
     } catch (err) {
       console.error("pallet print label error:", err);
       return res.status(500).json({ message: "PALLET_PRINT_LABEL_ERROR" });
+    }
+  });
+
+  app.get("/api/pallets/route-sheets", auth, async (req, res) => {
+    try {
+      const orgId = Number(req.user?.orgId || 0);
+      if (!orgId) {
+        return res.status(400).json({ message: "ORG_REQUIRED" });
+      }
+
+      const statusesRaw = String(req.query?.statuses || req.query?.status || "").trim();
+      const statuses = statusesRaw
+        ? parseRouteSheetStatuses(statusesRaw)
+        : ["DRAFT", "PUBLISHED", "LOADING"];
+      if (!statuses.length) {
+        return res.status(400).json({ message: "ROUTE_SHEET_STATUS_INVALID" });
+      }
+      const limit = Math.max(1, Math.min(200, Number(req.query?.limit || 80)));
+
+      const sheets = await prisma.palletRouteSheet.findMany({
+        where: {
+          orgId,
+          status: { in: statuses },
+        },
+        include: {
+          createdBy: { select: { id: true, name: true, email: true } },
+          publishedBy: { select: { id: true, name: true, email: true } },
+          startedBy: { select: { id: true, name: true, email: true } },
+          completedBy: { select: { id: true, name: true, email: true } },
+          items: {
+            select: {
+              id: true,
+              status: true,
+            },
+          },
+        },
+        orderBy: [{ plannedDate: "asc" }, { createdAt: "desc" }, { id: "desc" }],
+        take: limit,
+      });
+
+      const items = sheets.map((sheet) =>
+        routeSheetToResponse({
+          ...sheet,
+          summary: summarizeRouteSheetItems(sheet.items),
+          items: [],
+        })
+      );
+      return res.json({ items });
+    } catch (err) {
+      console.error("route-sheet list error:", err);
+      return res.status(500).json({ message: "ROUTE_SHEET_LIST_ERROR" });
+    }
+  });
+
+  app.post("/api/pallets/route-sheets", auth, async (req, res) => {
+    try {
+      const orgId = Number(req.user?.orgId || 0);
+      if (!orgId) {
+        return res.status(400).json({ message: "ORG_REQUIRED" });
+      }
+
+      const clientName = normalizePalletText(req.body?.clientName, 160);
+      const destinationRc = normalizePalletText(req.body?.destinationRc, 120);
+      const route = normalizePalletText(req.body?.route, 120) || null;
+      const vehicle = normalizePalletText(req.body?.vehicle, 120);
+      const driver = normalizePalletText(req.body?.driver, 160);
+      const plannedDate = toIsoDateOrNull(req.body?.plannedDate);
+      const notes = normalizePalletText(req.body?.notes, 600) || null;
+
+      if (!clientName) {
+        return res.status(400).json({ message: "ROUTE_SHEET_CLIENT_REQUIRED" });
+      }
+      if (!destinationRc) {
+        return res.status(400).json({ message: "PALLET_DESTINATION_REQUIRED" });
+      }
+      if (!vehicle) {
+        return res.status(400).json({ message: "ROUTE_SHEET_VEHICLE_REQUIRED" });
+      }
+      if (!driver) {
+        return res.status(400).json({ message: "ROUTE_SHEET_DRIVER_REQUIRED" });
+      }
+      if (!plannedDate) {
+        return res.status(400).json({ message: "ROUTE_SHEET_DATE_REQUIRED" });
+      }
+
+      const createdId = await prisma.$transaction(async (tx) => {
+        const sheetNumber = await generateUniqueRouteSheetNumber(orgId, tx);
+        const created = await tx.palletRouteSheet.create({
+          data: {
+            orgId,
+            sheetNumber,
+            clientName,
+            destinationRc,
+            route,
+            vehicle,
+            driver,
+            plannedDate,
+            notes,
+            status: "DRAFT",
+            createdByUserId: req.user.id,
+          },
+          select: { id: true },
+        });
+        await createRouteSheetEventTx(tx, {
+          orgId,
+          routeSheetId: created.id,
+          type: "CREATE",
+          userId: req.user.id,
+          metaJson: {
+            clientName,
+            destinationRc,
+            route,
+            vehicle,
+            driver,
+            plannedDate: plannedDate.toISOString(),
+          },
+        });
+        return created.id;
+      });
+
+      const routeSheet = await prisma.palletRouteSheet.findFirst({
+        where: {
+          orgId,
+          id: createdId,
+        },
+        include: {
+          createdBy: { select: { id: true, name: true, email: true } },
+          publishedBy: { select: { id: true, name: true, email: true } },
+          startedBy: { select: { id: true, name: true, email: true } },
+          completedBy: { select: { id: true, name: true, email: true } },
+          items: {
+            include: {
+              pallet: { include: { currentLocation: true, dispatch: true, createdBy: true } },
+              loadedBy: { select: { id: true, name: true, email: true } },
+            },
+            orderBy: [{ plannedAt: "asc" }, { id: "asc" }],
+          },
+        },
+      });
+      if (!routeSheet) {
+        return res.status(500).json({ message: "ROUTE_SHEET_CREATE_FAILED" });
+      }
+
+      return res.json({
+        routeSheet: routeSheetToResponse({
+          ...routeSheet,
+          summary: summarizeRouteSheetItems(routeSheet.items),
+        }),
+      });
+    } catch (err) {
+      if (err?.code === "P2002") {
+        return res.status(409).json({ message: "ROUTE_SHEET_CONFLICT" });
+      }
+      console.error("route-sheet create error:", err);
+      return res.status(500).json({ message: "ROUTE_SHEET_CREATE_ERROR" });
+    }
+  });
+
+  app.get("/api/pallets/route-sheets/:routeSheetId", auth, async (req, res) => {
+    try {
+      const orgId = Number(req.user?.orgId || 0);
+      if (!orgId) {
+        return res.status(400).json({ message: "ORG_REQUIRED" });
+      }
+      const routeSheetId = Number(req.params?.routeSheetId || 0);
+      if (!routeSheetId) {
+        return res.status(400).json({ message: "ROUTE_SHEET_ID_REQUIRED" });
+      }
+
+      const routeSheet = await prisma.palletRouteSheet.findFirst({
+        where: {
+          orgId,
+          id: routeSheetId,
+        },
+        include: {
+          createdBy: { select: { id: true, name: true, email: true } },
+          publishedBy: { select: { id: true, name: true, email: true } },
+          startedBy: { select: { id: true, name: true, email: true } },
+          completedBy: { select: { id: true, name: true, email: true } },
+          items: {
+            include: {
+              pallet: { include: { currentLocation: true, dispatch: true, createdBy: true } },
+              loadedBy: { select: { id: true, name: true, email: true } },
+            },
+            orderBy: [{ plannedAt: "asc" }, { id: "asc" }],
+          },
+          events: {
+            include: {
+              user: { select: { id: true, name: true, email: true } },
+            },
+            orderBy: [{ createdAt: "desc" }, { id: "desc" }],
+            take: 120,
+          },
+        },
+      });
+      if (!routeSheet) {
+        return res.status(404).json({ message: "ROUTE_SHEET_NOT_FOUND" });
+      }
+
+      return res.json({
+        routeSheet: routeSheetToResponse({
+          ...routeSheet,
+          summary: summarizeRouteSheetItems(routeSheet.items),
+        }),
+        events: Array.isArray(routeSheet.events)
+          ? routeSheet.events.map((event) => routeSheetEventToResponse(event))
+          : [],
+      });
+    } catch (err) {
+      console.error("route-sheet detail error:", err);
+      return res.status(500).json({ message: "ROUTE_SHEET_DETAIL_ERROR" });
+    }
+  });
+
+  app.post("/api/pallets/route-sheets/:routeSheetId/items", auth, async (req, res) => {
+    try {
+      const orgId = Number(req.user?.orgId || 0);
+      if (!orgId) {
+        return res.status(400).json({ message: "ORG_REQUIRED" });
+      }
+      const routeSheetId = Number(req.params?.routeSheetId || 0);
+      if (!routeSheetId) {
+        return res.status(400).json({ message: "ROUTE_SHEET_ID_REQUIRED" });
+      }
+
+      const rawCodes = Array.isArray(req.body?.palletCodes)
+        ? req.body.palletCodes
+        : req.body?.palletCode != null
+          ? [req.body.palletCode]
+          : [];
+      const palletCodes = Array.from(
+        new Set(rawCodes.map((item) => normalizePalletCode(item)).filter(Boolean))
+      ).slice(0, 200);
+      if (!palletCodes.length) {
+        return res.status(400).json({ message: "PALLET_CODE_REQUIRED" });
+      }
+
+      await prisma.$transaction(async (tx) => {
+        const sheet = await tx.palletRouteSheet.findFirst({
+          where: {
+            orgId,
+            id: routeSheetId,
+          },
+          select: { id: true, status: true },
+        });
+        if (!sheet) {
+          const error = new Error("ROUTE_SHEET_NOT_FOUND");
+          error.code = "ROUTE_SHEET_NOT_FOUND";
+          throw error;
+        }
+        if (sheet.status !== "DRAFT") {
+          const error = new Error("ROUTE_SHEET_STATUS_INVALID");
+          error.code = "ROUTE_SHEET_STATUS_INVALID";
+          throw error;
+        }
+
+        const pallets = await tx.pallet.findMany({
+          where: {
+            orgId,
+            palletCode: { in: palletCodes },
+            status: "STORED",
+          },
+          select: { id: true, palletCode: true, currentLocationId: true },
+        });
+        if (pallets.length !== palletCodes.length) {
+          const foundCodes = new Set(pallets.map((item) => item.palletCode));
+          const missingCodes = palletCodes.filter((code) => !foundCodes.has(code));
+          const error = new Error("ROUTE_SHEET_PALLET_NOT_STORED");
+          error.code = "ROUTE_SHEET_PALLET_NOT_STORED";
+          error.meta = { missingCodes };
+          throw error;
+        }
+
+        const palletIds = pallets.map((item) => item.id);
+        const reserved = await tx.palletRouteSheetItem.findMany({
+          where: {
+            orgId,
+            palletId: { in: palletIds },
+            status: "PLANNED",
+            routeSheetId: { not: routeSheetId },
+            routeSheet: {
+              status: { in: ["DRAFT", "PUBLISHED", "LOADING"] },
+            },
+          },
+          include: {
+            pallet: { select: { palletCode: true } },
+            routeSheet: { select: { sheetNumber: true, status: true } },
+          },
+          take: 20,
+        });
+        if (reserved.length) {
+          const error = new Error("ROUTE_SHEET_PALLET_ALREADY_PLANNED");
+          error.code = "ROUTE_SHEET_PALLET_ALREADY_PLANNED";
+          error.meta = {
+            conflicts: reserved.map((item) => ({
+              palletCode: item.pallet?.palletCode || null,
+              sheetNumber: item.routeSheet?.sheetNumber || null,
+              status: item.routeSheet?.status || null,
+            })),
+          };
+          throw error;
+        }
+
+        for (const pallet of pallets) {
+          const existing = await tx.palletRouteSheetItem.findFirst({
+            where: {
+              orgId,
+              routeSheetId,
+              palletId: pallet.id,
+            },
+            select: { id: true, status: true },
+          });
+          if (existing?.status === "PLANNED") {
+            continue;
+          }
+          if (existing && existing.status !== "PLANNED") {
+            await tx.palletRouteSheetItem.update({
+              where: { id: existing.id },
+              data: {
+                status: "PLANNED",
+                loadedAt: null,
+                loadedByUserId: null,
+              },
+            });
+            await createRouteSheetEventTx(tx, {
+              orgId,
+              routeSheetId,
+              itemId: existing.id,
+              type: "ADD_ITEM",
+              userId: req.user.id,
+              metaJson: {
+                palletCode: pallet.palletCode,
+                restored: true,
+              },
+            });
+            continue;
+          }
+          const createdItem = await tx.palletRouteSheetItem.create({
+            data: {
+              orgId,
+              routeSheetId,
+              palletId: pallet.id,
+              status: "PLANNED",
+            },
+            select: { id: true },
+          });
+          await createRouteSheetEventTx(tx, {
+            orgId,
+            routeSheetId,
+            itemId: createdItem.id,
+            type: "ADD_ITEM",
+            userId: req.user.id,
+            metaJson: {
+              palletCode: pallet.palletCode,
+            },
+          });
+        }
+      });
+
+      const routeSheet = await prisma.palletRouteSheet.findFirst({
+        where: {
+          orgId,
+          id: routeSheetId,
+        },
+        include: {
+          createdBy: { select: { id: true, name: true, email: true } },
+          publishedBy: { select: { id: true, name: true, email: true } },
+          startedBy: { select: { id: true, name: true, email: true } },
+          completedBy: { select: { id: true, name: true, email: true } },
+          items: {
+            include: {
+              pallet: { include: { currentLocation: true, dispatch: true, createdBy: true } },
+              loadedBy: { select: { id: true, name: true, email: true } },
+            },
+            orderBy: [{ plannedAt: "asc" }, { id: "asc" }],
+          },
+        },
+      });
+      if (!routeSheet) {
+        return res.status(404).json({ message: "ROUTE_SHEET_NOT_FOUND" });
+      }
+
+      return res.json({
+        routeSheet: routeSheetToResponse({
+          ...routeSheet,
+          summary: summarizeRouteSheetItems(routeSheet.items),
+        }),
+      });
+    } catch (err) {
+      if (err?.code === "ROUTE_SHEET_NOT_FOUND") {
+        return res.status(404).json({ message: "ROUTE_SHEET_NOT_FOUND" });
+      }
+      if (err?.code === "ROUTE_SHEET_STATUS_INVALID") {
+        return res.status(409).json({ message: "ROUTE_SHEET_STATUS_INVALID" });
+      }
+      if (err?.code === "ROUTE_SHEET_PALLET_NOT_STORED") {
+        return res.status(409).json({
+          message: "ROUTE_SHEET_PALLET_NOT_STORED",
+          meta: err?.meta || null,
+        });
+      }
+      if (err?.code === "ROUTE_SHEET_PALLET_ALREADY_PLANNED") {
+        return res.status(409).json({
+          message: "ROUTE_SHEET_PALLET_ALREADY_PLANNED",
+          meta: err?.meta || null,
+        });
+      }
+      if (err?.code === "P2002") {
+        return res.status(409).json({ message: "ROUTE_SHEET_CONFLICT" });
+      }
+      console.error("route-sheet add-items error:", err);
+      return res.status(500).json({ message: "ROUTE_SHEET_ADD_ITEMS_ERROR" });
+    }
+  });
+
+  app.delete("/api/pallets/route-sheets/:routeSheetId/items/:itemId", auth, async (req, res) => {
+    try {
+      const orgId = Number(req.user?.orgId || 0);
+      if (!orgId) {
+        return res.status(400).json({ message: "ORG_REQUIRED" });
+      }
+      const routeSheetId = Number(req.params?.routeSheetId || 0);
+      const itemId = Number(req.params?.itemId || 0);
+      if (!routeSheetId || !itemId) {
+        return res.status(400).json({ message: "ROUTE_SHEET_ITEM_ID_REQUIRED" });
+      }
+
+      await prisma.$transaction(async (tx) => {
+        const sheet = await tx.palletRouteSheet.findFirst({
+          where: {
+            orgId,
+            id: routeSheetId,
+          },
+          select: { id: true, status: true },
+        });
+        if (!sheet) {
+          const error = new Error("ROUTE_SHEET_NOT_FOUND");
+          error.code = "ROUTE_SHEET_NOT_FOUND";
+          throw error;
+        }
+        if (sheet.status !== "DRAFT") {
+          const error = new Error("ROUTE_SHEET_STATUS_INVALID");
+          error.code = "ROUTE_SHEET_STATUS_INVALID";
+          throw error;
+        }
+
+        const item = await tx.palletRouteSheetItem.findFirst({
+          where: {
+            orgId,
+            id: itemId,
+            routeSheetId,
+          },
+          include: {
+            pallet: { select: { palletCode: true } },
+          },
+        });
+        if (!item) {
+          const error = new Error("ROUTE_SHEET_ITEM_NOT_FOUND");
+          error.code = "ROUTE_SHEET_ITEM_NOT_FOUND";
+          throw error;
+        }
+        if (item.status !== "PLANNED") {
+          const error = new Error("ROUTE_SHEET_ITEM_STATUS_INVALID");
+          error.code = "ROUTE_SHEET_ITEM_STATUS_INVALID";
+          throw error;
+        }
+
+        await tx.palletRouteSheetItem.update({
+          where: { id: item.id },
+          data: {
+            status: "CANCELLED",
+            loadedAt: null,
+            loadedByUserId: null,
+          },
+        });
+        await createRouteSheetEventTx(tx, {
+          orgId,
+          routeSheetId,
+          itemId: item.id,
+          type: "REMOVE_ITEM",
+          userId: req.user.id,
+          metaJson: {
+            palletCode: item.pallet?.palletCode || null,
+          },
+        });
+      });
+
+      return res.json({ ok: true });
+    } catch (err) {
+      if (err?.code === "ROUTE_SHEET_NOT_FOUND") {
+        return res.status(404).json({ message: "ROUTE_SHEET_NOT_FOUND" });
+      }
+      if (err?.code === "ROUTE_SHEET_ITEM_NOT_FOUND") {
+        return res.status(404).json({ message: "ROUTE_SHEET_ITEM_NOT_FOUND" });
+      }
+      if (err?.code === "ROUTE_SHEET_STATUS_INVALID") {
+        return res.status(409).json({ message: "ROUTE_SHEET_STATUS_INVALID" });
+      }
+      if (err?.code === "ROUTE_SHEET_ITEM_STATUS_INVALID") {
+        return res.status(409).json({ message: "ROUTE_SHEET_ITEM_STATUS_INVALID" });
+      }
+      console.error("route-sheet remove-item error:", err);
+      return res.status(500).json({ message: "ROUTE_SHEET_REMOVE_ITEM_ERROR" });
+    }
+  });
+
+  app.post("/api/pallets/route-sheets/:routeSheetId/publish", auth, async (req, res) => {
+    try {
+      const orgId = Number(req.user?.orgId || 0);
+      if (!orgId) {
+        return res.status(400).json({ message: "ORG_REQUIRED" });
+      }
+      const routeSheetId = Number(req.params?.routeSheetId || 0);
+      if (!routeSheetId) {
+        return res.status(400).json({ message: "ROUTE_SHEET_ID_REQUIRED" });
+      }
+
+      await prisma.$transaction(async (tx) => {
+        const sheet = await tx.palletRouteSheet.findFirst({
+          where: {
+            orgId,
+            id: routeSheetId,
+          },
+          select: { id: true, status: true, sheetNumber: true },
+        });
+        if (!sheet) {
+          const error = new Error("ROUTE_SHEET_NOT_FOUND");
+          error.code = "ROUTE_SHEET_NOT_FOUND";
+          throw error;
+        }
+        if (sheet.status !== "DRAFT") {
+          const error = new Error("ROUTE_SHEET_STATUS_INVALID");
+          error.code = "ROUTE_SHEET_STATUS_INVALID";
+          throw error;
+        }
+
+        const plannedCount = await tx.palletRouteSheetItem.count({
+          where: {
+            orgId,
+            routeSheetId,
+            status: "PLANNED",
+          },
+        });
+        if (plannedCount < 1) {
+          const error = new Error("ROUTE_SHEET_EMPTY");
+          error.code = "ROUTE_SHEET_EMPTY";
+          throw error;
+        }
+
+        await tx.palletRouteSheet.update({
+          where: {
+            id: routeSheetId,
+          },
+          data: {
+            status: "PUBLISHED",
+            publishedByUserId: req.user.id,
+            publishedAt: new Date(),
+          },
+        });
+        await createRouteSheetEventTx(tx, {
+          orgId,
+          routeSheetId,
+          type: "PUBLISH",
+          userId: req.user.id,
+          metaJson: {
+            plannedCount,
+            sheetNumber: sheet.sheetNumber,
+          },
+        });
+      });
+
+      const routeSheet = await prisma.palletRouteSheet.findFirst({
+        where: {
+          orgId,
+          id: routeSheetId,
+        },
+        include: {
+          createdBy: { select: { id: true, name: true, email: true } },
+          publishedBy: { select: { id: true, name: true, email: true } },
+          startedBy: { select: { id: true, name: true, email: true } },
+          completedBy: { select: { id: true, name: true, email: true } },
+          items: {
+            include: {
+              pallet: { include: { currentLocation: true, dispatch: true, createdBy: true } },
+              loadedBy: { select: { id: true, name: true, email: true } },
+            },
+            orderBy: [{ plannedAt: "asc" }, { id: "asc" }],
+          },
+        },
+      });
+      if (!routeSheet) {
+        return res.status(404).json({ message: "ROUTE_SHEET_NOT_FOUND" });
+      }
+      return res.json({
+        routeSheet: routeSheetToResponse({
+          ...routeSheet,
+          summary: summarizeRouteSheetItems(routeSheet.items),
+        }),
+      });
+    } catch (err) {
+      if (err?.code === "ROUTE_SHEET_NOT_FOUND") {
+        return res.status(404).json({ message: "ROUTE_SHEET_NOT_FOUND" });
+      }
+      if (err?.code === "ROUTE_SHEET_STATUS_INVALID") {
+        return res.status(409).json({ message: "ROUTE_SHEET_STATUS_INVALID" });
+      }
+      if (err?.code === "ROUTE_SHEET_EMPTY") {
+        return res.status(409).json({ message: "ROUTE_SHEET_EMPTY" });
+      }
+      console.error("route-sheet publish error:", err);
+      return res.status(500).json({ message: "ROUTE_SHEET_PUBLISH_ERROR" });
+    }
+  });
+
+  app.post("/api/pallets/route-sheets/:routeSheetId/dispatch", auth, async (req, res) => {
+    try {
+      const orgId = Number(req.user?.orgId || 0);
+      if (!orgId) {
+        return res.status(400).json({ message: "ORG_REQUIRED" });
+      }
+      const routeSheetId = Number(req.params?.routeSheetId || 0);
+      if (!routeSheetId) {
+        return res.status(400).json({ message: "ROUTE_SHEET_ID_REQUIRED" });
+      }
+
+      const palletCode = normalizePalletCode(req.body?.palletCode);
+      const locationCode = normalizePalletCode(req.body?.locationCode);
+      if (!palletCode) {
+        return res.status(400).json({ message: "PALLET_CODE_REQUIRED" });
+      }
+      if (!locationCode) {
+        return res.status(400).json({ message: "PALLET_LOCATION_REQUIRED" });
+      }
+
+      const dispatchedResult = await prisma.$transaction(async (tx) => {
+        const now = new Date();
+        const routeSheet = await tx.palletRouteSheet.findFirst({
+          where: {
+            orgId,
+            id: routeSheetId,
+          },
+        });
+        if (!routeSheet) {
+          const error = new Error("ROUTE_SHEET_NOT_FOUND");
+          error.code = "ROUTE_SHEET_NOT_FOUND";
+          throw error;
+        }
+        if (!["PUBLISHED", "LOADING"].includes(String(routeSheet.status || ""))) {
+          const error = new Error("ROUTE_SHEET_STATUS_INVALID");
+          error.code = "ROUTE_SHEET_STATUS_INVALID";
+          throw error;
+        }
+
+        const pallet = await tx.pallet.findFirst({
+          where: {
+            orgId,
+            palletCode,
+          },
+          include: {
+            currentLocation: true,
+          },
+        });
+        if (!pallet) {
+          const error = new Error("PALLET_NOT_FOUND");
+          error.code = "PALLET_NOT_FOUND";
+          throw error;
+        }
+        if (pallet.status !== "STORED") {
+          const error = new Error("PALLET_DISPATCH_STATUS_INVALID");
+          error.code = "PALLET_DISPATCH_STATUS_INVALID";
+          throw error;
+        }
+        if (!pallet.currentLocation?.code || pallet.currentLocation.code !== locationCode) {
+          const error = new Error("PALLET_LOCATION_MISMATCH");
+          error.code = "PALLET_LOCATION_MISMATCH";
+          throw error;
+        }
+
+        const routeItem = await tx.palletRouteSheetItem.findFirst({
+          where: {
+            orgId,
+            routeSheetId,
+            palletId: pallet.id,
+          },
+        });
+        if (!routeItem) {
+          const error = new Error("ROUTE_SHEET_PALLET_NOT_IN_SHEET");
+          error.code = "ROUTE_SHEET_PALLET_NOT_IN_SHEET";
+          throw error;
+        }
+        if (routeItem.status === "LOADED") {
+          const error = new Error("ROUTE_SHEET_PALLET_ALREADY_LOADED");
+          error.code = "ROUTE_SHEET_PALLET_ALREADY_LOADED";
+          throw error;
+        }
+        if (routeItem.status !== "PLANNED") {
+          const error = new Error("ROUTE_SHEET_ITEM_STATUS_INVALID");
+          error.code = "ROUTE_SHEET_ITEM_STATUS_INVALID";
+          throw error;
+        }
+
+        if (routeSheet.status === "PUBLISHED") {
+          await tx.palletRouteSheet.update({
+            where: { id: routeSheetId },
+            data: {
+              status: "LOADING",
+              startedByUserId: req.user.id,
+              startedAt: now,
+            },
+          });
+          await createRouteSheetEventTx(tx, {
+            orgId,
+            routeSheetId,
+            type: "START_LOADING",
+            userId: req.user.id,
+          });
+        }
+
+        const palletUpdate = await tx.pallet.updateMany({
+          where: {
+            id: pallet.id,
+            status: "STORED",
+          },
+          data: {
+            status: "DISPATCHED",
+            dispatchedAt: now,
+          },
+        });
+        if (palletUpdate.count !== 1) {
+          const error = new Error("PALLET_STATE_CHANGED");
+          error.code = "PALLET_STATE_CHANGED";
+          throw error;
+        }
+
+        await tx.palletDispatch.create({
+          data: {
+            orgId,
+            palletId: pallet.id,
+            routeSheetId,
+            routeSheetItemId: routeItem.id,
+            destinationRc: routeSheet.destinationRc,
+            route: routeSheet.route || null,
+            vehicle: routeSheet.vehicle || null,
+            driver: routeSheet.driver || null,
+            notes: routeSheet.notes || null,
+            dispatchedByUserId: req.user.id,
+            dispatchedAt: now,
+          },
+        });
+
+        await tx.palletRouteSheetItem.update({
+          where: {
+            id: routeItem.id,
+          },
+          data: {
+            status: "LOADED",
+            loadedAt: now,
+            loadedByUserId: req.user.id,
+          },
+        });
+        await createRouteSheetEventTx(tx, {
+          orgId,
+          routeSheetId,
+          itemId: routeItem.id,
+          type: "LOAD_PALLET",
+          userId: req.user.id,
+          metaJson: {
+            palletCode,
+            locationCode,
+          },
+        });
+
+        await createPalletEventTx(tx, {
+          orgId,
+          palletId: pallet.id,
+          type: "DISPATCH",
+          fromStatus: "STORED",
+          toStatus: "DISPATCHED",
+          userId: req.user.id,
+          metaJson: {
+            destinationRc: routeSheet.destinationRc,
+            route: routeSheet.route || null,
+            vehicle: routeSheet.vehicle || null,
+            driver: routeSheet.driver || null,
+            notes: routeSheet.notes || null,
+            fromLocationCode: pallet.currentLocation?.code || null,
+            scanLocationCode: locationCode,
+            routeSheetId,
+            routeSheetNumber: routeSheet.sheetNumber || null,
+          },
+        });
+
+        const remaining = await tx.palletRouteSheetItem.count({
+          where: {
+            orgId,
+            routeSheetId,
+            status: "PLANNED",
+          },
+        });
+        if (remaining < 1) {
+          await tx.palletRouteSheet.update({
+            where: { id: routeSheetId },
+            data: {
+              status: "COMPLETED",
+              completedAt: now,
+              completedByUserId: req.user.id,
+            },
+          });
+          await createRouteSheetEventTx(tx, {
+            orgId,
+            routeSheetId,
+            type: "COMPLETE",
+            userId: req.user.id,
+          });
+        }
+
+        return {
+          palletId: pallet.id,
+          remaining,
+        };
+      });
+
+      const pallet = await prisma.pallet.findFirst({
+        where: {
+          orgId,
+          id: dispatchedResult.palletId,
+        },
+        include: {
+          currentLocation: true,
+          dispatch: true,
+          createdBy: true,
+        },
+      });
+      const routeSheet = await prisma.palletRouteSheet.findFirst({
+        where: {
+          orgId,
+          id: routeSheetId,
+        },
+        include: {
+          createdBy: { select: { id: true, name: true, email: true } },
+          publishedBy: { select: { id: true, name: true, email: true } },
+          startedBy: { select: { id: true, name: true, email: true } },
+          completedBy: { select: { id: true, name: true, email: true } },
+          items: {
+            include: {
+              pallet: { include: { currentLocation: true, dispatch: true, createdBy: true } },
+              loadedBy: { select: { id: true, name: true, email: true } },
+            },
+            orderBy: [{ plannedAt: "asc" }, { id: "asc" }],
+          },
+        },
+      });
+      if (!pallet || !routeSheet) {
+        return res.status(500).json({ message: "ROUTE_SHEET_DISPATCH_FAILED" });
+      }
+
+      return res.json({
+        pallet: palletToResponse(pallet),
+        routeSheet: routeSheetToResponse({
+          ...routeSheet,
+          summary: summarizeRouteSheetItems(routeSheet.items),
+        }),
+      });
+    } catch (err) {
+      if (err?.code === "ROUTE_SHEET_NOT_FOUND") {
+        return res.status(404).json({ message: "ROUTE_SHEET_NOT_FOUND" });
+      }
+      if (err?.code === "ROUTE_SHEET_STATUS_INVALID") {
+        return res.status(409).json({ message: "ROUTE_SHEET_STATUS_INVALID" });
+      }
+      if (err?.code === "ROUTE_SHEET_PALLET_NOT_IN_SHEET") {
+        return res.status(409).json({ message: "ROUTE_SHEET_PALLET_NOT_IN_SHEET" });
+      }
+      if (err?.code === "ROUTE_SHEET_PALLET_ALREADY_LOADED") {
+        return res.status(409).json({ message: "ROUTE_SHEET_PALLET_ALREADY_LOADED" });
+      }
+      if (err?.code === "ROUTE_SHEET_ITEM_STATUS_INVALID") {
+        return res.status(409).json({ message: "ROUTE_SHEET_ITEM_STATUS_INVALID" });
+      }
+      if (err?.code === "PALLET_NOT_FOUND") {
+        return res.status(404).json({ message: "PALLET_NOT_FOUND" });
+      }
+      if (err?.code === "PALLET_DISPATCH_STATUS_INVALID") {
+        return res.status(409).json({ message: "PALLET_DISPATCH_STATUS_INVALID" });
+      }
+      if (err?.code === "PALLET_LOCATION_MISMATCH") {
+        return res.status(409).json({ message: "PALLET_LOCATION_MISMATCH" });
+      }
+      if (err?.code === "PALLET_STATE_CHANGED" || err?.code === "P2002") {
+        return res.status(409).json({ message: "PALLET_STATE_CHANGED" });
+      }
+      console.error("route-sheet dispatch error:", err);
+      return res.status(500).json({ message: "ROUTE_SHEET_DISPATCH_ERROR" });
     }
   });
 

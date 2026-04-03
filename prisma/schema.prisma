@@ -76,6 +76,12 @@ model User {
   palletsCreated               Pallet[]                 @relation("PalletCreatedBy")
   palletEvents                 PalletEvent[]            @relation("PalletEventUser")
   palletDispatches             PalletDispatch[]         @relation("PalletDispatchBy")
+  palletRouteSheetsCreated     PalletRouteSheet[]       @relation("PalletRouteSheetCreatedBy")
+  palletRouteSheetsPublished   PalletRouteSheet[]       @relation("PalletRouteSheetPublishedBy")
+  palletRouteSheetsStarted     PalletRouteSheet[]       @relation("PalletRouteSheetStartedBy")
+  palletRouteSheetsCompleted   PalletRouteSheet[]       @relation("PalletRouteSheetCompletedBy")
+  palletRouteSheetItemsLoaded  PalletRouteSheetItem[]   @relation("PalletRouteSheetItemLoadedBy")
+  palletRouteSheetEvents       PalletRouteSheetEvent[]  @relation("PalletRouteSheetEventUser")
 
   @@index([orgId])
 }
@@ -384,8 +390,9 @@ model Pallet {
   createdAt         DateTime        @default(now())
   updatedAt         DateTime        @updatedAt
 
-  events   PalletEvent[]
-  dispatch PalletDispatch?
+  events          PalletEvent[]
+  dispatch        PalletDispatch?
+  routeSheetItems PalletRouteSheetItem[]
 
   @@unique([orgId, palletCode])
   @@unique([orgId, externalCode])
@@ -423,21 +430,100 @@ model PalletEvent {
 }
 
 model PalletDispatch {
-  id                 Int      @id @default(autoincrement())
+  id                 Int                   @id @default(autoincrement())
   orgId              Int?
-  palletId           Int      @unique
-  pallet             Pallet   @relation(fields: [palletId], references: [id], onDelete: Cascade)
+  palletId           Int                   @unique
+  pallet             Pallet                @relation(fields: [palletId], references: [id], onDelete: Cascade)
+  routeSheetId       Int?
+  routeSheet         PalletRouteSheet?     @relation(fields: [routeSheetId], references: [id])
+  routeSheetItemId   Int?                  @unique
+  routeSheetItem     PalletRouteSheetItem? @relation(fields: [routeSheetItemId], references: [id], onDelete: SetNull)
   destinationRc      String
   route              String?
   vehicle            String?
   driver             String?
   notes              String?
   dispatchedByUserId Int?
-  dispatchedBy       User?    @relation("PalletDispatchBy", fields: [dispatchedByUserId], references: [id])
+  dispatchedBy       User?                 @relation("PalletDispatchBy", fields: [dispatchedByUserId], references: [id])
   dispatchedAt       DateTime
 
   @@unique([orgId, palletId])
   @@index([orgId, destinationRc, dispatchedAt])
+  @@index([orgId, routeSheetId, dispatchedAt])
+}
+
+model PalletRouteSheet {
+  id                Int              @id @default(autoincrement())
+  orgId             Int?
+  sheetNumber       String
+  clientName        String
+  destinationRc     String
+  route             String?
+  vehicle           String?
+  driver            String?
+  plannedDate       DateTime?
+  notes             String?
+  status            RouteSheetStatus @default(DRAFT)
+  createdByUserId   Int
+  createdBy         User             @relation("PalletRouteSheetCreatedBy", fields: [createdByUserId], references: [id])
+  publishedByUserId Int?
+  publishedBy       User?            @relation("PalletRouteSheetPublishedBy", fields: [publishedByUserId], references: [id])
+  publishedAt       DateTime?
+  startedByUserId   Int?
+  startedBy         User?            @relation("PalletRouteSheetStartedBy", fields: [startedByUserId], references: [id])
+  startedAt         DateTime?
+  completedByUserId Int?
+  completedBy       User?            @relation("PalletRouteSheetCompletedBy", fields: [completedByUserId], references: [id])
+  completedAt       DateTime?
+  createdAt         DateTime         @default(now())
+  updatedAt         DateTime         @updatedAt
+
+  items      PalletRouteSheetItem[]
+  events     PalletRouteSheetEvent[]
+  dispatches PalletDispatch[]
+
+  @@unique([orgId, sheetNumber])
+  @@index([orgId, status, plannedDate, createdAt])
+}
+
+model PalletRouteSheetItem {
+  id             Int                  @id @default(autoincrement())
+  orgId          Int?
+  routeSheetId   Int
+  routeSheet     PalletRouteSheet     @relation(fields: [routeSheetId], references: [id], onDelete: Cascade)
+  palletId       Int
+  pallet         Pallet               @relation(fields: [palletId], references: [id], onDelete: Cascade)
+  status         RouteSheetItemStatus @default(PLANNED)
+  plannedAt      DateTime             @default(now())
+  loadedAt       DateTime?
+  loadedByUserId Int?
+  loadedBy       User?                @relation("PalletRouteSheetItemLoadedBy", fields: [loadedByUserId], references: [id])
+  createdAt      DateTime             @default(now())
+  updatedAt      DateTime             @updatedAt
+
+  dispatch PalletDispatch?
+  events   PalletRouteSheetEvent[]
+
+  @@unique([orgId, routeSheetId, palletId])
+  @@index([orgId, palletId, status])
+  @@index([orgId, routeSheetId, status, plannedAt])
+}
+
+model PalletRouteSheetEvent {
+  id           Int                   @id @default(autoincrement())
+  orgId        Int?
+  routeSheetId Int
+  routeSheet   PalletRouteSheet      @relation(fields: [routeSheetId], references: [id], onDelete: Cascade)
+  itemId       Int?
+  item         PalletRouteSheetItem? @relation(fields: [itemId], references: [id], onDelete: Cascade)
+  type         RouteSheetEventType
+  userId       Int?
+  user         User?                 @relation("PalletRouteSheetEventUser", fields: [userId], references: [id])
+  metaJson     Json?
+  createdAt    DateTime              @default(now())
+
+  @@index([orgId, routeSheetId, createdAt])
+  @@index([orgId, itemId, createdAt])
 }
 
 model PushSubscription {
@@ -508,6 +594,31 @@ enum PalletEventType {
   STORE
   MOVE
   DISPATCH
+  CANCEL
+}
+
+enum RouteSheetStatus {
+  DRAFT
+  PUBLISHED
+  LOADING
+  COMPLETED
+  CANCELLED
+}
+
+enum RouteSheetItemStatus {
+  PLANNED
+  LOADED
+  CANCELLED
+}
+
+enum RouteSheetEventType {
+  CREATE
+  ADD_ITEM
+  REMOVE_ITEM
+  PUBLISH
+  START_LOADING
+  LOAD_PALLET
+  COMPLETE
   CANCEL
 }
 
