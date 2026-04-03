@@ -230,15 +230,15 @@ export default function PalletFlow({ authHeaders, onBack }) {
     const styleMatch = firstHtml.match(/<style[\s\S]*?<\/style>/i);
     const sharedStyle = styleMatch ? styleMatch[0] : "";
 
-    const pages = htmlList
-      .map((html) => {
-        const bodyMatch = String(html || "").match(/<body[^>]*>([\s\S]*?)<\/body>/i);
-        const body = bodyMatch ? bodyMatch[1] : String(html || "");
-        const cleanedBody = body
-          .replace(/<div class="print-actions"[\s\S]*?<\/div>/gi, "")
-          .replace(/<script[\s\S]*?<\/script>/gi, "");
-        return `<article class="passport-batch-page">${cleanedBody}</article>`;
-      })
+    const bodyParts = htmlList.map((html) => {
+      const bodyMatch = String(html || "").match(/<body[^>]*>([\s\S]*?)<\/body>/i);
+      const body = bodyMatch ? bodyMatch[1] : String(html || "");
+      return body
+        .replace(/<div class="print-actions"[\s\S]*?<\/div>/gi, "")
+        .replace(/<script[\s\S]*?<\/script>/gi, "");
+    });
+    const pages = bodyParts
+      .map((body, index) => `${index > 0 ? '<div class="passport-page-break"></div>' : ""}${body}`)
       .join("");
 
     return `
@@ -248,34 +248,16 @@ export default function PalletFlow({ authHeaders, onBack }) {
           <title>Паспорта паллет (${palletCodes.length})</title>
           ${sharedStyle}
           <style>
-            .passport-batch-page {
-              margin: 0;
-              padding: 0;
+            .passport-page-break {
+              height: 0;
               break-before: page;
               page-break-before: always;
             }
-            .passport-batch-page:first-child {
-              break-before: auto;
-              page-break-before: auto;
-            }
-            .passport-batch-page:last-child {
-              break-after: auto;
-              page-break-after: auto;
-            }
             @media print {
-              .passport-batch-page {
-                margin: 0;
-                padding: 0;
+              .passport-page-break {
+                height: 0;
                 break-before: page;
                 page-break-before: always;
-              }
-              .passport-batch-page:first-child {
-                break-before: auto;
-                page-break-before: auto;
-              }
-              .passport-batch-page:last-child {
-                break-after: auto;
-                page-break-after: auto;
               }
             }
           </style>

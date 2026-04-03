@@ -4708,39 +4708,40 @@ app.get("/api/profile", auth, async (req, res) => {
                 * { box-sizing: border-box; }
                 body { margin: 0; font-family: Arial, sans-serif; color: #0f172a; background: #fff; }
                 .page {
-                  min-height: 277mm;
                   border: 2px solid #0f3f7a;
                   border-radius: 8px;
-                  padding: 12mm;
-                  display: flex;
-                  flex-direction: column;
-                  gap: 8mm;
+                  padding: 8mm;
                   break-inside: avoid;
                   page-break-inside: avoid;
                 }
                 .page-break { break-after: page; page-break-after: always; }
-                .header { display: grid; gap: 4mm; border-bottom: 2px solid #bfdbfe; padding-bottom: 5mm; }
-                .title { font-size: 36px; font-weight: 700; letter-spacing: 0.4px; color: #0f3f7a; }
-                .subtitle { font-size: 18px; color: #334155; }
+                .header { display: grid; gap: 3mm; border-bottom: 2px solid #bfdbfe; padding-bottom: 4mm; }
+                .title { font-size: 32px; font-weight: 700; letter-spacing: 0.4px; color: #0f3f7a; }
+                .subtitle { font-size: 16px; color: #334155; }
                 .code-box {
                   display: grid;
                   grid-template-columns: 1fr auto;
-                  gap: 10mm;
+                  gap: 8mm;
                   align-items: center;
                   border: 1px solid #bfdbfe;
                   border-radius: 8px;
-                  padding: 6mm;
+                  padding: 5mm;
+                  margin-top: 5mm;
                 }
-                .code { font-size: 38px; font-weight: 700; letter-spacing: 1.2px; line-height: 1.1; }
+                .code { font-size: 34px; font-weight: 700; letter-spacing: 1.2px; line-height: 1.1; }
                 .payload { margin-top: 2mm; font-size: 13px; color: #334155; word-break: break-all; }
-                .qr { width: 58mm; height: 58mm; border: 1px solid #cbd5e1; }
-                .grid { display: grid; grid-template-columns: 1fr 1fr; gap: 4mm 8mm; align-content: start; }
+                .qr { width: 54mm; height: 54mm; border: 1px solid #cbd5e1; }
+                .grid { display: grid; grid-template-columns: 1fr 1fr; gap: 4mm 8mm; align-content: start; margin-top: 5mm; }
                 .cell { border-bottom: 1px solid #e2e8f0; padding-bottom: 3mm; }
                 .label { font-size: 12px; color: #475569; margin-bottom: 1mm; }
-                .value { font-size: 20px; font-weight: 600; color: #0f172a; word-break: break-word; }
+                .value { font-size: 18px; font-weight: 600; color: #0f172a; word-break: break-word; }
                 .print-actions { margin: 12px 8px 8px; display: flex; gap: 8px; flex-wrap: wrap; }
                 .print-btn { padding: 6px 14px; font-size: 13px; cursor: pointer; }
-                @media print { .print-actions { display: none; } }
+                @media print {
+                  html, body { margin: 0; padding: 0; height: auto; }
+                  .page { min-height: auto !important; height: auto !important; }
+                  .print-actions { display: none; }
+                }
               </style>
             </head>
             <body>
