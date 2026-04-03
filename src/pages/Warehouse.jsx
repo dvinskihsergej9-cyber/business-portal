@@ -25,6 +25,7 @@ import WarehouseLocationsPanel from "../components/WarehouseLocationsPanel";
 import PalletFlow from "../components/tsd/PalletFlow";
 import { WAREHOUSE_EMBEDDED_ICONS } from "../assets/warehouse/embeddedIcons";
 import holdsImage from "../assets/warehouse/holds.png";
+import crossdockImage from "../assets/warehouse/crossdock.png";
 
 
 const API = API_BASE;
@@ -86,7 +87,7 @@ const WAREHOUSE_IMAGE = {
   items: WAREHOUSE_EMBEDDED_ICONS.inventory,
   queue: WAREHOUSE_EMBEDDED_ICONS.queue,
   tsd: WAREHOUSE_EMBEDDED_ICONS.tsd,
-  crossdock: WAREHOUSE_EMBEDDED_ICONS.tsd,
+  crossdock: crossdockImage,
 };
 
 function WarehouseTileIcon({ name }) {
