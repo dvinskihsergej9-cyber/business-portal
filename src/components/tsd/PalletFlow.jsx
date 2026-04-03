@@ -583,6 +583,14 @@ export default function PalletFlow({ authHeaders, onBack }) {
     setRouteSheetSummary(null);
   }, [activeTab, dispatchForm.destinationRc]);
 
+  useEffect(() => {
+    if (!success) return;
+    const timer = window.setTimeout(() => {
+      setSuccess("");
+    }, 2200);
+    return () => window.clearTimeout(timer);
+  }, [success]);
+
   const tabs = useMemo(
     () => [
       { id: "receive", label: "Приемка" },
@@ -597,8 +605,8 @@ export default function PalletFlow({ authHeaders, onBack }) {
   return (
     <>
       <TsdHeader
-        title="Паллеты"
-        subtitle="Отдельный LPN-контур: приемка, размещение, отгрузка"
+        title="Кросс-докинг"
+        subtitle="Паллетный контур: приемка, размещение, отгрузка"
         onBack={onBack}
       />
 
