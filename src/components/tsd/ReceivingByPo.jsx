@@ -23,7 +23,12 @@ const emptyState = {
   done: false,
 };
 
-export default function ReceivingByPo({ authHeaders, makeOpId, onBack }) {
+export default function ReceivingByPo({
+  authHeaders,
+  makeOpId,
+  onBack,
+  showInternalBack = true,
+}) {
   const [state, setState] = useState(emptyState);
   const [poList, setPoList] = useState([]);
   const [poSearch, setPoSearch] = useState("");
@@ -676,6 +681,7 @@ export default function ReceivingByPo({ authHeaders, makeOpId, onBack }) {
         }
         onChangeContext={selectedPo ? resetFlow : null}
         onBack={onBack}
+        showBackButton={showInternalBack}
       />
       <Stepper steps={STEPS} activeIndex={state.step} />
 

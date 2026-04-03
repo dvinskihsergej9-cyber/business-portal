@@ -38,7 +38,11 @@ const readJsonSafe = async (res) => {
   }
 };
 
-export default function ShipmentByPassport({ authHeaders, onBack }) {
+export default function ShipmentByPassport({
+  authHeaders,
+  onBack,
+  showInternalBack = true,
+}) {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
   const [success, setSuccess] = useState("");
@@ -162,6 +166,7 @@ export default function ShipmentByPassport({ authHeaders, onBack }) {
         contextLabel="Статус"
         contextValue={order ? getStatusLabel(order.status) : "Ожидание скана"}
         onBack={onBack}
+        showBackButton={showInternalBack}
       />
 
       <div className="tsd-section">

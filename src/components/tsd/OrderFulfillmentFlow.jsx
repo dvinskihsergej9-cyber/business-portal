@@ -1,5 +1,6 @@
 ﻿import { useEffect, useMemo, useState } from "react";
 import { API_BASE, normalizeErrorMessage } from "../../apiConfig";
+import { useCallback } from "react";
 import { jsPDF } from "jspdf";
 import autoTable from "jspdf-autotable";
 import QRCode from "qrcode";
@@ -126,7 +127,11 @@ const buildSkippedStepList = (items, planSteps) => {
   });
 };
 
-export default function OrderFulfillmentFlow({ authHeaders, onBack }) {
+export default function OrderFulfillmentFlow({
+  authHeaders,
+  onBack,
+  showInternalBack = true,
+}) {
   const [mineOnly, setMineOnly] = useState(false);
   const [orders, setOrders] = useState([]);
   const [selectedOrder, setSelectedOrder] = useState(null);
@@ -916,6 +921,22 @@ export default function OrderFulfillmentFlow({ authHeaders, onBack }) {
     }
   };
 
+  const handleHeaderBack = useCallback(() => {
+    leaveSelectedOrder(true);
+  }, [leaveSelectedOrder]);
+
+  useEffect(() => {
+    const handleExternalBack = (event) => {
+      handleHeaderBack();
+      if (typeof event?.preventDefault === "function") {
+        event.preventDefault();
+      }
+    };
+
+    window.addEventListener("tsd:mode-back-request", handleExternalBack);
+    return () => window.removeEventListener("tsd:mode-back-request", handleExternalBack);
+  }, [handleHeaderBack]);
+
   return (
     <>
       <TsdHeader
@@ -923,7 +944,8 @@ export default function OrderFulfillmentFlow({ authHeaders, onBack }) {
         subtitle="Сборка, паспорт, завершение"
         contextLabel="Режим"
         contextValue={mineOnly ? "Мои" : "Общий"}
-        onBack={() => leaveSelectedOrder(true)}
+        onBack={handleHeaderBack}
+        showBackButton={showInternalBack}
       />
       <div className="tsd-section">
         <TsdErrorAlert message={error} />

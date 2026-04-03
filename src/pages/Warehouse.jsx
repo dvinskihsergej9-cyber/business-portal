@@ -2694,6 +2694,16 @@ export default function Warehouse({
   useEffect(() => {
     const handleTopBack = (event) => {
       if (!section) return;
+      if (section === "tsd") {
+        const tsdEvent = new CustomEvent("tsd:back-request", { cancelable: true });
+        window.dispatchEvent(tsdEvent);
+        if (tsdEvent.defaultPrevented) {
+          if (typeof event?.preventDefault === "function") {
+            event.preventDefault();
+          }
+          return;
+        }
+      }
       if (section === "crossdock") {
         const crossdockEvent = new CustomEvent("crossdock:back-request", { cancelable: true });
         window.dispatchEvent(crossdockEvent);

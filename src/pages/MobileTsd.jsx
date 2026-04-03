@@ -1,5 +1,6 @@
 ﻿import { useEffect, useMemo, useState } from "react";
 import { API_BASE, normalizeErrorMessage } from "../apiConfig";
+import { useCallback } from "react";
 import { useAuth } from "../context/AuthContext";
 import TsdHome from "../components/tsd/TsdHome";
 import TsdHeader from "../components/tsd/TsdHeader";
@@ -381,6 +382,34 @@ export default function MobileTsd() {
     };
     loadPending();
   }, [mode, authHeaders]);
+
+  const handleTsdTopBack = useCallback(() => {
+    if (!mode) return false;
+
+    const modeBackEvent = new CustomEvent("tsd:mode-back-request", {
+      cancelable: true,
+      detail: { mode },
+    });
+    window.dispatchEvent(modeBackEvent);
+    if (modeBackEvent.defaultPrevented) {
+      return true;
+    }
+
+    setMode(null);
+    return true;
+  }, [mode]);
+
+  useEffect(() => {
+    const handleBackRequest = (event) => {
+      const handled = handleTsdTopBack();
+      if (handled && typeof event?.preventDefault === "function") {
+        event.preventDefault();
+      }
+    };
+
+    window.addEventListener("tsd:back-request", handleBackRequest);
+    return () => window.removeEventListener("tsd:back-request", handleBackRequest);
+  }, [handleTsdTopBack]);
 
 
   const resolveScan = async (code) => {
@@ -1414,6 +1443,7 @@ export default function MobileTsd() {
           }))
         }
         onBack={() => setMode(null)}
+        showBackButton={false}
       />
       <Stepper steps={COUNT_STEPS} activeIndex={countState.step} />
 
@@ -1670,6 +1700,7 @@ export default function MobileTsd() {
         title="Приемка"
         subtitle="Сканируй товар и укажи даты"
         onBack={() => setMode(null)}
+        showBackButton={false}
       />
       <Stepper steps={RECEIVING_STEPS} activeIndex={receivingState.step} />
 
@@ -1878,6 +1909,7 @@ export default function MobileTsd() {
           }))
         }
         onBack={() => setMode(null)}
+        showBackButton={false}
       />
       <Stepper steps={BIN_STEPS} activeIndex={binState.step} />
 
@@ -2044,6 +2076,7 @@ export default function MobileTsd() {
           }))
         }
         onBack={() => setMode(null)}
+        showBackButton={false}
       />
       <Stepper steps={MOVE_STEPS} activeIndex={moveState.step} />
 
@@ -2239,6 +2272,7 @@ export default function MobileTsd() {
           }))
         }
         onBack={() => setMode(null)}
+        showBackButton={false}
       />
       <Stepper steps={PUTAWAY_STEPS} activeIndex={putawayState.step} />
 
@@ -2427,6 +2461,7 @@ export default function MobileTsd() {
           }))
         }
         onBack={() => setMode(null)}
+        showBackButton={false}
       />
       <Stepper steps={REPLENISH_STEPS} activeIndex={replenState.step} />
 
@@ -2603,11 +2638,19 @@ export default function MobileTsd() {
   );
 
   const renderPick = () => (
-    <OrderFulfillmentFlow authHeaders={authHeaders} onBack={() => setMode(null)} />
+    <OrderFulfillmentFlow
+      authHeaders={authHeaders}
+      onBack={() => setMode(null)}
+      showInternalBack={false}
+    />
   );
 
   const renderShip = () => (
-    <ShipmentByPassport authHeaders={authHeaders} onBack={() => setMode(null)} />
+    <ShipmentByPassport
+      authHeaders={authHeaders}
+      onBack={() => setMode(null)}
+      showInternalBack={false}
+    />
   );
 
   const renderDiscrepancies = () => (
@@ -2616,6 +2659,7 @@ export default function MobileTsd() {
         title="Косяки"
         subtitle="Расхождения и проблемные места"
         onBack={() => setMode(null)}
+        showBackButton={false}
       />
       <div className="tsd-section">
         <StockDiscrepanciesTab />
@@ -2653,6 +2697,7 @@ export default function MobileTsd() {
           authHeaders={authHeaders}
           makeOpId={makeOpId}
           onBack={() => setMode(null)}
+          showInternalBack={false}
         />
       );
     }
