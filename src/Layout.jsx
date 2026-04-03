@@ -219,6 +219,10 @@ export default function Layout() {
     logout();
   };
 
+  const handleSupportOpen = () => {
+    navigate("/support");
+  };
+
   const handleBack = () => {
     if (!showBack) return;
 
@@ -245,6 +249,13 @@ export default function Layout() {
   const sidebarStyle = isMobile
     ? { ...styles.sidebar, display: "none" }
     : styles.sidebar;
+  const canUseSupport = Boolean(user && user.role === "ADMIN");
+  const supportBtnStyle = isMobile
+    ? { ...styles.headerSupportBtn, ...styles.headerTopBtnMobile }
+    : styles.headerSupportBtn;
+  const logoutBtnStyle = isMobile
+    ? { ...styles.headerLogoutBtn, ...styles.headerTopBtnMobile }
+    : styles.headerLogoutBtn;
 
   return (
     <div style={rootStyle}>
@@ -314,7 +325,12 @@ export default function Layout() {
 
           <div style={styles.topBarActions}>
             {user && <NotificationBell />}
-            <button type="button" style={styles.headerLogoutBtn} onClick={handleLogout}>
+            {canUseSupport && (
+              <button type="button" style={supportBtnStyle} onClick={handleSupportOpen}>
+                Поддержка
+              </button>
+            )}
+            <button type="button" style={logoutBtnStyle} onClick={handleLogout}>
               Выйти
             </button>
           </div>
@@ -466,7 +482,7 @@ const styles = {
     zIndex: 45,
     minHeight: 52,
     display: "grid",
-    gridTemplateColumns: "minmax(0, 1fr) auto minmax(0, 1fr)",
+    gridTemplateColumns: "auto minmax(0, 1fr) auto",
     alignItems: "center",
     padding: "6px 16px",
     borderBottom: "1px solid rgba(15, 23, 42, 0.08)",
@@ -479,7 +495,7 @@ const styles = {
     zIndex: 120,
     minHeight: "calc(env(safe-area-inset-top, 0px) + 52px)",
     display: "grid",
-    gridTemplateColumns: "minmax(0, 1fr) auto minmax(0, 1fr)",
+    gridTemplateColumns: "auto minmax(0, 1fr) auto",
     alignItems: "flex-end",
     padding: "calc(env(safe-area-inset-top, 0px) + 6px) 10px 6px",
     borderBottom: "1px solid rgba(15, 23, 42, 0.08)",
@@ -505,11 +521,12 @@ const styles = {
     display: "inline-flex",
     alignItems: "center",
     minHeight: 34,
-    minWidth: 72,
+    minWidth: 0,
   },
   topBarTitle: {
-    justifySelf: "center",
-    maxWidth: "min(64vw, 460px)",
+    justifySelf: "stretch",
+    maxWidth: "100%",
+    padding: "0 8px",
     textAlign: "center",
     fontSize: 16,
     fontWeight: 700,
@@ -524,6 +541,7 @@ const styles = {
     justifySelf: "end",
     display: "inline-flex",
     alignItems: "center",
+    flexWrap: "nowrap",
     gap: 8,
   },
   headerLogoutBtn: {
@@ -538,6 +556,24 @@ const styles = {
     textAlign: "center",
     whiteSpace: "nowrap",
     boxShadow: "none",
+  },
+  headerSupportBtn: {
+    padding: "7px 12px",
+    borderRadius: 10,
+    border: "1px solid #d1d5db",
+    background: "#ffffff",
+    color: "#111827",
+    fontSize: 13,
+    fontWeight: 600,
+    cursor: "pointer",
+    textAlign: "center",
+    whiteSpace: "nowrap",
+    boxShadow: "none",
+  },
+  headerTopBtnMobile: {
+    minHeight: 34,
+    padding: "6px 9px",
+    fontSize: 12,
   },
   content: {
     padding: 0,

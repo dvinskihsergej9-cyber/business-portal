@@ -158,6 +158,29 @@ function requireHr(req, res, next) {
   next();
 }
 
+async function requireCompanyOwnerSupport(req, res, next) {
+  try {
+    if (req.user?.role !== "ADMIN") {
+      return res.status(403).json({ message: "NO_ACCESS" });
+    }
+    if (req.user?.isSystemOwner) {
+      return res.status(403).json({ message: "OWNER_ONLY_COMPANY" });
+    }
+    const targetOrgId = Number(req.user?.orgId || 0);
+    if (!targetOrgId) {
+      return res.status(400).json({ message: "ORG_REQUIRED" });
+    }
+    const isOwner = await isCompanyOwnerAccount(req.user.id, targetOrgId);
+    if (!isOwner) {
+      return res.status(403).json({ message: "OWNER_ONLY_COMPANY" });
+    }
+    return next();
+  } catch (err) {
+    console.error("support owner access check error:", err);
+    return res.status(500).json({ message: "NO_ACCESS" });
+  }
+}
+
 function requirePermission(permissionKey) {
   return (req, res, next) => {
     if (hasPermission(req.user, permissionKey)) {
@@ -416,6 +439,12 @@ const TENANT_SCOPED_MODELS = new Set([
   "SalesOrderLine",
   "SalesOrderPickSkip",
   "OrderStatusHistory",
+  "SupportTicket",
+  "SupportMessage",
+  "Pallet",
+  "PalletLocation",
+  "PalletEvent",
+  "PalletDispatch",
 ]);
 
 function withTenantWhere(where, orgId) {
@@ -635,10 +664,10 @@ function parsePushSubscription(input) {
 
 async function sendWebPushToUser(orgId, userId, payload) {
   if (!WEB_PUSH_ENABLED) return;
-  if (!orgId || !userId) return;
+  if (!userId) return;
 
   const subscriptions = await prisma.pushSubscription.findMany({
-    where: { orgId, userId },
+    where: { userId },
     select: { id: true, endpoint: true, p256dh: true, auth: true },
     take: 20,
   });
@@ -693,11 +722,12 @@ async function createWarehouseNotification({
   linkUrl = null,
   payloadJson = null,
 }) {
-  if (!orgId || !userId || !title || !message) return null;
+  if (!userId || !title || !message) return null;
+  const normalizedOrgId = orgId || null;
 
   const notification = await prisma.warehouseNotification.create({
     data: {
-      orgId,
+      orgId: normalizedOrgId,
       userId,
       type,
       title,
@@ -708,7 +738,7 @@ async function createWarehouseNotification({
     },
   });
 
-  await sendWebPushToUser(orgId, userId, {
+  await sendWebPushToUser(normalizedOrgId, userId, {
     title,
     body: message,
     url: linkUrl || "/warehouse",
@@ -725,6 +755,565 @@ const TASKS_JOURNAL_LINK = "/warehouse?section=tasks&taskView=journal";
 const PLATFORM_NEWS_ADMIN_LINK = "/admin/platform-news";
 const PLATFORM_NEWS_TYPE = "PLATFORM_NEWS";
 const PLATFORM_NEWS_BROADCAST_TYPE = "PLATFORM_NEWS_BROADCAST";
+const SUPPORT_TICKETS_LINK = "/support";
+const SUPPORT_TICKETS_ADMIN_LINK = "/admin";
+const SUPPORT_TICKET_STATUSES = new Set([
+  "OPEN",
+  "IN_PROGRESS",
+  "WAITING_USER",
+  "RESOLVED",
+]);
+const SUPPORT_TICKET_PRIORITIES = new Set(["LOW", "NORMAL", "HIGH", "URGENT"]);
+const SUPPORT_TICKET_CATEGORIES = new Set([
+  "ACCESS",
+  "BILLING",
+  "TECHNICAL",
+  "INTEGRATION",
+  "OTHER",
+]);
+const SUPPORT_TICKET_STATUS_LABELS = {
+  OPEN: "Открыта",
+  IN_PROGRESS: "В работе",
+  WAITING_USER: "Ждёт ответа",
+  RESOLVED: "Решена",
+};
+
+function normalizeSupportTicketStatus(value, fallback = "OPEN") {
+  const normalized = String(value || "").trim().toUpperCase();
+  return SUPPORT_TICKET_STATUSES.has(normalized) ? normalized : fallback;
+}
+
+function normalizeSupportTicketPriority(value, fallback = "NORMAL") {
+  const normalized = String(value || "").trim().toUpperCase();
+  return SUPPORT_TICKET_PRIORITIES.has(normalized) ? normalized : fallback;
+}
+
+function normalizeSupportTicketCategory(value, fallback = "OTHER") {
+  const normalized = String(value || "").trim().toUpperCase();
+  return SUPPORT_TICKET_CATEGORIES.has(normalized) ? normalized : fallback;
+}
+
+function supportTicketStatusLabel(value) {
+  const normalized = normalizeSupportTicketStatus(value, "OPEN");
+  return SUPPORT_TICKET_STATUS_LABELS[normalized] || "Открыта";
+}
+
+function normalizeSupportText(value, maxLength = 4000) {
+  return String(value || "")
+    .replace(/\r\n?/g, "\n")
+    .trim()
+    .slice(0, maxLength);
+}
+
+function supportTicketToResponse(ticket) {
+  const lastMessage = Array.isArray(ticket?.messages) ? ticket.messages[0] : null;
+  return {
+    id: ticket?.id,
+    orgId: ticket?.orgId || null,
+    subject: ticket?.subject || "",
+    category: ticket?.category || "OTHER",
+    priority: ticket?.priority || "NORMAL",
+    status: ticket?.status || "OPEN",
+    createdAt: ticket?.createdAt || null,
+    updatedAt: ticket?.updatedAt || null,
+    lastMessageAt: ticket?.lastMessageAt || ticket?.updatedAt || null,
+    closedAt: ticket?.closedAt || null,
+    messagesCount: Number(ticket?._count?.messages || 0),
+    createdBy: ticket?.createdBy
+      ? {
+          id: ticket.createdBy.id,
+          name: ticket.createdBy.name || "",
+          email: ticket.createdBy.email || "",
+        }
+      : null,
+    organization: ticket?.organization
+      ? {
+          id: ticket.organization.id,
+          name: ticket.organization.name || "",
+          code: ticket.organization.code || "",
+        }
+      : null,
+    lastMessage: lastMessage
+      ? {
+          id: lastMessage.id,
+          body: lastMessage.body || "",
+          createdAt: lastMessage.createdAt || null,
+          isStaff: Boolean(lastMessage.isStaff),
+          author: lastMessage.author
+            ? {
+                id: lastMessage.author.id,
+                name: lastMessage.author.name || "",
+                email: lastMessage.author.email || "",
+              }
+            : null,
+        }
+      : null,
+  };
+}
+
+const PALLET_STATUSES = new Set(["RECEIVED", "STORED", "DISPATCHED", "CANCELLED"]);
+const PALLET_EVENT_TYPES = new Set([
+  "CREATE",
+  "RECEIVE",
+  "STORE",
+  "MOVE",
+  "DISPATCH",
+  "CANCEL",
+]);
+const ROUTE_SHEET_STATUSES = new Set(["DRAFT", "PUBLISHED", "LOADING", "COMPLETED", "CANCELLED"]);
+const ROUTE_SHEET_ITEM_STATUSES = new Set(["PLANNED", "LOADED", "CANCELLED"]);
+const ROUTE_SHEET_EVENT_TYPES = new Set([
+  "CREATE",
+  "ADD_ITEM",
+  "REMOVE_ITEM",
+  "PUBLISH",
+  "START_LOADING",
+  "LOAD_PALLET",
+  "COMPLETE",
+  "CANCEL",
+]);
+
+function normalizePalletStatus(value, fallback = "") {
+  const normalized = String(value || "").trim().toUpperCase();
+  return PALLET_STATUSES.has(normalized) ? normalized : fallback;
+}
+
+function normalizeRouteSheetStatus(value, fallback = "") {
+  const normalized = String(value || "").trim().toUpperCase();
+  return ROUTE_SHEET_STATUSES.has(normalized) ? normalized : fallback;
+}
+
+function normalizeRouteSheetItemStatus(value, fallback = "") {
+  const normalized = String(value || "").trim().toUpperCase();
+  return ROUTE_SHEET_ITEM_STATUSES.has(normalized) ? normalized : fallback;
+}
+
+function parseRouteSheetStatuses(rawValue) {
+  const raw = String(rawValue || "")
+    .split(",")
+    .map((item) => normalizeRouteSheetStatus(item, ""))
+    .filter(Boolean);
+  return Array.from(new Set(raw));
+}
+
+function normalizePalletCode(value) {
+  return String(value || "")
+    .trim()
+    .toUpperCase()
+    .replace(/\s+/g, "")
+    .slice(0, 96);
+}
+
+function normalizePalletText(value, maxLength = 240) {
+  return String(value || "").replace(/\r\n?/g, "\n").trim().slice(0, maxLength);
+}
+
+function toIsoDateOrNull(value) {
+  const raw = String(value || "").trim();
+  if (!raw) return null;
+  const parsed = new Date(raw);
+  if (Number.isNaN(parsed.getTime())) return null;
+  return parsed;
+}
+
+function isPermissionDeniedForTable(err, tableName) {
+  const joined = [
+    String(err?.message || ""),
+    String(err?.stack || ""),
+    String(err?.cause?.message || ""),
+    String(err?.meta?.cause || ""),
+    (() => {
+      try {
+        return JSON.stringify(err || {});
+      } catch {
+        return "";
+      }
+    })(),
+  ]
+    .join(" ")
+    .toLowerCase();
+  const table = String(tableName || "").trim().toLowerCase();
+  if (!table) return joined.includes("permission denied for table");
+  return joined.includes(`permission denied for table ${table}`);
+}
+
+function toErrorDetails(err) {
+  const details = {
+    name: String(err?.name || ""),
+    code: String(err?.code || ""),
+    clientVersion: String(err?.clientVersion || ""),
+    message: String(err?.message || ""),
+  };
+  const causeMessage = String(err?.cause?.message || err?.meta?.cause || "").trim();
+  if (causeMessage) {
+    details.cause = causeMessage;
+  }
+  return details;
+}
+
+async function generateUniquePalletCode(orgId, tx = prisma) {
+  const targetOrgId = Number(orgId || 0) || null;
+  for (let attempt = 0; attempt < 8; attempt += 1) {
+    const now = new Date();
+    const dateToken = `${now.getUTCFullYear()}${String(now.getUTCMonth() + 1).padStart(2, "0")}${String(
+      now.getUTCDate()
+    ).padStart(2, "0")}`;
+    const randomPart = crypto.randomBytes(3).toString("hex").toUpperCase();
+    const candidate = `PLT-${dateToken}-${randomPart}`;
+    const exists = await tx.pallet.findFirst({
+      where: {
+        orgId: targetOrgId,
+        palletCode: candidate,
+      },
+      select: { id: true },
+    });
+    if (!exists) return candidate;
+  }
+  throw new Error("PALLET_CODE_GENERATION_FAILED");
+}
+
+async function generateUniqueRouteSheetNumber(orgId, tx = prisma) {
+  const targetOrgId = Number(orgId || 0) || null;
+  for (let attempt = 0; attempt < 8; attempt += 1) {
+    const now = new Date();
+    const dateToken = `${now.getUTCFullYear()}${String(now.getUTCMonth() + 1).padStart(2, "0")}${String(
+      now.getUTCDate()
+    ).padStart(2, "0")}`;
+    const randomPart = crypto.randomBytes(2).toString("hex").toUpperCase();
+    const candidate = `ML-${dateToken}-${randomPart}`;
+    const exists = await tx.palletRouteSheet.findFirst({
+      where: {
+        orgId: targetOrgId,
+        sheetNumber: candidate,
+      },
+      select: { id: true },
+    });
+    if (!exists) return candidate;
+  }
+  throw new Error("ROUTE_SHEET_NUMBER_GENERATION_FAILED");
+}
+
+async function getOrCreatePalletLocationByCode(orgId, rawCode, tx = prisma) {
+  const orgIdValue = Number(orgId || 0) || null;
+  const code = normalizePalletCode(rawCode);
+  if (!code) {
+    const error = new Error("LOCATION_CODE_REQUIRED");
+    error.code = "LOCATION_CODE_REQUIRED";
+    throw error;
+  }
+
+  const existing = await tx.palletLocation.findFirst({
+    where: {
+      orgId: orgIdValue,
+      code,
+    },
+  });
+  if (existing) return existing;
+
+  try {
+    return await tx.palletLocation.create({
+      data: {
+        orgId: orgIdValue,
+        code,
+        name: code,
+      },
+    });
+  } catch (err) {
+    if (err?.code !== "P2002") throw err;
+    return tx.palletLocation.findFirst({
+      where: {
+        orgId: orgIdValue,
+        code,
+      },
+    });
+  }
+}
+
+function palletToResponse(pallet) {
+  return {
+    id: pallet?.id,
+    orgId: pallet?.orgId || null,
+    palletCode: pallet?.palletCode || "",
+    status: pallet?.status || "RECEIVED",
+    supplierName: pallet?.supplierName || null,
+    inboundRef: pallet?.inboundRef || null,
+    currentLocation: pallet?.currentLocation
+      ? {
+          id: pallet.currentLocation.id,
+          code: pallet.currentLocation.code || "",
+          name: pallet.currentLocation.name || "",
+        }
+      : null,
+    createdBy: pallet?.createdBy
+      ? {
+          id: pallet.createdBy.id,
+          name: pallet.createdBy.name || "",
+          email: pallet.createdBy.email || "",
+        }
+      : null,
+    receivedAt: pallet?.receivedAt || null,
+    storedAt: pallet?.storedAt || null,
+    dispatchedAt: pallet?.dispatchedAt || null,
+    createdAt: pallet?.createdAt || null,
+    updatedAt: pallet?.updatedAt || null,
+    dispatch: pallet?.dispatch
+      ? {
+          id: pallet.dispatch.id,
+          routeSheetId: pallet.dispatch.routeSheetId || null,
+          routeSheetItemId: pallet.dispatch.routeSheetItemId || null,
+          destinationRc: pallet.dispatch.destinationRc || "",
+          route: pallet.dispatch.route || null,
+          vehicle: pallet.dispatch.vehicle || null,
+          driver: pallet.dispatch.driver || null,
+          notes: pallet.dispatch.notes || null,
+          dispatchedByUserId: pallet.dispatch.dispatchedByUserId || null,
+          dispatchedAt: pallet.dispatch.dispatchedAt || null,
+        }
+      : null,
+  };
+}
+
+function palletEventToResponse(event) {
+  return {
+    id: event?.id,
+    palletId: event?.palletId || null,
+    type: event?.type || "",
+    fromStatus: event?.fromStatus || null,
+    toStatus: event?.toStatus || null,
+    metaJson: event?.metaJson || null,
+    createdAt: event?.createdAt || null,
+    user: event?.user
+      ? {
+          id: event.user.id,
+          name: event.user.name || "",
+          email: event.user.email || "",
+        }
+      : null,
+  };
+}
+
+function routeSheetItemToResponse(item) {
+  return {
+    id: item?.id,
+    routeSheetId: item?.routeSheetId || null,
+    status: item?.status || "PLANNED",
+    plannedAt: item?.plannedAt || null,
+    loadedAt: item?.loadedAt || null,
+    createdAt: item?.createdAt || null,
+    updatedAt: item?.updatedAt || null,
+    loadedBy: item?.loadedBy
+      ? {
+          id: item.loadedBy.id,
+          name: item.loadedBy.name || "",
+          email: item.loadedBy.email || "",
+        }
+      : null,
+    pallet: item?.pallet ? palletToResponse(item.pallet) : null,
+  };
+}
+
+function routeSheetToResponse(routeSheet) {
+  return {
+    id: routeSheet?.id,
+    orgId: routeSheet?.orgId || null,
+    sheetNumber: routeSheet?.sheetNumber || "",
+    clientName: routeSheet?.clientName || "",
+    destinationRc: routeSheet?.destinationRc || "",
+    route: routeSheet?.route || null,
+    vehicle: routeSheet?.vehicle || null,
+    driver: routeSheet?.driver || null,
+    plannedDate: routeSheet?.plannedDate || null,
+    notes: routeSheet?.notes || null,
+    status: routeSheet?.status || "DRAFT",
+    createdAt: routeSheet?.createdAt || null,
+    updatedAt: routeSheet?.updatedAt || null,
+    publishedAt: routeSheet?.publishedAt || null,
+    startedAt: routeSheet?.startedAt || null,
+    completedAt: routeSheet?.completedAt || null,
+    createdBy: routeSheet?.createdBy
+      ? {
+          id: routeSheet.createdBy.id,
+          name: routeSheet.createdBy.name || "",
+          email: routeSheet.createdBy.email || "",
+        }
+      : null,
+    publishedBy: routeSheet?.publishedBy
+      ? {
+          id: routeSheet.publishedBy.id,
+          name: routeSheet.publishedBy.name || "",
+          email: routeSheet.publishedBy.email || "",
+        }
+      : null,
+    startedBy: routeSheet?.startedBy
+      ? {
+          id: routeSheet.startedBy.id,
+          name: routeSheet.startedBy.name || "",
+          email: routeSheet.startedBy.email || "",
+        }
+      : null,
+    completedBy: routeSheet?.completedBy
+      ? {
+          id: routeSheet.completedBy.id,
+          name: routeSheet.completedBy.name || "",
+          email: routeSheet.completedBy.email || "",
+        }
+      : null,
+    items: Array.isArray(routeSheet?.items) ? routeSheet.items.map((item) => routeSheetItemToResponse(item)) : [],
+    summary: routeSheet?.summary || null,
+  };
+}
+
+function routeSheetEventToResponse(event) {
+  return {
+    id: event?.id,
+    routeSheetId: event?.routeSheetId || null,
+    itemId: event?.itemId || null,
+    type: event?.type || "",
+    metaJson: event?.metaJson || null,
+    createdAt: event?.createdAt || null,
+    user: event?.user
+      ? {
+          id: event.user.id,
+          name: event.user.name || "",
+          email: event.user.email || "",
+        }
+      : null,
+  };
+}
+
+function summarizeRouteSheetItems(items) {
+  const normalizedItems = Array.isArray(items) ? items : [];
+  const byStatus = normalizedItems.reduce(
+    (acc, item) => {
+      const status = normalizeRouteSheetItemStatus(item?.status, "PLANNED");
+      if (!acc[status]) acc[status] = 0;
+      acc[status] += 1;
+      return acc;
+    },
+    { PLANNED: 0, LOADED: 0, CANCELLED: 0 }
+  );
+  return {
+    total: normalizedItems.length,
+    planned: Number(byStatus.PLANNED || 0),
+    loaded: Number(byStatus.LOADED || 0),
+    cancelled: Number(byStatus.CANCELLED || 0),
+    remainingToLoad: Number(byStatus.PLANNED || 0),
+  };
+}
+
+async function createPalletEventTx(
+  tx,
+  { orgId, palletId, type, fromStatus = null, toStatus = null, userId = null, metaJson = null }
+) {
+  const normalizedType = String(type || "").trim().toUpperCase();
+  if (!PALLET_EVENT_TYPES.has(normalizedType)) {
+    throw new Error("PALLET_EVENT_TYPE_INVALID");
+  }
+  const normalizedFromStatus = normalizePalletStatus(fromStatus, null);
+  const normalizedToStatus = normalizePalletStatus(toStatus, null);
+  const normalizedOrgId = Number(orgId || 0) || null;
+  const normalizedUserId = Number(userId || 0) || null;
+  const normalizedMetaJson = metaJson && typeof metaJson === "object" ? metaJson : null;
+
+  try {
+    return await tx.palletEvent.create({
+      data: {
+        orgId: normalizedOrgId,
+        palletId,
+        type: normalizedType,
+        fromStatus: normalizedFromStatus,
+        toStatus: normalizedToStatus,
+        userId: normalizedUserId,
+        metaJson: normalizedMetaJson,
+      },
+    });
+  } catch (err) {
+    if (!isPermissionDeniedForTable(err, "User")) {
+      throw err;
+    }
+
+    const inserted = await tx.$queryRaw`
+      INSERT INTO "PalletEvent"
+        ("orgId", "palletId", "type", "fromStatus", "toStatus", "userId", "metaJson", "createdAt")
+      VALUES
+        (${normalizedOrgId}, ${palletId}, ${normalizedType}, ${normalizedFromStatus}, ${normalizedToStatus}, ${normalizedUserId}, CAST(${normalizedMetaJson ? JSON.stringify(normalizedMetaJson) : null} AS jsonb), NOW())
+      RETURNING "id", "orgId", "palletId", "type", "fromStatus", "toStatus", "userId", "metaJson", "createdAt"
+    `;
+    return Array.isArray(inserted) && inserted.length ? inserted[0] : null;
+  }
+}
+
+async function createRouteSheetEventTx(
+  tx,
+  { orgId, routeSheetId, itemId = null, type, userId = null, metaJson = null }
+) {
+  const normalizedType = String(type || "").trim().toUpperCase();
+  if (!ROUTE_SHEET_EVENT_TYPES.has(normalizedType)) {
+    throw new Error("ROUTE_SHEET_EVENT_TYPE_INVALID");
+  }
+  const normalizedOrgId = Number(orgId || 0) || null;
+  const normalizedUserId = Number(userId || 0) || null;
+  const normalizedItemId = Number(itemId || 0) || null;
+  const normalizedMetaJson = metaJson && typeof metaJson === "object" ? metaJson : null;
+
+  return tx.palletRouteSheetEvent.create({
+    data: {
+      orgId: normalizedOrgId,
+      routeSheetId,
+      itemId: normalizedItemId,
+      type: normalizedType,
+      userId: normalizedUserId,
+      metaJson: normalizedMetaJson,
+    },
+  });
+}
+
+async function loadSupportTicketForAccess(ticketId) {
+  return prisma.supportTicket.findUnique({
+    where: { id: ticketId },
+    select: {
+      id: true,
+      orgId: true,
+      createdById: true,
+      status: true,
+      subject: true,
+      priority: true,
+      category: true,
+    },
+  });
+}
+
+function canAccessSupportTicketAsUser(ticket, user) {
+  if (!ticket || !user?.id) return false;
+  if (user.isSystemOwner) return true;
+  if (ticket.createdById === user.id) return true;
+  if (user.role === "ADMIN" && user.orgId && ticket.orgId === user.orgId) return true;
+  return false;
+}
+
+async function notifySupportOperators(actorUserId, payload) {
+  const admins = await prisma.user.findMany({
+    where: {
+      role: "ADMIN",
+      isActive: true,
+      id: actorUserId ? { not: actorUserId } : undefined,
+    },
+    select: { id: true, orgId: true, email: true },
+    take: 20,
+  });
+  const supportOperators = admins.filter((admin) => isOwnerEmail(admin.email));
+  for (const admin of supportOperators) {
+    await createWarehouseNotification({
+      orgId: admin.orgId || null,
+      userId: admin.id,
+      type: "SUPPORT",
+      title: payload?.title || "Поддержка",
+      message: payload?.message || "",
+      linkUrl: payload?.linkUrl || SUPPORT_TICKETS_ADMIN_LINK,
+      payloadJson: payload?.payloadJson || null,
+    }).catch(() => null);
+  }
+}
 
 function hashInviteToken(token) {
   return crypto.createHash("sha256").update(token).digest("hex");
@@ -1439,6 +2028,7 @@ const WAREHOUSE_TSD_ANY = [
   PERMISSION_KEYS.TSD_REPLENISH,
   PERMISSION_KEYS.TSD_PICK,
   PERMISSION_KEYS.TSD_SHIP,
+  PERMISSION_KEYS.TSD_PALLETS,
   PERMISSION_KEYS.TSD_DISCREPANCIES,
 ];
 
@@ -1486,6 +2076,13 @@ const isReadRequest = (req) =>
 
 app.use("/api/admin", auth, requirePermission(PERMISSION_KEYS.APP_ADMIN));
 app.use("/api/users", auth, requirePermission(PERMISSION_KEYS.ADMIN_USERS));
+app.use("/api/support", auth, enforceOperationalTenantScope, requireCompanyOwnerSupport);
+app.use(
+  "/api/pallets",
+  auth,
+  enforceOperationalTenantScope,
+  requireAnyPermission([PERMISSION_KEYS.WAREHOUSE_TSD, PERMISSION_KEYS.TSD_PALLETS])
+);
 app.use("/api/inventory", auth, enforceOperationalTenantScope, (req, res, next) => {
   if (hasPermission(req.user, PERMISSION_KEYS.WAREHOUSE_INVENTORY)) {
     return next();
@@ -3725,6 +4322,15 @@ app.post("/api/login", async (req, res) => {
       },
     });
   } catch (err) {
+    if (isPermissionDeniedForTable(err, "User")) {
+      return res.status(500).json({ message: "AUTH_DB_PERMISSION_USER_TABLE" });
+    }
+    if (isPermissionDeniedForTable(err, "Organization")) {
+      return res.status(500).json({ message: "AUTH_DB_PERMISSION_ORG_TABLE" });
+    }
+    if (String(err?.name || "").includes("PrismaClientUnknownRequestError")) {
+      return res.status(500).json({ message: "AUTH_DB_QUERY_ERROR" });
+    }
     console.error("login error:", err);
     res.status(500).json({ message: "Ошибка сервера при входе" });
   }
@@ -3960,6 +4566,2808 @@ app.get("/api/profile", auth, async (req, res) => {
     } catch (err) {
       console.error("me error:", err);
       res.status(500).json({ message: "ME_LOAD_ERROR" });
+    }
+  });
+
+  app.post("/api/pallets/receive", auth, async (req, res) => {
+    try {
+      const orgId = Number(req.user?.orgId || 0);
+      if (!orgId) {
+        return res.status(400).json({ message: "ORG_REQUIRED" });
+      }
+
+      const inboundRef = normalizePalletText(req.body?.inboundRef, 120) || null;
+      const supplierName = normalizePalletText(req.body?.supplierName, 160) || null;
+      if (!supplierName) {
+        return res.status(400).json({ message: "PALLET_SUPPLIER_REQUIRED" });
+      }
+      if (!inboundRef) {
+        return res.status(400).json({ message: "PALLET_INBOUND_REF_REQUIRED" });
+      }
+
+      let createdBase = null;
+      let conflictError = null;
+      for (let attempt = 0; attempt < 4; attempt += 1) {
+        try {
+          createdBase = await prisma.$transaction(async (tx) => {
+            const now = new Date();
+            const palletCode = await generateUniquePalletCode(orgId, tx);
+            const externalCompatCode = crypto.randomBytes(4).toString("hex").toUpperCase();
+            let pallet = null;
+            try {
+              pallet = await tx.pallet.create({
+                data: {
+                  orgId,
+                  palletCode,
+                  // Compatibility fallback for deployments where externalCode remains constrained in DB.
+                  // Business flow still uses only internal palletCode.
+                  externalCode: externalCompatCode,
+                  status: "RECEIVED",
+                  supplierName,
+                  inboundRef,
+                  createdByUserId: req.user.id,
+                  receivedAt: now,
+                },
+              });
+            } catch (palletCreateErr) {
+              if (!isPermissionDeniedForTable(palletCreateErr, "User")) {
+                throw palletCreateErr;
+              }
+
+              const insertedRows = await tx.$queryRaw`
+                INSERT INTO "Pallet"
+                  ("orgId", "palletCode", "externalCode", "status", "supplierName", "inboundRef", "createdByUserId", "receivedAt", "createdAt", "updatedAt")
+                VALUES
+                  (${orgId}, ${palletCode}, ${externalCompatCode}, 'RECEIVED'::"PalletStatus", ${supplierName}, ${inboundRef}, ${req.user.id}, ${now}, ${now}, ${now})
+                RETURNING
+                  "id", "orgId", "palletCode", "externalCode", "status", "supplierName", "inboundRef",
+                  "currentLocationId", "createdByUserId", "receivedAt", "storedAt", "dispatchedAt", "createdAt", "updatedAt"
+              `;
+              if (!Array.isArray(insertedRows) || !insertedRows.length) {
+                const fallbackError = new Error("PALLET_CREATE_FAILED");
+                fallbackError.code = "PALLET_CREATE_FAILED";
+                throw fallbackError;
+              }
+              pallet = insertedRows[0];
+            }
+
+            const baseMeta = {
+              supplierName,
+              inboundRef,
+            };
+
+            await createPalletEventTx(tx, {
+              orgId,
+              palletId: pallet.id,
+              type: "CREATE",
+              fromStatus: null,
+              toStatus: "RECEIVED",
+              userId: req.user.id,
+              metaJson: baseMeta,
+            });
+
+            await createPalletEventTx(tx, {
+              orgId,
+              palletId: pallet.id,
+              type: "RECEIVE",
+              fromStatus: null,
+              toStatus: "RECEIVED",
+              userId: req.user.id,
+              metaJson: baseMeta,
+            });
+
+            return pallet;
+          });
+          conflictError = null;
+          break;
+        } catch (txErr) {
+          if (txErr?.code === "P2002") {
+            conflictError = txErr;
+            continue;
+          }
+          throw txErr;
+        }
+      }
+
+      if (!createdBase) {
+        if (conflictError) {
+          return res.status(409).json({ message: "PALLET_CONFLICT" });
+        }
+        return res.status(500).json({ message: "PALLET_CREATE_FAILED" });
+      }
+
+      const created =
+        (await prisma.pallet.findFirst({
+          where: {
+            orgId,
+            id: createdBase?.id,
+          },
+          include: {
+            currentLocation: true,
+            dispatch: true,
+          },
+        })) || createdBase;
+
+      if (!created || !created.id) {
+        return res.status(500).json({ message: "PALLET_CREATE_FAILED" });
+      }
+
+      return res.status(201).json({
+        pallet: palletToResponse(created),
+        label: {
+          palletCode: created.palletCode,
+          payload: `bp:pallet:${created.palletCode}`,
+          layout: "A4_PASSPORT",
+        },
+      });
+    } catch (err) {
+      console.error("pallet receive error details:", toErrorDetails(err));
+      if (err?.code === "P2002") {
+        return res.status(409).json({ message: "PALLET_CONFLICT" });
+      }
+      if (err?.code === "P2003") {
+        return res.status(500).json({ message: "PALLET_USER_FK_ERROR" });
+      }
+      if (isPermissionDeniedForTable(err, "User")) {
+        return res.status(500).json({ message: "PALLET_DB_PERMISSION_USER_TABLE" });
+      }
+      if (String(err?.name || "").includes("PrismaClientUnknownRequestError")) {
+        return res.status(500).json({ message: "PALLET_DB_QUERY_ERROR" });
+      }
+      console.error("pallet receive error:", err);
+      return res.status(500).json({ message: "PALLET_RECEIVE_ERROR" });
+    }
+  });
+
+  app.post("/api/pallets/store", auth, async (req, res) => {
+    try {
+      const orgId = Number(req.user?.orgId || 0);
+      if (!orgId) {
+        return res.status(400).json({ message: "ORG_REQUIRED" });
+      }
+
+      const palletCode = normalizePalletCode(req.body?.palletCode);
+      const locationCode = normalizePalletCode(req.body?.locationCode);
+      if (!palletCode) {
+        return res.status(400).json({ message: "PALLET_CODE_REQUIRED" });
+      }
+      if (!locationCode) {
+        return res.status(400).json({ message: "PALLET_LOCATION_REQUIRED" });
+      }
+
+      const storeResult = await prisma.$transaction(async (tx) => {
+        const now = new Date();
+        const maxStoreAgeMs = 24 * 60 * 60 * 1000;
+        const pallet = await tx.pallet.findFirst({
+          where: {
+            orgId,
+            palletCode,
+          },
+          include: {
+            currentLocation: true,
+          },
+        });
+
+        if (!pallet) {
+          const error = new Error("PALLET_NOT_FOUND");
+          error.code = "PALLET_NOT_FOUND";
+          throw error;
+        }
+        const targetLocation = await getOrCreatePalletLocationByCode(orgId, locationCode, tx);
+        if (!targetLocation) {
+          const error = new Error("PALLET_LOCATION_NOT_FOUND");
+          error.code = "PALLET_LOCATION_NOT_FOUND";
+          throw error;
+        }
+
+        const receivedAtMs = pallet.receivedAt ? new Date(pallet.receivedAt).getTime() : NaN;
+        if (!Number.isFinite(receivedAtMs) || now.getTime() - receivedAtMs > maxStoreAgeMs) {
+          const error = new Error("PALLET_STORE_RECEIVE_EXPIRED");
+          error.code = "PALLET_STORE_RECEIVE_EXPIRED";
+          throw error;
+        }
+
+        if (String(pallet.status || "") === "STORED") {
+          if (pallet.currentLocationId === targetLocation.id) {
+            return { palletId: pallet.id, idempotent: true };
+          }
+          const error = new Error("PALLET_ALREADY_STORED");
+          error.code = "PALLET_ALREADY_STORED";
+          throw error;
+        }
+
+        if (String(pallet.status || "") !== "RECEIVED") {
+          const error = new Error("PALLET_STORE_STATUS_INVALID");
+          error.code = "PALLET_STORE_STATUS_INVALID";
+          throw error;
+        }
+
+        const updateResult = await tx.pallet.updateMany({
+          where: {
+            id: pallet.id,
+            status: "RECEIVED",
+          },
+          data: {
+            currentLocationId: targetLocation.id,
+            status: "STORED",
+            storedAt: now,
+          },
+        });
+        if (updateResult.count !== 1) {
+          const error = new Error("PALLET_STATE_CHANGED");
+          error.code = "PALLET_STATE_CHANGED";
+          throw error;
+        }
+
+        await createPalletEventTx(tx, {
+          orgId,
+          palletId: pallet.id,
+          type: "STORE",
+          fromStatus: pallet.status,
+          toStatus: "STORED",
+          userId: req.user.id,
+          metaJson: {
+            fromLocationCode: pallet.currentLocation?.code || null,
+            toLocationCode: targetLocation.code,
+            toLocationName: targetLocation.name,
+          },
+        });
+
+        return { palletId: pallet.id, idempotent: false };
+      });
+
+      const updatedPallet = storeResult?.palletId
+        ? await prisma.pallet.findFirst({
+            where: {
+              orgId,
+              id: storeResult.palletId,
+            },
+            include: {
+              currentLocation: true,
+              dispatch: true,
+            },
+          })
+        : null;
+
+      if (!updatedPallet) {
+        return res.status(500).json({ message: "PALLET_STORE_FAILED" });
+      }
+      return res.json({
+        pallet: palletToResponse(updatedPallet),
+        idempotent: Boolean(storeResult?.idempotent),
+      });
+    } catch (err) {
+      if (err?.code === "PALLET_NOT_FOUND") {
+        return res.status(404).json({ message: "PALLET_NOT_FOUND" });
+      }
+      if (err?.code === "PALLET_STORE_STATUS_INVALID") {
+        return res.status(409).json({ message: "PALLET_STORE_STATUS_INVALID" });
+      }
+      if (err?.code === "PALLET_STORE_RECEIVE_EXPIRED") {
+        return res.status(409).json({ message: "PALLET_STORE_RECEIVE_EXPIRED" });
+      }
+      if (err?.code === "PALLET_ALREADY_STORED") {
+        return res.status(409).json({ message: "PALLET_ALREADY_STORED" });
+      }
+      if (err?.code === "PALLET_LOCATION_REQUIRED") {
+        return res.status(400).json({ message: "PALLET_LOCATION_REQUIRED" });
+      }
+      if (err?.code === "PALLET_STATE_CHANGED") {
+        return res.status(409).json({ message: "PALLET_STATE_CHANGED" });
+      }
+      console.error("pallet store error:", err);
+      return res.status(500).json({ message: "PALLET_STORE_ERROR" });
+    }
+  });
+
+  app.post("/api/pallets/print-label", auth, async (req, res) => {
+    try {
+      const orgId = Number(req.user?.orgId || 0);
+      if (!orgId) {
+        return res.status(400).json({ message: "ORG_REQUIRED" });
+      }
+
+      const palletCode = normalizePalletCode(req.body?.palletCode);
+      const qty = Math.max(1, Math.min(20, Number(req.body?.qty || 1)));
+      const layout = String(req.body?.layout || "A4_PASSPORT")
+        .trim()
+        .toUpperCase();
+
+      if (!palletCode) {
+        return res.status(400).json({ message: "PALLET_CODE_REQUIRED" });
+      }
+
+      const pallet = await prisma.pallet.findFirst({
+        where: {
+          orgId,
+          palletCode,
+        },
+        include: {
+          currentLocation: true,
+        },
+      });
+      if (!pallet) {
+        return res.status(404).json({ message: "PALLET_NOT_FOUND" });
+      }
+
+      const labelPayload = `bp:pallet:${pallet.palletCode}`;
+      const qrBuffer = await renderQrPng(labelPayload);
+      const qrImg = `data:image/png;base64,${qrBuffer.toString("base64")}`;
+
+      const isA4Passport = layout === "A4_PASSPORT" || layout === "A4";
+      const subtitleParts = [pallet.supplierName, pallet.inboundRef].filter(Boolean);
+      const subtitle = subtitleParts.join(" • ");
+      const receivedAtText = pallet.receivedAt
+        ? new Date(pallet.receivedAt).toLocaleString("ru-RU")
+        : "-";
+      const locationCode = pallet.currentLocation?.code || "Не размещена";
+
+      const html = isA4Passport
+        ? `
+          <html>
+            <head>
+              <meta charset="utf-8" />
+              <title>Паспорт паллеты ${escapeHtml(pallet.palletCode)}</title>
+              <style>
+                @page { size: A4; margin: 10mm; }
+                * { box-sizing: border-box; }
+                body { margin: 0; font-family: Arial, sans-serif; color: #0f172a; background: #fff; }
+                .page {
+                  border: 2px solid #0f3f7a;
+                  border-radius: 8px;
+                  padding: 8mm;
+                  break-inside: avoid;
+                  page-break-inside: avoid;
+                }
+                .page-break { break-after: page; page-break-after: always; }
+                .header { display: grid; gap: 3mm; border-bottom: 2px solid #bfdbfe; padding-bottom: 4mm; }
+                .title { font-size: 32px; font-weight: 700; letter-spacing: 0.4px; color: #0f3f7a; }
+                .subtitle { font-size: 16px; color: #334155; }
+                .code-box {
+                  display: grid;
+                  grid-template-columns: 1fr auto;
+                  gap: 8mm;
+                  align-items: center;
+                  border: 1px solid #bfdbfe;
+                  border-radius: 8px;
+                  padding: 5mm;
+                  margin-top: 5mm;
+                }
+                .code { font-size: 34px; font-weight: 700; letter-spacing: 1.2px; line-height: 1.1; }
+                .payload { margin-top: 2mm; font-size: 13px; color: #334155; word-break: break-all; }
+                .qr { width: 54mm; height: 54mm; border: 1px solid #cbd5e1; }
+                .grid { display: grid; grid-template-columns: 1fr 1fr; gap: 4mm 8mm; align-content: start; margin-top: 5mm; }
+                .cell { border-bottom: 1px solid #e2e8f0; padding-bottom: 3mm; }
+                .label { font-size: 12px; color: #475569; margin-bottom: 1mm; }
+                .value { font-size: 18px; font-weight: 600; color: #0f172a; word-break: break-word; }
+                .print-actions {
+                  position: fixed;
+                  left: 10px;
+                  right: 10px;
+                  bottom: calc(env(safe-area-inset-bottom, 0px) + 10px);
+                  display: grid;
+                  grid-template-columns: 1fr 1fr;
+                  gap: 10px;
+                  z-index: 1000;
+                }
+                .print-btn {
+                  min-height: 60px;
+                  font-size: 20px;
+                  font-weight: 700;
+                  border: none;
+                  border-radius: 16px;
+                  cursor: pointer;
+                  background: #0ea5e9;
+                  color: #fff;
+                }
+                @media print {
+                  html, body { margin: 0; padding: 0; height: auto; }
+                  .page { min-height: auto !important; height: auto !important; }
+                  .print-actions { display: none; }
+                }
+              </style>
+            </head>
+            <body>
+              ${Array.from({ length: qty })
+                .map(
+                  (_, index) => `
+                    <section class="page ${index < qty - 1 ? "page-break" : ""}">
+                      <div class="header">
+                        <div class="title">Паспорт паллеты</div>
+                        <div class="subtitle">Внутренний складской идентификатор LPN</div>
+                      </div>
+
+                      <div class="code-box">
+                        <div>
+                          <div class="code">${escapeHtml(pallet.palletCode)}</div>
+                          <div class="payload">${escapeHtml(labelPayload)}</div>
+                        </div>
+                        <img class="qr" src="${qrImg}" alt="QR ${escapeHtml(pallet.palletCode)}" />
+                      </div>
+
+                      <div class="grid">
+                        <div class="cell">
+                          <div class="label">Поставщик</div>
+                          <div class="value">${escapeHtml(pallet.supplierName || "-")}</div>
+                        </div>
+                        <div class="cell">
+                          <div class="label">Машина / ТТН</div>
+                          <div class="value">${escapeHtml(pallet.inboundRef || "-")}</div>
+                        </div>
+                        <div class="cell">
+                          <div class="label">Дата приемки</div>
+                          <div class="value">${escapeHtml(receivedAtText)}</div>
+                        </div>
+                        <div class="cell">
+                          <div class="label">Текущая ячейка</div>
+                          <div class="value">${escapeHtml(locationCode)}</div>
+                        </div>
+                        <div class="cell">
+                          <div class="label">Статус</div>
+                          <div class="value">Принята</div>
+                        </div>
+                        <div class="cell">
+                          <div class="label">Партия</div>
+                          <div class="value">${escapeHtml(subtitle || "-")}</div>
+                        </div>
+                      </div>
+
+                    </section>
+                  `
+                )
+                .join("")}
+              <div class="print-actions">
+                <button class="print-btn" onclick="window.print()">Печать</button>
+                <button class="print-btn" onclick="returnToApp()">Закрыть</button>
+              </div>
+              <script>
+                function returnToApp() {
+                  try {
+                    if (window.opener && !window.opener.closed) {
+                      window.close();
+                      return;
+                    }
+                  } catch (e) {}
+                  if (window.history.length > 1) {
+                    window.history.back();
+                    return;
+                  }
+                  window.location.href = "/warehouse?section=tsd";
+                }
+                (function () {
+                  const images = Array.from(document.images || []);
+                  const finish = () => setTimeout(() => window.print(), 180);
+                  if (!images.length) return finish();
+                  let pending = images.length;
+                  const done = () => {
+                    pending -= 1;
+                    if (pending <= 0) finish();
+                  };
+                  images.forEach((img) => {
+                    if (img.complete) {
+                      done();
+                    } else {
+                      img.addEventListener("load", done, { once: true });
+                      img.addEventListener("error", done, { once: true });
+                    }
+                  });
+                })();
+              </script>
+            </body>
+          </html>
+        `
+        : `
+          <html>
+            <head>
+              <meta charset="utf-8" />
+              <title>Паллетная этикетка ${escapeHtml(pallet.palletCode)}</title>
+              <style>
+                @page { size: ${layout === "A6" ? "A6" : "75mm 50mm"}; margin: ${layout === "A6" ? "6mm" : "0"}; }
+                body { font-family: Arial, sans-serif; margin: 0; color: #0f172a; }
+                .grid { display: grid; grid-template-columns: 1fr; justify-items: center; gap: 10mm; padding: 6mm; }
+                .label {
+                  border: 1px solid #dbeafe;
+                  background: #ffffff;
+                  border-radius: ${layout === "A6" ? "10px" : "0"};
+                  width: ${layout === "A6" ? "136mm" : "75mm"};
+                  min-height: ${layout === "A6" ? "86mm" : "50mm"};
+                  box-sizing: border-box;
+                  padding: 3mm;
+                  display: grid;
+                  align-content: space-between;
+                  gap: 2mm;
+                }
+                .label--page-break {
+                  break-after: page;
+                  page-break-after: always;
+                }
+                .label--page-break:last-child {
+                  break-after: auto;
+                  page-break-after: auto;
+                }
+                .title {
+                  font-size: ${layout === "A6" ? "22px" : "13px"};
+                  font-weight: 700;
+                  line-height: 1.2;
+                  color: #0f3f7a;
+                }
+                .subtitle {
+                  font-size: ${layout === "A6" ? "13px" : "9px"};
+                  color: #475569;
+                  min-height: 12px;
+                }
+                .row { display: grid; grid-template-columns: 1fr auto; gap: 3mm; align-items: center; }
+                .qr {
+                  width: ${layout === "A6" ? "46mm" : "30mm"};
+                  height: ${layout === "A6" ? "46mm" : "30mm"};
+                  justify-self: end;
+                }
+                .code {
+                  font-size: ${layout === "A6" ? "15px" : "11px"};
+                  letter-spacing: 0.3px;
+                  font-weight: 700;
+                  word-break: break-all;
+                }
+                .payload {
+                  font-size: 8px;
+                  color: #64748b;
+                  word-break: break-all;
+                }
+                .print-actions {
+                  position: fixed;
+                  left: 10px;
+                  right: 10px;
+                  bottom: calc(env(safe-area-inset-bottom, 0px) + 10px);
+                  display: grid;
+                  grid-template-columns: 1fr 1fr;
+                  gap: 10px;
+                  z-index: 1000;
+                }
+                .print-btn {
+                  min-height: 60px;
+                  font-size: 20px;
+                  font-weight: 700;
+                  border: none;
+                  border-radius: 16px;
+                  cursor: pointer;
+                  background: #0ea5e9;
+                  color: #fff;
+                }
+                @media print { .print-actions { display: none; } }
+              </style>
+            </head>
+            <body>
+              <div class="${layout === "A6" ? "grid" : ""}">
+                ${Array.from({ length: qty })
+                  .map(
+                    () => `
+                      <div class="label ${layout === "A6" ? "" : "label--page-break"}">
+                        <div class="title">Паллета</div>
+                        <div class="subtitle">${escapeHtml(subtitle || "Внутренний код паллеты")}</div>
+                        <div class="row">
+                          <div>
+                            <div class="code">${escapeHtml(pallet.palletCode)}</div>
+                            <div class="payload">${escapeHtml(labelPayload)}</div>
+                          </div>
+                          <img class="qr" src="${qrImg}" alt="QR ${escapeHtml(pallet.palletCode)}" />
+                        </div>
+                      </div>
+                    `
+                  )
+                  .join("")}
+              </div>
+              <div class="print-actions">
+                <button class="print-btn" onclick="window.print()">Печать</button>
+                <button class="print-btn" onclick="returnToApp()">Закрыть</button>
+              </div>
+              <script>
+                function returnToApp() {
+                  try {
+                    if (window.opener && !window.opener.closed) {
+                      window.close();
+                      return;
+                    }
+                  } catch (e) {}
+                  if (window.history.length > 1) {
+                    window.history.back();
+                    return;
+                  }
+                  window.location.href = "/warehouse?section=tsd";
+                }
+                (function () {
+                  const images = Array.from(document.images || []);
+                  const finish = () => setTimeout(() => window.print(), 180);
+                  if (!images.length) return finish();
+                  let pending = images.length;
+                  const done = () => {
+                    pending -= 1;
+                    if (pending <= 0) finish();
+                  };
+                  images.forEach((img) => {
+                    if (img.complete) {
+                      done();
+                    } else {
+                      img.addEventListener("load", done, { once: true });
+                      img.addEventListener("error", done, { once: true });
+                    }
+                  });
+                })();
+              </script>
+            </body>
+          </html>
+        `;
+
+      res.setHeader("Content-Type", "text/html; charset=utf-8");
+      return res.send(html);
+    } catch (err) {
+      console.error("pallet print label error:", err);
+      return res.status(500).json({ message: "PALLET_PRINT_LABEL_ERROR" });
+    }
+  });
+
+  app.get("/api/pallets/route-sheets", auth, async (req, res) => {
+    try {
+      const orgId = Number(req.user?.orgId || 0);
+      if (!orgId) {
+        return res.status(400).json({ message: "ORG_REQUIRED" });
+      }
+
+      const statusesRaw = String(req.query?.statuses || req.query?.status || "").trim();
+      const statuses = statusesRaw
+        ? parseRouteSheetStatuses(statusesRaw)
+        : ["DRAFT", "PUBLISHED", "LOADING"];
+      if (!statuses.length) {
+        return res.status(400).json({ message: "ROUTE_SHEET_STATUS_INVALID" });
+      }
+      const limit = Math.max(1, Math.min(200, Number(req.query?.limit || 80)));
+
+      const sheets = await prisma.palletRouteSheet.findMany({
+        where: {
+          orgId,
+          status: { in: statuses },
+        },
+        include: {
+          createdBy: { select: { id: true, name: true, email: true } },
+          publishedBy: { select: { id: true, name: true, email: true } },
+          startedBy: { select: { id: true, name: true, email: true } },
+          completedBy: { select: { id: true, name: true, email: true } },
+          items: {
+            select: {
+              id: true,
+              status: true,
+            },
+          },
+        },
+        orderBy: [{ plannedDate: "asc" }, { createdAt: "desc" }, { id: "desc" }],
+        take: limit,
+      });
+
+      const items = sheets.map((sheet) =>
+        routeSheetToResponse({
+          ...sheet,
+          summary: summarizeRouteSheetItems(sheet.items),
+          items: [],
+        })
+      );
+      return res.json({ items });
+    } catch (err) {
+      console.error("route-sheet list error:", err);
+      return res.status(500).json({ message: "ROUTE_SHEET_LIST_ERROR" });
+    }
+  });
+
+  app.post("/api/pallets/route-sheets", auth, async (req, res) => {
+    try {
+      const orgId = Number(req.user?.orgId || 0);
+      if (!orgId) {
+        return res.status(400).json({ message: "ORG_REQUIRED" });
+      }
+
+      const clientName = normalizePalletText(req.body?.clientName, 160);
+      const destinationRc = normalizePalletText(req.body?.destinationRc, 120);
+      const route = normalizePalletText(req.body?.route, 120) || null;
+      const vehicle = normalizePalletText(req.body?.vehicle, 120);
+      const driver = normalizePalletText(req.body?.driver, 160);
+      const plannedDate = toIsoDateOrNull(req.body?.plannedDate);
+      const notes = normalizePalletText(req.body?.notes, 600) || null;
+
+      if (!clientName) {
+        return res.status(400).json({ message: "ROUTE_SHEET_CLIENT_REQUIRED" });
+      }
+      if (!destinationRc) {
+        return res.status(400).json({ message: "PALLET_DESTINATION_REQUIRED" });
+      }
+      if (!vehicle) {
+        return res.status(400).json({ message: "ROUTE_SHEET_VEHICLE_REQUIRED" });
+      }
+      if (!driver) {
+        return res.status(400).json({ message: "ROUTE_SHEET_DRIVER_REQUIRED" });
+      }
+      if (!plannedDate) {
+        return res.status(400).json({ message: "ROUTE_SHEET_DATE_REQUIRED" });
+      }
+
+      const createdId = await prisma.$transaction(async (tx) => {
+        const sheetNumber = await generateUniqueRouteSheetNumber(orgId, tx);
+        const created = await tx.palletRouteSheet.create({
+          data: {
+            orgId,
+            sheetNumber,
+            clientName,
+            destinationRc,
+            route,
+            vehicle,
+            driver,
+            plannedDate,
+            notes,
+            status: "DRAFT",
+            createdByUserId: req.user.id,
+          },
+          select: { id: true },
+        });
+        await createRouteSheetEventTx(tx, {
+          orgId,
+          routeSheetId: created.id,
+          type: "CREATE",
+          userId: req.user.id,
+          metaJson: {
+            clientName,
+            destinationRc,
+            route,
+            vehicle,
+            driver,
+            plannedDate: plannedDate.toISOString(),
+          },
+        });
+        return created.id;
+      });
+
+      const routeSheet = await prisma.palletRouteSheet.findFirst({
+        where: {
+          orgId,
+          id: createdId,
+        },
+        include: {
+          createdBy: { select: { id: true, name: true, email: true } },
+          publishedBy: { select: { id: true, name: true, email: true } },
+          startedBy: { select: { id: true, name: true, email: true } },
+          completedBy: { select: { id: true, name: true, email: true } },
+          items: {
+            include: {
+              pallet: { include: { currentLocation: true, dispatch: true, createdBy: true } },
+              loadedBy: { select: { id: true, name: true, email: true } },
+            },
+            orderBy: [{ plannedAt: "asc" }, { id: "asc" }],
+          },
+        },
+      });
+      if (!routeSheet) {
+        return res.status(500).json({ message: "ROUTE_SHEET_CREATE_FAILED" });
+      }
+
+      return res.json({
+        routeSheet: routeSheetToResponse({
+          ...routeSheet,
+          summary: summarizeRouteSheetItems(routeSheet.items),
+        }),
+      });
+    } catch (err) {
+      if (err?.code === "P2002") {
+        return res.status(409).json({ message: "ROUTE_SHEET_CONFLICT" });
+      }
+      console.error("route-sheet create error:", err);
+      return res.status(500).json({ message: "ROUTE_SHEET_CREATE_ERROR" });
+    }
+  });
+
+  app.get("/api/pallets/route-sheets/:routeSheetId", auth, async (req, res) => {
+    try {
+      const orgId = Number(req.user?.orgId || 0);
+      if (!orgId) {
+        return res.status(400).json({ message: "ORG_REQUIRED" });
+      }
+      const routeSheetId = Number(req.params?.routeSheetId || 0);
+      if (!routeSheetId) {
+        return res.status(400).json({ message: "ROUTE_SHEET_ID_REQUIRED" });
+      }
+
+      const routeSheet = await prisma.palletRouteSheet.findFirst({
+        where: {
+          orgId,
+          id: routeSheetId,
+        },
+        include: {
+          createdBy: { select: { id: true, name: true, email: true } },
+          publishedBy: { select: { id: true, name: true, email: true } },
+          startedBy: { select: { id: true, name: true, email: true } },
+          completedBy: { select: { id: true, name: true, email: true } },
+          items: {
+            include: {
+              pallet: { include: { currentLocation: true, dispatch: true, createdBy: true } },
+              loadedBy: { select: { id: true, name: true, email: true } },
+            },
+            orderBy: [{ plannedAt: "asc" }, { id: "asc" }],
+          },
+          events: {
+            include: {
+              user: { select: { id: true, name: true, email: true } },
+            },
+            orderBy: [{ createdAt: "desc" }, { id: "desc" }],
+            take: 120,
+          },
+        },
+      });
+      if (!routeSheet) {
+        return res.status(404).json({ message: "ROUTE_SHEET_NOT_FOUND" });
+      }
+
+      return res.json({
+        routeSheet: routeSheetToResponse({
+          ...routeSheet,
+          summary: summarizeRouteSheetItems(routeSheet.items),
+        }),
+        events: Array.isArray(routeSheet.events)
+          ? routeSheet.events.map((event) => routeSheetEventToResponse(event))
+          : [],
+      });
+    } catch (err) {
+      console.error("route-sheet detail error:", err);
+      return res.status(500).json({ message: "ROUTE_SHEET_DETAIL_ERROR" });
+    }
+  });
+
+  app.post("/api/pallets/route-sheets/:routeSheetId/items", auth, async (req, res) => {
+    try {
+      const orgId = Number(req.user?.orgId || 0);
+      if (!orgId) {
+        return res.status(400).json({ message: "ORG_REQUIRED" });
+      }
+      const routeSheetId = Number(req.params?.routeSheetId || 0);
+      if (!routeSheetId) {
+        return res.status(400).json({ message: "ROUTE_SHEET_ID_REQUIRED" });
+      }
+
+      const rawCodes = Array.isArray(req.body?.palletCodes)
+        ? req.body.palletCodes
+        : req.body?.palletCode != null
+          ? [req.body.palletCode]
+          : [];
+      const palletCodes = Array.from(
+        new Set(rawCodes.map((item) => normalizePalletCode(item)).filter(Boolean))
+      ).slice(0, 200);
+      if (!palletCodes.length) {
+        return res.status(400).json({ message: "PALLET_CODE_REQUIRED" });
+      }
+
+      await prisma.$transaction(async (tx) => {
+        const sheet = await tx.palletRouteSheet.findFirst({
+          where: {
+            orgId,
+            id: routeSheetId,
+          },
+          select: { id: true, status: true },
+        });
+        if (!sheet) {
+          const error = new Error("ROUTE_SHEET_NOT_FOUND");
+          error.code = "ROUTE_SHEET_NOT_FOUND";
+          throw error;
+        }
+        if (sheet.status !== "DRAFT") {
+          const error = new Error("ROUTE_SHEET_STATUS_INVALID");
+          error.code = "ROUTE_SHEET_STATUS_INVALID";
+          throw error;
+        }
+
+        const pallets = await tx.pallet.findMany({
+          where: {
+            orgId,
+            palletCode: { in: palletCodes },
+            status: "STORED",
+          },
+          select: { id: true, palletCode: true, currentLocationId: true },
+        });
+        if (pallets.length !== palletCodes.length) {
+          const foundCodes = new Set(pallets.map((item) => item.palletCode));
+          const missingCodes = palletCodes.filter((code) => !foundCodes.has(code));
+          const error = new Error("ROUTE_SHEET_PALLET_NOT_STORED");
+          error.code = "ROUTE_SHEET_PALLET_NOT_STORED";
+          error.meta = { missingCodes };
+          throw error;
+        }
+
+        const palletIds = pallets.map((item) => item.id);
+        const reserved = await tx.palletRouteSheetItem.findMany({
+          where: {
+            orgId,
+            palletId: { in: palletIds },
+            status: "PLANNED",
+            routeSheetId: { not: routeSheetId },
+            routeSheet: {
+              status: { in: ["DRAFT", "PUBLISHED", "LOADING"] },
+            },
+          },
+          include: {
+            pallet: { select: { palletCode: true } },
+            routeSheet: { select: { sheetNumber: true, status: true } },
+          },
+          take: 20,
+        });
+        if (reserved.length) {
+          const error = new Error("ROUTE_SHEET_PALLET_ALREADY_PLANNED");
+          error.code = "ROUTE_SHEET_PALLET_ALREADY_PLANNED";
+          error.meta = {
+            conflicts: reserved.map((item) => ({
+              palletCode: item.pallet?.palletCode || null,
+              sheetNumber: item.routeSheet?.sheetNumber || null,
+              status: item.routeSheet?.status || null,
+            })),
+          };
+          throw error;
+        }
+
+        for (const pallet of pallets) {
+          const existing = await tx.palletRouteSheetItem.findFirst({
+            where: {
+              orgId,
+              routeSheetId,
+              palletId: pallet.id,
+            },
+            select: { id: true, status: true },
+          });
+          if (existing?.status === "PLANNED") {
+            continue;
+          }
+          if (existing && existing.status !== "PLANNED") {
+            await tx.palletRouteSheetItem.update({
+              where: { id: existing.id },
+              data: {
+                status: "PLANNED",
+                loadedAt: null,
+                loadedByUserId: null,
+              },
+            });
+            await createRouteSheetEventTx(tx, {
+              orgId,
+              routeSheetId,
+              itemId: existing.id,
+              type: "ADD_ITEM",
+              userId: req.user.id,
+              metaJson: {
+                palletCode: pallet.palletCode,
+                restored: true,
+              },
+            });
+            continue;
+          }
+          const createdItem = await tx.palletRouteSheetItem.create({
+            data: {
+              orgId,
+              routeSheetId,
+              palletId: pallet.id,
+              status: "PLANNED",
+            },
+            select: { id: true },
+          });
+          await createRouteSheetEventTx(tx, {
+            orgId,
+            routeSheetId,
+            itemId: createdItem.id,
+            type: "ADD_ITEM",
+            userId: req.user.id,
+            metaJson: {
+              palletCode: pallet.palletCode,
+            },
+          });
+        }
+      });
+
+      const routeSheet = await prisma.palletRouteSheet.findFirst({
+        where: {
+          orgId,
+          id: routeSheetId,
+        },
+        include: {
+          createdBy: { select: { id: true, name: true, email: true } },
+          publishedBy: { select: { id: true, name: true, email: true } },
+          startedBy: { select: { id: true, name: true, email: true } },
+          completedBy: { select: { id: true, name: true, email: true } },
+          items: {
+            include: {
+              pallet: { include: { currentLocation: true, dispatch: true, createdBy: true } },
+              loadedBy: { select: { id: true, name: true, email: true } },
+            },
+            orderBy: [{ plannedAt: "asc" }, { id: "asc" }],
+          },
+        },
+      });
+      if (!routeSheet) {
+        return res.status(404).json({ message: "ROUTE_SHEET_NOT_FOUND" });
+      }
+
+      return res.json({
+        routeSheet: routeSheetToResponse({
+          ...routeSheet,
+          summary: summarizeRouteSheetItems(routeSheet.items),
+        }),
+      });
+    } catch (err) {
+      if (err?.code === "ROUTE_SHEET_NOT_FOUND") {
+        return res.status(404).json({ message: "ROUTE_SHEET_NOT_FOUND" });
+      }
+      if (err?.code === "ROUTE_SHEET_STATUS_INVALID") {
+        return res.status(409).json({ message: "ROUTE_SHEET_STATUS_INVALID" });
+      }
+      if (err?.code === "ROUTE_SHEET_PALLET_NOT_STORED") {
+        return res.status(409).json({
+          message: "ROUTE_SHEET_PALLET_NOT_STORED",
+          meta: err?.meta || null,
+        });
+      }
+      if (err?.code === "ROUTE_SHEET_PALLET_ALREADY_PLANNED") {
+        return res.status(409).json({
+          message: "ROUTE_SHEET_PALLET_ALREADY_PLANNED",
+          meta: err?.meta || null,
+        });
+      }
+      if (err?.code === "P2002") {
+        return res.status(409).json({ message: "ROUTE_SHEET_CONFLICT" });
+      }
+      console.error("route-sheet add-items error:", err);
+      return res.status(500).json({ message: "ROUTE_SHEET_ADD_ITEMS_ERROR" });
+    }
+  });
+
+  app.delete("/api/pallets/route-sheets/:routeSheetId/items/:itemId", auth, async (req, res) => {
+    try {
+      const orgId = Number(req.user?.orgId || 0);
+      if (!orgId) {
+        return res.status(400).json({ message: "ORG_REQUIRED" });
+      }
+      const routeSheetId = Number(req.params?.routeSheetId || 0);
+      const itemId = Number(req.params?.itemId || 0);
+      if (!routeSheetId || !itemId) {
+        return res.status(400).json({ message: "ROUTE_SHEET_ITEM_ID_REQUIRED" });
+      }
+
+      await prisma.$transaction(async (tx) => {
+        const sheet = await tx.palletRouteSheet.findFirst({
+          where: {
+            orgId,
+            id: routeSheetId,
+          },
+          select: { id: true, status: true },
+        });
+        if (!sheet) {
+          const error = new Error("ROUTE_SHEET_NOT_FOUND");
+          error.code = "ROUTE_SHEET_NOT_FOUND";
+          throw error;
+        }
+        if (sheet.status !== "DRAFT") {
+          const error = new Error("ROUTE_SHEET_STATUS_INVALID");
+          error.code = "ROUTE_SHEET_STATUS_INVALID";
+          throw error;
+        }
+
+        const item = await tx.palletRouteSheetItem.findFirst({
+          where: {
+            orgId,
+            id: itemId,
+            routeSheetId,
+          },
+          include: {
+            pallet: { select: { palletCode: true } },
+          },
+        });
+        if (!item) {
+          const error = new Error("ROUTE_SHEET_ITEM_NOT_FOUND");
+          error.code = "ROUTE_SHEET_ITEM_NOT_FOUND";
+          throw error;
+        }
+        if (item.status !== "PLANNED") {
+          const error = new Error("ROUTE_SHEET_ITEM_STATUS_INVALID");
+          error.code = "ROUTE_SHEET_ITEM_STATUS_INVALID";
+          throw error;
+        }
+
+        await tx.palletRouteSheetItem.update({
+          where: { id: item.id },
+          data: {
+            status: "CANCELLED",
+            loadedAt: null,
+            loadedByUserId: null,
+          },
+        });
+        await createRouteSheetEventTx(tx, {
+          orgId,
+          routeSheetId,
+          itemId: item.id,
+          type: "REMOVE_ITEM",
+          userId: req.user.id,
+          metaJson: {
+            palletCode: item.pallet?.palletCode || null,
+          },
+        });
+      });
+
+      return res.json({ ok: true });
+    } catch (err) {
+      if (err?.code === "ROUTE_SHEET_NOT_FOUND") {
+        return res.status(404).json({ message: "ROUTE_SHEET_NOT_FOUND" });
+      }
+      if (err?.code === "ROUTE_SHEET_ITEM_NOT_FOUND") {
+        return res.status(404).json({ message: "ROUTE_SHEET_ITEM_NOT_FOUND" });
+      }
+      if (err?.code === "ROUTE_SHEET_STATUS_INVALID") {
+        return res.status(409).json({ message: "ROUTE_SHEET_STATUS_INVALID" });
+      }
+      if (err?.code === "ROUTE_SHEET_ITEM_STATUS_INVALID") {
+        return res.status(409).json({ message: "ROUTE_SHEET_ITEM_STATUS_INVALID" });
+      }
+      console.error("route-sheet remove-item error:", err);
+      return res.status(500).json({ message: "ROUTE_SHEET_REMOVE_ITEM_ERROR" });
+    }
+  });
+
+  app.post("/api/pallets/route-sheets/:routeSheetId/publish", auth, async (req, res) => {
+    try {
+      const orgId = Number(req.user?.orgId || 0);
+      if (!orgId) {
+        return res.status(400).json({ message: "ORG_REQUIRED" });
+      }
+      const routeSheetId = Number(req.params?.routeSheetId || 0);
+      if (!routeSheetId) {
+        return res.status(400).json({ message: "ROUTE_SHEET_ID_REQUIRED" });
+      }
+
+      await prisma.$transaction(async (tx) => {
+        const sheet = await tx.palletRouteSheet.findFirst({
+          where: {
+            orgId,
+            id: routeSheetId,
+          },
+          select: { id: true, status: true, sheetNumber: true },
+        });
+        if (!sheet) {
+          const error = new Error("ROUTE_SHEET_NOT_FOUND");
+          error.code = "ROUTE_SHEET_NOT_FOUND";
+          throw error;
+        }
+        if (sheet.status !== "DRAFT") {
+          const error = new Error("ROUTE_SHEET_STATUS_INVALID");
+          error.code = "ROUTE_SHEET_STATUS_INVALID";
+          throw error;
+        }
+
+        const plannedCount = await tx.palletRouteSheetItem.count({
+          where: {
+            orgId,
+            routeSheetId,
+            status: "PLANNED",
+          },
+        });
+        if (plannedCount < 1) {
+          const error = new Error("ROUTE_SHEET_EMPTY");
+          error.code = "ROUTE_SHEET_EMPTY";
+          throw error;
+        }
+
+        await tx.palletRouteSheet.update({
+          where: {
+            id: routeSheetId,
+          },
+          data: {
+            status: "PUBLISHED",
+            publishedByUserId: req.user.id,
+            publishedAt: new Date(),
+          },
+        });
+        await createRouteSheetEventTx(tx, {
+          orgId,
+          routeSheetId,
+          type: "PUBLISH",
+          userId: req.user.id,
+          metaJson: {
+            plannedCount,
+            sheetNumber: sheet.sheetNumber,
+          },
+        });
+      });
+
+      const routeSheet = await prisma.palletRouteSheet.findFirst({
+        where: {
+          orgId,
+          id: routeSheetId,
+        },
+        include: {
+          createdBy: { select: { id: true, name: true, email: true } },
+          publishedBy: { select: { id: true, name: true, email: true } },
+          startedBy: { select: { id: true, name: true, email: true } },
+          completedBy: { select: { id: true, name: true, email: true } },
+          items: {
+            include: {
+              pallet: { include: { currentLocation: true, dispatch: true, createdBy: true } },
+              loadedBy: { select: { id: true, name: true, email: true } },
+            },
+            orderBy: [{ plannedAt: "asc" }, { id: "asc" }],
+          },
+        },
+      });
+      if (!routeSheet) {
+        return res.status(404).json({ message: "ROUTE_SHEET_NOT_FOUND" });
+      }
+      return res.json({
+        routeSheet: routeSheetToResponse({
+          ...routeSheet,
+          summary: summarizeRouteSheetItems(routeSheet.items),
+        }),
+      });
+    } catch (err) {
+      if (err?.code === "ROUTE_SHEET_NOT_FOUND") {
+        return res.status(404).json({ message: "ROUTE_SHEET_NOT_FOUND" });
+      }
+      if (err?.code === "ROUTE_SHEET_STATUS_INVALID") {
+        return res.status(409).json({ message: "ROUTE_SHEET_STATUS_INVALID" });
+      }
+      if (err?.code === "ROUTE_SHEET_EMPTY") {
+        return res.status(409).json({ message: "ROUTE_SHEET_EMPTY" });
+      }
+      console.error("route-sheet publish error:", err);
+      return res.status(500).json({ message: "ROUTE_SHEET_PUBLISH_ERROR" });
+    }
+  });
+
+  app.post("/api/pallets/route-sheets/:routeSheetId/dispatch", auth, async (req, res) => {
+    try {
+      const orgId = Number(req.user?.orgId || 0);
+      if (!orgId) {
+        return res.status(400).json({ message: "ORG_REQUIRED" });
+      }
+      const routeSheetId = Number(req.params?.routeSheetId || 0);
+      if (!routeSheetId) {
+        return res.status(400).json({ message: "ROUTE_SHEET_ID_REQUIRED" });
+      }
+
+      const palletCode = normalizePalletCode(req.body?.palletCode);
+      const locationCode = normalizePalletCode(req.body?.locationCode);
+      if (!palletCode) {
+        return res.status(400).json({ message: "PALLET_CODE_REQUIRED" });
+      }
+      if (!locationCode) {
+        return res.status(400).json({ message: "PALLET_LOCATION_REQUIRED" });
+      }
+
+      const dispatchedResult = await prisma.$transaction(async (tx) => {
+        const now = new Date();
+        const routeSheet = await tx.palletRouteSheet.findFirst({
+          where: {
+            orgId,
+            id: routeSheetId,
+          },
+        });
+        if (!routeSheet) {
+          const error = new Error("ROUTE_SHEET_NOT_FOUND");
+          error.code = "ROUTE_SHEET_NOT_FOUND";
+          throw error;
+        }
+        if (!["PUBLISHED", "LOADING"].includes(String(routeSheet.status || ""))) {
+          const error = new Error("ROUTE_SHEET_STATUS_INVALID");
+          error.code = "ROUTE_SHEET_STATUS_INVALID";
+          throw error;
+        }
+
+        const pallet = await tx.pallet.findFirst({
+          where: {
+            orgId,
+            palletCode,
+          },
+          include: {
+            currentLocation: true,
+          },
+        });
+        if (!pallet) {
+          const error = new Error("PALLET_NOT_FOUND");
+          error.code = "PALLET_NOT_FOUND";
+          throw error;
+        }
+        if (pallet.status !== "STORED") {
+          const error = new Error("PALLET_DISPATCH_STATUS_INVALID");
+          error.code = "PALLET_DISPATCH_STATUS_INVALID";
+          throw error;
+        }
+        if (!pallet.currentLocation?.code || pallet.currentLocation.code !== locationCode) {
+          const error = new Error("PALLET_LOCATION_MISMATCH");
+          error.code = "PALLET_LOCATION_MISMATCH";
+          throw error;
+        }
+
+        const routeItem = await tx.palletRouteSheetItem.findFirst({
+          where: {
+            orgId,
+            routeSheetId,
+            palletId: pallet.id,
+          },
+        });
+        if (!routeItem) {
+          const error = new Error("ROUTE_SHEET_PALLET_NOT_IN_SHEET");
+          error.code = "ROUTE_SHEET_PALLET_NOT_IN_SHEET";
+          throw error;
+        }
+        if (routeItem.status === "LOADED") {
+          const error = new Error("ROUTE_SHEET_PALLET_ALREADY_LOADED");
+          error.code = "ROUTE_SHEET_PALLET_ALREADY_LOADED";
+          throw error;
+        }
+        if (routeItem.status !== "PLANNED") {
+          const error = new Error("ROUTE_SHEET_ITEM_STATUS_INVALID");
+          error.code = "ROUTE_SHEET_ITEM_STATUS_INVALID";
+          throw error;
+        }
+
+        if (routeSheet.status === "PUBLISHED") {
+          await tx.palletRouteSheet.update({
+            where: { id: routeSheetId },
+            data: {
+              status: "LOADING",
+              startedByUserId: req.user.id,
+              startedAt: now,
+            },
+          });
+          await createRouteSheetEventTx(tx, {
+            orgId,
+            routeSheetId,
+            type: "START_LOADING",
+            userId: req.user.id,
+          });
+        }
+
+        const palletUpdate = await tx.pallet.updateMany({
+          where: {
+            id: pallet.id,
+            status: "STORED",
+          },
+          data: {
+            status: "DISPATCHED",
+            dispatchedAt: now,
+          },
+        });
+        if (palletUpdate.count !== 1) {
+          const error = new Error("PALLET_STATE_CHANGED");
+          error.code = "PALLET_STATE_CHANGED";
+          throw error;
+        }
+
+        await tx.palletDispatch.create({
+          data: {
+            orgId,
+            palletId: pallet.id,
+            routeSheetId,
+            routeSheetItemId: routeItem.id,
+            destinationRc: routeSheet.destinationRc,
+            route: routeSheet.route || null,
+            vehicle: routeSheet.vehicle || null,
+            driver: routeSheet.driver || null,
+            notes: routeSheet.notes || null,
+            dispatchedByUserId: req.user.id,
+            dispatchedAt: now,
+          },
+        });
+
+        await tx.palletRouteSheetItem.update({
+          where: {
+            id: routeItem.id,
+          },
+          data: {
+            status: "LOADED",
+            loadedAt: now,
+            loadedByUserId: req.user.id,
+          },
+        });
+        await createRouteSheetEventTx(tx, {
+          orgId,
+          routeSheetId,
+          itemId: routeItem.id,
+          type: "LOAD_PALLET",
+          userId: req.user.id,
+          metaJson: {
+            palletCode,
+            locationCode,
+          },
+        });
+
+        await createPalletEventTx(tx, {
+          orgId,
+          palletId: pallet.id,
+          type: "DISPATCH",
+          fromStatus: "STORED",
+          toStatus: "DISPATCHED",
+          userId: req.user.id,
+          metaJson: {
+            destinationRc: routeSheet.destinationRc,
+            route: routeSheet.route || null,
+            vehicle: routeSheet.vehicle || null,
+            driver: routeSheet.driver || null,
+            notes: routeSheet.notes || null,
+            fromLocationCode: pallet.currentLocation?.code || null,
+            scanLocationCode: locationCode,
+            routeSheetId,
+            routeSheetNumber: routeSheet.sheetNumber || null,
+          },
+        });
+
+        const remaining = await tx.palletRouteSheetItem.count({
+          where: {
+            orgId,
+            routeSheetId,
+            status: "PLANNED",
+          },
+        });
+        if (remaining < 1) {
+          await tx.palletRouteSheet.update({
+            where: { id: routeSheetId },
+            data: {
+              status: "COMPLETED",
+              completedAt: now,
+              completedByUserId: req.user.id,
+            },
+          });
+          await createRouteSheetEventTx(tx, {
+            orgId,
+            routeSheetId,
+            type: "COMPLETE",
+            userId: req.user.id,
+          });
+        }
+
+        return {
+          palletId: pallet.id,
+          remaining,
+        };
+      });
+
+      const pallet = await prisma.pallet.findFirst({
+        where: {
+          orgId,
+          id: dispatchedResult.palletId,
+        },
+        include: {
+          currentLocation: true,
+          dispatch: true,
+          createdBy: true,
+        },
+      });
+      const routeSheet = await prisma.palletRouteSheet.findFirst({
+        where: {
+          orgId,
+          id: routeSheetId,
+        },
+        include: {
+          createdBy: { select: { id: true, name: true, email: true } },
+          publishedBy: { select: { id: true, name: true, email: true } },
+          startedBy: { select: { id: true, name: true, email: true } },
+          completedBy: { select: { id: true, name: true, email: true } },
+          items: {
+            include: {
+              pallet: { include: { currentLocation: true, dispatch: true, createdBy: true } },
+              loadedBy: { select: { id: true, name: true, email: true } },
+            },
+            orderBy: [{ plannedAt: "asc" }, { id: "asc" }],
+          },
+        },
+      });
+      if (!pallet || !routeSheet) {
+        return res.status(500).json({ message: "ROUTE_SHEET_DISPATCH_FAILED" });
+      }
+
+      return res.json({
+        pallet: palletToResponse(pallet),
+        routeSheet: routeSheetToResponse({
+          ...routeSheet,
+          summary: summarizeRouteSheetItems(routeSheet.items),
+        }),
+      });
+    } catch (err) {
+      if (err?.code === "ROUTE_SHEET_NOT_FOUND") {
+        return res.status(404).json({ message: "ROUTE_SHEET_NOT_FOUND" });
+      }
+      if (err?.code === "ROUTE_SHEET_STATUS_INVALID") {
+        return res.status(409).json({ message: "ROUTE_SHEET_STATUS_INVALID" });
+      }
+      if (err?.code === "ROUTE_SHEET_PALLET_NOT_IN_SHEET") {
+        return res.status(409).json({ message: "ROUTE_SHEET_PALLET_NOT_IN_SHEET" });
+      }
+      if (err?.code === "ROUTE_SHEET_PALLET_ALREADY_LOADED") {
+        return res.status(409).json({ message: "ROUTE_SHEET_PALLET_ALREADY_LOADED" });
+      }
+      if (err?.code === "ROUTE_SHEET_ITEM_STATUS_INVALID") {
+        return res.status(409).json({ message: "ROUTE_SHEET_ITEM_STATUS_INVALID" });
+      }
+      if (err?.code === "PALLET_NOT_FOUND") {
+        return res.status(404).json({ message: "PALLET_NOT_FOUND" });
+      }
+      if (err?.code === "PALLET_DISPATCH_STATUS_INVALID") {
+        return res.status(409).json({ message: "PALLET_DISPATCH_STATUS_INVALID" });
+      }
+      if (err?.code === "PALLET_LOCATION_MISMATCH") {
+        return res.status(409).json({ message: "PALLET_LOCATION_MISMATCH" });
+      }
+      if (err?.code === "PALLET_STATE_CHANGED" || err?.code === "P2002") {
+        return res.status(409).json({ message: "PALLET_STATE_CHANGED" });
+      }
+      console.error("route-sheet dispatch error:", err);
+      return res.status(500).json({ message: "ROUTE_SHEET_DISPATCH_ERROR" });
+    }
+  });
+
+  app.post("/api/pallets/dispatch", auth, async (req, res) => {
+    try {
+      const orgId = Number(req.user?.orgId || 0);
+      if (!orgId) {
+        return res.status(400).json({ message: "ORG_REQUIRED" });
+      }
+
+      const palletCode = normalizePalletCode(req.body?.palletCode);
+      const locationCode = normalizePalletCode(req.body?.locationCode);
+      const destinationRc = normalizePalletText(req.body?.destinationRc, 120);
+      const route = normalizePalletText(req.body?.route, 120) || null;
+      const vehicle = normalizePalletText(req.body?.vehicle, 120) || null;
+      const driver = normalizePalletText(req.body?.driver, 120) || null;
+      const notes = normalizePalletText(req.body?.notes, 500) || null;
+
+      if (!palletCode) {
+        return res.status(400).json({ message: "PALLET_CODE_REQUIRED" });
+      }
+      if (!locationCode) {
+        return res.status(400).json({ message: "PALLET_LOCATION_REQUIRED" });
+      }
+      if (!destinationRc) {
+        return res.status(400).json({ message: "PALLET_DESTINATION_REQUIRED" });
+      }
+
+      const dispatchedId = await prisma.$transaction(async (tx) => {
+        const now = new Date();
+        const pallet = await tx.pallet.findFirst({
+          where: {
+            orgId,
+            palletCode,
+          },
+          include: {
+            currentLocation: true,
+          },
+        });
+        if (!pallet) {
+          const error = new Error("PALLET_NOT_FOUND");
+          error.code = "PALLET_NOT_FOUND";
+          throw error;
+        }
+        if (pallet.status !== "STORED") {
+          const error = new Error("PALLET_DISPATCH_STATUS_INVALID");
+          error.code = "PALLET_DISPATCH_STATUS_INVALID";
+          throw error;
+        }
+        if (!pallet.currentLocation?.code || pallet.currentLocation.code !== locationCode) {
+          const error = new Error("PALLET_LOCATION_MISMATCH");
+          error.code = "PALLET_LOCATION_MISMATCH";
+          throw error;
+        }
+
+        const updateResult = await tx.pallet.updateMany({
+          where: {
+            id: pallet.id,
+            status: "STORED",
+          },
+          data: {
+            status: "DISPATCHED",
+            dispatchedAt: now,
+          },
+        });
+        if (updateResult.count !== 1) {
+          const error = new Error("PALLET_STATE_CHANGED");
+          error.code = "PALLET_STATE_CHANGED";
+          throw error;
+        }
+
+        await tx.palletDispatch.create({
+          data: {
+            orgId,
+            palletId: pallet.id,
+            destinationRc,
+            route,
+            vehicle,
+            driver,
+            notes,
+            dispatchedByUserId: req.user.id,
+            dispatchedAt: now,
+          },
+        });
+
+        await createPalletEventTx(tx, {
+          orgId,
+          palletId: pallet.id,
+          type: "DISPATCH",
+          fromStatus: "STORED",
+          toStatus: "DISPATCHED",
+          userId: req.user.id,
+          metaJson: {
+            destinationRc,
+            route,
+            vehicle,
+            driver,
+            notes,
+            fromLocationCode: pallet.currentLocation?.code || null,
+            scanLocationCode: locationCode,
+          },
+        });
+
+        return pallet.id;
+      });
+
+      const dispatched = dispatchedId
+        ? await prisma.pallet.findFirst({
+            where: {
+              orgId,
+              id: dispatchedId,
+            },
+            include: {
+              currentLocation: true,
+              dispatch: true,
+            },
+          })
+        : null;
+
+      if (!dispatched) {
+        return res.status(500).json({ message: "PALLET_DISPATCH_FAILED" });
+      }
+
+      return res.json({ pallet: palletToResponse(dispatched) });
+    } catch (err) {
+      if (err?.code === "PALLET_NOT_FOUND") {
+        return res.status(404).json({ message: "PALLET_NOT_FOUND" });
+      }
+      if (err?.code === "PALLET_DISPATCH_STATUS_INVALID") {
+        return res.status(409).json({ message: "PALLET_DISPATCH_STATUS_INVALID" });
+      }
+      if (err?.code === "PALLET_LOCATION_MISMATCH") {
+        return res.status(409).json({ message: "PALLET_LOCATION_MISMATCH" });
+      }
+      if (err?.code === "PALLET_STATE_CHANGED" || err?.code === "P2002") {
+        return res.status(409).json({ message: "PALLET_STATE_CHANGED" });
+      }
+      console.error("pallet dispatch error:", err);
+      return res.status(500).json({ message: "PALLET_DISPATCH_ERROR" });
+    }
+  });
+
+  app.get("/api/pallets/dispatch-sheet", auth, async (req, res) => {
+    try {
+      const orgId = Number(req.user?.orgId || 0);
+      if (!orgId) {
+        return res.status(400).json({ message: "ORG_REQUIRED" });
+      }
+
+      const destinationRc = normalizePalletText(req.query?.destinationRc, 120);
+      const route = normalizePalletText(req.query?.route, 120) || null;
+      const supplierName = normalizePalletText(req.query?.supplierName, 160);
+      const inboundRef = normalizePalletText(req.query?.inboundRef, 120);
+      const locationCode = normalizePalletCode(req.query?.locationCode);
+      const limit = Math.max(1, Math.min(300, Number(req.query?.limit || 120)));
+
+      if (!destinationRc) {
+        return res.status(400).json({ message: "PALLET_DESTINATION_REQUIRED" });
+      }
+
+      let currentLocationId = null;
+      if (locationCode) {
+        const location = await prisma.palletLocation.findFirst({
+          where: {
+            orgId,
+            code: locationCode,
+          },
+          select: { id: true },
+        });
+        if (!location) {
+          return res.json({
+            destinationRc,
+            route,
+            summary: { total: 0, byLocation: [] },
+            items: [],
+          });
+        }
+        currentLocationId = location.id;
+      }
+
+      const where = {
+        orgId,
+        status: "STORED",
+        ...(currentLocationId ? { currentLocationId } : {}),
+        ...(supplierName
+          ? { supplierName: { contains: supplierName, mode: "insensitive" } }
+          : {}),
+        ...(inboundRef
+          ? { inboundRef: { contains: inboundRef, mode: "insensitive" } }
+          : {}),
+      };
+
+      const items = await prisma.pallet.findMany({
+        where,
+        include: {
+          currentLocation: true,
+          dispatch: true,
+        },
+        orderBy: [{ currentLocationId: "asc" }, { receivedAt: "asc" }, { id: "asc" }],
+        take: limit,
+      });
+
+      const locationMap = new Map();
+      for (const item of items) {
+        const code = item?.currentLocation?.code || "БЕЗ_ЯЧЕЙКИ";
+        locationMap.set(code, (locationMap.get(code) || 0) + 1);
+      }
+      const byLocation = Array.from(locationMap.entries())
+        .map(([code, count]) => ({ code, count }))
+        .sort((a, b) => {
+          if (a.code < b.code) return -1;
+          if (a.code > b.code) return 1;
+          return 0;
+        });
+
+      return res.json({
+        destinationRc,
+        route,
+        summary: {
+          total: items.length,
+          byLocation,
+        },
+        items: items.map((item) => palletToResponse(item)),
+      });
+    } catch (err) {
+      console.error("pallet dispatch-sheet error:", err);
+      return res.status(500).json({ message: "PALLET_DISPATCH_SHEET_ERROR" });
+    }
+  });
+
+  app.get("/api/pallets", auth, async (req, res) => {
+    try {
+      const orgId = Number(req.user?.orgId || 0);
+      if (!orgId) {
+        return res.status(400).json({ message: "ORG_REQUIRED" });
+      }
+
+      const requestedStatus = String(req.query?.status || "").trim();
+      const status = requestedStatus
+        ? normalizePalletStatus(requestedStatus, "")
+        : "";
+      if (requestedStatus && !status) {
+        return res.status(400).json({ message: "PALLET_STATUS_INVALID" });
+      }
+
+      const qText = normalizePalletText(req.query?.q, 160);
+      const qCode = normalizePalletCode(req.query?.q);
+      const inboundRef = normalizePalletText(req.query?.inboundRef, 120);
+      const supplierName = normalizePalletText(req.query?.supplierName, 160);
+      const locationCode = normalizePalletCode(req.query?.locationCode);
+      const excludeTest = toBoolean(req.query?.excludeTest);
+      const dateFromRaw = String(req.query?.dateFrom || "").trim();
+      const dateToRaw = String(req.query?.dateTo || "").trim();
+      const dateFrom = toIsoDateOrNull(dateFromRaw);
+      const dateTo = toIsoDateOrNull(dateToRaw);
+      if (dateFromRaw && !dateFrom) {
+        return res.status(400).json({ message: "DATE_FROM_INVALID" });
+      }
+      if (dateToRaw && !dateTo) {
+        return res.status(400).json({ message: "DATE_TO_INVALID" });
+      }
+
+      let currentLocationId = null;
+      if (locationCode) {
+        const location = await prisma.palletLocation.findFirst({
+          where: {
+            orgId,
+            code: locationCode,
+          },
+          select: { id: true },
+        });
+        if (!location) {
+          return res.json({ items: [] });
+        }
+        currentLocationId = location.id;
+      }
+
+      const andFilters = [];
+      if (qText || qCode) {
+        andFilters.push({
+          OR: [
+            ...(qCode ? [{ palletCode: { contains: qCode, mode: "insensitive" } }] : []),
+            ...(qText
+              ? [
+                  { supplierName: { contains: qText, mode: "insensitive" } },
+                  { inboundRef: { contains: qText, mode: "insensitive" } },
+                ]
+              : []),
+          ],
+        });
+      }
+      if (excludeTest) {
+        andFilters.push({
+          NOT: [
+            { supplierName: { contains: "test", mode: "insensitive" } },
+            { supplierName: { contains: "тест", mode: "insensitive" } },
+            { supplierName: { contains: "demo", mode: "insensitive" } },
+            { inboundRef: { contains: "test", mode: "insensitive" } },
+            { inboundRef: { contains: "тест", mode: "insensitive" } },
+            { inboundRef: { contains: "demo", mode: "insensitive" } },
+          ],
+        });
+      }
+
+      const where = {
+        orgId,
+        ...(status ? { status } : {}),
+        ...(currentLocationId ? { currentLocationId } : {}),
+        ...(inboundRef
+          ? { inboundRef: { contains: inboundRef, mode: "insensitive" } }
+          : {}),
+        ...(supplierName
+          ? { supplierName: { contains: supplierName, mode: "insensitive" } }
+          : {}),
+        ...((dateFrom || dateTo)
+          ? {
+              receivedAt: {
+                ...(dateFrom ? { gte: dateFrom } : {}),
+                ...(dateTo ? { lte: dateTo } : {}),
+              },
+            }
+          : {}),
+        ...(andFilters.length ? { AND: andFilters } : {}),
+      };
+
+      const items = await prisma.pallet.findMany({
+        where,
+        include: {
+          currentLocation: true,
+          dispatch: true,
+        },
+        orderBy: [{ updatedAt: "desc" }, { id: "desc" }],
+        take: 400,
+      });
+
+      return res.json({ items: items.map((item) => palletToResponse(item)) });
+    } catch (err) {
+      console.error("pallet list error:", err);
+      return res.status(500).json({ message: "PALLET_LIST_ERROR" });
+    }
+  });
+
+  app.get("/api/pallets/:palletCode/history", auth, async (req, res) => {
+    try {
+      const orgId = Number(req.user?.orgId || 0);
+      if (!orgId) {
+        return res.status(400).json({ message: "ORG_REQUIRED" });
+      }
+
+      const palletCode = normalizePalletCode(req.params?.palletCode);
+      if (!palletCode) {
+        return res.status(400).json({ message: "PALLET_CODE_REQUIRED" });
+      }
+
+      const pallet = await prisma.pallet.findFirst({
+        where: {
+          orgId,
+          palletCode,
+        },
+        include: {
+          currentLocation: true,
+          dispatch: true,
+          createdBy: {
+            select: { id: true, name: true, email: true },
+          },
+        },
+      });
+      if (!pallet) {
+        return res.status(404).json({ message: "PALLET_NOT_FOUND" });
+      }
+
+      const events = await prisma.palletEvent.findMany({
+        where: {
+          orgId,
+          palletId: pallet.id,
+        },
+        include: {
+          user: {
+            select: { id: true, name: true, email: true },
+          },
+        },
+        orderBy: [{ createdAt: "asc" }, { id: "asc" }],
+      });
+
+      return res.json({
+        pallet: palletToResponse(pallet),
+        events: events.map((event) => palletEventToResponse(event)),
+      });
+    } catch (err) {
+      console.error("pallet history error:", err);
+      return res.status(500).json({ message: "PALLET_HISTORY_ERROR" });
+    }
+  });
+
+  app.get("/api/debug/db-permissions", auth, async (req, res) => {
+    try {
+      if (!(req.user?.isSystemOwner || req.user?.role === "ADMIN")) {
+        return res.status(403).json({ message: "FORBIDDEN" });
+      }
+
+      const sessionInfoRows = await prisma.$queryRawUnsafe(`
+        SELECT
+          current_user AS "currentUser",
+          current_database() AS "currentDatabase",
+          current_schema() AS "currentSchema",
+          current_setting('search_path') AS "searchPath"
+      `);
+
+      const tablePrivileges = await prisma.$queryRawUnsafe(`
+        SELECT
+          n.nspname AS "schema",
+          c.relname AS "table",
+          has_table_privilege(current_user, format('%I.%I', n.nspname, c.relname), 'SELECT') AS "canSelect",
+          has_table_privilege(current_user, format('%I.%I', n.nspname, c.relname), 'INSERT') AS "canInsert",
+          has_table_privilege(current_user, format('%I.%I', n.nspname, c.relname), 'UPDATE') AS "canUpdate",
+          has_table_privilege(current_user, format('%I.%I', n.nspname, c.relname), 'DELETE') AS "canDelete",
+          has_table_privilege(current_user, format('%I.%I', n.nspname, c.relname), 'REFERENCES') AS "canReferences"
+        FROM pg_class c
+        JOIN pg_namespace n ON n.oid = c.relnamespace
+        WHERE c.relkind IN ('r', 'p')
+          AND c.relname IN ('User', 'Organization', 'Pallet', 'PalletEvent', 'PalletDispatch', 'PalletLocation')
+        ORDER BY n.nspname, c.relname
+      `);
+
+      return res.json({
+        session: Array.isArray(sessionInfoRows) && sessionInfoRows.length ? sessionInfoRows[0] : null,
+        tables: Array.isArray(tablePrivileges) ? tablePrivileges : [],
+      });
+    } catch (err) {
+      console.error("debug db permissions error:", err);
+      return res.status(500).json({ message: "DEBUG_DB_PERMISSIONS_ERROR" });
+    }
+  });
+
+  app.post("/api/debug/pallet-receive-probe", auth, async (req, res) => {
+    if (!(req.user?.isSystemOwner || req.user?.role === "ADMIN")) {
+      return res.status(403).json({ message: "FORBIDDEN" });
+    }
+
+    const orgId = Number(req.user?.orgId || 0);
+    if (!orgId) {
+      return res.status(400).json({ message: "ORG_REQUIRED" });
+    }
+
+    const supplierName = normalizePalletText(req.body?.supplierName, 160) || "PROBE_SUPPLIER";
+    const inboundRef = normalizePalletText(req.body?.inboundRef, 120) || "PROBE_INBOUND";
+    const probe = {
+      orgId,
+      userId: Number(req.user?.id || 0),
+      currentUser: null,
+      steps: [],
+      dbChecks: null,
+    };
+
+    try {
+      await prisma.$transaction(async (tx) => {
+        const sessionRows = await tx.$queryRaw`
+          SELECT current_user AS "currentUser"
+        `;
+        probe.currentUser = Array.isArray(sessionRows) && sessionRows.length
+          ? String(sessionRows[0]?.currentUser || "")
+          : "";
+
+        const privilegeRows = await tx.$queryRawUnsafe(`
+          SELECT
+            current_user AS "currentUser",
+            has_table_privilege(current_user, 'public."User"', 'SELECT') AS "userTableSelect",
+            has_table_privilege(current_user, 'public."User"', 'INSERT') AS "userTableInsert",
+            has_table_privilege(current_user, 'public."User"', 'UPDATE') AS "userTableUpdate",
+            has_table_privilege(current_user, 'public."User"', 'DELETE') AS "userTableDelete",
+            has_table_privilege(current_user, 'public."User"', 'REFERENCES') AS "userTableReferences",
+            has_table_privilege(current_user, 'public."User"', 'TRIGGER') AS "userTableTrigger",
+            has_column_privilege(current_user, 'public."User"', 'id', 'SELECT') AS "userIdColumnSelect",
+            has_column_privilege(current_user, 'public."User"', 'id', 'REFERENCES') AS "userIdColumnReferences",
+            has_table_privilege(current_user, 'public."Pallet"', 'INSERT') AS "palletTableInsert",
+            has_table_privilege(current_user, 'public."PalletEvent"', 'INSERT') AS "palletEventTableInsert"
+        `);
+
+        const palletCustomTriggers = await tx.$queryRawUnsafe(`
+          SELECT
+            t.tgname AS "name",
+            pg_get_triggerdef(t.oid, true) AS "definition",
+            pn.nspname AS "functionSchema",
+            p.proname AS "functionName"
+          FROM pg_trigger t
+          JOIN pg_class c ON c.oid = t.tgrelid
+          JOIN pg_namespace n ON n.oid = c.relnamespace
+          JOIN pg_proc p ON p.oid = t.tgfoid
+          JOIN pg_namespace pn ON pn.oid = p.pronamespace
+          WHERE n.nspname = 'public'
+            AND c.relname = 'Pallet'
+            AND NOT t.tgisinternal
+          ORDER BY t.tgname
+        `);
+
+        const userRlsRows = await tx.$queryRawUnsafe(`
+          SELECT
+            c.relrowsecurity AS "rlsEnabled",
+            c.relforcerowsecurity AS "forceRls"
+          FROM pg_class c
+          JOIN pg_namespace n ON n.oid = c.relnamespace
+          WHERE n.nspname = 'public' AND c.relname = 'User'
+          LIMIT 1
+        `);
+
+        const userPolicies = await tx.$queryRawUnsafe(`
+          SELECT
+            p.polname AS "policyName",
+            p.polpermissive AS "permissive",
+            pg_get_expr(p.polqual, p.polrelid) AS "usingExpr",
+            pg_get_expr(p.polwithcheck, p.polrelid) AS "withCheckExpr"
+          FROM pg_policy p
+          JOIN pg_class c ON c.oid = p.polrelid
+          JOIN pg_namespace n ON n.oid = c.relnamespace
+          WHERE n.nspname = 'public' AND c.relname = 'User'
+          ORDER BY p.polname
+        `);
+
+        const userTablesBySchema = await tx.$queryRawUnsafe(`
+          SELECT
+            n.nspname AS "schema",
+            c.relname AS "table",
+            has_table_privilege(current_user, format('%I.%I', n.nspname, c.relname), 'SELECT') AS "canSelect",
+            has_table_privilege(current_user, format('%I.%I', n.nspname, c.relname), 'REFERENCES') AS "canReferences"
+          FROM pg_class c
+          JOIN pg_namespace n ON n.oid = c.relnamespace
+          WHERE c.relkind IN ('r', 'p')
+            AND c.relname = 'User'
+          ORDER BY n.nspname
+        `);
+
+        const palletForeignKeys = await tx.$queryRawUnsafe(`
+          SELECT
+            con.conname AS "constraintName",
+            src_ns.nspname AS "sourceSchema",
+            src.relname AS "sourceTable",
+            ref_ns.nspname AS "refSchema",
+            ref.relname AS "refTable",
+            pg_get_constraintdef(con.oid, true) AS "definition"
+          FROM pg_constraint con
+          JOIN pg_class src ON src.oid = con.conrelid
+          JOIN pg_namespace src_ns ON src_ns.oid = src.relnamespace
+          JOIN pg_class ref ON ref.oid = con.confrelid
+          JOIN pg_namespace ref_ns ON ref_ns.oid = ref.relnamespace
+          WHERE con.contype = 'f'
+            AND src_ns.nspname = 'public'
+            AND src.relname = 'Pallet'
+          ORDER BY con.conname
+        `);
+
+        probe.dbChecks = {
+          privileges:
+            Array.isArray(privilegeRows) && privilegeRows.length ? privilegeRows[0] : null,
+          palletCustomTriggers: Array.isArray(palletCustomTriggers) ? palletCustomTriggers : [],
+          userRls:
+            Array.isArray(userRlsRows) && userRlsRows.length ? userRlsRows[0] : null,
+          userPolicies: Array.isArray(userPolicies) ? userPolicies : [],
+          userTablesBySchema: Array.isArray(userTablesBySchema) ? userTablesBySchema : [],
+          palletForeignKeys: Array.isArray(palletForeignKeys) ? palletForeignKeys : [],
+        };
+
+        const userSelect = await tx.$queryRaw`
+          SELECT id FROM "User" WHERE id = ${probe.userId} LIMIT 1
+        `;
+        probe.steps.push({
+          step: "user_select",
+          ok: true,
+          rows: Array.isArray(userSelect) ? userSelect.length : 0,
+        });
+
+        const userKeyShare = await tx.$queryRaw`
+          SELECT id FROM "User" WHERE id = ${probe.userId} FOR KEY SHARE
+        `;
+        probe.steps.push({
+          step: "user_select_for_key_share",
+          ok: true,
+          rows: Array.isArray(userKeyShare) ? userKeyShare.length : 0,
+        });
+
+        const rawPalletCode = await generateUniquePalletCode(orgId, tx);
+        const rawExternalCompatCode = crypto.randomBytes(4).toString("hex").toUpperCase();
+        const now = new Date();
+        await tx.$executeRaw`
+          INSERT INTO "Pallet"
+            ("orgId", "palletCode", "externalCode", "status", "supplierName", "inboundRef", "createdByUserId", "receivedAt", "createdAt", "updatedAt")
+          VALUES
+            (${orgId}, ${rawPalletCode}, ${rawExternalCompatCode}, 'RECEIVED'::"PalletStatus", ${supplierName}, ${inboundRef}, ${probe.userId}, ${now}, ${now}, ${now})
+        `;
+        probe.steps.push({
+          step: "pallet_raw_insert",
+          ok: true,
+          palletCode: rawPalletCode,
+        });
+
+        const palletCode = await generateUniquePalletCode(orgId, tx);
+        const externalCompatCode = crypto.randomBytes(4).toString("hex").toUpperCase();
+        const pallet = await tx.pallet.create({
+          data: {
+            orgId,
+            palletCode,
+            externalCode: externalCompatCode,
+            status: "RECEIVED",
+            supplierName,
+            inboundRef,
+            createdByUserId: probe.userId,
+            receivedAt: now,
+          },
+        });
+        probe.steps.push({
+          step: "pallet_create",
+          ok: true,
+          palletId: pallet.id,
+          palletCode: pallet.palletCode,
+        });
+
+        await createPalletEventTx(tx, {
+          orgId,
+          palletId: pallet.id,
+          type: "CREATE",
+          fromStatus: null,
+          toStatus: "RECEIVED",
+          userId: probe.userId,
+          metaJson: { supplierName, inboundRef, probe: true },
+        });
+        probe.steps.push({
+          step: "pallet_event_create",
+          ok: true,
+        });
+
+        const rollback = new Error("PROBE_ROLLBACK");
+        rollback.code = "PROBE_ROLLBACK";
+        throw rollback;
+      });
+      return res.json({ ok: true, probe });
+    } catch (err) {
+      if (err?.code === "PROBE_ROLLBACK") {
+        return res.json({ ok: true, probe });
+      }
+      return res.status(500).json({
+        ok: false,
+        probe,
+        error: toErrorDetails(err),
+      });
+    }
+  });
+
+  app.get("/api/support/tickets/my", async (req, res) => {
+    try {
+      const requestedStatus = String(req.query?.status || "").trim();
+      const status = requestedStatus
+        ? normalizeSupportTicketStatus(requestedStatus, "")
+        : "";
+      const where = {
+        createdById: req.user.id,
+        ...(status ? { status } : {}),
+      };
+
+      const items = await prisma.supportTicket.findMany({
+        where,
+        include: {
+          createdBy: {
+            select: { id: true, name: true, email: true },
+          },
+          messages: {
+            orderBy: { createdAt: "desc" },
+            take: 1,
+            select: {
+              id: true,
+              body: true,
+              isStaff: true,
+              createdAt: true,
+              author: { select: { id: true, name: true, email: true } },
+            },
+          },
+          _count: { select: { messages: true } },
+        },
+        orderBy: [{ updatedAt: "desc" }, { id: "desc" }],
+        take: 200,
+      });
+
+      return res.json({
+        items: items.map((item) => supportTicketToResponse(item)),
+      });
+    } catch (err) {
+      console.error("support my tickets error:", err);
+      return res.status(500).json({ message: "Не удалось загрузить заявки в поддержку." });
+    }
+  });
+
+  app.post("/api/support/tickets", async (req, res) => {
+    try {
+      const orgId = Number(req.user?.orgId || 0);
+      if (!orgId) {
+        return res.status(400).json({ message: "ORG_REQUIRED" });
+      }
+
+      const subject = normalizeSupportText(req.body?.subject, 160);
+      const body = normalizeSupportText(req.body?.message, 4000);
+      const category = normalizeSupportTicketCategory(req.body?.category, "OTHER");
+      // Приоритет заявки выставляет только поддержка/владелец в админке.
+      const priority = "NORMAL";
+
+      if (!subject) {
+        return res.status(400).json({ message: "Укажите тему обращения." });
+      }
+      if (!body) {
+        return res.status(400).json({ message: "Опишите проблему в сообщении." });
+      }
+
+      // Защита от дублей при повторной отправке после сетевой/серверной ошибки:
+      // если в коротком окне уже создано такое же обращение от того же пользователя,
+      // возвращаем его вместо создания нового.
+      const dedupeWindowStart = new Date(Date.now() - 90 * 1000);
+      const duplicateTicket = await prisma.supportTicket.findFirst({
+        where: {
+          orgId,
+          createdById: req.user.id,
+          subject,
+          category,
+          createdAt: { gte: dedupeWindowStart },
+          messages: {
+            some: {
+              authorId: req.user.id,
+              isStaff: false,
+              body,
+              createdAt: { gte: dedupeWindowStart },
+            },
+          },
+        },
+        orderBy: [{ createdAt: "desc" }, { id: "desc" }],
+        include: {
+          createdBy: {
+            select: { id: true, name: true, email: true },
+          },
+          messages: {
+            orderBy: { createdAt: "desc" },
+            take: 1,
+            select: {
+              id: true,
+              body: true,
+              isStaff: true,
+              createdAt: true,
+              author: { select: { id: true, name: true, email: true } },
+            },
+          },
+          _count: { select: { messages: true } },
+        },
+      });
+      if (duplicateTicket) {
+        return res.status(200).json({
+          ticket: supportTicketToResponse(duplicateTicket),
+          deduped: true,
+        });
+      }
+
+      const now = new Date();
+      const created = await prisma.$transaction(async (tx) => {
+        const ticket = await tx.supportTicket.create({
+          data: {
+            orgId,
+            createdById: req.user.id,
+            subject,
+            category,
+            priority,
+            status: "OPEN",
+            lastMessageAt: now,
+          },
+        });
+
+        await tx.supportMessage.create({
+          data: {
+            orgId,
+            ticketId: ticket.id,
+            authorId: req.user.id,
+            isStaff: false,
+            body,
+          },
+        });
+
+        return tx.supportTicket.findUnique({
+          where: { id: ticket.id },
+          include: {
+            createdBy: {
+              select: { id: true, name: true, email: true },
+            },
+            messages: {
+              orderBy: { createdAt: "desc" },
+              take: 1,
+              select: {
+                id: true,
+                body: true,
+                isStaff: true,
+                createdAt: true,
+                author: { select: { id: true, name: true, email: true } },
+              },
+            },
+            _count: { select: { messages: true } },
+          },
+        });
+      });
+
+      if (!created) {
+        return res.status(500).json({ message: "SUPPORT_TICKET_CREATE_ERROR" });
+      }
+
+      notifySupportOperators(req.user.id, {
+        title: "Новое обращение в поддержку",
+        message: subject,
+        linkUrl: SUPPORT_TICKETS_ADMIN_LINK,
+        payloadJson: { ticketId: created.id },
+      }).catch((notifyErr) => {
+        console.error("support create ticket notify error:", notifyErr);
+      });
+
+      return res.status(201).json({
+        ticket: supportTicketToResponse(created),
+      });
+    } catch (err) {
+      console.error("support create ticket error:", err);
+      return res.status(500).json({ message: "Не удалось создать обращение в поддержку." });
+    }
+  });
+
+  app.get("/api/support/tickets/:id/messages", async (req, res) => {
+    try {
+      const ticketId = Number(req.params.id);
+      if (!ticketId || Number.isNaN(ticketId)) {
+        return res.status(400).json({ message: "BAD_ID" });
+      }
+
+      const ticket = await prisma.supportTicket.findUnique({
+        where: { id: ticketId },
+        include: {
+          createdBy: { select: { id: true, name: true, email: true } },
+          _count: { select: { messages: true } },
+        },
+      });
+      if (!ticket) {
+        return res.status(404).json({ message: "Заявка не найдена." });
+      }
+      if (!canAccessSupportTicketAsUser(ticket, req.user)) {
+        return res.status(403).json({ message: "Нет доступа к заявке." });
+      }
+
+      const messages = await prisma.supportMessage.findMany({
+        where: { ticketId },
+        orderBy: [{ createdAt: "asc" }, { id: "asc" }],
+        include: {
+          author: { select: { id: true, name: true, email: true } },
+        },
+      });
+
+      return res.json({
+        ticket: supportTicketToResponse(ticket),
+        messages: messages.map((message) => ({
+          id: message.id,
+          body: message.body || "",
+          isStaff: Boolean(message.isStaff),
+          createdAt: message.createdAt,
+          updatedAt: message.updatedAt,
+          author: message.author
+            ? {
+                id: message.author.id,
+                name: message.author.name || "",
+                email: message.author.email || "",
+              }
+            : null,
+        })),
+      });
+    } catch (err) {
+      console.error("support ticket messages error:", err);
+      return res.status(500).json({ message: "Не удалось загрузить переписку." });
+    }
+  });
+
+  app.post("/api/support/tickets/:id/messages", async (req, res) => {
+    try {
+      const ticketId = Number(req.params.id);
+      if (!ticketId || Number.isNaN(ticketId)) {
+        return res.status(400).json({ message: "BAD_ID" });
+      }
+
+      const body = normalizeSupportText(req.body?.message, 4000);
+      if (!body) {
+        return res.status(400).json({ message: "Введите сообщение." });
+      }
+
+      const ticket = await loadSupportTicketForAccess(ticketId);
+      if (!ticket) {
+        return res.status(404).json({ message: "Заявка не найдена." });
+      }
+      if (!canAccessSupportTicketAsUser(ticket, req.user)) {
+        return res.status(403).json({ message: "Нет доступа к заявке." });
+      }
+      if (ticket.status === "RESOLVED") {
+        return res.status(409).json({
+          message: "Обращение закрыто. Создайте новое обращение.",
+        });
+      }
+
+      const now = new Date();
+      const status = ticket.status === "WAITING_USER" ? "OPEN" : ticket.status;
+
+      const message = await prisma.$transaction(async (tx) => {
+        const created = await tx.supportMessage.create({
+          data: {
+            orgId: ticket.orgId || req.user.orgId || null,
+            ticketId: ticket.id,
+            authorId: req.user.id,
+            isStaff: false,
+            body,
+          },
+          include: {
+            author: { select: { id: true, name: true, email: true } },
+          },
+        });
+        await tx.supportTicket.update({
+          where: { id: ticket.id },
+          data: {
+            status,
+            lastMessageAt: now,
+            closedAt: status === "RESOLVED" ? ticket.closedAt : null,
+          },
+        });
+        return created;
+      });
+
+      notifySupportOperators(req.user.id, {
+        title: "Новое сообщение в обращении",
+        message: ticket.subject || "Обращение в поддержку",
+        linkUrl: SUPPORT_TICKETS_ADMIN_LINK,
+        payloadJson: { ticketId: ticket.id },
+      }).catch((notifyErr) => {
+        console.error("support add message notify error:", notifyErr);
+      });
+
+      return res.status(201).json({
+        message: {
+          id: message.id,
+          body: message.body || "",
+          isStaff: Boolean(message.isStaff),
+          createdAt: message.createdAt,
+          updatedAt: message.updatedAt,
+          author: message.author
+            ? {
+                id: message.author.id,
+                name: message.author.name || "",
+                email: message.author.email || "",
+              }
+            : null,
+        },
+        ticketStatus: status,
+      });
+    } catch (err) {
+      console.error("support add message error:", err);
+      return res.status(500).json({ message: "Не удалось отправить сообщение." });
+    }
+  });
+
+  app.get("/api/admin/support/tickets", auth, requireAdmin, async (req, res) => {
+    try {
+      const requestedStatus = String(req.query?.status || "").trim();
+      const requestedPriority = String(req.query?.priority || "").trim();
+      const requestedCategory = String(req.query?.category || "").trim();
+      const search = normalizeSupportText(req.query?.search, 160);
+      const page = Math.max(1, Number(req.query?.page || 1));
+      const limit = Math.min(100, Math.max(1, Number(req.query?.limit || 20)));
+      const skip = (page - 1) * limit;
+
+      const status = requestedStatus
+        ? normalizeSupportTicketStatus(requestedStatus, "")
+        : "";
+      const priority = requestedPriority
+        ? normalizeSupportTicketPriority(requestedPriority, "")
+        : "";
+      const category = requestedCategory
+        ? normalizeSupportTicketCategory(requestedCategory, "")
+        : "";
+
+      const where = {
+        ...(status ? { status } : {}),
+        ...(priority ? { priority } : {}),
+        ...(category ? { category } : {}),
+        ...(search
+          ? {
+              OR: [
+                { subject: { contains: search, mode: "insensitive" } },
+                { createdBy: { name: { contains: search, mode: "insensitive" } } },
+                { createdBy: { email: { contains: search, mode: "insensitive" } } },
+              ],
+            }
+          : {}),
+      };
+
+      if (req.user.isSystemOwner) {
+        const filterOrgId = Number(req.query?.orgId || 0);
+        if (filterOrgId) {
+          where.orgId = filterOrgId;
+        }
+      }
+
+      const [items, total] = await prisma.$transaction([
+        prisma.supportTicket.findMany({
+          where,
+          include: {
+            createdBy: {
+              select: { id: true, name: true, email: true },
+            },
+            organization: {
+              select: { id: true, name: true, code: true },
+            },
+            messages: {
+              orderBy: { createdAt: "desc" },
+              take: 1,
+              select: {
+                id: true,
+                body: true,
+                isStaff: true,
+                createdAt: true,
+                author: { select: { id: true, name: true, email: true } },
+              },
+            },
+            _count: { select: { messages: true } },
+          },
+          orderBy: [{ updatedAt: "desc" }, { id: "desc" }],
+          skip,
+          take: limit,
+        }),
+        prisma.supportTicket.count({ where }),
+      ]);
+
+      return res.json({
+        items: items.map((item) => supportTicketToResponse(item)),
+        total,
+        page,
+        limit,
+      });
+    } catch (err) {
+      console.error("admin support tickets error:", err);
+      return res.status(500).json({ message: "Не удалось загрузить обращения." });
+    }
+  });
+
+  app.get("/api/admin/support/tickets/:id/messages", auth, requireAdmin, async (req, res) => {
+    try {
+      const ticketId = Number(req.params.id);
+      if (!ticketId || Number.isNaN(ticketId)) {
+        return res.status(400).json({ message: "BAD_ID" });
+      }
+
+      const ticket = await prisma.supportTicket.findUnique({
+        where: { id: ticketId },
+        include: {
+          createdBy: { select: { id: true, name: true, email: true } },
+          organization: { select: { id: true, name: true, code: true } },
+          _count: { select: { messages: true } },
+        },
+      });
+      if (!ticket) {
+        return res.status(404).json({ message: "Заявка не найдена." });
+      }
+      if (!req.user.isSystemOwner && req.user.orgId !== ticket.orgId) {
+        return res.status(403).json({ message: "Нет доступа к заявке." });
+      }
+
+      const messages = await prisma.supportMessage.findMany({
+        where: { ticketId },
+        orderBy: [{ createdAt: "asc" }, { id: "asc" }],
+        include: {
+          author: { select: { id: true, name: true, email: true } },
+        },
+      });
+
+      return res.json({
+        ticket: supportTicketToResponse(ticket),
+        messages: messages.map((message) => ({
+          id: message.id,
+          body: message.body || "",
+          isStaff: Boolean(message.isStaff),
+          createdAt: message.createdAt,
+          updatedAt: message.updatedAt,
+          author: message.author
+            ? {
+                id: message.author.id,
+                name: message.author.name || "",
+                email: message.author.email || "",
+              }
+            : null,
+        })),
+      });
+    } catch (err) {
+      console.error("admin support ticket messages error:", err);
+      return res.status(500).json({ message: "Не удалось загрузить переписку." });
+    }
+  });
+
+  app.post("/api/admin/support/tickets/:id/messages", auth, requireAdmin, async (req, res) => {
+    try {
+      const ticketId = Number(req.params.id);
+      if (!ticketId || Number.isNaN(ticketId)) {
+        return res.status(400).json({ message: "BAD_ID" });
+      }
+
+      const body = normalizeSupportText(req.body?.message, 4000);
+      if (!body) {
+        return res.status(400).json({ message: "Введите сообщение." });
+      }
+
+      const ticket = await loadSupportTicketForAccess(ticketId);
+      if (!ticket) {
+        return res.status(404).json({ message: "Заявка не найдена." });
+      }
+      if (!req.user.isSystemOwner && req.user.orgId !== ticket.orgId) {
+        return res.status(403).json({ message: "Нет доступа к заявке." });
+      }
+      if (ticket.status === "RESOLVED") {
+        return res.status(409).json({
+          message: "Обращение закрыто. Действия по нему недоступны.",
+        });
+      }
+
+      const now = new Date();
+      const nextStatus = "WAITING_USER";
+      const message = await prisma.$transaction(async (tx) => {
+        const created = await tx.supportMessage.create({
+          data: {
+            orgId: ticket.orgId || req.user.orgId || null,
+            ticketId: ticket.id,
+            authorId: req.user.id,
+            isStaff: true,
+            body,
+          },
+          include: {
+            author: { select: { id: true, name: true, email: true } },
+          },
+        });
+
+        await tx.supportTicket.update({
+          where: { id: ticket.id },
+          data: {
+            status: nextStatus,
+            lastMessageAt: now,
+            closedAt: null,
+          },
+        });
+        return created;
+      });
+
+      if (ticket.createdById && ticket.createdById !== req.user.id) {
+        await createWarehouseNotification({
+          orgId: ticket.orgId || null,
+          userId: ticket.createdById,
+          type: "SUPPORT",
+          title: "Ответ поддержки",
+          message: ticket.subject || "В вашем обращении есть новый ответ.",
+          linkUrl: SUPPORT_TICKETS_LINK,
+          payloadJson: { ticketId: ticket.id },
+        }).catch(() => null);
+      }
+
+      return res.status(201).json({
+        message: {
+          id: message.id,
+          body: message.body || "",
+          isStaff: Boolean(message.isStaff),
+          createdAt: message.createdAt,
+          updatedAt: message.updatedAt,
+          author: message.author
+            ? {
+                id: message.author.id,
+                name: message.author.name || "",
+                email: message.author.email || "",
+              }
+            : null,
+        },
+        ticketStatus: nextStatus,
+      });
+    } catch (err) {
+      console.error("admin support add message error:", err);
+      return res.status(500).json({ message: "Не удалось отправить ответ." });
+    }
+  });
+
+  app.patch("/api/admin/support/tickets/:id", auth, requireAdmin, async (req, res) => {
+    try {
+      const ticketId = Number(req.params.id);
+      if (!ticketId || Number.isNaN(ticketId)) {
+        return res.status(400).json({ message: "BAD_ID" });
+      }
+
+      const ticket = await loadSupportTicketForAccess(ticketId);
+      if (!ticket) {
+        return res.status(404).json({ message: "Заявка не найдена." });
+      }
+      if (!req.user.isSystemOwner && req.user.orgId !== ticket.orgId) {
+        return res.status(403).json({ message: "Нет доступа к заявке." });
+      }
+      if (ticket.status === "RESOLVED") {
+        return res.status(409).json({
+          message: "Обращение закрыто. Действия по нему недоступны.",
+        });
+      }
+
+      const hasStatus = Object.prototype.hasOwnProperty.call(req.body || {}, "status");
+      const hasPriority = Object.prototype.hasOwnProperty.call(req.body || {}, "priority");
+      if (!hasStatus && !hasPriority) {
+        return res.status(400).json({ message: "Не переданы данные для изменения." });
+      }
+
+      const nextStatus = hasStatus
+        ? normalizeSupportTicketStatus(req.body?.status, "")
+        : "";
+      const nextPriority = hasPriority
+        ? normalizeSupportTicketPriority(req.body?.priority, "")
+        : "";
+
+      const updateData = {};
+      if (hasStatus) {
+        if (!nextStatus) {
+          return res.status(400).json({ message: "Некорректный статус." });
+        }
+        updateData.status = nextStatus;
+        updateData.closedAt = nextStatus === "RESOLVED" ? new Date() : null;
+      }
+      if (hasPriority) {
+        if (!nextPriority) {
+          return res.status(400).json({ message: "Некорректный приоритет." });
+        }
+        updateData.priority = nextPriority;
+      }
+
+      const updated = await prisma.supportTicket.update({
+        where: { id: ticket.id },
+        data: updateData,
+        include: {
+          createdBy: { select: { id: true, name: true, email: true } },
+          organization: { select: { id: true, name: true, code: true } },
+          messages: {
+            orderBy: { createdAt: "desc" },
+            take: 1,
+            select: {
+              id: true,
+              body: true,
+              isStaff: true,
+              createdAt: true,
+              author: { select: { id: true, name: true, email: true } },
+            },
+          },
+          _count: { select: { messages: true } },
+        },
+      });
+
+      if (
+        hasStatus &&
+        ticket.createdById &&
+        ticket.createdById !== req.user.id &&
+        ticket.status !== nextStatus
+      ) {
+        await createWarehouseNotification({
+          orgId: ticket.orgId || null,
+          userId: ticket.createdById,
+          type: "SUPPORT",
+          title: "Статус обращения обновлен",
+          message: `Новый статус: ${supportTicketStatusLabel(nextStatus)}.`,
+          linkUrl: SUPPORT_TICKETS_LINK,
+          payloadJson: { ticketId: ticket.id, status: nextStatus },
+        }).catch(() => null);
+      }
+
+      return res.json({ ticket: supportTicketToResponse(updated) });
+    } catch (err) {
+      console.error("admin support update ticket error:", err);
+      return res.status(500).json({ message: "Не удалось обновить обращение." });
     }
   });
 
@@ -7083,7 +10491,6 @@ app.get("/api/notifications", auth, async (req, res) => {
       String(req.query.unreadOnly || "").trim().toLowerCase() === "true";
 
     const where = {
-      orgId: req.user.orgId || null,
       userId: req.user.id,
       ...(unreadOnly ? { isRead: false } : {}),
     };
@@ -7096,7 +10503,6 @@ app.get("/api/notifications", auth, async (req, res) => {
       }),
       prisma.warehouseNotification.count({
         where: {
-          orgId: req.user.orgId || null,
           userId: req.user.id,
           isRead: false,
         },
@@ -7114,7 +10520,6 @@ app.get("/api/notifications/unread-count", auth, async (req, res) => {
   try {
     const unreadCount = await prisma.warehouseNotification.count({
       where: {
-        orgId: req.user.orgId || null,
         userId: req.user.id,
         isRead: false,
       },
@@ -7136,7 +10541,6 @@ app.post("/api/notifications/:id/read", auth, async (req, res) => {
     const current = await prisma.warehouseNotification.findFirst({
       where: {
         id,
-        orgId: req.user.orgId || null,
         userId: req.user.id,
       },
       select: { id: true, isRead: true },
@@ -7164,7 +10568,6 @@ app.post("/api/notifications/read-all", auth, async (req, res) => {
   try {
     const result = await prisma.warehouseNotification.updateMany({
       where: {
-        orgId: req.user.orgId || null,
         userId: req.user.id,
         isRead: false,
       },
@@ -7231,7 +10634,6 @@ app.post("/api/notifications/push/unsubscribe", auth, async (req, res) => {
     await prisma.pushSubscription.deleteMany({
       where: {
         endpoint,
-        orgId: req.user.orgId || null,
         userId: req.user.id,
       },
     });
@@ -7251,7 +10653,6 @@ app.post("/api/notifications/push/test", auth, async (req, res) => {
 
     const userSubsCount = await prisma.pushSubscription.count({
       where: {
-        orgId: req.user.orgId || null,
         userId: req.user.id,
       },
     });
@@ -16130,8 +19531,9 @@ if (TELEGRAM_POLLING_ENABLED) {
 
 // ================== ЗАПУСК СЕРВЕРА ==================
 
-const PORT = Number(process.env.PORT || 3001);
-const HOST = process.env.HOST || "0.0.0.0";
+const PORT = Number(process.env.PORT || 3000);
+// На Render и в контейнерах bind должен быть на 0.0.0.0.
+const HOST = "0.0.0.0";
 
 async function bootstrapServer() {
   try {
@@ -16160,8 +19562,11 @@ async function bootstrapServer() {
 
   logMailConfigStatus();
 
-  app.listen(PORT, HOST, () => {
+  const server = app.listen(PORT, HOST, () => {
     console.log(`🚀 API запущен: http://${HOST}:${PORT}`);
+  });
+  server.on("error", (err) => {
+    console.error(`[API LISTEN ERROR] host=${HOST} port=${PORT}`, err);
   });
 
   startBackgroundTasks().catch((err) =>

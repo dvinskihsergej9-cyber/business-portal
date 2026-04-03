@@ -3,7 +3,7 @@
 const envBase = import.meta.env.VITE_API_BASE?.trim();
 
 const devFallbackBase = `${window.location.protocol}//${window.location.hostname}:3001`;
-const prodFallbackBase = "https://business-portal-8nba.onrender.com";
+const prodFallbackBase = "https://api.skladonline.tw1.su";
 const prodFallbackOrigin = prodFallbackBase.replace(/\/+$/, "");
 export const FALLBACK_API_BASE = `${prodFallbackOrigin}/api`;
 
@@ -79,6 +79,12 @@ const EXTRA_ERROR_MESSAGES = {
   BAD_TOKEN: "Некорректный токен.",
   BAD_USER_ID: "Некорректный идентификатор пользователя.",
   BOX_CODE_REQUIRED: "Введите код короба.",
+  AUTH_DB_PERMISSION_USER_TABLE:
+    "Сервер БД не выдал доступ к таблице пользователей (User). Проверьте права роли подключения.",
+  AUTH_DB_PERMISSION_ORG_TABLE:
+    "Сервер БД не выдал доступ к таблице организаций (Organization). Проверьте права роли подключения.",
+  AUTH_DB_QUERY_ERROR:
+    "Ошибка запроса к базе данных при входе. Проверьте подключение, схему и права роли в БД.",
   COUNT_CELL_NOT_EMPTY: "Ячейка не пуста. Операция недоступна.",
   COUNT_DATE_MISMATCH: "Дата не совпадает с остатком в ячейке.",
   COUNT_ITEM_NOT_IN_LOCATION: "Товар отсутствует в выбранной ячейке.",
@@ -135,6 +141,12 @@ const EXTRA_ERROR_MESSAGES = {
   TRIAL_CONFIG_INVALID: "Некорректная конфигурация пробного периода.",
   USER_INACTIVE: "Пользователь отключен.",
   USER_NOT_FOUND: "Пользователь не найден.",
+  PALLET_DB_PERMISSION_USER_TABLE:
+    "Сервер БД не выдал права на таблицу User для паллетного контура. Проверьте GRANT для роли подключения.",
+  PALLET_USER_FK_ERROR:
+    "Сервер БД не смог проверить связь с пользователем при создании паллеты. Проверьте целостность таблицы User.",
+  PALLET_DB_QUERY_ERROR:
+    "Ошибка запроса к БД при приёмке паллеты. Проверьте права роли подключения и схему БД.",
   TENANT_GRANT_FREE_ACCESS_ERROR: "Не удалось продлить бесплатный доступ клиенту.",
   TENANT_TOGGLE_ACCESS_ERROR: "Не удалось изменить состояние доступа клиента.",
   TENANT_SUBSCRIPTION_NOT_FOUND:
@@ -367,9 +379,17 @@ export const apiFetch = async (path, options = {}) => {
   }
 
   const controller = new AbortController();
-  const timeoutId = setTimeout(() => controller.abort(), API_TIMEOUT_MS);
-
-  const { signal: externalSignal, ...restOptions } = options || {};
+  const {
+    signal: externalSignal,
+    timeoutMs,
+    suppressGlobalError = false,
+    ...restOptions
+  } = options || {};
+  const normalizedTimeoutMs =
+    Number.isFinite(Number(timeoutMs)) && Number(timeoutMs) > 0
+      ? Number(timeoutMs)
+      : API_TIMEOUT_MS;
+  const timeoutId = setTimeout(() => controller.abort(), normalizedTimeoutMs);
   if (externalSignal) {
     if (externalSignal.aborted) {
       controller.abort();
@@ -390,7 +410,9 @@ export const apiFetch = async (path, options = {}) => {
       err?.name === "AbortError"
         ? "Не удалось подключиться к серверу."
         : normalizeErrorMessage(err, "Не удалось подключиться к серверу.");
-    showGlobalError(message);
+    if (!suppressGlobalError) {
+      showGlobalError(message);
+    }
     throw new Error(message);
   } finally {
     clearTimeout(timeoutId);

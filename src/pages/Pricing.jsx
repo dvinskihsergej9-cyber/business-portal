@@ -86,7 +86,7 @@ function getPeriodLabel(periodId) {
 }
 
 export default function Pricing() {
-  const { user, refreshUser } = useAuth();
+  const { user, refreshUser, logout } = useAuth();
   const navigate = useNavigate();
 
   const [loading, setLoading] = useState(false);
@@ -176,6 +176,7 @@ export default function Pricing() {
   const paidUntilDate = subscription?.paidUntil
     ? new Date(subscription.paidUntil).toLocaleDateString("ru-RU")
     : "—";
+  const canUseSupport = Boolean(user?.role === "ADMIN");
   const visiblePlanCards = PLAN_CARDS.filter(
     (plan) => periodId === "1m" || plan.id !== "start-30"
   );
@@ -185,9 +186,37 @@ export default function Pricing() {
     navigate("/warehouse");
   };
 
+  const handleBackToLogin = () => {
+    logout();
+    navigate("/login");
+  };
+
+  const handleOpenSupport = () => {
+    navigate("/support");
+  };
+
   return (
     <div className="page pricing-modern">
       <section className="pricing-modern__hero">
+        <div className="pricing-modern__top-actions">
+          <button
+            type="button"
+            className="pricing-modern__back-login"
+            onClick={handleBackToLogin}
+          >
+            Назад ко входу
+          </button>
+          {canUseSupport ? (
+            <button
+              type="button"
+              className="pricing-modern__back-login pricing-modern__support-link"
+              onClick={handleOpenSupport}
+            >
+              Поддержка
+            </button>
+          ) : null}
+        </div>
+
         <div className="pricing-modern__brand">
           <img src="/logo-mark.png" alt="Логотип СкладОнлайн" />
           <span>СкладОнлайн</span>

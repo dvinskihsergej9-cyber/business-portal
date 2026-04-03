@@ -56,7 +56,7 @@ export default function AdminConsole({ initialTab = "users" }) {
           ? BASE_TABS.find((item) => item.id === "picking-report")
           : null,
       ].filter(Boolean),
-    [canUsers, canWarehouse, canTenants, canCompanyOwnerMarketing]
+    [canUsers, canWarehouse, canTenants, canCompanyOwnerMarketing, isSystemOwner]
   );
 
   const initialTabId = tabs.some((tab) => tab.id === initialTab)

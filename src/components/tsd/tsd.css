@@ -277,14 +277,70 @@
 .tsd-scanner__viewport {
   background: #0f172a;
   border-radius: 12px;
-  min-height: 220px;
+  min-height: 390px;
   display: grid;
   place-items: center;
   overflow: hidden;
+  position: relative;
+  border: 1px solid rgba(148, 163, 184, 0.35);
 }
 
 .tsd-scanner__camera {
   width: 100%;
+  height: 100%;
+}
+
+.tsd-scanner__camera > div {
+  width: 100% !important;
+  height: 100% !important;
+}
+
+.tsd-scanner__camera video {
+  width: 100% !important;
+  height: 100% !important;
+  object-fit: cover !important;
+}
+
+.tsd-scanner__camera img {
+  display: none !important;
+}
+
+.tsd-scanner__viewport--camera {
+  cursor: pointer;
+}
+
+.tsd-scanner__viewport--focus-pulse::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  box-shadow: inset 0 0 0 3px rgba(56, 189, 248, 0.6);
+  pointer-events: none;
+  animation: tsdFocusPulse 0.28s ease-out;
+}
+
+.tsd-scanner__frame {
+  position: absolute;
+  left: 4%;
+  right: 4%;
+  top: 8%;
+  bottom: 8%;
+  border: 2px solid rgba(56, 189, 248, 0.72);
+  border-radius: 14px;
+  box-shadow: inset 0 0 0 1px rgba(14, 165, 233, 0.35);
+  pointer-events: none;
+}
+
+.tsd-scanner__focus-tip {
+  position: absolute;
+  right: 10px;
+  bottom: 10px;
+  padding: 4px 8px;
+  border-radius: 999px;
+  font-size: 11px;
+  color: #e2e8f0;
+  background: rgba(15, 23, 42, 0.55);
+  border: 1px solid rgba(148, 163, 184, 0.35);
+  pointer-events: none;
 }
 
 .tsd-scanner__placeholder {
@@ -619,6 +675,99 @@
   gap: 8px;
 }
 
+.tsd-pallet-tabs {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+  margin-bottom: 12px;
+}
+
+.tsd-pallet-tab {
+  border: 1px solid #cbd5e1 !important;
+  background: #ffffff !important;
+  border-radius: 12px;
+  min-height: 42px;
+  font-size: 14px;
+  font-weight: 600;
+  color: #0f172a !important;
+  cursor: pointer;
+}
+
+.tsd-pallet-tab--active {
+  background: var(--tsd-accent) !important;
+  color: #ffffff !important;
+  border-color: transparent !important;
+  box-shadow: 0 0 0 2px rgba(14, 165, 233, 0.18);
+}
+
+.tsd-pallet-history {
+  display: grid;
+  gap: 8px;
+}
+
+.tsd-pallet-event {
+  border: 1px solid var(--tsd-border);
+  border-radius: 12px;
+  background: #ffffff;
+  padding: 10px 12px;
+  display: grid;
+  gap: 4px;
+}
+
+.tsd-pallet-event__head {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: 8px;
+}
+
+.tsd-pallet-event__type {
+  font-size: 13px;
+  font-weight: 700;
+  color: #0f3f7a;
+}
+
+.tsd-pallet-event__date {
+  font-size: 12px;
+  color: #64748b;
+}
+
+.tsd-pallet-event__meta {
+  font-size: 12px;
+  color: #334155;
+}
+
+.tsd-pallet-list-btn {
+  width: 100%;
+  text-align: left;
+  cursor: pointer;
+  transition: box-shadow 0.2s ease, border-color 0.2s ease;
+}
+
+.tsd-pallet-list-btn:hover {
+  border-color: #7dd3fc;
+  box-shadow: 0 0 0 2px rgba(14, 165, 233, 0.15);
+}
+
+.tsd-pallet-list-btn--selected {
+  border-color: #38bdf8;
+  box-shadow: 0 0 0 2px rgba(14, 165, 233, 0.22);
+}
+
+.tsd-route-sheet-item--active {
+  border-color: #38bdf8;
+  box-shadow: 0 0 0 2px rgba(14, 165, 233, 0.18);
+}
+
+@keyframes tsdFocusPulse {
+  from {
+    opacity: 0.85;
+  }
+  to {
+    opacity: 0;
+  }
+}
+
 .tsd-action-inline {
   display: flex;
   justify-content: center;
@@ -627,6 +776,13 @@
 
 .tsd-btn--center {
   width: min(420px, 100%);
+}
+
+.tsd-btn--compact {
+  min-height: 34px;
+  padding: 6px 10px;
+  font-size: 12px;
+  border-radius: 10px;
 }
 
 
@@ -649,6 +805,11 @@
   box-shadow: var(--tsd-shadow);
   display: grid;
   gap: 12px;
+}
+
+.tsd-modal__card--success {
+  border: 1px solid rgba(16, 185, 129, 0.45);
+  box-shadow: 0 12px 30px rgba(16, 185, 129, 0.18);
 }
 
 .tsd-modal__title {
@@ -711,5 +872,22 @@
 
   .tsd-stepper {
     grid-template-columns: repeat(4, 1fr);
+  }
+
+  .tsd-pallet-tabs {
+    grid-template-columns: repeat(5, minmax(0, 1fr));
+  }
+}
+
+@media (max-width: 600px) {
+  .tsd-scanner__viewport {
+    min-height: 360px;
+  }
+
+  .tsd-scanner__frame {
+    left: 3%;
+    right: 3%;
+    top: 7%;
+    bottom: 7%;
   }
 }

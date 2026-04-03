@@ -22,8 +22,10 @@ import StockRevisionTab from "../components/StockRevisionTab";
 import SupplierTrucksQueueTab from "../components/SupplierTrucksQueueTab";
 import MobileTsdTab from "../components/MobileTsdTab";
 import WarehouseLocationsPanel from "../components/WarehouseLocationsPanel";
+import PalletFlow from "../components/tsd/PalletFlow";
 import { WAREHOUSE_EMBEDDED_ICONS } from "../assets/warehouse/embeddedIcons";
 import holdsImage from "../assets/warehouse/holds.png";
+import crossdockImage from "../assets/warehouse/crossdock.png";
 
 
 const API = API_BASE;
@@ -41,6 +43,7 @@ const WAREHOUSE_EMOJI = {
   items: "📦",
   queue: "🚚",
   tsd: "📱",
+  crossdock: "🧱",
   qr: "🏷️",
   receive: "📦",
   ship: "🚚",
@@ -61,6 +64,7 @@ const WAREHOUSE_ICON_FALLBACK = {
   items: "\u0422\u041e\u0412",
   queue: "QUEUE",
   tsd: "TSD",
+  crossdock: "XD",
   qr: "QR",
   receive: "IN",
   ship: "OUT",
@@ -83,6 +87,7 @@ const WAREHOUSE_IMAGE = {
   items: WAREHOUSE_EMBEDDED_ICONS.inventory,
   queue: WAREHOUSE_EMBEDDED_ICONS.queue,
   tsd: WAREHOUSE_EMBEDDED_ICONS.tsd,
+  crossdock: crossdockImage,
 };
 
 function WarehouseTileIcon({ name }) {
@@ -299,6 +304,7 @@ export default function Warehouse({
     "items",
     "queue",
     "tsd",
+    "crossdock",
   ];
 
   const permissionAllowedSections = useMemo(
@@ -2646,6 +2652,7 @@ export default function Warehouse({
       { key: "items", title: "\u0421\u043f\u0440\u0430\u0432\u043e\u0447\u043d\u0438\u043a \u0442\u043e\u0432\u0430\u0440\u043e\u0432", subtitle: "\u0412\u044b\u0431\u043e\u0440 \u0442\u043e\u0432\u0430\u0440\u043e\u0432 \u0438 \u043f\u0435\u0447\u0430\u0442\u044c QR-\u044d\u0442\u0438\u043a\u0435\u0442\u043e\u043a." },
       { key: "queue", title: "\u041c\u0430\u0448\u0438\u043d\u044b \u043f\u043e\u0441\u0442\u0430\u0432\u0449\u0438\u043a\u043e\u0432 \u0432 \u043e\u0447\u0435\u0440\u0435\u0434\u0438", subtitle: "\u041e\u0447\u0435\u0440\u0435\u0434\u044c \u043d\u0430 \u0440\u0430\u0437\u0433\u0440\u0443\u0437\u043a\u0443, \u0432\u043e\u0440\u043e\u0442\u0430 \u0438 \u0432\u0440\u0435\u043c\u044f." },
       { key: "tsd", title: "\u041c\u043e\u0431\u0438\u043b\u044c\u043d\u044b\u0439 \u0422\u0421\u0414", subtitle: "\u0421\u043a\u0430\u043d\u0438\u0440\u043e\u0432\u0430\u043d\u0438\u0435 \u0448\u0442\u0440\u0438\u0445\u043a\u043e\u0434\u043e\u0432 \u0438 \u0431\u044b\u0441\u0442\u0440\u044b\u0435 \u043e\u043f\u0435\u0440\u0430\u0446\u0438\u0438." },
+      { key: "crossdock", title: "Кросс-докинг", subtitle: "Паллетный контур: приемка, размещение, отгрузка и поиск." },
     ],
     []
   );
@@ -2688,6 +2695,26 @@ export default function Warehouse({
   useEffect(() => {
     const handleTopBack = (event) => {
       if (!section) return;
+      if (section === "tsd") {
+        const tsdEvent = new CustomEvent("tsd:back-request", { cancelable: true });
+        window.dispatchEvent(tsdEvent);
+        if (tsdEvent.defaultPrevented) {
+          if (typeof event?.preventDefault === "function") {
+            event.preventDefault();
+          }
+          return;
+        }
+      }
+      if (section === "crossdock") {
+        const crossdockEvent = new CustomEvent("crossdock:back-request", { cancelable: true });
+        window.dispatchEvent(crossdockEvent);
+        if (crossdockEvent.defaultPrevented) {
+          if (typeof event?.preventDefault === "function") {
+            event.preventDefault();
+          }
+          return;
+        }
+      }
       closeSection();
       if (typeof event?.preventDefault === "function") {
         event.preventDefault();
@@ -4118,6 +4145,16 @@ export default function Warehouse({
   </div>
 
 )}
+
+      {sectionSet.has("crossdock") && section === "crossdock" && (
+        <div className="tsd-section">
+          <PalletFlow
+            authHeaders={authHeaders}
+            onBack={closeSection}
+            showInternalBack={false}
+          />
+        </div>
+      )}
 
       {sectionSet.has("transactions") && section === "transactions" && (
         <div className="inventory-section" ref={transactionsRef}>

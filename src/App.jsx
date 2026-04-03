@@ -21,6 +21,7 @@ import ForgotPassword from "./pages/ForgotPassword";
 import ResetPassword from "./pages/ResetPassword";
 import Pricing from "./pages/Pricing";
 import SubscribeReturn from "./pages/SubscribeReturn";
+import Support from "./pages/Support";
 import Landing from "./pages/Landing";
 import Offer from "./pages/Offer";
 import Privacy from "./pages/Privacy";
@@ -139,6 +140,14 @@ function AppRoutesWithBackground() {
             element={
               <ProtectedRoute requirePaid={false}>
                 <SubscribeReturn />
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/support"
+            element={
+              <ProtectedRoute requirePaid={false}>
+                <Support />
               </ProtectedRoute>
             }
           />

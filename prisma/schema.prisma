@@ -15,31 +15,32 @@ model Organization {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  users   User[]
-  invites InviteToken[]
+  users          User[]
+  invites        InviteToken[]
+  supportTickets SupportTicket[]
 }
 
 // ============ USERS ============
 model User {
-  id              Int           @id @default(autoincrement())
-  email           String        @unique
-  username        String?       @unique
-  password        String
-  passwordHash    String?
-  passwordVisible String?
-  name            String
-  role            String        @default("EMPLOYEE")
-  permissionsJson String?
-  tokenVersion    Int           @default(0)
-  isActive        Boolean       @default(true)
-  orgId           Int?
-  organization    Organization? @relation(fields: [orgId], references: [id])
-  emailVerifiedAt DateTime?
-  marketingEmailsEnabled Boolean @default(false)
-  marketingConsentAt     DateTime?
+  id                      Int           @id @default(autoincrement())
+  email                   String        @unique
+  username                String?       @unique
+  password                String
+  passwordHash            String?
+  passwordVisible         String?
+  name                    String
+  role                    String        @default("EMPLOYEE")
+  permissionsJson         String?
+  tokenVersion            Int           @default(0)
+  isActive                Boolean       @default(true)
+  orgId                   Int?
+  organization            Organization? @relation(fields: [orgId], references: [id])
+  emailVerifiedAt         DateTime?
+  marketingEmailsEnabled  Boolean       @default(false)
+  marketingConsentAt      DateTime?
   marketingUnsubscribedAt DateTime?
-  createdAt       DateTime      @default(now())
-  updatedAt       DateTime      @updatedAt
+  createdAt               DateTime      @default(now())
+  updatedAt               DateTime      @updatedAt
 
   leaveRequests                LeaveRequest[]
   paymentRequests              PaymentRequest[]
@@ -70,6 +71,17 @@ model User {
   warehouseNotifications       WarehouseNotification[]
   pushSubscriptions            PushSubscription[]
   emailVerificationCodes       EmailVerificationCode[]
+  supportTicketsCreated        SupportTicket[]          @relation("SupportTicketCreatedBy")
+  supportMessagesAuthored      SupportMessage[]         @relation("SupportMessageAuthor")
+  palletsCreated               Pallet[]                 @relation("PalletCreatedBy")
+  palletEvents                 PalletEvent[]            @relation("PalletEventUser")
+  palletDispatches             PalletDispatch[]         @relation("PalletDispatchBy")
+  palletRouteSheetsCreated     PalletRouteSheet[]       @relation("PalletRouteSheetCreatedBy")
+  palletRouteSheetsPublished   PalletRouteSheet[]       @relation("PalletRouteSheetPublishedBy")
+  palletRouteSheetsStarted     PalletRouteSheet[]       @relation("PalletRouteSheetStartedBy")
+  palletRouteSheetsCompleted   PalletRouteSheet[]       @relation("PalletRouteSheetCompletedBy")
+  palletRouteSheetItemsLoaded  PalletRouteSheetItem[]   @relation("PalletRouteSheetItemLoadedBy")
+  palletRouteSheetEvents       PalletRouteSheetEvent[]  @relation("PalletRouteSheetEventUser")
 
   @@index([orgId])
 }
@@ -278,44 +290,44 @@ model WarehouseRequestItem {
 }
 
 model WarehouseTask {
-  id             Int       @id @default(autoincrement())
-  orgId          Int?
-  createdAt      DateTime  @default(now())
-  updatedAt      DateTime  @updatedAt
-  title          String
-  description    String?
-  taskPhotosJson String?
-  dueDate        DateTime?
-  status         String    @default("NEW") // NEW / IN_PROGRESS / DONE / CANCELLED
-  executorUserId Int?
-  executorUser   User?     @relation("WarehouseTaskExecutor", fields: [executorUserId], references: [id])
-  executorName   String?
-  executorChatId String?
+  id                   Int       @id @default(autoincrement())
+  orgId                Int?
+  createdAt            DateTime  @default(now())
+  updatedAt            DateTime  @updatedAt
+  title                String
+  description          String?
+  taskPhotosJson       String?
+  dueDate              DateTime?
+  status               String    @default("NEW") // NEW / IN_PROGRESS / DONE / CANCELLED
+  executorUserId       Int?
+  executorUser         User?     @relation("WarehouseTaskExecutor", fields: [executorUserId], references: [id])
+  executorName         String?
+  executorChatId       String?
   responseText         String?
   responsePhotosJson   String?
   responseUpdatedAt    DateTime?
   responseAuthorUserId Int?
   responseAuthorName   String?
-  assignerId     Int
-  assigner       User      @relation(fields: [assignerId], references: [id])
-  lastReminderAt DateTime?
+  assignerId           Int
+  assigner             User      @relation(fields: [assignerId], references: [id])
+  lastReminderAt       DateTime?
 
   @@index([orgId, status, dueDate])
   @@index([orgId, executorUserId, status])
 }
 
 model WarehouseNotification {
-  id          Int      @id @default(autoincrement())
+  id          Int       @id @default(autoincrement())
   orgId       Int?
   userId      Int
-  type        String   @default("TASK")
+  type        String    @default("TASK")
   title       String
   message     String
   linkUrl     String?
   payloadJson Json?
-  isRead      Boolean  @default(false)
+  isRead      Boolean   @default(false)
   readAt      DateTime?
-  createdAt   DateTime @default(now())
+  createdAt   DateTime  @default(now())
 
   user User @relation(fields: [userId], references: [id], onDelete: Cascade)
 
@@ -324,16 +336,206 @@ model WarehouseNotification {
   @@index([orgId, type, createdAt])
 }
 
+model SupportTicket {
+  id            Int                   @id @default(autoincrement())
+  orgId         Int?
+  organization  Organization?         @relation(fields: [orgId], references: [id])
+  createdById   Int
+  createdBy     User                  @relation("SupportTicketCreatedBy", fields: [createdById], references: [id], onDelete: Cascade)
+  subject       String
+  category      SupportTicketCategory @default(OTHER)
+  priority      SupportTicketPriority @default(NORMAL)
+  status        SupportTicketStatus   @default(OPEN)
+  createdAt     DateTime              @default(now())
+  updatedAt     DateTime              @updatedAt
+  lastMessageAt DateTime              @default(now())
+  closedAt      DateTime?
+  messages      SupportMessage[]
+
+  @@index([orgId, status, updatedAt])
+  @@index([orgId, createdById, updatedAt])
+}
+
+model SupportMessage {
+  id        Int           @id @default(autoincrement())
+  orgId     Int?
+  ticketId  Int
+  ticket    SupportTicket @relation(fields: [ticketId], references: [id], onDelete: Cascade)
+  authorId  Int
+  author    User          @relation("SupportMessageAuthor", fields: [authorId], references: [id], onDelete: Cascade)
+  isStaff   Boolean       @default(false)
+  body      String
+  createdAt DateTime      @default(now())
+  updatedAt DateTime      @updatedAt
+
+  @@index([orgId, ticketId, createdAt])
+  @@index([orgId, authorId, createdAt])
+}
+
+model Pallet {
+  id                Int             @id @default(autoincrement())
+  orgId             Int?
+  palletCode        String
+  externalCode      String?
+  status            PalletStatus    @default(RECEIVED)
+  supplierName      String?
+  inboundRef        String?
+  currentLocationId Int?
+  currentLocation   PalletLocation? @relation(fields: [currentLocationId], references: [id])
+  createdByUserId   Int
+  createdBy         User            @relation("PalletCreatedBy", fields: [createdByUserId], references: [id])
+  receivedAt        DateTime
+  storedAt          DateTime?
+  dispatchedAt      DateTime?
+  createdAt         DateTime        @default(now())
+  updatedAt         DateTime        @updatedAt
+
+  events          PalletEvent[]
+  dispatch        PalletDispatch?
+  routeSheetItems PalletRouteSheetItem[]
+
+  @@unique([orgId, palletCode])
+  @@unique([orgId, externalCode])
+  @@index([orgId, status, receivedAt])
+  @@index([orgId, currentLocationId, status])
+}
+
+model PalletLocation {
+  id        Int      @id @default(autoincrement())
+  orgId     Int?
+  code      String
+  name      String
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  pallets Pallet[]
+
+  @@unique([orgId, code])
+}
+
+model PalletEvent {
+  id         Int             @id @default(autoincrement())
+  orgId      Int?
+  palletId   Int
+  pallet     Pallet          @relation(fields: [palletId], references: [id], onDelete: Cascade)
+  type       PalletEventType
+  fromStatus PalletStatus?
+  toStatus   PalletStatus?
+  userId     Int?
+  user       User?           @relation("PalletEventUser", fields: [userId], references: [id])
+  metaJson   Json?
+  createdAt  DateTime        @default(now())
+
+  @@index([orgId, palletId, createdAt])
+}
+
+model PalletDispatch {
+  id                 Int                   @id @default(autoincrement())
+  orgId              Int?
+  palletId           Int                   @unique
+  pallet             Pallet                @relation(fields: [palletId], references: [id], onDelete: Cascade)
+  routeSheetId       Int?
+  routeSheet         PalletRouteSheet?     @relation(fields: [routeSheetId], references: [id])
+  routeSheetItemId   Int?                  @unique
+  routeSheetItem     PalletRouteSheetItem? @relation(fields: [routeSheetItemId], references: [id], onDelete: SetNull)
+  destinationRc      String
+  route              String?
+  vehicle            String?
+  driver             String?
+  notes              String?
+  dispatchedByUserId Int?
+  dispatchedBy       User?                 @relation("PalletDispatchBy", fields: [dispatchedByUserId], references: [id])
+  dispatchedAt       DateTime
+
+  @@unique([orgId, palletId])
+  @@index([orgId, destinationRc, dispatchedAt])
+  @@index([orgId, routeSheetId, dispatchedAt])
+}
+
+model PalletRouteSheet {
+  id                Int              @id @default(autoincrement())
+  orgId             Int?
+  sheetNumber       String
+  clientName        String
+  destinationRc     String
+  route             String?
+  vehicle           String?
+  driver            String?
+  plannedDate       DateTime?
+  notes             String?
+  status            RouteSheetStatus @default(DRAFT)
+  createdByUserId   Int
+  createdBy         User             @relation("PalletRouteSheetCreatedBy", fields: [createdByUserId], references: [id])
+  publishedByUserId Int?
+  publishedBy       User?            @relation("PalletRouteSheetPublishedBy", fields: [publishedByUserId], references: [id])
+  publishedAt       DateTime?
+  startedByUserId   Int?
+  startedBy         User?            @relation("PalletRouteSheetStartedBy", fields: [startedByUserId], references: [id])
+  startedAt         DateTime?
+  completedByUserId Int?
+  completedBy       User?            @relation("PalletRouteSheetCompletedBy", fields: [completedByUserId], references: [id])
+  completedAt       DateTime?
+  createdAt         DateTime         @default(now())
+  updatedAt         DateTime         @updatedAt
+
+  items      PalletRouteSheetItem[]
+  events     PalletRouteSheetEvent[]
+  dispatches PalletDispatch[]
+
+  @@unique([orgId, sheetNumber])
+  @@index([orgId, status, plannedDate, createdAt])
+}
+
+model PalletRouteSheetItem {
+  id             Int                  @id @default(autoincrement())
+  orgId          Int?
+  routeSheetId   Int
+  routeSheet     PalletRouteSheet     @relation(fields: [routeSheetId], references: [id], onDelete: Cascade)
+  palletId       Int
+  pallet         Pallet               @relation(fields: [palletId], references: [id], onDelete: Cascade)
+  status         RouteSheetItemStatus @default(PLANNED)
+  plannedAt      DateTime             @default(now())
+  loadedAt       DateTime?
+  loadedByUserId Int?
+  loadedBy       User?                @relation("PalletRouteSheetItemLoadedBy", fields: [loadedByUserId], references: [id])
+  createdAt      DateTime             @default(now())
+  updatedAt      DateTime             @updatedAt
+
+  dispatch PalletDispatch?
+  events   PalletRouteSheetEvent[]
+
+  @@unique([orgId, routeSheetId, palletId])
+  @@index([orgId, palletId, status])
+  @@index([orgId, routeSheetId, status, plannedAt])
+}
+
+model PalletRouteSheetEvent {
+  id           Int                   @id @default(autoincrement())
+  orgId        Int?
+  routeSheetId Int
+  routeSheet   PalletRouteSheet      @relation(fields: [routeSheetId], references: [id], onDelete: Cascade)
+  itemId       Int?
+  item         PalletRouteSheetItem? @relation(fields: [itemId], references: [id], onDelete: Cascade)
+  type         RouteSheetEventType
+  userId       Int?
+  user         User?                 @relation("PalletRouteSheetEventUser", fields: [userId], references: [id])
+  metaJson     Json?
+  createdAt    DateTime              @default(now())
+
+  @@index([orgId, routeSheetId, createdAt])
+  @@index([orgId, itemId, createdAt])
+}
+
 model PushSubscription {
-  id               Int      @id @default(autoincrement())
+  id               Int       @id @default(autoincrement())
   orgId            Int?
   userId           Int
-  endpoint         String   @unique
+  endpoint         String    @unique
   p256dh           String
   auth             String
   userAgent        String?
-  createdAt        DateTime @default(now())
-  updatedAt        DateTime @updatedAt
+  createdAt        DateTime  @default(now())
+  updatedAt        DateTime  @updatedAt
   lastSuccessAt    DateTime?
   lastErrorAt      DateTime?
   lastErrorMessage String?
@@ -357,14 +559,77 @@ enum WarehouseRequestStatus {
   REJECTED
 }
 
+enum SupportTicketStatus {
+  OPEN
+  IN_PROGRESS
+  WAITING_USER
+  RESOLVED
+}
+
+enum SupportTicketPriority {
+  LOW
+  NORMAL
+  HIGH
+  URGENT
+}
+
+enum SupportTicketCategory {
+  ACCESS
+  BILLING
+  TECHNICAL
+  INTEGRATION
+  OTHER
+}
+
+enum PalletStatus {
+  RECEIVED
+  STORED
+  DISPATCHED
+  CANCELLED
+}
+
+enum PalletEventType {
+  CREATE
+  RECEIVE
+  STORE
+  MOVE
+  DISPATCH
+  CANCEL
+}
+
+enum RouteSheetStatus {
+  DRAFT
+  PUBLISHED
+  LOADING
+  COMPLETED
+  CANCELLED
+}
+
+enum RouteSheetItemStatus {
+  PLANNED
+  LOADED
+  CANCELLED
+}
+
+enum RouteSheetEventType {
+  CREATE
+  ADD_ITEM
+  REMOVE_ITEM
+  PUBLISH
+  START_LOADING
+  LOAD_PALLET
+  COMPLETE
+  CANCEL
+}
+
 // ============ PURCHASE ORDERS ============
 model PurchaseOrder {
-  id          Int                 @id @default(autoincrement())
-  orgId       Int?
-  number      String?
-  date        DateTime            @default(now())
-  plannedDate DateTime?
-  status      PurchaseOrderStatus @default(DRAFT)
+  id             Int                         @id @default(autoincrement())
+  orgId          Int?
+  number         String?
+  date           DateTime                    @default(now())
+  plannedDate    DateTime?
+  status         PurchaseOrderStatus         @default(DRAFT)
   receivingStage PurchaseOrderReceivingStage @default(NEW)
 
   supplierId Int
@@ -555,22 +820,22 @@ model StockMovement {
 }
 
 model StockHold {
-  id               Int             @id @default(autoincrement())
+  id               Int               @id @default(autoincrement())
   orgId            Int?
   itemId           Int
-  item             Item            @relation(fields: [itemId], references: [id])
+  item             Item              @relation(fields: [itemId], references: [id])
   locationId       Int
   location         WarehouseLocation @relation(fields: [locationId], references: [id])
   qty              Float
-  status           StockHoldStatus @default(ACTIVE)
+  status           StockHoldStatus   @default(ACTIVE)
   reason           String
   note             String?
-  createdAt        DateTime        @default(now())
+  createdAt        DateTime          @default(now())
   createdByUserId  Int?
-  createdBy        User?           @relation("StockHoldCreatedBy", fields: [createdByUserId], references: [id])
+  createdBy        User?             @relation("StockHoldCreatedBy", fields: [createdByUserId], references: [id])
   releasedAt       DateTime?
   releasedByUserId Int?
-  releasedBy       User?           @relation("StockHoldReleasedBy", fields: [releasedByUserId], references: [id])
+  releasedBy       User?             @relation("StockHoldReleasedBy", fields: [releasedByUserId], references: [id])
   releaseNote      String?
 
   @@index([orgId, status, createdAt])
@@ -677,20 +942,20 @@ model ReceivingDiscrepancy {
 }
 
 model OrgProfile {
-  id                    Int       @id @default(autoincrement())
-  orgId                 Int?
-  orgName               String
-  legalAddress          String
-  actualAddress         String
-  inn                   String
-  kpp                   String
-  phone                 String
+  id                         Int       @id @default(autoincrement())
+  orgId                      Int?
+  orgName                    String
+  legalAddress               String
+  actualAddress              String
+  inn                        String
+  kpp                        String
+  phone                      String
   purchaseOrderEmailTemplate String?
-  apiKeyHash            String?
-  apiKeyHint            String?
-  apiKeyLastRotatedAt   DateTime?
-  warehouseBootstrapKey String?
-  updatedAt             DateTime  @updatedAt
+  apiKeyHash                 String?
+  apiKeyHint                 String?
+  apiKeyLastRotatedAt        DateTime?
+  warehouseBootstrapKey      String?
+  updatedAt                  DateTime  @updatedAt
 
   @@unique([orgId])
 }
@@ -821,12 +1086,12 @@ model SalesOrder {
   pickSkips           SalesOrderPickSkip[]
   statusHistory       OrderStatusHistory[]
 
+  @@unique([orgId, externalOrderId])
   @@index([status])
   @@index([assignedToUserId])
   @@index([passportPrintedById])
   @@index([shippedByUserId])
   @@index([createdAt])
-  @@unique([orgId, externalOrderId])
 }
 
 model SalesOrderLine {

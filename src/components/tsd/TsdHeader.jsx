@@ -7,14 +7,17 @@ export default function TsdHeader({
   contextValue,
   onChangeContext,
   onBack,
+  showBackButton = true,
   rightSlot,
 }) {
   return (
     <div className="tsd-header">
       <div className="tsd-header__top">
-        <button type="button" className="tsd-back" onClick={onBack}>
-          Назад
-        </button>
+        {showBackButton && typeof onBack === "function" ? (
+          <button type="button" className="tsd-back" onClick={onBack}>
+            Назад
+          </button>
+        ) : null}
         <div className="tsd-header__titles">
           <div className="tsd-header__title">{title}</div>
           {subtitle && <div className="tsd-header__subtitle">{subtitle}</div>}
