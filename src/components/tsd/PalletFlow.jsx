@@ -1119,12 +1119,14 @@ export default function PalletFlow({ authHeaders, onBack, showInternalBack = tru
 
   return (
     <>
-      <TsdHeader
-        title="Кросс-докинг"
-        subtitle="Паллетный контур: приемка, размещение, отгрузка"
-        onBack={handleHeaderBack}
-        showBackButton={showInternalBack}
-      />
+      {showInternalBack ? (
+        <TsdHeader
+          title="Кросс-докинг"
+          subtitle="Паллетный контур: приемка, размещение, отгрузка"
+          onBack={handleHeaderBack}
+          showBackButton={showInternalBack}
+        />
+      ) : null}
 
       {!strictStepLock ? (
         <div className="tsd-pallet-tabs">
