@@ -665,15 +665,6 @@ export default function SupplierTrucksQueueTab() {
 
 
       <div className="card card--1c card--wide">
-
-        <div className="card1c__header">
-
-          <span>Машины поставщиков</span>
-
-        </div>
-
-
-
         <div className="card1c__body">
 
           {error && (

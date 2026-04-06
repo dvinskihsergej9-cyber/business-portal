@@ -2671,11 +2671,8 @@ export default function MobileTsd() {
       if (!availableModes.length) {
         return (
           <div className="tsd-home">
-            <div className="tsd-home__header">
-              <div className="tsd-home__title">Мобильный ТСД</div>
-              <div className="tsd-home__subtitle">
-                Нет доступных режимов. Обратитесь к администратору.
-              </div>
+            <div className="tsd-home__subtitle">
+              Нет доступных режимов. Обратитесь к администратору.
             </div>
           </div>
         );

@@ -155,10 +155,6 @@ export default function StockTransactionsTab() {
   return (
     <div className="card" style={{ padding: 16 }}>
       <div style={{ display: "grid", gap: 12, marginBottom: 12 }}>
-        <div style={{ fontWeight: 700, fontSize: 18 }}>Транзакции</div>
-        <div style={{ fontSize: 13, color: "#64748b" }}>
-          Все действия по ячейкам: отбор, перемещение, инвентаризация, контроль.
-        </div>
         <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
           <input
             className="form__input"

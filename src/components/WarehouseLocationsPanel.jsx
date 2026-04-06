@@ -448,16 +448,6 @@ export default function WarehouseLocationsPanel({ mode = "both" }) {
 
   return (
     <div className="warehouse-locations">
-      {mode !== "items" && (
-      <div style={{ display: "grid", gap: 6 }}>
-        <div style={{ fontSize: 18, fontWeight: 700 }}>
-          {"Справочник ячеек"}
-        </div>
-        <div style={{ fontSize: 13, color: "#64748b" }}>
-          {"Создайте ячейку, создайте QR-этикетку и используйте её в ТСД."}
-        </div>
-      </div>
-      )}
       {error && <div className="alert alert--error">{error}</div>}
       {message && <div className="alert alert--success">{message}</div>}
 

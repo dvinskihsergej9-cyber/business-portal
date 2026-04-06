@@ -4485,9 +4485,6 @@ export default function Warehouse({
             <div className="grid-2">
 
               <div className="card card--1c" style={{ gridColumn: "span 2" }}>
-
-                <div className="card1c__header">Поставщики</div>
-
                 <div className="card1c__body">
 
                   {suppliersError && (

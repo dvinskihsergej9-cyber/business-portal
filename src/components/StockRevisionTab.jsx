@@ -208,10 +208,6 @@ export default function StockRevisionTab() {
   return (
     <div className="card" style={{ padding: 16 }}>
       <div style={{ display: "grid", gap: 12, marginBottom: 12 }}>
-        <div style={{ fontWeight: 700, fontSize: 18 }}>Ревизия</div>
-        <div style={{ fontSize: 13, color: "#64748b" }}>
-          Снимок расхождений по контролю ячеек. Только расхождения, без закрытых позиций.
-        </div>
         <div style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center" }}>
           <select
             className="form__input"

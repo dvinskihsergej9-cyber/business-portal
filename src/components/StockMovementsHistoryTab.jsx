@@ -78,8 +78,6 @@ export default function StockMovementsHistoryTab() {
 
   return (
     <div className="card card--1c">
-      <div className="card1c__header">История движения товара</div>
-
       <div className="card1c__body">
         <div className="movements-history-filters">
           <span className="movements-history-filters__label">Тип операции:</span>
