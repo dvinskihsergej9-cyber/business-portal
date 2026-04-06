@@ -5,7 +5,7 @@
   "version": "0.0.0",
   "scripts": {
     "dev": "vite",
-    "prestart": "prisma generate",
+    "postinstall": "prisma generate",
     "start": "node server/index.js",
     "api": "node server/index.js",
     "seed": "node tools/seed-employee.mjs",
