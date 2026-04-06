@@ -878,6 +878,14 @@ function normalizePalletStatus(value, fallback = "") {
   return PALLET_STATUSES.has(normalized) ? normalized : fallback;
 }
 
+function normalizePalletGate(value, maxLength = 40) {
+  const normalized = String(value || "")
+    .trim()
+    .toUpperCase()
+    .replace(/\s+/g, " ");
+  return normalized.slice(0, maxLength);
+}
+
 function parsePalletStatuses(rawValue) {
   const raw = String(rawValue || "")
     .split(",")
@@ -4586,11 +4594,15 @@ app.get("/api/profile", auth, async (req, res) => {
 
       const inboundRef = normalizePalletText(req.body?.inboundRef, 120) || null;
       const supplierName = normalizePalletText(req.body?.supplierName, 160) || null;
+      const receiveGate = normalizePalletGate(req.body?.receiveGate, 40) || null;
       if (!supplierName) {
         return res.status(400).json({ message: "PALLET_SUPPLIER_REQUIRED" });
       }
       if (!inboundRef) {
         return res.status(400).json({ message: "PALLET_INBOUND_REF_REQUIRED" });
+      }
+      if (!receiveGate) {
+        return res.status(400).json({ message: "PALLET_GATE_REQUIRED" });
       }
 
       let createdBase = null;
@@ -4642,6 +4654,7 @@ app.get("/api/profile", auth, async (req, res) => {
             const baseMeta = {
               supplierName,
               inboundRef,
+              receiveGate,
             };
 
             await createPalletEventTx(tx, {
@@ -5848,11 +5861,15 @@ app.get("/api/profile", auth, async (req, res) => {
 
       const palletCode = normalizePalletCode(req.body?.palletCode);
       const locationCode = normalizePalletCode(req.body?.locationCode);
+      const dispatchGate = normalizePalletGate(req.body?.dispatchGate, 40) || null;
       if (!palletCode) {
         return res.status(400).json({ message: "PALLET_CODE_REQUIRED" });
       }
       if (!locationCode) {
         return res.status(400).json({ message: "PALLET_LOCATION_REQUIRED" });
+      }
+      if (!dispatchGate) {
+        return res.status(400).json({ message: "PALLET_GATE_REQUIRED" });
       }
 
       const dispatchedResult = await prisma.$transaction(async (tx) => {
@@ -5990,6 +6007,7 @@ app.get("/api/profile", auth, async (req, res) => {
           metaJson: {
             palletCode,
             locationCode,
+            dispatchGate,
           },
         });
 
@@ -6008,6 +6026,7 @@ app.get("/api/profile", auth, async (req, res) => {
             notes: routeSheet.notes || null,
             fromLocationCode: pallet.currentLocation?.code || null,
             scanLocationCode: locationCode,
+            dispatchGate,
             routeSheetId,
             routeSheetNumber: routeSheet.sheetNumber || null,
           },
@@ -6085,6 +6104,9 @@ app.get("/api/profile", auth, async (req, res) => {
         }),
       });
     } catch (err) {
+      if (err?.code === "PALLET_GATE_REQUIRED") {
+        return res.status(400).json({ message: "PALLET_GATE_REQUIRED" });
+      }
       if (err?.code === "ROUTE_SHEET_NOT_FOUND") {
         return res.status(404).json({ message: "ROUTE_SHEET_NOT_FOUND" });
       }
@@ -6127,6 +6149,7 @@ app.get("/api/profile", auth, async (req, res) => {
       const palletCode = normalizePalletCode(req.body?.palletCode);
       const locationCode = normalizePalletCode(req.body?.locationCode);
       const destinationRc = normalizePalletText(req.body?.destinationRc, 120);
+      const dispatchGate = normalizePalletGate(req.body?.dispatchGate, 40) || null;
       const route = normalizePalletText(req.body?.route, 120) || null;
       const vehicle = normalizePalletText(req.body?.vehicle, 120) || null;
       const driver = normalizePalletText(req.body?.driver, 120) || null;
@@ -6140,6 +6163,9 @@ app.get("/api/profile", auth, async (req, res) => {
       }
       if (!destinationRc) {
         return res.status(400).json({ message: "PALLET_DESTINATION_REQUIRED" });
+      }
+      if (!dispatchGate) {
+        return res.status(400).json({ message: "PALLET_GATE_REQUIRED" });
       }
 
       const dispatchedId = await prisma.$transaction(async (tx) => {
@@ -6214,6 +6240,7 @@ app.get("/api/profile", auth, async (req, res) => {
             notes,
             fromLocationCode: pallet.currentLocation?.code || null,
             scanLocationCode: locationCode,
+            dispatchGate,
           },
         });
 
@@ -6239,6 +6266,9 @@ app.get("/api/profile", auth, async (req, res) => {
 
       return res.json({ pallet: palletToResponse(dispatched) });
     } catch (err) {
+      if (err?.code === "PALLET_GATE_REQUIRED") {
+        return res.status(400).json({ message: "PALLET_GATE_REQUIRED" });
+      }
       if (err?.code === "PALLET_NOT_FOUND") {
         return res.status(404).json({ message: "PALLET_NOT_FOUND" });
       }

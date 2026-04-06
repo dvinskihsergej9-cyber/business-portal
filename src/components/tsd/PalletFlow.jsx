@@ -38,6 +38,7 @@ const ROUTE_SHEET_ITEM_STATUS_LABELS = {
 const INITIAL_RECEIVE_FORM = {
   supplierName: "",
   inboundRef: "",
+  receiveGate: "",
   qty: "1",
 };
 
@@ -47,6 +48,7 @@ const INITIAL_STORE_FORM = {
 };
 
 const INITIAL_DISPATCH_FORM = {
+  dispatchGate: "",
   locationCode: "",
   palletCode: "",
   destinationRc: "",
@@ -106,6 +108,8 @@ function renderMeta(metaJson) {
   const metaLabels = {
     supplierName: "Поставщик",
     inboundRef: "Машина/ТТН",
+    receiveGate: "Ворота приемки",
+    dispatchGate: "Ворота отгрузки",
     fromLocationCode: "Из ячейки",
     toLocationCode: "В ячейку",
     toLocationName: "Ячейка",
@@ -173,6 +177,7 @@ function mapPalletError(code, fallback = "Не удалось выполнить
   if (normalized === "PALLET_SUPPLIER_REQUIRED") return "Укажите поставщика.";
   if (normalized === "PALLET_INBOUND_REF_REQUIRED") return "Укажите машину/ТТН.";
   if (normalized === "PALLET_DESTINATION_REQUIRED") return "Укажите РЦ назначения.";
+  if (normalized === "PALLET_GATE_REQUIRED") return "Укажите номер ворот.";
   if (normalized === "PALLET_STORE_STATUS_INVALID")
     return "Размещение возможно только для принятых/размещенных паллет.";
   if (normalized === "PALLET_STORE_RECEIVE_EXPIRED")
@@ -567,11 +572,15 @@ export default function PalletFlow({ authHeaders, onBack, showInternalBack = tru
       setLoading(true);
       const supplierName = String(receiveForm.supplierName || "").trim();
       const inboundRef = String(receiveForm.inboundRef || "").trim();
+      const receiveGate = String(receiveForm.receiveGate || "").trim().toUpperCase();
       if (!supplierName) {
         throw new Error("Укажите поставщика.");
       }
       if (!inboundRef) {
         throw new Error("Укажите машину/ТТН.");
+      }
+      if (!receiveGate) {
+        throw new Error("Укажите номер ворот.");
       }
       const qtyRaw = String(receiveForm.qty || "").trim();
       const qty = Number.parseInt(qtyRaw, 10);
@@ -585,7 +594,7 @@ export default function PalletFlow({ authHeaders, onBack, showInternalBack = tru
         const response = await fetch(`${API_BASE}/pallets/receive`, {
           method: "POST",
           headers: authHeaders,
-          body: JSON.stringify({ supplierName, inboundRef }),
+          body: JSON.stringify({ supplierName, inboundRef, receiveGate }),
         });
         const data = await readJsonSafe(response);
         if (!response.ok) {
@@ -691,13 +700,15 @@ export default function PalletFlow({ authHeaders, onBack, showInternalBack = tru
       const palletCode = normalizePalletCode(
         palletCodeOverride == null ? dispatchForm.palletCode : palletCodeOverride
       );
+      const dispatchGate = String(dispatchForm.dispatchGate || "").trim().toUpperCase();
+      if (!dispatchGate) throw new Error("Укажите номер ворот.");
       if (!locationCode) throw new Error("Отсканируйте ячейку отбора.");
       if (!palletCode) throw new Error("Отсканируйте паллету.");
       const routeSheetId = Number(dispatchRouteSheetId || 0);
       if (!routeSheetId) {
         throw new Error("Сначала выберите маршрутный лист.");
       }
-      const dedupeKey = `${routeSheetId}|${locationCode}|${palletCode}`;
+      const dedupeKey = `${routeSheetId}|${dispatchGate}|${locationCode}|${palletCode}`;
       const now = Date.now();
       if (
         lastDispatchSubmitRef.current.key === dedupeKey &&
@@ -711,6 +722,7 @@ export default function PalletFlow({ authHeaders, onBack, showInternalBack = tru
         method: "POST",
         headers: authHeaders,
         body: JSON.stringify({
+          dispatchGate,
           locationCode,
           palletCode,
         }),
@@ -750,6 +762,7 @@ export default function PalletFlow({ authHeaders, onBack, showInternalBack = tru
         ...prev,
         palletCode: "",
         locationCode: "",
+        ...(updatedSheet?.status === "COMPLETED" ? { dispatchGate: "" } : {}),
       }));
       setSearchCode(palletCode);
     } catch (err) {
@@ -1177,8 +1190,12 @@ export default function PalletFlow({ authHeaders, onBack, showInternalBack = tru
         setReceiveStep("supplier");
         return;
       }
-      if (receiveStep === "qty") {
+      if (receiveStep === "gate") {
         setReceiveStep("inbound");
+        return;
+      }
+      if (receiveStep === "qty") {
+        setReceiveStep("gate");
         return;
       }
       if (receiveStep === "print") {
@@ -1206,8 +1223,13 @@ export default function PalletFlow({ authHeaders, onBack, showInternalBack = tru
         return;
       }
       if (dispatchStep === "location") {
-        setDispatchStep("setup");
+        setDispatchStep("gate");
         setDispatchForm((prev) => ({ ...prev, locationCode: "", palletCode: "" }));
+        return;
+      }
+      if (dispatchStep === "gate") {
+        setDispatchStep("setup");
+        setDispatchForm((prev) => ({ ...prev, dispatchGate: "", locationCode: "", palletCode: "" }));
         return;
       }
       if (dispatchRouteSheetId) {
@@ -1323,16 +1345,19 @@ export default function PalletFlow({ authHeaders, onBack, showInternalBack = tru
               <div className="tsd-card__title">Пошаговая приемка</div>
               <div className="tsd-card__meta">
                 {receiveStep === "supplier"
-                  ? "Шаг 1 из 3: укажите поставщика."
+                  ? "Шаг 1 из 4: укажите поставщика."
                   : receiveStep === "inbound"
-                    ? "Шаг 2 из 3: укажите машину / ТТН."
+                    ? "Шаг 2 из 4: укажите машину / ТТН."
+                    : receiveStep === "gate"
+                      ? "Шаг 3 из 4: укажите номер ворот приемки."
                     : receiveStep === "qty"
-                      ? "Шаг 3 из 3: укажите количество паллет."
+                      ? "Шаг 4 из 4: укажите количество паллет."
                       : "Паспорта сформированы. Откройте и распечатайте."}
               </div>
               <div className="tsd-card__meta">
                 Поставщик: {String(receiveForm.supplierName || "").trim() || "-"} • Машина/ТТН:{" "}
-                {String(receiveForm.inboundRef || "").trim() || "-"} • Кол-во:{" "}
+                {String(receiveForm.inboundRef || "").trim() || "-"} • Ворота:{" "}
+                {String(receiveForm.receiveGate || "").trim() || "-"} • Кол-во:{" "}
                 {String(receiveForm.qty || "").trim() || "-"}
               </div>
             </div>
@@ -1398,9 +1423,46 @@ export default function PalletFlow({ authHeaders, onBack, showInternalBack = tru
                         return;
                       }
                       clearAlerts();
-                      setReceiveStep("qty");
+                      setReceiveStep("gate");
                     }}
                     disabled={loading || !String(receiveForm.inboundRef || "").trim()}
+                  >
+                    Далее
+                  </button>
+                </div>
+              </>
+            ) : null}
+
+            {receiveStep === "gate" ? (
+              <>
+                <div className="tsd-qty-input">
+                  <label className="tsd-scanner__label">Номер ворот *</label>
+                  <input
+                    className="tsd-input"
+                    value={receiveForm.receiveGate}
+                    onChange={(event) =>
+                      setReceiveForm((prev) => ({
+                        ...prev,
+                        receiveGate: String(event.target.value || "").toUpperCase(),
+                      }))
+                    }
+                    placeholder="Например, ВОРОТА-3"
+                    disabled={loading}
+                  />
+                </div>
+                <div className="tsd-action-bar">
+                  <button
+                    type="button"
+                    className="tsd-btn tsd-btn--primary"
+                    onClick={() => {
+                      if (!String(receiveForm.receiveGate || "").trim()) {
+                        handleFlowError("Укажите номер ворот.");
+                        return;
+                      }
+                      clearAlerts();
+                      setReceiveStep("qty");
+                    }}
+                    disabled={loading || !String(receiveForm.receiveGate || "").trim()}
                   >
                     Далее
                   </button>
@@ -1434,6 +1496,7 @@ export default function PalletFlow({ authHeaders, onBack, showInternalBack = tru
                       loading ||
                       !String(receiveForm.supplierName || "").trim() ||
                       !String(receiveForm.inboundRef || "").trim() ||
+                      !String(receiveForm.receiveGate || "").trim() ||
                       !Number.isInteger(Number.parseInt(String(receiveForm.qty || "").trim(), 10)) ||
                       Number.parseInt(String(receiveForm.qty || "").trim(), 10) < 1 ||
                       Number.parseInt(String(receiveForm.qty || "").trim(), 10) > 30
@@ -1824,14 +1887,17 @@ export default function PalletFlow({ authHeaders, onBack, showInternalBack = tru
               <div className="tsd-card__title">Пошаговая отгрузка по МЛ</div>
               <div className="tsd-card__meta">
                 {dispatchStep === "setup"
-                  ? "Шаг 1 из 3: выберите маршрутный лист."
+                  ? "Шаг 1 из 4: выберите маршрутный лист."
+                  : dispatchStep === "gate"
+                    ? "Шаг 2 из 4: укажите номер ворот отгрузки."
                   : dispatchStep === "location"
-                    ? "Шаг 2 из 3: отсканируйте ячейку отбора."
-                    : "Шаг 3 из 3: отсканируйте паллету для подтверждения отгрузки."}
+                    ? "Шаг 3 из 4: отсканируйте ячейку отбора."
+                    : "Шаг 4 из 4: отсканируйте паллету для подтверждения отгрузки."}
               </div>
               <div className="tsd-card__meta">
-                МЛ: {dispatchRouteSheetId || "-"} • РЦ: {dispatchForm.destinationRc || "-"} • Ячейка:{" "}
-                {dispatchForm.locationCode || "-"} • Паллета: {dispatchForm.palletCode || "-"}
+                МЛ: {dispatchRouteSheetId || "-"} • РЦ: {dispatchForm.destinationRc || "-"} • Ворота:{" "}
+                {dispatchForm.dispatchGate || "-"} • Ячейка: {dispatchForm.locationCode || "-"} • Паллета:{" "}
+                {dispatchForm.palletCode || "-"}
               </div>
             </div>
             {dispatchStep === "setup" ? (
@@ -1861,7 +1927,7 @@ export default function PalletFlow({ authHeaders, onBack, showInternalBack = tru
                       <button
                         type="button"
                         className="tsd-btn tsd-btn--primary"
-                        onClick={() => setDispatchStep("location")}
+                        onClick={() => setDispatchStep("gate")}
                         disabled={loading}
                       >
                         Начать отгрузку
@@ -1916,7 +1982,7 @@ export default function PalletFlow({ authHeaders, onBack, showInternalBack = tru
               </>
             ) : null}
 
-            {dispatchStep === "location" ? (
+            {dispatchStep === "gate" ? (
               <>
                 <div className="tsd-action-inline">
                   <button
@@ -1924,15 +1990,70 @@ export default function PalletFlow({ authHeaders, onBack, showInternalBack = tru
                     className="tsd-btn tsd-btn--ghost tsd-btn--center"
                     onClick={() => {
                       setDispatchStep("setup");
-                      setDispatchForm((prev) => ({ ...prev, locationCode: "", palletCode: "" }));
+                      setDispatchForm((prev) => ({
+                        ...prev,
+                        dispatchGate: "",
+                        locationCode: "",
+                        palletCode: "",
+                      }));
                     }}
                     disabled={loading}
                   >
                     Сменить МЛ
                   </button>
                 </div>
+                <div className="tsd-qty-input">
+                  <label className="tsd-scanner__label">Номер ворот *</label>
+                  <input
+                    className="tsd-input"
+                    value={dispatchForm.dispatchGate}
+                    onChange={(event) =>
+                      setDispatchForm((prev) => ({
+                        ...prev,
+                        dispatchGate: String(event.target.value || "").toUpperCase(),
+                      }))
+                    }
+                    placeholder="Например, ВОРОТА-1"
+                    disabled={loading}
+                  />
+                </div>
+                <div className="tsd-action-bar">
+                  <button
+                    type="button"
+                    className="tsd-btn tsd-btn--primary"
+                    onClick={() => {
+                      if (!String(dispatchForm.dispatchGate || "").trim()) {
+                        handleFlowError("Укажите номер ворот.");
+                        return;
+                      }
+                      clearAlerts();
+                      setDispatchStep("location");
+                    }}
+                    disabled={loading || !String(dispatchForm.dispatchGate || "").trim()}
+                  >
+                    Далее
+                  </button>
+                </div>
+              </>
+            ) : null}
+
+            {dispatchStep === "location" ? (
+              <>
+                <div className="tsd-action-inline">
+                  <button
+                    type="button"
+                    className="tsd-btn tsd-btn--ghost tsd-btn--center"
+                    onClick={() => {
+                      setDispatchStep("gate");
+                      setDispatchForm((prev) => ({ ...prev, locationCode: "", palletCode: "" }));
+                    }}
+                    disabled={loading}
+                  >
+                    Изменить ворота
+                  </button>
+                </div>
                 <Scanner
-                  label="Шаг 2. Скан ячейки отбора"
+                  label="Шаг 3. Скан ячейки отбора"
                   hint="Отсканируйте текущую ячейку паллеты перед отгрузкой"
                   manualPlaceholder="Код ячейки"
                   onScan={async (value) => {
@@ -1969,7 +2090,7 @@ export default function PalletFlow({ authHeaders, onBack, showInternalBack = tru
                   </button>
                 </div>
                 <Scanner
-                  label="Шаг 3. Скан паллеты"
+                  label="Шаг 4. Скан паллеты"
                   hint={`Ячейка ${dispatchForm.locationCode || "-"} принята. Сканируйте паллету.`}
                   manualPlaceholder="bp:pallet:PLT-..."
                   onScan={async (value) => {
