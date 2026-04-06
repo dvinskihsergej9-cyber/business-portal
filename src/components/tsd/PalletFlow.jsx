@@ -160,6 +160,8 @@ function mapPalletError(code, fallback = "Не удалось выполнить
     return "Состояние паллеты изменилось другим сотрудником. Обновите данные.";
   if (normalized === "PALLET_DISPATCH_SHEET_ERROR")
     return "Не удалось загрузить маршрутный лист.";
+  if (normalized === "PALLET_SUPPLIER_LIST_ERROR")
+    return "Не удалось загрузить список поставщиков для фильтра.";
   if (normalized === "ROUTE_SHEET_NOT_FOUND") return "Маршрутный лист не найден.";
   if (normalized === "ROUTE_SHEET_ID_REQUIRED") return "Не указан маршрутный лист.";
   if (normalized === "ROUTE_SHEET_STATUS_INVALID")
@@ -219,6 +221,11 @@ export default function PalletFlow({ authHeaders, onBack, showInternalBack = tru
   const [searchCode, setSearchCode] = useState("");
   const [searchStatus, setSearchStatus] = useState("");
   const [searchQuery, setSearchQuery] = useState("");
+  const [searchSupplier, setSearchSupplier] = useState("");
+  const [searchDateFrom, setSearchDateFrom] = useState("");
+  const [searchDateTo, setSearchDateTo] = useState("");
+  const [searchSuppliers, setSearchSuppliers] = useState([]);
+  const [searchSuppliersLoading, setSearchSuppliersLoading] = useState(false);
   const [searchView, setSearchView] = useState("list");
   const [historyPallet, setHistoryPallet] = useState(null);
   const [historyEvents, setHistoryEvents] = useState([]);
@@ -267,6 +274,13 @@ export default function PalletFlow({ authHeaders, onBack, showInternalBack = tru
     setPlanningCandidates([]);
     setPlanningCandidateQuery("");
     setPlanningSelectedCodes([]);
+    setSearchCode("");
+    setSearchStatus("");
+    setSearchQuery("");
+    setSearchSupplier("");
+    setSearchDateFrom("");
+    setSearchDateTo("");
+    setSearchSuppliers([]);
     setSearchView("list");
     setActiveReceivePalletCodes([]);
     receiveSubmitLockRef.current = false;
@@ -956,6 +970,9 @@ export default function PalletFlow({ authHeaders, onBack, showInternalBack = tru
       const params = new URLSearchParams();
       if (searchStatus) params.set("status", searchStatus);
       if (searchQuery) params.set("q", searchQuery.trim());
+      if (searchSupplier) params.set("supplierName", searchSupplier.trim());
+      if (searchDateFrom) params.set("dateFrom", searchDateFrom);
+      if (searchDateTo) params.set("dateTo", searchDateTo);
       const response = await fetch(`${API_BASE}/pallets?${params.toString()}`, {
         headers: authHeaders,
       });
@@ -971,12 +988,41 @@ export default function PalletFlow({ authHeaders, onBack, showInternalBack = tru
     }
   };
 
+  const loadSearchSuppliers = async () => {
+    setSearchSuppliersLoading(true);
+    try {
+      const params = new URLSearchParams();
+      params.set("limit", "200");
+      const response = await fetch(`${API_BASE}/pallets/suppliers?${params.toString()}`, {
+        headers: authHeaders,
+      });
+      const data = await readJsonSafe(response);
+      if (!response.ok) {
+        throw new Error(
+          mapPalletError(data?.message, "Не удалось загрузить список поставщиков.")
+        );
+      }
+      setSearchSuppliers(Array.isArray(data?.items) ? data.items : []);
+    } catch (err) {
+      handleFlowError(err, "Не удалось загрузить список поставщиков.");
+    } finally {
+      setSearchSuppliersLoading(false);
+    }
+  };
+
   useEffect(() => {
     if (activeTab !== "search") return;
     if (searchView !== "list") return;
     loadRecentPallets();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [activeTab, searchStatus, searchQuery, searchView]);
+  }, [activeTab, searchStatus, searchQuery, searchSupplier, searchDateFrom, searchDateTo, searchView]);
+
+  useEffect(() => {
+    if (activeTab !== "search") return;
+    if (searchView !== "list") return;
+    loadSearchSuppliers();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [activeTab, searchView]);
 
   useEffect(() => {
     if (activeTab !== "dispatch") return;
@@ -1934,13 +1980,61 @@ export default function PalletFlow({ authHeaders, onBack, showInternalBack = tru
                     <option value="DISPATCHED">Отгружена</option>
                     <option value="CANCELLED">Отменена</option>
                   </select>
+                  <select
+                    className="tsd-input"
+                    value={searchSupplier}
+                    onChange={(event) => setSearchSupplier(event.target.value)}
+                    disabled={recentLoading || searchSuppliersLoading}
+                  >
+                    <option value="">Все поставщики</option>
+                    {searchSuppliers.map((supplier) => (
+                      <option key={supplier} value={supplier}>
+                        {supplier}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+                <div className="tsd-inline tsd-inline--two">
+                  <input
+                    className="tsd-input"
+                    type="date"
+                    value={searchDateFrom}
+                    onChange={(event) => setSearchDateFrom(event.target.value)}
+                    disabled={recentLoading}
+                  />
+                  <input
+                    className="tsd-input"
+                    type="date"
+                    value={searchDateTo}
+                    onChange={(event) => setSearchDateTo(event.target.value)}
+                    disabled={recentLoading}
+                  />
+                </div>
+                <div className="tsd-inline tsd-inline--two">
                   <button
                     type="button"
                     className="tsd-btn tsd-btn--secondary"
-                    onClick={loadRecentPallets}
+                    onClick={async () => {
+                      await loadRecentPallets();
+                      await loadSearchSuppliers();
+                    }}
+                    disabled={recentLoading || searchSuppliersLoading}
+                  >
+                    {recentLoading || searchSuppliersLoading ? "Обновляем..." : "Обновить"}
+                  </button>
+                  <button
+                    type="button"
+                    className="tsd-btn tsd-btn--ghost"
+                    onClick={() => {
+                      setSearchStatus("");
+                      setSearchSupplier("");
+                      setSearchDateFrom("");
+                      setSearchDateTo("");
+                      setSearchQuery("");
+                    }}
                     disabled={recentLoading}
                   >
-                    {recentLoading ? "Обновляем..." : "Обновить"}
+                    Сбросить фильтры
                   </button>
                 </div>
                 <div className="tsd-inline tsd-inline--two">
@@ -1956,6 +2050,15 @@ export default function PalletFlow({ authHeaders, onBack, showInternalBack = tru
                 <div className="tsd-card">
                   <div className="tsd-card__meta">
                     Фильтр статуса: {searchStatus ? statusLabel(searchStatus) : "все статусы"}
+                  </div>
+                  <div className="tsd-card__meta">
+                    Поставщик: {searchSupplier || "все поставщики"}
+                  </div>
+                  <div className="tsd-card__meta">
+                    Период приемки:{" "}
+                    {searchDateFrom || searchDateTo
+                      ? `${searchDateFrom || "..."} — ${searchDateTo || "..."}`
+                      : "весь период"}
                   </div>
                   <div className="tsd-card__meta">
                     Выберите паллету из списка или отсканируйте код, чтобы открыть карточку.

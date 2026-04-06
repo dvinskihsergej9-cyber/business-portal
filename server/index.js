@@ -6437,6 +6437,50 @@ app.get("/api/profile", auth, async (req, res) => {
     }
   });
 
+  app.get("/api/pallets/suppliers", auth, async (req, res) => {
+    try {
+      const orgId = Number(req.user?.orgId || 0);
+      if (!orgId) {
+        return res.status(400).json({ message: "ORG_REQUIRED" });
+      }
+
+      const query = normalizePalletText(req.query?.q, 160);
+      const limit = Math.max(1, Math.min(300, Number(req.query?.limit || 120)));
+
+      const rows = await prisma.pallet.findMany({
+        where: {
+          orgId,
+          ...(query
+            ? { supplierName: { contains: query, mode: "insensitive" } }
+            : {}),
+        },
+        select: {
+          supplierName: true,
+        },
+        orderBy: [{ supplierName: "asc" }],
+        distinct: ["supplierName"],
+        take: Math.max(limit * 3, 120),
+      });
+
+      const seen = new Set();
+      const items = [];
+      for (const row of rows) {
+        const name = String(row?.supplierName || "").trim();
+        if (!name) continue;
+        const normalized = name.toLowerCase();
+        if (seen.has(normalized)) continue;
+        seen.add(normalized);
+        items.push(name);
+        if (items.length >= limit) break;
+      }
+
+      return res.json({ items });
+    } catch (err) {
+      console.error("pallet suppliers list error:", err);
+      return res.status(500).json({ message: "PALLET_SUPPLIER_LIST_ERROR" });
+    }
+  });
+
   app.get("/api/pallets/:palletCode/history", auth, async (req, res) => {
     try {
       const orgId = Number(req.user?.orgId || 0);
