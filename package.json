@@ -5,10 +5,11 @@
   "version": "0.0.0",
   "scripts": {
     "dev": "vite",
+    "prestart": "prisma generate",
     "start": "node server/index.js",
     "api": "node server/index.js",
     "seed": "node tools/seed-employee.mjs",
-    "build": "vite build",
+    "build": "prisma generate && vite build",
     "preview": "vite preview",
     "db:deploy": "node dbDeployWithRetry.mjs",
     "reset:items": "node tools/reset-items.mjs",
