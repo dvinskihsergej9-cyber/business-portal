@@ -2078,6 +2078,7 @@ export default function PalletFlow({ authHeaders, onBack, showInternalBack = tru
                     value={searchStatus}
                     onChange={(event) => setSearchStatus(event.target.value)}
                   >
+                    <option value="">Все статусы</option>
                     <option value="ACTIVE">Принято</option>
                     <option value="DISPATCHED">Отгружено</option>
                   </select>
