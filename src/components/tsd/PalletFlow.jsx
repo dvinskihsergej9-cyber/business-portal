@@ -1955,7 +1955,7 @@ export default function PalletFlow({ authHeaders, onBack, showInternalBack = tru
               <Scanner
                 label="Скан паллеты"
                 hint="Сканируйте паллету, чтобы открыть полную историю движения"
-                manualPlaceholder="bp:pallet:PLT-..."
+                manualPlaceholder="Введите код паллеты, например: PLT-..."
                 onScan={async (value) => {
                   try {
                     clearAlerts();
@@ -1976,7 +1976,7 @@ export default function PalletFlow({ authHeaders, onBack, showInternalBack = tru
                   className="tsd-input"
                   value={searchCode}
                   onChange={(event) => setSearchCode(event.target.value)}
-                  placeholder="Введите palletCode"
+                  placeholder="Введите код паллеты"
                   disabled={historyLoading}
                 />
                 <button
@@ -2067,33 +2067,6 @@ export default function PalletFlow({ authHeaders, onBack, showInternalBack = tru
                   >
                     Сбросить фильтры
                   </button>
-                </div>
-                <div className="tsd-inline tsd-inline--two">
-                  <input
-                    className="tsd-input"
-                    value={searchQuery}
-                    onChange={(event) => setSearchQuery(event.target.value)}
-                    placeholder="Фильтр: код, поставщик, ТТН"
-                    disabled={recentLoading}
-                  />
-                  <div className="tsd-card__meta">Найдено: {recentItems.length}</div>
-                </div>
-                <div className="tsd-card">
-                  <div className="tsd-card__meta">
-                    Фильтр статуса: {searchStatus ? statusLabel(searchStatus) : "все статусы"}
-                  </div>
-                  <div className="tsd-card__meta">
-                    Поставщик: {searchSupplier || "все поставщики"}
-                  </div>
-                  <div className="tsd-card__meta">
-                    Период приемки:{" "}
-                    {searchDateFrom || searchDateTo
-                      ? `${searchDateFrom || "..."} — ${searchDateTo || "..."}`
-                      : "весь период"}
-                  </div>
-                  <div className="tsd-card__meta">
-                    Выберите паллету из списка или отсканируйте код, чтобы открыть карточку.
-                  </div>
                 </div>
               </>
             ) : null}
