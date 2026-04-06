@@ -2221,7 +2221,7 @@ export default function PalletFlow({ authHeaders, onBack, showInternalBack = tru
                     key={item.id}
                     type="button"
                     className={`tsd-card tsd-pallet-list-btn ${
-                      ["STORED", "DISPATCHED"].includes(normalizePalletStatusValue(item.status))
+                      normalizePalletStatusValue(item.status) === "DISPATCHED"
                         ? "tsd-pallet-list-btn--stored"
                         : "tsd-pallet-list-btn--received"
                     } ${selectedPalletId === item.id ? "tsd-pallet-list-btn--selected" : ""}`}
