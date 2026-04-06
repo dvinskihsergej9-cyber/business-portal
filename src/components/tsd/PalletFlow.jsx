@@ -130,6 +130,22 @@ async function readJsonSafe(res) {
   }
 }
 
+function extractSuppliersFromPalletItems(items, limit = 200) {
+  const source = Array.isArray(items) ? items : [];
+  const seen = new Set();
+  const result = [];
+  for (const item of source) {
+    const supplier = String(item?.supplierName || "").trim();
+    if (!supplier) continue;
+    const normalized = supplier.toLowerCase();
+    if (seen.has(normalized)) continue;
+    seen.add(normalized);
+    result.push(supplier);
+    if (result.length >= limit) break;
+  }
+  return result.sort((a, b) => a.localeCompare(b, "ru"));
+}
+
 function mapPalletError(code, fallback = "Не удалось выполнить операцию.") {
   const normalized = String(code || "").trim().toUpperCase();
   if (normalized === "PALLET_NOT_FOUND") return "Паллета не найдена.";
@@ -997,14 +1013,29 @@ export default function PalletFlow({ authHeaders, onBack, showInternalBack = tru
         headers: authHeaders,
       });
       const data = await readJsonSafe(response);
-      if (!response.ok) {
-        throw new Error(
-          mapPalletError(data?.message, "Не удалось загрузить список поставщиков.")
-        );
+      if (response.ok) {
+        setSearchSuppliers(Array.isArray(data?.items) ? data.items : []);
+        return;
       }
-      setSearchSuppliers(Array.isArray(data?.items) ? data.items : []);
+
+      // Fallback для окружений, где endpoint /pallets/suppliers еще не развернут.
+      const fallbackResponse = await fetch(`${API_BASE}/pallets`, {
+        headers: authHeaders,
+      });
+      const fallbackData = await readJsonSafe(fallbackResponse);
+      if (fallbackResponse.ok) {
+        setSearchSuppliers(extractSuppliersFromPalletItems(fallbackData?.items, 200));
+        return;
+      }
+
+      setSearchSuppliers([]);
+      console.warn("search suppliers load failed", {
+        suppliersEndpointMessage: data?.message || null,
+        fallbackMessage: fallbackData?.message || null,
+      });
     } catch (err) {
-      handleFlowError(err, "Не удалось загрузить список поставщиков.");
+      setSearchSuppliers([]);
+      console.warn("search suppliers load error", err);
     } finally {
       setSearchSuppliersLoading(false);
     }
@@ -1058,7 +1089,7 @@ export default function PalletFlow({ authHeaders, onBack, showInternalBack = tru
       { id: "store", label: "Размещение" },
       { id: "planning", label: "Планирование МЛ" },
       { id: "dispatch", label: "Отгрузка" },
-      { id: "search", label: "Поиск" },
+      { id: "search", label: "Поиск паллет" },
     ],
     []
   );
