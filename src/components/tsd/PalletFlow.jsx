@@ -265,6 +265,7 @@ export default function PalletFlow({ authHeaders, onBack, showInternalBack = tru
   const [routeSheetSummary, setRouteSheetSummary] = useState(null);
   const [routeSheetLoading, setRouteSheetLoading] = useState(false);
   const [activeReceivePalletCodes, setActiveReceivePalletCodes] = useState([]);
+  const [storeReceiveScopeLocked, setStoreReceiveScopeLocked] = useState(false);
 
   const clearAlerts = () => {
     setError("");
@@ -299,6 +300,7 @@ export default function PalletFlow({ authHeaders, onBack, showInternalBack = tru
     setSearchSuppliers([]);
     setSearchView("list");
     setActiveReceivePalletCodes([]);
+    setStoreReceiveScopeLocked(false);
     receiveSubmitLockRef.current = false;
     storeSubmitLockRef.current = false;
     dispatchSubmitLockRef.current = false;
@@ -314,6 +316,59 @@ export default function PalletFlow({ authHeaders, onBack, showInternalBack = tru
     setSuccess("");
     setError(message);
     resetToCrossdockStart();
+  };
+
+  const isStorePalletEligibleByBackend = async (palletCode) => {
+    const params = new URLSearchParams();
+    params.set("status", "RECEIVED");
+    params.set("q", palletCode);
+    const response = await fetch(`${API_BASE}/pallets?${params.toString()}`, {
+      headers: authHeaders,
+    });
+    const data = await readJsonSafe(response);
+    if (!response.ok) {
+      throw new Error(mapPalletError(data?.message, "Не удалось проверить паллету для размещения."));
+    }
+    const items = Array.isArray(data?.items) ? data.items : [];
+    const matched = items.find(
+      (item) => normalizePalletCode(item?.palletCode || "") === normalizePalletCode(palletCode)
+    );
+    if (!matched) {
+      return false;
+    }
+
+    const receivedAtMs = matched?.receivedAt ? new Date(matched.receivedAt).getTime() : NaN;
+    const maxStoreAgeMs = 24 * 60 * 60 * 1000;
+    if (!Number.isFinite(receivedAtMs) || Date.now() - receivedAtMs > maxStoreAgeMs) {
+      return false;
+    }
+    return true;
+  };
+
+  const ensureStorePalletAllowed = async (palletCode) => {
+    const normalizedCode = normalizePalletCode(palletCode);
+    if (!normalizedCode) {
+      throw new Error("Отсканируйте паллету.");
+    }
+    if (activeReceivePalletCodes.includes(normalizedCode)) {
+      return true;
+    }
+    if (storeReceiveScopeLocked && activeReceivePalletCodes.length > 0) {
+      throw new Error(
+        "Эта паллета не относится к текущей приемке. Отсканируйте паллету из текущих паспортов."
+      );
+    }
+
+    const isEligible = await isStorePalletEligibleByBackend(normalizedCode);
+    if (!isEligible) {
+      throw new Error(
+        "Эта паллета недоступна для размещения. Используйте паллеты текущей приемки в статусе «Принята»."
+      );
+    }
+    setActiveReceivePalletCodes((prev) =>
+      prev.includes(normalizedCode) ? prev : [...prev, normalizedCode]
+    );
+    return true;
   };
 
   const resetStoreScanFlow = () => {
@@ -529,6 +584,7 @@ export default function PalletFlow({ authHeaders, onBack, showInternalBack = tru
       setActiveReceivePalletCodes(
         Array.from(new Set(createdCodes.map((code) => normalizePalletCode(code)).filter(Boolean)))
       );
+      setStoreReceiveScopeLocked(true);
       const lastCode = createdCodes[createdCodes.length - 1] || "";
       setSuccess("Успешно");
       setStoreForm((prev) => ({
@@ -563,11 +619,7 @@ export default function PalletFlow({ authHeaders, onBack, showInternalBack = tru
       );
       if (!palletCode) throw new Error("Отсканируйте паллету.");
       if (!locationCode) throw new Error("Отсканируйте зону размещения.");
-      if (!activeReceivePalletCodes.includes(palletCode)) {
-        throw new Error(
-          "Паллета не из текущей приемки. Используйте только паспорта, созданные в текущей приемке."
-        );
-      }
+      await ensureStorePalletAllowed(palletCode);
       const dedupeKey = `${locationCode}|${palletCode}`;
       const now = Date.now();
       if (
@@ -1425,10 +1477,10 @@ export default function PalletFlow({ authHeaders, onBack, showInternalBack = tru
                 onScan={async (value) => {
                   const scannedPalletCode = normalizePalletCode(value);
                   if (!scannedPalletCode) return;
-                  if (!activeReceivePalletCodes.includes(scannedPalletCode)) {
-                    handleFlowError(
-                      "Эта паллета не относится к текущей приемке. Отсканируйте паллету из текущих паспортов."
-                    );
+                  try {
+                    await ensureStorePalletAllowed(scannedPalletCode);
+                  } catch (err) {
+                    handleFlowError(err, "Не удалось проверить паллету для размещения.");
                     return;
                   }
                   setStoreForm((prev) => ({

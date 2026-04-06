@@ -4877,15 +4877,28 @@ app.get("/api/profile", auth, async (req, res) => {
         return res.status(400).json({ message: "PALLET_CODE_REQUIRED" });
       }
 
-      const pallet = await prisma.pallet.findFirst({
-        where: {
-          orgId,
-          palletCode,
-        },
-        include: {
-          currentLocation: true,
-        },
-      });
+      let pallet = null;
+      try {
+        pallet = await prisma.pallet.findFirst({
+          where: {
+            orgId,
+            palletCode,
+          },
+          include: {
+            createdBy: { select: { id: true, name: true, email: true } },
+          },
+        });
+      } catch (palletFindErr) {
+        if (!isPermissionDeniedForTable(palletFindErr, "User")) {
+          throw palletFindErr;
+        }
+        pallet = await prisma.pallet.findFirst({
+          where: {
+            orgId,
+            palletCode,
+          },
+        });
+      }
       if (!pallet) {
         return res.status(404).json({ message: "PALLET_NOT_FOUND" });
       }
@@ -4900,7 +4913,9 @@ app.get("/api/profile", auth, async (req, res) => {
       const receivedAtText = pallet.receivedAt
         ? new Date(pallet.receivedAt).toLocaleString("ru-RU")
         : "-";
-      const locationCode = pallet.currentLocation?.code || "Не размещена";
+      const receivedByText =
+        String(pallet?.createdBy?.name || pallet?.createdBy?.email || "").trim() ||
+        (pallet?.createdByUserId ? `ID ${pallet.createdByUserId}` : "-");
 
       const html = isA4Passport
         ? `
@@ -4999,12 +5014,8 @@ app.get("/api/profile", auth, async (req, res) => {
                           <div class="value">${escapeHtml(receivedAtText)}</div>
                         </div>
                         <div class="cell">
-                          <div class="label">Текущая ячейка</div>
-                          <div class="value">${escapeHtml(locationCode)}</div>
-                        </div>
-                        <div class="cell">
-                          <div class="label">Статус</div>
-                          <div class="value">Принята</div>
+                          <div class="label">Принял</div>
+                          <div class="value">${escapeHtml(receivedByText)}</div>
                         </div>
                         <div class="cell">
                           <div class="label">Партия</div>
