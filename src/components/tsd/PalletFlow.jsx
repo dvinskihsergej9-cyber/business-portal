@@ -110,6 +110,9 @@ function renderMeta(metaJson) {
     inboundRef: "Машина/ТТН",
     receiveGate: "Ворота приемки",
     dispatchGate: "Ворота отгрузки",
+    gate: "Ворота",
+    receive_gate: "Ворота приемки",
+    dispatch_gate: "Ворота отгрузки",
     fromLocationCode: "Из ячейки",
     toLocationCode: "В ячейку",
     toLocationName: "Ячейка",
@@ -124,6 +127,18 @@ function renderMeta(metaJson) {
     .filter(([, value]) => value != null && String(value).trim() !== "")
     .map(([key, value]) => `${metaLabels[key] || key}: ${String(value)}`);
   return parts.join(" | ");
+}
+
+function extractGateFromMeta(metaJson) {
+  if (!metaJson || typeof metaJson !== "object") return "";
+  const keys = ["receiveGate", "dispatchGate", "gate", "receive_gate", "dispatch_gate"];
+  for (const key of keys) {
+    const value = metaJson?.[key];
+    if (value == null) continue;
+    const text = String(value).trim();
+    if (text) return text;
+  }
+  return "";
 }
 
 async function readJsonSafe(res) {
@@ -1180,6 +1195,24 @@ export default function PalletFlow({ authHeaders, onBack, showInternalBack = tru
     []
   );
   const strictStepLock = activeTab === "store" || (activeTab === "dispatch" && dispatchStep !== "setup");
+  const historyReceiveGate = useMemo(() => {
+    for (let index = historyEvents.length - 1; index >= 0; index -= 1) {
+      const event = historyEvents[index];
+      if (!["CREATE", "RECEIVE"].includes(String(event?.type || "").trim().toUpperCase())) continue;
+      const gate = extractGateFromMeta(event?.metaJson);
+      if (gate) return gate;
+    }
+    return "";
+  }, [historyEvents]);
+  const historyDispatchGate = useMemo(() => {
+    for (let index = historyEvents.length - 1; index >= 0; index -= 1) {
+      const event = historyEvents[index];
+      if (String(event?.type || "").trim().toUpperCase() !== "DISPATCH") continue;
+      const gate = extractGateFromMeta(event?.metaJson);
+      if (gate) return gate;
+    }
+    return "";
+  }, [historyEvents]);
 
   const handleHeaderBack = useCallback(() => {
     setError("");
@@ -2287,6 +2320,12 @@ export default function PalletFlow({ authHeaders, onBack, showInternalBack = tru
                       Поставщик: {historyPallet.supplierName || "-"} • Машина/ТТН:{" "}
                       {historyPallet.inboundRef || "-"}
                     </div>
+                    {historyReceiveGate ? (
+                      <div className="tsd-card__meta">Ворота приемки: {historyReceiveGate}</div>
+                    ) : null}
+                    {historyDispatchGate ? (
+                      <div className="tsd-card__meta">Ворота отгрузки: {historyDispatchGate}</div>
+                    ) : null}
                     <div className="tsd-card__meta">
                       Текущая ячейка: {historyPallet.currentLocation?.code || "-"}
                     </div>
