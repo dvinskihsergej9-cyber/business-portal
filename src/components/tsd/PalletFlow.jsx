@@ -146,6 +146,25 @@ function extractSuppliersFromPalletItems(items, limit = 200) {
   return result.sort((a, b) => a.localeCompare(b, "ru"));
 }
 
+function normalizePalletStatusValue(value) {
+  return String(value || "").trim().toUpperCase();
+}
+
+function applySearchStatusPreset(items, statusPreset) {
+  const source = Array.isArray(items) ? items : [];
+  const preset = String(statusPreset || "").trim().toUpperCase();
+  if (preset === "ACTIVE") {
+    return source.filter((item) => {
+      const status = normalizePalletStatusValue(item?.status);
+      return status === "RECEIVED" || status === "STORED";
+    });
+  }
+  if (preset === "DISPATCHED") {
+    return source.filter((item) => normalizePalletStatusValue(item?.status) === "DISPATCHED");
+  }
+  return source;
+}
+
 function mapPalletError(code, fallback = "Не удалось выполнить операцию.") {
   const normalized = String(code || "").trim().toUpperCase();
   if (normalized === "PALLET_NOT_FOUND") return "Паллета не найдена.";
@@ -1036,8 +1055,9 @@ export default function PalletFlow({ authHeaders, onBack, showInternalBack = tru
     setRecentLoading(true);
     try {
       const params = new URLSearchParams();
-      if (searchStatus === "ACTIVE") params.set("statuses", "RECEIVED,STORED");
-      if (searchStatus === "DISPATCHED") params.set("statuses", "DISPATCHED");
+      const statusPreset = searchStatus;
+      if (statusPreset === "ACTIVE") params.set("statuses", "RECEIVED,STORED");
+      if (statusPreset === "DISPATCHED") params.set("statuses", "DISPATCHED");
       if (searchQuery) params.set("q", searchQuery.trim());
       if (searchSupplier) params.set("supplierName", searchSupplier.trim());
       if (searchDateFrom) params.set("dateFrom", searchDateFrom);
@@ -1049,7 +1069,7 @@ export default function PalletFlow({ authHeaders, onBack, showInternalBack = tru
       if (!response.ok) {
         throw new Error(mapPalletError(data?.message, "Не удалось загрузить список паллет."));
       }
-      setRecentItems(Array.isArray(data?.items) ? data.items : []);
+      setRecentItems(applySearchStatusPreset(data?.items, statusPreset));
     } catch (err) {
       handleFlowError(err, "Ошибка загрузки списка паллет.");
     } finally {
@@ -2201,7 +2221,9 @@ export default function PalletFlow({ authHeaders, onBack, showInternalBack = tru
                     key={item.id}
                     type="button"
                     className={`tsd-card tsd-pallet-list-btn ${
-                      item.status === "STORED" ? "tsd-pallet-list-btn--stored" : ""
+                      ["STORED", "DISPATCHED"].includes(normalizePalletStatusValue(item.status))
+                        ? "tsd-pallet-list-btn--stored"
+                        : "tsd-pallet-list-btn--received"
                     } ${selectedPalletId === item.id ? "tsd-pallet-list-btn--selected" : ""}`}
                     onClick={async () => {
                       try {
