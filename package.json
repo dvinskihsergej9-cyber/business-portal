@@ -5,6 +5,7 @@
   "version": "0.0.0",
   "scripts": {
     "dev": "vite",
+    "start": "node server/index.js",
     "api": "node server/index.js",
     "seed": "node tools/seed-employee.mjs",
     "build": "vite build",
