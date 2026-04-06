@@ -878,6 +878,14 @@ function normalizePalletStatus(value, fallback = "") {
   return PALLET_STATUSES.has(normalized) ? normalized : fallback;
 }
 
+function parsePalletStatuses(rawValue) {
+  const raw = String(rawValue || "")
+    .split(",")
+    .map((item) => normalizePalletStatus(item, ""))
+    .filter(Boolean);
+  return Array.from(new Set(raw));
+}
+
 function normalizeRouteSheetStatus(value, fallback = "") {
   const normalized = String(value || "").trim().toUpperCase();
   return ROUTE_SHEET_STATUSES.has(normalized) ? normalized : fallback;
@@ -6344,12 +6352,16 @@ app.get("/api/profile", auth, async (req, res) => {
       }
 
       const requestedStatus = String(req.query?.status || "").trim();
-      const status = requestedStatus
-        ? normalizePalletStatus(requestedStatus, "")
-        : "";
+      const requestedStatuses = String(req.query?.statuses || "").trim();
+      const status = requestedStatus ? normalizePalletStatus(requestedStatus, "") : "";
+      const statuses = requestedStatuses ? parsePalletStatuses(requestedStatuses) : [];
       if (requestedStatus && !status) {
         return res.status(400).json({ message: "PALLET_STATUS_INVALID" });
       }
+      if (requestedStatuses && !statuses.length) {
+        return res.status(400).json({ message: "PALLET_STATUS_INVALID" });
+      }
+      const statusFilter = statuses.length ? { in: statuses } : status || null;
 
       const qText = normalizePalletText(req.query?.q, 160);
       const qCode = normalizePalletCode(req.query?.q);
@@ -6412,7 +6424,7 @@ app.get("/api/profile", auth, async (req, res) => {
 
       const where = {
         orgId,
-        ...(status ? { status } : {}),
+        ...(statusFilter ? { status: statusFilter } : {}),
         ...(currentLocationId ? { currentLocationId } : {}),
         ...(inboundRef
           ? { inboundRef: { contains: inboundRef, mode: "insensitive" } }

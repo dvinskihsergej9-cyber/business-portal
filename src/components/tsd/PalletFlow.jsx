@@ -235,7 +235,7 @@ export default function PalletFlow({ authHeaders, onBack, showInternalBack = tru
   const [dispatchStep, setDispatchStep] = useState("setup");
 
   const [searchCode, setSearchCode] = useState("");
-  const [searchStatus, setSearchStatus] = useState("");
+  const [searchStatus, setSearchStatus] = useState("ACTIVE");
   const [searchQuery, setSearchQuery] = useState("");
   const [searchSupplier, setSearchSupplier] = useState("");
   const [searchDateFrom, setSearchDateFrom] = useState("");
@@ -292,7 +292,7 @@ export default function PalletFlow({ authHeaders, onBack, showInternalBack = tru
     setPlanningCandidateQuery("");
     setPlanningSelectedCodes([]);
     setSearchCode("");
-    setSearchStatus("");
+    setSearchStatus("ACTIVE");
     setSearchQuery("");
     setSearchSupplier("");
     setSearchDateFrom("");
@@ -1036,7 +1036,8 @@ export default function PalletFlow({ authHeaders, onBack, showInternalBack = tru
     setRecentLoading(true);
     try {
       const params = new URLSearchParams();
-      if (searchStatus) params.set("status", searchStatus);
+      if (searchStatus === "ACTIVE") params.set("statuses", "RECEIVED,STORED");
+      if (searchStatus === "DISPATCHED") params.set("statuses", "DISPATCHED");
       if (searchQuery) params.set("q", searchQuery.trim());
       if (searchSupplier) params.set("supplierName", searchSupplier.trim());
       if (searchDateFrom) params.set("dateFrom", searchDateFrom);
@@ -2057,11 +2058,8 @@ export default function PalletFlow({ authHeaders, onBack, showInternalBack = tru
                     value={searchStatus}
                     onChange={(event) => setSearchStatus(event.target.value)}
                   >
-                    <option value="">Все статусы</option>
-                    <option value="RECEIVED">Принята</option>
-                    <option value="STORED">Размещена</option>
-                    <option value="DISPATCHED">Отгружена</option>
-                    <option value="CANCELLED">Отменена</option>
+                    <option value="ACTIVE">Принято</option>
+                    <option value="DISPATCHED">Отгружено</option>
                   </select>
                   <select
                     className="tsd-input"
@@ -2109,7 +2107,7 @@ export default function PalletFlow({ authHeaders, onBack, showInternalBack = tru
                     type="button"
                     className="tsd-btn tsd-btn--ghost"
                     onClick={() => {
-                      setSearchStatus("");
+                      setSearchStatus("ACTIVE");
                       setSearchSupplier("");
                       setSearchDateFrom("");
                       setSearchDateTo("");
@@ -2203,8 +2201,8 @@ export default function PalletFlow({ authHeaders, onBack, showInternalBack = tru
                     key={item.id}
                     type="button"
                     className={`tsd-card tsd-pallet-list-btn ${
-                      selectedPalletId === item.id ? "tsd-pallet-list-btn--selected" : ""
-                    }`}
+                      item.status === "STORED" ? "tsd-pallet-list-btn--stored" : ""
+                    } ${selectedPalletId === item.id ? "tsd-pallet-list-btn--selected" : ""}`}
                     onClick={async () => {
                       try {
                         clearAlerts();
