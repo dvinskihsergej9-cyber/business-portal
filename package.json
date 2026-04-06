@@ -5,9 +5,11 @@
   "version": "0.0.0",
   "scripts": {
     "dev": "vite",
+    "postinstall": "prisma generate",
+    "start": "node server/index.js",
     "api": "node server/index.js",
     "seed": "node tools/seed-employee.mjs",
-    "build": "vite build",
+    "build": "prisma generate && vite build",
     "preview": "vite preview",
     "db:deploy": "node dbDeployWithRetry.mjs",
     "reset:items": "node tools/reset-items.mjs",
@@ -39,12 +41,12 @@
     "react-dom": "^18.3.1",
     "react-pdf": "^6.2.2",
     "react-router-dom": "^6.28.0",
+    "vite": "^5.4.10",
+    "@vitejs/plugin-react": "^4.3.1",
     "web-push": "^3.6.7",
     "xlsx": "^0.18.5"
   },
   "devDependencies": {
-    "@playwright/test": "^1.58.0",
-    "@vitejs/plugin-react": "^4.3.1",
-    "vite": "^5.4.10"
+    "@playwright/test": "^1.58.0"
   }
 }
