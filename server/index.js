@@ -927,6 +927,186 @@ function normalizePalletCode(value) {
     .slice(0, 96);
 }
 
+function parsePalletLocationInput(rawValue) {
+  const raw = String(rawValue || "").trim();
+  const normalizedRaw = normalizePalletCode(raw);
+  const payload = normalizedRaw.replace(/^BP:(LOC|LOCATION):/i, "");
+  const normalizedPayload = normalizePalletCode(payload);
+  const numericPayload = Number(payload);
+  const payloadId =
+    Number.isFinite(numericPayload) && numericPayload > 0 ? Math.trunc(numericPayload) : null;
+  const lookupTokens = Array.from(
+    new Set(
+      [raw, normalizedRaw, payload, normalizedPayload]
+        .map((entry) => normalizeLocationLookupToken(entry))
+        .filter(Boolean)
+    )
+  );
+  return {
+    raw,
+    normalizedRaw,
+    payload,
+    normalizedPayload,
+    payloadId,
+    lookupTokens,
+  };
+}
+
+async function resolveWarehouseLocationByInput(orgId, rawValue, tx = prisma) {
+  const orgIdValue = Number(orgId || 0) || null;
+  if (!orgIdValue) return null;
+
+  const parsed = parsePalletLocationInput(rawValue);
+  if (!parsed.normalizedRaw) return null;
+
+  const directOr = [
+    { code: parsed.normalizedRaw },
+    { qrCode: parsed.normalizedRaw },
+    { name: parsed.raw },
+  ];
+  if (parsed.normalizedPayload && parsed.normalizedPayload !== parsed.normalizedRaw) {
+    directOr.push({ code: parsed.normalizedPayload });
+    directOr.push({ qrCode: parsed.normalizedPayload });
+    directOr.push({ name: parsed.payload });
+  }
+  if (parsed.payloadId) {
+    directOr.push({ id: parsed.payloadId });
+  }
+
+  const directMatch = await tx.warehouseLocation.findFirst({
+    where: {
+      orgId: orgIdValue,
+      OR: directOr,
+    },
+    select: { id: true, code: true, name: true, qrCode: true },
+  });
+  if (directMatch) return directMatch;
+
+  if (!parsed.lookupTokens.length) return null;
+
+  const candidates = await tx.warehouseLocation.findMany({
+    where: {
+      orgId: orgIdValue,
+      OR: [{ code: { not: null } }, { name: { not: null } }, { qrCode: { not: null } }],
+    },
+    select: { id: true, code: true, name: true, qrCode: true },
+    take: 1200,
+  });
+
+  return (
+    candidates.find((entry) => {
+      const codeToken = normalizeLocationLookupToken(entry.code);
+      const nameToken = normalizeLocationLookupToken(entry.name);
+      const qrToken = normalizeLocationLookupToken(entry.qrCode);
+      return (
+        (codeToken && parsed.lookupTokens.includes(codeToken)) ||
+        (nameToken && parsed.lookupTokens.includes(nameToken)) ||
+        (qrToken && parsed.lookupTokens.includes(qrToken))
+      );
+    }) || null
+  );
+}
+
+function buildPalletLocationCandidates(rawValue, warehouseLocation = null) {
+  const parsed = parsePalletLocationInput(rawValue);
+  const codeCandidates = new Set();
+  const nameCandidates = new Set();
+
+  const addCode = (value) => {
+    const normalized = normalizePalletCode(value);
+    if (normalized) codeCandidates.add(normalized);
+  };
+  const addName = (value) => {
+    const normalized = normalizePalletText(value, 120);
+    if (normalized) nameCandidates.add(normalized);
+  };
+
+  addCode(parsed.normalizedRaw);
+  addCode(parsed.normalizedPayload);
+  addName(parsed.raw);
+  addName(parsed.payload);
+
+  if (warehouseLocation) {
+    addCode(warehouseLocation.code);
+    addCode(warehouseLocation.name);
+    addCode(warehouseLocation.qrCode);
+    addName(warehouseLocation.name);
+  }
+
+  return {
+    codeCandidates: Array.from(codeCandidates),
+    nameCandidates: Array.from(nameCandidates),
+    lookupTokens: parsed.lookupTokens,
+  };
+}
+
+async function findPalletLocationsByInput(orgId, rawValue, tx = prisma) {
+  const orgIdValue = Number(orgId || 0) || null;
+  if (!orgIdValue) {
+    return { warehouseLocation: null, palletLocations: [] };
+  }
+
+  const warehouseLocation = await resolveWarehouseLocationByInput(orgIdValue, rawValue, tx);
+  const candidates = buildPalletLocationCandidates(rawValue, warehouseLocation);
+
+  const whereOr = [];
+  if (candidates.codeCandidates.length) {
+    whereOr.push({ code: { in: candidates.codeCandidates } });
+  }
+  if (candidates.nameCandidates.length) {
+    whereOr.push({ name: { in: candidates.nameCandidates } });
+  }
+
+  let palletLocations = whereOr.length
+    ? await tx.palletLocation.findMany({
+        where: {
+          orgId: orgIdValue,
+          OR: whereOr,
+        },
+        select: { id: true, code: true, name: true },
+        take: 120,
+      })
+    : [];
+
+  if (!palletLocations.length && candidates.lookupTokens.length) {
+    const fallback = await tx.palletLocation.findMany({
+      where: {
+        orgId: orgIdValue,
+        OR: [{ code: { not: null } }, { name: { not: null } }],
+      },
+      select: { id: true, code: true, name: true },
+      take: 1200,
+    });
+    palletLocations = fallback.filter((entry) => {
+      const codeToken = normalizeLocationLookupToken(entry.code);
+      const nameToken = normalizeLocationLookupToken(entry.name);
+      return (
+        (codeToken && candidates.lookupTokens.includes(codeToken)) ||
+        (nameToken && candidates.lookupTokens.includes(nameToken))
+      );
+    });
+  }
+
+  return { warehouseLocation, palletLocations };
+}
+
+function doesLocationInputMatchPalletLocation(rawValue, warehouseLocation, palletLocation) {
+  if (!palletLocation) return false;
+
+  const candidates = buildPalletLocationCandidates(rawValue, warehouseLocation);
+  const tokenSet = new Set(
+    [
+      ...candidates.codeCandidates,
+      ...candidates.nameCandidates.map((entry) => normalizePalletCode(entry)),
+    ].filter(Boolean)
+  );
+  if (!tokenSet.size) return false;
+
+  const palletCode = normalizePalletCode(palletLocation.code);
+  const palletName = normalizePalletCode(palletLocation.name);
+  return Boolean((palletCode && tokenSet.has(palletCode)) || (palletName && tokenSet.has(palletName)));
+}
+
 function normalizePalletText(value, maxLength = 240) {
   return String(value || "").replace(/\r\n?/g, "\n").trim().slice(0, maxLength);
 }
@@ -1047,26 +1227,31 @@ function normalizePalletDiscrepancyStatus(value, fallback = "") {
 
 async function getOrCreatePalletLocationByCode(orgId, rawCode, tx = prisma) {
   const orgIdValue = Number(orgId || 0) || null;
-  const code = normalizePalletCode(rawCode);
-  if (!code) {
+  const parsedInput = parsePalletLocationInput(rawCode);
+  if (!parsedInput.normalizedRaw) {
     const error = new Error("LOCATION_CODE_REQUIRED");
     error.code = "LOCATION_CODE_REQUIRED";
     throw error;
   }
 
-  const linkedWarehouseLocation = await tx.warehouseLocation.findFirst({
-    where: {
-      orgId: orgIdValue,
-      code,
-    },
-    select: { name: true },
-  });
-  const resolvedName = normalizePalletText(linkedWarehouseLocation?.name, 120) || code;
+  const linkedWarehouseLocation = await resolveWarehouseLocationByInput(orgIdValue, rawCode, tx);
+  const resolvedCode = normalizePalletCode(
+    linkedWarehouseLocation?.code ||
+      linkedWarehouseLocation?.name ||
+      parsedInput.normalizedPayload ||
+      parsedInput.normalizedRaw
+  );
+  if (!resolvedCode) {
+    const error = new Error("LOCATION_CODE_REQUIRED");
+    error.code = "LOCATION_CODE_REQUIRED";
+    throw error;
+  }
+  const resolvedName = normalizePalletText(linkedWarehouseLocation?.name, 120) || resolvedCode;
 
   const existing = await tx.palletLocation.findFirst({
     where: {
       orgId: orgIdValue,
-      code,
+      code: resolvedCode,
     },
   });
   if (existing) {
@@ -1083,7 +1268,7 @@ async function getOrCreatePalletLocationByCode(orgId, rawCode, tx = prisma) {
     return await tx.palletLocation.create({
       data: {
         orgId: orgIdValue,
-        code,
+        code: resolvedCode,
         name: resolvedName,
       },
     });
@@ -1092,7 +1277,7 @@ async function getOrCreatePalletLocationByCode(orgId, rawCode, tx = prisma) {
     return tx.palletLocation.findFirst({
       where: {
         orgId: orgIdValue,
-        code,
+        code: resolvedCode,
       },
     });
   }
@@ -6033,12 +6218,12 @@ app.get("/api/profile", auth, async (req, res) => {
       }
 
       const palletCode = normalizePalletCode(req.body?.palletCode);
-      const locationCode = normalizePalletCode(req.body?.locationCode);
+      const locationInput = normalizePalletCode(req.body?.locationCode);
       const dispatchGate = normalizePalletGate(req.body?.dispatchGate ?? req.body?.gate, 40) || null;
       if (!palletCode) {
         return res.status(400).json({ message: "PALLET_CODE_REQUIRED" });
       }
-      if (!locationCode) {
+      if (!locationInput) {
         return res.status(400).json({ message: "PALLET_LOCATION_REQUIRED" });
       }
       if (!dispatchGate) {
@@ -6083,7 +6268,20 @@ app.get("/api/profile", auth, async (req, res) => {
           error.code = "PALLET_DISPATCH_STATUS_INVALID";
           throw error;
         }
-        if (!pallet.currentLocation?.code || pallet.currentLocation.code !== locationCode) {
+        const resolvedWarehouseLocation = await resolveWarehouseLocationByInput(
+          orgId,
+          locationInput,
+          tx
+        );
+        const resolvedLocationCode =
+          normalizePalletCode(resolvedWarehouseLocation?.code || locationInput) || locationInput;
+        if (
+          !doesLocationInputMatchPalletLocation(
+            locationInput,
+            resolvedWarehouseLocation,
+            pallet.currentLocation
+          )
+        ) {
           const error = new Error("PALLET_LOCATION_MISMATCH");
           error.code = "PALLET_LOCATION_MISMATCH";
           throw error;
@@ -6179,7 +6377,7 @@ app.get("/api/profile", auth, async (req, res) => {
           userId: req.user.id,
           metaJson: {
             palletCode,
-            locationCode,
+            locationCode: resolvedLocationCode,
             dispatchGate,
             gate: dispatchGate,
           },
@@ -6199,7 +6397,7 @@ app.get("/api/profile", auth, async (req, res) => {
             driver: routeSheet.driver || null,
             notes: routeSheet.notes || null,
             fromLocationCode: pallet.currentLocation?.code || null,
-            scanLocationCode: locationCode,
+            scanLocationCode: resolvedLocationCode,
             dispatchGate,
             gate: dispatchGate,
             routeSheetId,
@@ -6322,7 +6520,7 @@ app.get("/api/profile", auth, async (req, res) => {
       }
 
       const palletCode = normalizePalletCode(req.body?.palletCode);
-      const locationCode = normalizePalletCode(req.body?.locationCode);
+      const locationInput = normalizePalletCode(req.body?.locationCode);
       const destinationRc = normalizePalletText(req.body?.destinationRc, 120);
       const dispatchGate = normalizePalletGate(req.body?.dispatchGate ?? req.body?.gate, 40) || null;
       const route = normalizePalletText(req.body?.route, 120) || null;
@@ -6333,7 +6531,7 @@ app.get("/api/profile", auth, async (req, res) => {
       if (!palletCode) {
         return res.status(400).json({ message: "PALLET_CODE_REQUIRED" });
       }
-      if (!locationCode) {
+      if (!locationInput) {
         return res.status(400).json({ message: "PALLET_LOCATION_REQUIRED" });
       }
       if (!destinationRc) {
@@ -6364,7 +6562,20 @@ app.get("/api/profile", auth, async (req, res) => {
           error.code = "PALLET_DISPATCH_STATUS_INVALID";
           throw error;
         }
-        if (!pallet.currentLocation?.code || pallet.currentLocation.code !== locationCode) {
+        const resolvedWarehouseLocation = await resolveWarehouseLocationByInput(
+          orgId,
+          locationInput,
+          tx
+        );
+        const resolvedLocationCode =
+          normalizePalletCode(resolvedWarehouseLocation?.code || locationInput) || locationInput;
+        if (
+          !doesLocationInputMatchPalletLocation(
+            locationInput,
+            resolvedWarehouseLocation,
+            pallet.currentLocation
+          )
+        ) {
           const error = new Error("PALLET_LOCATION_MISMATCH");
           error.code = "PALLET_LOCATION_MISMATCH";
           throw error;
@@ -6414,7 +6625,7 @@ app.get("/api/profile", auth, async (req, res) => {
             driver,
             notes,
             fromLocationCode: pallet.currentLocation?.code || null,
-            scanLocationCode: locationCode,
+            scanLocationCode: resolvedLocationCode,
             dispatchGate,
             gate: dispatchGate,
           },
@@ -6673,42 +6884,45 @@ app.get("/api/profile", auth, async (req, res) => {
         return res.status(400).json({ message: "ORG_REQUIRED" });
       }
 
-      const locationCode = normalizePalletCode(req.params?.locationCode);
-      if (!locationCode) {
+      const locationInput = normalizePalletCode(req.params?.locationCode);
+      if (!locationInput) {
         return res.status(400).json({ message: "PALLET_LOCATION_REQUIRED" });
       }
 
-      const [knownLocation, knownWarehouseLocation, expected] = await Promise.all([
-        prisma.palletLocation.findFirst({
-          where: { orgId, code: locationCode },
-          select: { id: true, code: true, name: true },
-        }),
-        prisma.warehouseLocation.findFirst({
-          where: { orgId, code: locationCode },
-          select: { id: true, code: true, name: true },
-        }),
-        prisma.pallet.findMany({
-          where: {
-            orgId,
-            status: "STORED",
-            currentLocation: {
-              is: { code: locationCode },
-            },
-          },
-          include: {
-            currentLocation: true,
-            dispatch: true,
-          },
-          orderBy: [{ palletCode: "asc" }, { id: "asc" }],
-          take: 800,
-        }),
-      ]);
+      const { warehouseLocation, palletLocations } = await findPalletLocationsByInput(
+        orgId,
+        locationInput
+      );
+      const knownLocation = palletLocations[0] || null;
+      const locationIds = palletLocations.map((location) => location.id).filter(Boolean);
+      const expected = await prisma.pallet.findMany({
+        where: {
+          orgId,
+          status: "STORED",
+          ...(locationIds.length
+            ? { currentLocationId: { in: locationIds } }
+            : {
+                currentLocation: {
+                  is: { code: locationInput },
+                },
+              }),
+        },
+        include: {
+          currentLocation: true,
+          dispatch: true,
+        },
+        orderBy: [{ palletCode: "asc" }, { id: "asc" }],
+        take: 800,
+      });
 
+      const resolvedLocationCode =
+        normalizePalletCode(warehouseLocation?.code || knownLocation?.code || locationInput) ||
+        locationInput;
       const locationName =
-        String(expected[0]?.currentLocation?.name || "").trim() ||
+        String(warehouseLocation?.name || "").trim() ||
         String(knownLocation?.name || "").trim() ||
-        String(knownWarehouseLocation?.name || "").trim() ||
-        locationCode;
+        String(expected[0]?.currentLocation?.name || "").trim() ||
+        resolvedLocationCode;
       const palletIds = expected.map((item) => item.id).filter(Boolean);
       const openDiscrepanciesCount = palletIds.length
         ? await prisma.palletDiscrepancy.count({
@@ -6723,7 +6937,7 @@ app.get("/api/profile", auth, async (req, res) => {
       return res.json({
         location: {
           id: knownLocation?.id || null,
-          code: locationCode,
+          code: resolvedLocationCode,
           name: locationName,
         },
         expectedPallets: expected.map((item) => palletToResponse(item)),
@@ -6745,8 +6959,8 @@ app.get("/api/profile", auth, async (req, res) => {
         return res.status(400).json({ message: "ORG_REQUIRED" });
       }
 
-      const locationCode = normalizePalletCode(req.params?.locationCode);
-      if (!locationCode) {
+      const locationInput = normalizePalletCode(req.params?.locationCode);
+      if (!locationInput) {
         return res.status(400).json({ message: "PALLET_LOCATION_REQUIRED" });
       }
 
@@ -6766,30 +6980,34 @@ app.get("/api/profile", auth, async (req, res) => {
 
       const reconcileResult = await prisma.$transaction(async (tx) => {
         const now = new Date();
-        const [knownLocation, knownWarehouseLocation, expected] = await Promise.all([
-          tx.palletLocation.findFirst({
-            where: { orgId, code: locationCode },
-            select: { id: true, code: true, name: true },
-          }),
-          tx.warehouseLocation.findFirst({
-            where: { orgId, code: locationCode },
-            select: { id: true, code: true, name: true },
-          }),
-          tx.pallet.findMany({
-            where: {
-              orgId,
-              status: "STORED",
-              currentLocation: {
-                is: { code: locationCode },
-              },
-            },
-            include: {
-              currentLocation: true,
-            },
-            orderBy: [{ palletCode: "asc" }, { id: "asc" }],
-            take: 800,
-          }),
-        ]);
+        const { warehouseLocation, palletLocations } = await findPalletLocationsByInput(
+          orgId,
+          locationInput,
+          tx
+        );
+        const knownLocation = palletLocations[0] || null;
+        const locationIds = palletLocations.map((location) => location.id).filter(Boolean);
+        const expected = await tx.pallet.findMany({
+          where: {
+            orgId,
+            status: "STORED",
+            ...(locationIds.length
+              ? { currentLocationId: { in: locationIds } }
+              : {
+                  currentLocation: {
+                    is: { code: locationInput },
+                  },
+                }),
+          },
+          include: {
+            currentLocation: true,
+          },
+          orderBy: [{ palletCode: "asc" }, { id: "asc" }],
+          take: 800,
+        });
+        const resolvedLocationCode =
+          normalizePalletCode(warehouseLocation?.code || knownLocation?.code || locationInput) ||
+          locationInput;
 
         const expectedByCode = new Map();
         for (const pallet of expected) {
@@ -6807,10 +7025,10 @@ app.get("/api/profile", auth, async (req, res) => {
         );
 
         const locationName =
-          String(expected[0]?.currentLocation?.name || "").trim() ||
+          String(warehouseLocation?.name || "").trim() ||
           String(knownLocation?.name || "").trim() ||
-          String(knownWarehouseLocation?.name || "").trim() ||
-          locationCode;
+          String(expected[0]?.currentLocation?.name || "").trim() ||
+          resolvedLocationCode;
 
         const createdMissingCodes = [];
         const openMissingCodes = [];
@@ -6857,7 +7075,7 @@ app.get("/api/profile", auth, async (req, res) => {
             toStatus: pallet.status,
             userId: req.user.id,
             metaJson: {
-              locationCode,
+              locationCode: resolvedLocationCode,
               locationName,
               source: "LOCATION_CONTROL",
               result: "MISSING",
@@ -6897,7 +7115,7 @@ app.get("/api/profile", auth, async (req, res) => {
                 toStatus: pallet.status,
                 userId: req.user.id,
                 metaJson: {
-                  locationCode,
+                  locationCode: resolvedLocationCode,
                   locationName,
                   source: "LOCATION_CONTROL",
                   result: "FOUND",
@@ -6908,7 +7126,7 @@ app.get("/api/profile", auth, async (req, res) => {
         }
 
         return {
-          locationCode,
+          locationCode: resolvedLocationCode,
           locationName,
           expectedCount: expected.length,
           actualCount: foundPallets.length,
