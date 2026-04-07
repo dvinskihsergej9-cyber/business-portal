@@ -228,6 +228,38 @@ function normalizeEmail(value) {
   return String(value || "").trim().toLowerCase();
 }
 
+async function findUserByEmailInsensitive(email, tx = prisma) {
+  const normalizedEmail = normalizeEmail(email);
+  if (!normalizedEmail) return null;
+
+  let user = await tx.user.findUnique({
+    where: { email: normalizedEmail },
+  });
+  if (!user) {
+    user = await tx.user.findFirst({
+      where: {
+        email: {
+          equals: normalizedEmail,
+          mode: "insensitive",
+        },
+      },
+    });
+  }
+  if (!user) return null;
+
+  if (normalizeEmail(user.email) !== normalizedEmail) {
+    try {
+      user = await tx.user.update({
+        where: { id: user.id },
+        data: { email: normalizedEmail },
+      });
+    } catch (err) {
+      if (err?.code !== "P2002") throw err;
+    }
+  }
+  return user;
+}
+
 function isValidRegistrationEmail(value) {
   const normalized = normalizeEmail(value);
   if (!/^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/u.test(normalized)) return false;
@@ -4702,28 +4734,7 @@ app.post("/api/login", async (req, res) => {
     }
 
     if (!user) {
-      const normalizedEmail = normalizeEmail(normalizedLogin);
-      user = await prisma.user.findUnique({
-        where: { email: normalizedEmail },
-      });
-      if (!user) {
-        const legacyRows = await prisma.$queryRaw`
-          SELECT "id" FROM "User"
-          WHERE LOWER(TRIM("email")) = LOWER(${normalizedEmail})
-          LIMIT 1
-        `;
-        const legacyId = Number(legacyRows?.[0]?.id || 0);
-        if (legacyId) {
-          user = await prisma.user.findUnique({ where: { id: legacyId } });
-          if (user && user.email !== normalizedEmail) {
-            await prisma.user.update({
-              where: { id: user.id },
-              data: { email: normalizedEmail },
-            });
-            user.email = normalizedEmail;
-          }
-        }
-      }
+      user = await findUserByEmailInsensitive(normalizedLogin);
     }
     if (!user) {
       console.warn(`[LOGIN_FAIL] user not found: ${normalizedLogin}`);
@@ -10467,25 +10478,7 @@ app.post("/api/auth/forgot-password", async (req, res) => {
     resetEmailRate.set(normalized, now);
     resetGlobalRate.push(now);
 
-    let user = await prisma.user.findUnique({ where: { email: normalized } });
-    if (!user) {
-      const legacyRows = await prisma.$queryRaw`
-        SELECT "id" FROM "User"
-        WHERE LOWER(TRIM("email")) = LOWER(${normalized})
-        LIMIT 1
-      `;
-      const legacyId = Number(legacyRows?.[0]?.id || 0);
-      if (legacyId) {
-        user = await prisma.user.findUnique({ where: { id: legacyId } });
-        if (user && user.email !== normalized) {
-          await prisma.user.update({
-            where: { id: user.id },
-            data: { email: normalized },
-          });
-          user.email = normalized;
-        }
-      }
-    }
+    const user = await findUserByEmailInsensitive(normalized);
     if (!user || user.isActive === false) {
       return res.json({ message: responseMessage });
     }
@@ -19714,16 +19707,11 @@ async function ensureOwnerAdminAccount() {
     "Владелец платформы"
   );
 
-  const rows = await prisma.$queryRaw`
-    SELECT "id", "email" FROM "User"
-    WHERE LOWER(TRIM("email")) = LOWER(${normalizedEmail})
-    LIMIT 1
-  `;
-  const ownerId = Number(rows?.[0]?.id || 0);
+  const owner = await findUserByEmailInsensitive(normalizedEmail);
 
-  if (ownerId) {
+  if (owner?.id) {
     await prisma.user.update({
-      where: { id: ownerId },
+      where: { id: owner.id },
       data: {
         email: normalizedEmail,
         password: ownerHash,
