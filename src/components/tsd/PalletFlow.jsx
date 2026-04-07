@@ -2088,7 +2088,7 @@ export default function PalletFlow({
                   }}
                   disabled={loading}
                   autoStart
-                  scanKind="barcode"
+                  scanKind="mixed"
                 />
                 <div className="tsd-inline tsd-inline--two">
                   <select
@@ -2588,7 +2588,7 @@ export default function PalletFlow({
                   }}
                   disabled={loading}
                   autoStart
-                  scanKind="barcode"
+                  scanKind="mixed"
                 />
                 <div className="tsd-inline tsd-inline--two">
                   <select
@@ -2721,7 +2721,7 @@ export default function PalletFlow({
                     await loadLocationPallets(value);
                   }}
                   disabled={searchLocationLoading || historyLoading}
-                  scanKind="barcode"
+                  scanKind="mixed"
                 />
                 <div className="tsd-inline tsd-inline--two">
                   <input

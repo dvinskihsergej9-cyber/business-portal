@@ -1011,10 +1011,13 @@ function parsePalletLocationInput(rawValue) {
   const hasLegacyLocPrefix = /^BP:LOC:/i.test(normalizedRaw);
   const normalizedRawAlias = normalizeLocationCodeAlias(raw);
   const normalizedRawCyrAlias = toCyrillicLocationAlias(normalizedRaw || raw);
-  const payload = normalizedRaw.replace(/^BP:LOCATION:/i, "");
+  const payload = normalizedRaw.replace(/^BP:(LOC|LOCATION):/i, "");
   const normalizedPayload = normalizePalletCode(payload);
   const normalizedPayloadAlias = normalizeLocationCodeAlias(payload);
   const normalizedPayloadCyrAlias = toCyrillicLocationAlias(normalizedPayload || payload);
+  const numericPayload = Number(payload);
+  const payloadId =
+    Number.isFinite(numericPayload) && numericPayload > 0 ? Math.trunc(numericPayload) : null;
   const lookupTokens = Array.from(
     new Set(
       [
@@ -1040,6 +1043,7 @@ function parsePalletLocationInput(rawValue) {
     normalizedPayload,
     normalizedPayloadAlias,
     normalizedPayloadCyrAlias,
+    payloadId,
     hasLegacyLocPrefix,
     lookupTokens,
   };
@@ -1050,7 +1054,7 @@ async function resolveWarehouseLocationByInput(orgId, rawValue, tx = prisma) {
   if (!orgIdValue) return null;
 
   const parsed = parsePalletLocationInput(rawValue);
-  if (!parsed.normalizedRaw || parsed.hasLegacyLocPrefix) return null;
+  if (!parsed.normalizedRaw) return null;
 
   const directOr = [
     { code: parsed.normalizedRaw },
@@ -1065,6 +1069,9 @@ async function resolveWarehouseLocationByInput(orgId, rawValue, tx = prisma) {
     directOr.push({ code: parsed.normalizedPayloadCyrAlias });
     directOr.push({ qrCode: parsed.normalizedPayload });
     directOr.push({ name: parsed.payload });
+  }
+  if (parsed.payloadId) {
+    directOr.push({ id: parsed.payloadId });
   }
   const directMatch = await tx.warehouseLocation.findFirst({
     where: {
@@ -12087,23 +12094,22 @@ app.get("/api/warehouse/scan/resolve", auth, async (req, res) => {
     const hasRawId = Number.isFinite(rawId) && rawId > 0;
     const rawNormalized = normalizeLocationLookupToken(raw);
 
-    if (raw.toUpperCase().startsWith("BP:LOC:")) {
-      return res.status(404).json({ message: "LOCATION_NOT_FOUND" });
-    }
-
-    const isLoc = /^BP:LOCATION:/i.test(raw);
+    const isLoc = /^BP:(LOC|LOCATION):/i.test(raw);
     const isItem =
       raw.startsWith("BP:ITEM:") ||
       raw.startsWith("BP:ARTICLE:") ||
       raw.startsWith("BP:PRODUCT:");
 
     if (isLoc) {
-      const payload = raw.replace(/^BP:LOCATION:/i, "");
+      const payload = raw.replace(/^BP:(LOC|LOCATION):/i, "");
+      const id = Number(payload);
+      const hasId = Number.isFinite(id) && id > 0;
       const payloadNormalized = normalizeLocationLookupToken(payload);
       const location = await prisma.warehouseLocation.findFirst({
         where: {
           OR: [
             { qrCode: raw },
+            ...(hasId ? [{ id }] : []),
             { code: payload },
             { name: payload },
           ],
