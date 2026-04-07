@@ -913,6 +913,29 @@
 }
 
 @media (max-width: 600px) {
+  .portal-surface .tabs.tsd-pallet-tabs,
+  .portal-surface .tabs.tabs--sm.tsd-pallet-tabs {
+    display: grid;
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+    gap: 6px;
+    width: 100%;
+    overflow-x: visible;
+    white-space: normal;
+    padding: 0;
+  }
+
+  .portal-surface .tabs.tsd-pallet-tabs .tabs__btn,
+  .portal-surface .tabs.tabs--sm.tsd-pallet-tabs .tabs__btn {
+    width: 100%;
+    min-width: 0;
+    min-height: 34px;
+    padding: 4px 6px;
+    font-size: 12px;
+    line-height: 1.2;
+    white-space: normal;
+    text-align: center;
+  }
+
   .tsd-scanner__viewport {
     min-height: 360px;
   }
