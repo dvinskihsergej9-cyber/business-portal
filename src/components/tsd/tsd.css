@@ -684,6 +684,9 @@
 
 .tsd-pallet-tab {
   min-height: 38px;
+  width: 100%;
+  white-space: normal;
+  text-align: center;
 }
 
 .tsd-pallet-tab--active {
@@ -749,6 +752,16 @@
 .portal-surface .tsd-pallet-list-btn--received {
   background: #ffffff;
   border-color: var(--tsd-border);
+}
+
+.tsd-discrepancy-row--open {
+  border-color: #f87171;
+  background: #fff1f2;
+}
+
+.tsd-discrepancy-row--closed {
+  border-color: #86efac;
+  background: #f0fdf4;
 }
 
 .tsd-pallet-list-btn--stored {
@@ -910,6 +923,27 @@
 
   .tsd-pallet-tabs {
     gap: 10px;
+  }
+}
+
+@media (max-width: 768px) {
+  .portal-surface .tabs.tsd-pallet-tabs,
+  .portal-surface .tabs.tabs--sm.tsd-pallet-tabs {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    width: 100%;
+    overflow-x: visible;
+    white-space: normal;
+    gap: 8px;
+    padding: 0;
+  }
+
+  .portal-surface .tabs.tsd-pallet-tabs .tabs__btn,
+  .portal-surface .tabs.tabs--sm.tsd-pallet-tabs .tabs__btn {
+    flex: 1 1 auto;
+    white-space: normal;
+    width: 100%;
+    min-height: 42px;
   }
 }
 
