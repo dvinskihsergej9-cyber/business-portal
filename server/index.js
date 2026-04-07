@@ -988,15 +988,38 @@ async function generateUniquePalletCode(orgId, tx = prisma) {
   throw new Error("PALLET_CODE_GENERATION_FAILED");
 }
 
-async function generateUniqueRouteSheetNumber(orgId, tx = prisma) {
+async function generateUniqueRouteSheetNumber(orgId, plannedDate = null, tx = prisma) {
   const targetOrgId = Number(orgId || 0) || null;
-  for (let attempt = 0; attempt < 8; attempt += 1) {
-    const now = new Date();
-    const dateToken = `${now.getUTCFullYear()}${String(now.getUTCMonth() + 1).padStart(2, "0")}${String(
-      now.getUTCDate()
-    ).padStart(2, "0")}`;
-    const randomPart = crypto.randomBytes(2).toString("hex").toUpperCase();
-    const candidate = `ML-${dateToken}-${randomPart}`;
+  const validPlannedDate =
+    plannedDate instanceof Date && !Number.isNaN(plannedDate.getTime()) ? plannedDate : new Date();
+  const counterYear = validPlannedDate.getUTCFullYear();
+  const prefix = `ML-${counterYear}-`;
+
+  const existingRows = await tx.palletRouteSheet.findMany({
+    where: {
+      orgId: targetOrgId,
+      sheetNumber: { startsWith: prefix },
+    },
+    select: { sheetNumber: true },
+    orderBy: [{ id: "desc" }],
+    take: 5000,
+  });
+
+  let maxSequence = 0;
+  for (const row of existingRows) {
+    const value = String(row?.sheetNumber || "").trim();
+    const match = /^ML-(\d{4})-(\d{1,6})$/i.exec(value);
+    if (!match) continue;
+    if (Number(match[1]) !== counterYear) continue;
+    const sequence = Number(match[2]);
+    if (Number.isFinite(sequence) && sequence > maxSequence) {
+      maxSequence = sequence;
+    }
+  }
+
+  for (let attempt = 0; attempt < 24; attempt += 1) {
+    const nextSequence = maxSequence + 1 + attempt;
+    const candidate = `ML-${counterYear}-${String(nextSequence).padStart(6, "0")}`;
     const exists = await tx.palletRouteSheet.findFirst({
       where: {
         orgId: targetOrgId,
@@ -1006,6 +1029,7 @@ async function generateUniqueRouteSheetNumber(orgId, tx = prisma) {
     });
     if (!exists) return candidate;
   }
+
   throw new Error("ROUTE_SHEET_NUMBER_GENERATION_FAILED");
 }
 
@@ -5321,7 +5345,7 @@ app.get("/api/profile", auth, async (req, res) => {
       }
 
       const createdId = await prisma.$transaction(async (tx) => {
-        const sheetNumber = await generateUniqueRouteSheetNumber(orgId, tx);
+        const sheetNumber = await generateUniqueRouteSheetNumber(orgId, plannedDate, tx);
         const created = await tx.palletRouteSheet.create({
           data: {
             orgId,
