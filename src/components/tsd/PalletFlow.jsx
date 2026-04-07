@@ -357,6 +357,7 @@ export default function PalletFlow({
   const dispatchSubmitLockRef = useRef(false);
   const lastStoreSubmitRef = useRef({ key: "", at: 0 });
   const lastDispatchSubmitRef = useRef({ key: "", at: 0 });
+  const lastAppliedInitialTabRef = useRef("");
 
   const [receiveForm, setReceiveForm] = useState(INITIAL_RECEIVE_FORM);
   const [receiveStep, setReceiveStep] = useState("supplier");
@@ -1417,6 +1418,8 @@ export default function PalletFlow({
     const normalized = String(initialTab || "").trim();
     if (!CROSSDOCK_TAB_IDS.has(normalized)) return;
     if (strictStepLock) return;
+    if (lastAppliedInitialTabRef.current === normalized) return;
+    lastAppliedInitialTabRef.current = normalized;
     setActiveTab(normalized);
   }, [initialTab, strictStepLock]);
 
