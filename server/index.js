@@ -19881,6 +19881,63 @@ async function ensureEmailVerificationStorageReady() {
   console.log("[EMAIL_VERIFY_BOOTSTRAP] EmailVerificationCode table is ready.");
 }
 
+async function ensureAuthDbPermissions() {
+  const normalizedUrl = String(DATABASE_URL || "").trim().toLowerCase();
+  if (!normalizedUrl.startsWith("postgresql://") && !normalizedUrl.startsWith("postgres://")) {
+    return;
+  }
+
+  const loadPrivileges = async () => {
+    const rows = await prismaBase.$queryRawUnsafe(`
+      SELECT
+        current_user AS "currentUser",
+        has_table_privilege(current_user, 'public."User"', 'SELECT') AS "userSelect",
+        has_table_privilege(current_user, 'public."User"', 'INSERT') AS "userInsert",
+        has_table_privilege(current_user, 'public."User"', 'UPDATE') AS "userUpdate",
+        has_table_privilege(current_user, 'public."User"', 'DELETE') AS "userDelete",
+        has_table_privilege(current_user, 'public."Organization"', 'SELECT') AS "orgSelect"
+    `);
+    return Array.isArray(rows) && rows.length ? rows[0] : null;
+  };
+
+  try {
+    const before = await loadPrivileges();
+    const hasUserRead = Boolean(before?.userSelect);
+    const hasOrgRead = Boolean(before?.orgSelect);
+    if (hasUserRead && hasOrgRead) {
+      return;
+    }
+
+    await prismaBase.$executeRawUnsafe(`
+      DO $$
+      DECLARE
+        v_user text := current_user;
+      BEGIN
+        EXECUTE format('GRANT USAGE ON SCHEMA public TO %I', v_user);
+        EXECUTE format('GRANT SELECT, INSERT, UPDATE, DELETE, REFERENCES, TRIGGER ON TABLE public."User" TO %I', v_user);
+        EXECUTE format('GRANT SELECT, INSERT, UPDATE, DELETE, REFERENCES, TRIGGER ON TABLE public."Organization" TO %I', v_user);
+        EXECUTE format('GRANT SELECT, INSERT, UPDATE, DELETE ON TABLE public."EmailVerificationCode" TO %I', v_user);
+        EXECUTE format('GRANT SELECT, INSERT, UPDATE, DELETE ON TABLE public."PasswordResetToken" TO %I', v_user);
+        EXECUTE format('GRANT SELECT, INSERT, UPDATE, DELETE ON TABLE public."InviteToken" TO %I', v_user);
+        EXECUTE format('GRANT USAGE, SELECT, UPDATE ON ALL SEQUENCES IN SCHEMA public TO %I', v_user);
+      END
+      $$;
+    `);
+
+    const after = await loadPrivileges();
+    if (!after?.userSelect) {
+      console.warn("[DB_AUTH_PERMS] missing SELECT privilege on public.\"User\" for current_user.");
+    }
+    if (!after?.orgSelect) {
+      console.warn(
+        "[DB_AUTH_PERMS] missing SELECT privilege on public.\"Organization\" for current_user."
+      );
+    }
+  } catch (err) {
+    console.error("[DB_AUTH_PERMS] check/grant error:", err);
+  }
+}
+
 function logMailConfigStatus() {
   const requiredKeys = [
     "MAIL_HOST",
@@ -20440,6 +20497,12 @@ const PORT = Number(process.env.PORT || 3000);
 const HOST = "0.0.0.0";
 
 async function bootstrapServer() {
+  try {
+    await ensureAuthDbPermissions();
+  } catch (err) {
+    console.error("[DB_AUTH_PERMS] bootstrap error:", err);
+  }
+
   try {
     await ensureEmailVerificationStorageReady();
   } catch (err) {
