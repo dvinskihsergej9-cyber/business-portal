@@ -721,6 +721,7 @@ async function createWarehouseNotification({
   message,
   linkUrl = null,
   payloadJson = null,
+  sendWebPush = true,
 }) {
   if (!userId || !title || !message) return null;
   const normalizedOrgId = orgId || null;
@@ -738,20 +739,23 @@ async function createWarehouseNotification({
     },
   });
 
-  await sendWebPushToUser(normalizedOrgId, userId, {
-    title,
-    body: message,
-    url: linkUrl || "/warehouse",
-    notificationId: notification.id,
-    type,
-  }).catch((err) => {
-    console.error("[PUSH] Ошибка отправки:", err);
-  });
+  if (sendWebPush) {
+    await sendWebPushToUser(normalizedOrgId, userId, {
+      title,
+      body: message,
+      url: linkUrl || "/warehouse",
+      notificationId: notification.id,
+      type,
+    }).catch((err) => {
+      console.error("[PUSH] Ошибка отправки:", err);
+    });
+  }
 
   return notification;
 }
 
 const TASKS_JOURNAL_LINK = "/warehouse?section=tasks&taskView=journal";
+const CROSSDOCK_DISCREPANCIES_LINK = "/warehouse?section=crossdock&crossdockTab=discrepancies";
 const PLATFORM_NEWS_ADMIN_LINK = "/admin/platform-news";
 const PLATFORM_NEWS_TYPE = "PLATFORM_NEWS";
 const PLATFORM_NEWS_BROADCAST_TYPE = "PLATFORM_NEWS_BROADCAST";
@@ -859,9 +863,12 @@ const PALLET_EVENT_TYPES = new Set([
   "MOVE",
   "DISPATCH",
   "CANCEL",
+  "DISCREPANCY_OPEN",
+  "DISCREPANCY_CLOSE",
 ]);
 const ROUTE_SHEET_STATUSES = new Set(["DRAFT", "PUBLISHED", "LOADING", "COMPLETED", "CANCELLED"]);
 const ROUTE_SHEET_ITEM_STATUSES = new Set(["PLANNED", "LOADED", "CANCELLED"]);
+const PALLET_DISCREPANCY_STATUSES = new Set(["OPEN", "CLOSED"]);
 const ROUTE_SHEET_EVENT_TYPES = new Set([
   "CREATE",
   "ADD_ITEM",
@@ -1033,6 +1040,11 @@ async function generateUniqueRouteSheetNumber(orgId, plannedDate = null, tx = pr
   throw new Error("ROUTE_SHEET_NUMBER_GENERATION_FAILED");
 }
 
+function normalizePalletDiscrepancyStatus(value, fallback = "") {
+  const normalized = String(value || "").trim().toUpperCase();
+  return PALLET_DISCREPANCY_STATUSES.has(normalized) ? normalized : fallback;
+}
+
 async function getOrCreatePalletLocationByCode(orgId, rawCode, tx = prisma) {
   const orgIdValue = Number(orgId || 0) || null;
   const code = normalizePalletCode(rawCode);
@@ -1042,20 +1054,37 @@ async function getOrCreatePalletLocationByCode(orgId, rawCode, tx = prisma) {
     throw error;
   }
 
+  const linkedWarehouseLocation = await tx.warehouseLocation.findFirst({
+    where: {
+      orgId: orgIdValue,
+      code,
+    },
+    select: { name: true },
+  });
+  const resolvedName = normalizePalletText(linkedWarehouseLocation?.name, 120) || code;
+
   const existing = await tx.palletLocation.findFirst({
     where: {
       orgId: orgIdValue,
       code,
     },
   });
-  if (existing) return existing;
+  if (existing) {
+    if (existing.name !== resolvedName) {
+      return tx.palletLocation.update({
+        where: { id: existing.id },
+        data: { name: resolvedName },
+      });
+    }
+    return existing;
+  }
 
   try {
     return await tx.palletLocation.create({
       data: {
         orgId: orgIdValue,
         code,
-        name: code,
+        name: resolvedName,
       },
     });
   } catch (err) {
@@ -1129,6 +1158,47 @@ function palletEventToResponse(event) {
           email: event.user.email || "",
         }
       : null,
+  };
+}
+
+function palletDiscrepancyToResponse(row) {
+  const palletCode = String(row?.pallet?.palletCode || "").trim();
+  const locationCode =
+    String(row?.location?.code || "").trim() ||
+    String(row?.pallet?.currentLocation?.code || "").trim();
+  const locationName =
+    String(row?.location?.name || "").trim() ||
+    String(row?.pallet?.currentLocation?.name || "").trim();
+  return {
+    id: row?.id || null,
+    status: normalizePalletDiscrepancyStatus(row?.status, "OPEN"),
+    palletId: row?.palletId || null,
+    palletCode: palletCode || null,
+    location: {
+      id: row?.location?.id || row?.pallet?.currentLocation?.id || null,
+      code: locationCode || null,
+      name: locationName || null,
+    },
+    detectedAt: row?.detectedAt || row?.createdAt || null,
+    detectedBy: row?.detectedByUser
+      ? {
+          id: row.detectedByUser.id,
+          name: row.detectedByUser.name || "",
+          email: row.detectedByUser.email || "",
+        }
+      : null,
+    closedAt: row?.closedAt || null,
+    closedBy: row?.closedByUser
+      ? {
+          id: row.closedByUser.id,
+          name: row.closedByUser.name || "",
+          email: row.closedByUser.email || "",
+        }
+      : null,
+    note: row?.note || null,
+    lastCheckedAt: row?.lastCheckedAt || null,
+    createdAt: row?.createdAt || null,
+    updatedAt: row?.updatedAt || null,
   };
 }
 
@@ -1351,6 +1421,84 @@ async function notifySupportOperators(actorUserId, payload) {
       message: payload?.message || "",
       linkUrl: payload?.linkUrl || SUPPORT_TICKETS_ADMIN_LINK,
       payloadJson: payload?.payloadJson || null,
+    }).catch(() => null);
+  }
+}
+
+async function getCrossdockDiscrepancyRecipients(orgId) {
+  const normalizedOrgId = Number(orgId || 0);
+  if (!normalizedOrgId) return [];
+
+  const admins = await prisma.user.findMany({
+    where: {
+      orgId: normalizedOrgId,
+      role: "ADMIN",
+      isActive: true,
+    },
+    orderBy: [{ createdAt: "asc" }, { id: "asc" }],
+    select: { id: true, orgId: true },
+    take: 200,
+  });
+  if (!admins.length) return [];
+
+  const ownerId = Number(admins[0]?.id || 0);
+  const unique = new Map();
+  for (const admin of admins) {
+    const userId = Number(admin?.id || 0);
+    if (!userId) continue;
+    unique.set(userId, {
+      id: userId,
+      orgId: Number(admin?.orgId || 0) || null,
+      isOwner: userId === ownerId,
+    });
+  }
+  return Array.from(unique.values());
+}
+
+async function notifyCrossdockDiscrepancies({
+  orgId,
+  actorName = "",
+  locationCode = "",
+  locationName = "",
+  missingCodes = [],
+}) {
+  const recipients = await getCrossdockDiscrepancyRecipients(orgId);
+  if (!recipients.length) return;
+
+  const normalizedMissingCodes = Array.from(
+    new Set(
+      (Array.isArray(missingCodes) ? missingCodes : [])
+        .map((item) => normalizePalletCode(item))
+        .filter(Boolean)
+    )
+  ).slice(0, 80);
+  const missingCount = normalizedMissingCodes.length;
+  if (!missingCount) return;
+
+  const locationLabel = String(locationName || "").trim() || String(locationCode || "").trim() || "-";
+  const actorLabel = String(actorName || "").trim();
+  const title = "Расхождение кросс-докинга";
+  const message = actorLabel
+    ? `Ячейка ${locationLabel}: не найдено паллет — ${missingCount}. Проверил: ${actorLabel}.`
+    : `Ячейка ${locationLabel}: не найдено паллет — ${missingCount}.`;
+  const payloadJson = {
+    scope: "crossdock_discrepancy",
+    locationCode: String(locationCode || "").trim() || null,
+    locationName: String(locationName || "").trim() || null,
+    missingCount,
+    missingCodes: normalizedMissingCodes,
+  };
+
+  for (const recipient of recipients) {
+    await createWarehouseNotification({
+      orgId: recipient.orgId,
+      userId: recipient.id,
+      type: "CROSSDOCK_DISCREPANCY",
+      title,
+      message,
+      linkUrl: CROSSDOCK_DISCREPANCIES_LINK,
+      payloadJson,
+      sendWebPush: false,
     }).catch(() => null);
   }
 }
@@ -6515,6 +6663,338 @@ app.get("/api/profile", auth, async (req, res) => {
     } catch (err) {
       console.error("pallet list error:", err);
       return res.status(500).json({ message: "PALLET_LIST_ERROR" });
+    }
+  });
+
+  app.get("/api/pallets/location-control/:locationCode/expected", auth, async (req, res) => {
+    try {
+      const orgId = Number(req.user?.orgId || 0);
+      if (!orgId) {
+        return res.status(400).json({ message: "ORG_REQUIRED" });
+      }
+
+      const locationCode = normalizePalletCode(req.params?.locationCode);
+      if (!locationCode) {
+        return res.status(400).json({ message: "PALLET_LOCATION_REQUIRED" });
+      }
+
+      const [knownLocation, knownWarehouseLocation, expected] = await Promise.all([
+        prisma.palletLocation.findFirst({
+          where: { orgId, code: locationCode },
+          select: { id: true, code: true, name: true },
+        }),
+        prisma.warehouseLocation.findFirst({
+          where: { orgId, code: locationCode },
+          select: { id: true, code: true, name: true },
+        }),
+        prisma.pallet.findMany({
+          where: {
+            orgId,
+            status: "STORED",
+            currentLocation: {
+              is: { code: locationCode },
+            },
+          },
+          include: {
+            currentLocation: true,
+            dispatch: true,
+          },
+          orderBy: [{ palletCode: "asc" }, { id: "asc" }],
+          take: 800,
+        }),
+      ]);
+
+      const locationName =
+        String(expected[0]?.currentLocation?.name || "").trim() ||
+        String(knownLocation?.name || "").trim() ||
+        String(knownWarehouseLocation?.name || "").trim() ||
+        locationCode;
+      const palletIds = expected.map((item) => item.id).filter(Boolean);
+      const openDiscrepanciesCount = palletIds.length
+        ? await prisma.palletDiscrepancy.count({
+            where: {
+              orgId,
+              palletId: { in: palletIds },
+              status: "OPEN",
+            },
+          })
+        : 0;
+
+      return res.json({
+        location: {
+          id: knownLocation?.id || null,
+          code: locationCode,
+          name: locationName,
+        },
+        expectedPallets: expected.map((item) => palletToResponse(item)),
+        summary: {
+          expectedCount: expected.length,
+          openDiscrepanciesCount,
+        },
+      });
+    } catch (err) {
+      console.error("pallet location-control expected error:", err);
+      return res.status(500).json({ message: "PALLET_LOCATION_CONTROL_EXPECTED_ERROR" });
+    }
+  });
+
+  app.post("/api/pallets/location-control/:locationCode/reconcile", auth, async (req, res) => {
+    try {
+      const orgId = Number(req.user?.orgId || 0);
+      if (!orgId) {
+        return res.status(400).json({ message: "ORG_REQUIRED" });
+      }
+
+      const locationCode = normalizePalletCode(req.params?.locationCode);
+      if (!locationCode) {
+        return res.status(400).json({ message: "PALLET_LOCATION_REQUIRED" });
+      }
+
+      const rawFoundCodes = Array.isArray(req.body?.foundPalletCodes)
+        ? req.body.foundPalletCodes
+        : [];
+      const foundPalletCodes = Array.from(
+        new Set(
+          rawFoundCodes
+            .map((entry) => {
+              if (typeof entry === "string") return normalizePalletCode(entry);
+              return normalizePalletCode(entry?.palletCode);
+            })
+            .filter(Boolean)
+        )
+      ).slice(0, 1200);
+
+      const reconcileResult = await prisma.$transaction(async (tx) => {
+        const now = new Date();
+        const [knownLocation, knownWarehouseLocation, expected] = await Promise.all([
+          tx.palletLocation.findFirst({
+            where: { orgId, code: locationCode },
+            select: { id: true, code: true, name: true },
+          }),
+          tx.warehouseLocation.findFirst({
+            where: { orgId, code: locationCode },
+            select: { id: true, code: true, name: true },
+          }),
+          tx.pallet.findMany({
+            where: {
+              orgId,
+              status: "STORED",
+              currentLocation: {
+                is: { code: locationCode },
+              },
+            },
+            include: {
+              currentLocation: true,
+            },
+            orderBy: [{ palletCode: "asc" }, { id: "asc" }],
+            take: 800,
+          }),
+        ]);
+
+        const expectedByCode = new Map();
+        for (const pallet of expected) {
+          const code = normalizePalletCode(pallet?.palletCode);
+          if (!code) continue;
+          expectedByCode.set(code, pallet);
+        }
+
+        const foundSet = new Set(foundPalletCodes.filter((code) => expectedByCode.has(code)));
+        const missingPallets = expected.filter(
+          (pallet) => !foundSet.has(normalizePalletCode(pallet?.palletCode))
+        );
+        const foundPallets = expected.filter((pallet) =>
+          foundSet.has(normalizePalletCode(pallet?.palletCode))
+        );
+
+        const locationName =
+          String(expected[0]?.currentLocation?.name || "").trim() ||
+          String(knownLocation?.name || "").trim() ||
+          String(knownWarehouseLocation?.name || "").trim() ||
+          locationCode;
+
+        const createdMissingCodes = [];
+        const openMissingCodes = [];
+        for (const pallet of missingPallets) {
+          const openDiscrepancy = await tx.palletDiscrepancy.findFirst({
+            where: {
+              orgId,
+              palletId: pallet.id,
+              status: "OPEN",
+            },
+            select: { id: true },
+          });
+          const palletCode = normalizePalletCode(pallet?.palletCode);
+          if (openDiscrepancy) {
+            openMissingCodes.push(palletCode);
+            await tx.palletDiscrepancy.update({
+              where: { id: openDiscrepancy.id },
+              data: {
+                lastCheckedAt: now,
+                locationId: pallet.currentLocationId || knownLocation?.id || null,
+              },
+            });
+            continue;
+          }
+
+          await tx.palletDiscrepancy.create({
+            data: {
+              orgId,
+              palletId: pallet.id,
+              locationId: pallet.currentLocationId || knownLocation?.id || null,
+              status: "OPEN",
+              detectedAt: now,
+              detectedByUserId: req.user?.id || null,
+              lastCheckedAt: now,
+            },
+          });
+          createdMissingCodes.push(palletCode);
+
+          await createPalletEventTx(tx, {
+            orgId,
+            palletId: pallet.id,
+            type: "DISCREPANCY_OPEN",
+            fromStatus: pallet.status,
+            toStatus: pallet.status,
+            userId: req.user.id,
+            metaJson: {
+              locationCode,
+              locationName,
+              source: "LOCATION_CONTROL",
+              result: "MISSING",
+            },
+          });
+        }
+
+        let closedCount = 0;
+        if (foundPallets.length) {
+          const foundPalletIds = foundPallets.map((item) => item.id);
+          const openToClose = await tx.palletDiscrepancy.findMany({
+            where: {
+              orgId,
+              palletId: { in: foundPalletIds },
+              status: "OPEN",
+            },
+            select: { id: true, palletId: true },
+          });
+          for (const discrepancy of openToClose) {
+            await tx.palletDiscrepancy.update({
+              where: { id: discrepancy.id },
+              data: {
+                status: "CLOSED",
+                closedAt: now,
+                closedByUserId: req.user?.id || null,
+                lastCheckedAt: now,
+              },
+            });
+            closedCount += 1;
+            const pallet = foundPallets.find((item) => item.id === discrepancy.palletId);
+            if (pallet) {
+              await createPalletEventTx(tx, {
+                orgId,
+                palletId: pallet.id,
+                type: "DISCREPANCY_CLOSE",
+                fromStatus: pallet.status,
+                toStatus: pallet.status,
+                userId: req.user.id,
+                metaJson: {
+                  locationCode,
+                  locationName,
+                  source: "LOCATION_CONTROL",
+                  result: "FOUND",
+                },
+              });
+            }
+          }
+        }
+
+        return {
+          locationCode,
+          locationName,
+          expectedCount: expected.length,
+          actualCount: foundPallets.length,
+          missingPalletCodes: missingPallets
+            .map((item) => normalizePalletCode(item?.palletCode))
+            .filter(Boolean),
+          createdMissingCodes,
+          openMissingCodes,
+          closedCount,
+        };
+      });
+
+      if (reconcileResult.createdMissingCodes.length) {
+        await notifyCrossdockDiscrepancies({
+          orgId,
+          actorName: req.user?.name || "",
+          locationCode: reconcileResult.locationCode,
+          locationName: reconcileResult.locationName,
+          missingCodes: reconcileResult.createdMissingCodes,
+        }).catch(() => null);
+      }
+
+      return res.json({
+        location: {
+          code: reconcileResult.locationCode,
+          name: reconcileResult.locationName,
+        },
+        expectedCount: reconcileResult.expectedCount,
+        actualCount: reconcileResult.actualCount,
+        missingPalletCodes: reconcileResult.missingPalletCodes,
+        openedCount: reconcileResult.createdMissingCodes.length,
+        alreadyOpenCount: reconcileResult.openMissingCodes.length,
+        closedCount: reconcileResult.closedCount,
+      });
+    } catch (err) {
+      console.error("pallet location-control reconcile error:", err);
+      return res.status(500).json({ message: "PALLET_LOCATION_CONTROL_RECONCILE_ERROR" });
+    }
+  });
+
+  app.get("/api/pallets/discrepancies", auth, async (req, res) => {
+    try {
+      const orgId = Number(req.user?.orgId || 0);
+      if (!orgId) {
+        return res.status(400).json({ message: "ORG_REQUIRED" });
+      }
+
+      const statusQuery = String(req.query?.status || req.query?.statuses || "ALL")
+        .trim()
+        .toUpperCase();
+      const status =
+        statusQuery === "ALL" ? "" : normalizePalletDiscrepancyStatus(statusQuery, "");
+      if (statusQuery !== "ALL" && !status) {
+        return res.status(400).json({ message: "PALLET_DISCREPANCY_STATUS_INVALID" });
+      }
+      const limit = Math.max(1, Math.min(500, Number(req.query?.limit || 250)));
+
+      const rows = await prisma.palletDiscrepancy.findMany({
+        where: {
+          orgId,
+          ...(status ? { status } : {}),
+        },
+        include: {
+          pallet: {
+            include: {
+              currentLocation: true,
+            },
+          },
+          location: true,
+          detectedByUser: {
+            select: { id: true, name: true, email: true },
+          },
+          closedByUser: {
+            select: { id: true, name: true, email: true },
+          },
+        },
+        orderBy: [{ status: "asc" }, { detectedAt: "desc" }, { id: "desc" }],
+        take: limit,
+      });
+
+      return res.json({
+        items: rows.map((row) => palletDiscrepancyToResponse(row)),
+      });
+    } catch (err) {
+      console.error("pallet discrepancies list error:", err);
+      return res.status(500).json({ message: "PALLET_DISCREPANCIES_LIST_ERROR" });
     }
   });
 
