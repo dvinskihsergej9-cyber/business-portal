@@ -1497,15 +1497,6 @@ export default function PalletFlow({
         setStoreForm((prev) => ({ ...prev, locationCode: "" }));
         return;
       }
-      if (
-        !String(storeForm.palletCode || "").trim() &&
-        !String(storeForm.locationCode || "").trim()
-      ) {
-        if (typeof onBack === "function") {
-          onBack();
-          return;
-        }
-      }
       setStoreStep("pallet");
       setStoreForm(INITIAL_STORE_FORM);
       setActiveTab("receive");
@@ -1587,7 +1578,6 @@ export default function PalletFlow({
     planningSheet,
     receiveStep,
     searchView,
-    storeForm,
     storeStep,
   ]);
 
