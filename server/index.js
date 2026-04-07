@@ -6940,7 +6940,6 @@ app.get("/api/profile", auth, async (req, res) => {
         },
         include: {
           currentLocation: true,
-          dispatch: true,
         },
         orderBy: [{ palletCode: "asc" }, { id: "asc" }],
         take: 800,
