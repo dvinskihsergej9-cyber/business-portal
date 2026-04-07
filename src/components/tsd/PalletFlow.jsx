@@ -1281,6 +1281,7 @@ export default function PalletFlow({ authHeaders, onBack, showInternalBack = tru
       { id: "store", label: "Размещение" },
       { id: "planning", label: "Планирование МЛ" },
       { id: "dispatch", label: "Отгрузка" },
+      { id: "locationControl", label: "Контроль ячеек" },
       { id: "search", label: "Поиск паллет" },
     ],
     []
@@ -1387,6 +1388,11 @@ export default function PalletFlow({ authHeaders, onBack, showInternalBack = tru
       return;
     }
 
+    if (activeTab === "locationControl") {
+      setActiveTab("receive");
+      return;
+    }
+
     if (typeof onBack === "function") {
       onBack();
     }
@@ -1425,12 +1431,14 @@ export default function PalletFlow({ authHeaders, onBack, showInternalBack = tru
       ) : null}
 
       {!strictStepLock ? (
-        <div className="tsd-pallet-tabs">
+        <div className="tabs tabs--sm tsd-pallet-tabs">
           {tabs.map((tab) => (
             <button
               key={tab.id}
               type="button"
-              className={`tsd-pallet-tab ${activeTab === tab.id ? "tsd-pallet-tab--active" : ""}`}
+              className={`tabs__btn tsd-pallet-tab ${
+                activeTab === tab.id ? "tabs__btn--active tsd-pallet-tab--active" : ""
+              }`}
               onClick={() => {
                 clearAlerts();
                 if (tab.id === "receive") {
@@ -1450,6 +1458,9 @@ export default function PalletFlow({ authHeaders, onBack, showInternalBack = tru
                 }
                 if (tab.id === "search") {
                   setSearchView("list");
+                }
+                if (tab.id === "locationControl") {
+                  setSearchLocationItems([]);
                 }
                 setActiveTab(tab.id);
               }}
@@ -2267,6 +2278,88 @@ export default function PalletFlow({ authHeaders, onBack, showInternalBack = tru
           </div>
         ) : null}
 
+        {activeTab === "locationControl" ? (
+          <div className="tsd-list">
+            <div className="tsd-card">
+              <div className="tsd-card__title">Контроль ячеек</div>
+              <div className="tsd-card__meta">
+                Отсканируйте или введите код ячейки, чтобы увидеть текущий остаток паллет.
+              </div>
+            </div>
+            <Scanner
+              label="Скан ячейки"
+              hint="Сканируйте код ячейки"
+              manualPlaceholder="Введите код ячейки"
+              onScan={async (value) => {
+                await loadLocationPallets(value);
+              }}
+              disabled={searchLocationLoading || historyLoading}
+              scanKind="barcode"
+            />
+            <div className="tsd-inline tsd-inline--two">
+              <input
+                className="tsd-input"
+                value={searchLocationCode}
+                onChange={(event) => setSearchLocationCode(event.target.value)}
+                placeholder="Код ячейки"
+                disabled={searchLocationLoading || historyLoading}
+              />
+              <button
+                type="button"
+                className="tsd-btn tsd-btn--secondary"
+                onClick={async () => {
+                  await loadLocationPallets(searchLocationCode);
+                }}
+                disabled={searchLocationLoading || historyLoading}
+              >
+                {searchLocationLoading ? "Проверяем..." : "Показать остаток"}
+              </button>
+            </div>
+            {searchLocationCode ? (
+              <div className="tsd-card">
+                <div className="tsd-card__title">Ячейка: {normalizeLocationCode(searchLocationCode)}</div>
+                <div className="tsd-card__meta">Паллет в остатке: {searchLocationItems.length}</div>
+              </div>
+            ) : null}
+            {searchLocationCode && !searchLocationLoading && !searchLocationItems.length ? (
+              <div className="tsd-card">
+                <div className="tsd-card__meta">В этой ячейке сейчас нет паллет в остатке.</div>
+              </div>
+            ) : null}
+            {searchLocationItems.length ? (
+              <div className="tsd-list">
+                {searchLocationItems.map((item) => (
+                  <button
+                    key={`location-item-${item.id}`}
+                    type="button"
+                    className="tsd-card tsd-pallet-list-btn tsd-pallet-list-btn--received"
+                    onClick={async () => {
+                      try {
+                        clearAlerts();
+                        setSelectedPalletId(item.id);
+                        setHistoryCollapsed(false);
+                        setSearchCode(item.palletCode || "");
+                        await loadHistoryByCode(item.palletCode || "", { openDetail: true });
+                        setActiveTab("search");
+                      } catch (err) {
+                        handleFlowError(err, "Не удалось открыть паллету.");
+                      }
+                    }}
+                  >
+                    <div className="tsd-card__title">{item.palletCode}</div>
+                    <div className="tsd-card__meta">
+                      Статус: {statusLabel(item.status)} • Ячейка: {item.currentLocation?.code || "-"}
+                    </div>
+                    <div className="tsd-card__meta">
+                      Поставщик: {item.supplierName || "-"} • Машина/ТТН: {item.inboundRef || "-"}
+                    </div>
+                  </button>
+                ))}
+              </div>
+            ) : null}
+          </div>
+        ) : null}
+
         {activeTab === "search" ? (
           <div className="tsd-list">
             {searchView === "list" ? (
@@ -2386,81 +2479,6 @@ export default function PalletFlow({ authHeaders, onBack, showInternalBack = tru
                     Сбросить фильтры
                   </button>
                 </div>
-              </>
-            ) : null}
-
-            {searchView === "list" ? (
-              <>
-                <Scanner
-                  label="Контроль ячейки"
-                  hint="Отсканируйте ячейку, чтобы посмотреть остаток паллет в ней."
-                  manualPlaceholder="Введите код ячейки"
-                  onScan={async (value) => {
-                    await loadLocationPallets(value);
-                  }}
-                  disabled={searchLocationLoading || historyLoading}
-                  scanKind="barcode"
-                />
-                <div className="tsd-inline tsd-inline--two">
-                  <input
-                    className="tsd-input"
-                    value={searchLocationCode}
-                    onChange={(event) => setSearchLocationCode(event.target.value)}
-                    placeholder="Код ячейки"
-                    disabled={searchLocationLoading || historyLoading}
-                  />
-                  <button
-                    type="button"
-                    className="tsd-btn tsd-btn--secondary"
-                    onClick={async () => {
-                      await loadLocationPallets(searchLocationCode);
-                    }}
-                    disabled={searchLocationLoading || historyLoading}
-                  >
-                    {searchLocationLoading ? "Проверяем..." : "Показать остаток"}
-                  </button>
-                </div>
-                {searchLocationCode ? (
-                  <div className="tsd-card">
-                    <div className="tsd-card__title">Ячейка: {normalizeLocationCode(searchLocationCode)}</div>
-                    <div className="tsd-card__meta">Паллет в остатке: {searchLocationItems.length}</div>
-                  </div>
-                ) : null}
-                {searchLocationCode && !searchLocationLoading && !searchLocationItems.length ? (
-                  <div className="tsd-card">
-                    <div className="tsd-card__meta">В этой ячейке сейчас нет паллет в остатке.</div>
-                  </div>
-                ) : null}
-                {searchLocationItems.length ? (
-                  <div className="tsd-list">
-                    {searchLocationItems.map((item) => (
-                      <button
-                        key={`location-item-${item.id}`}
-                        type="button"
-                        className="tsd-card tsd-pallet-list-btn tsd-pallet-list-btn--received"
-                        onClick={async () => {
-                          try {
-                            clearAlerts();
-                            setSelectedPalletId(item.id);
-                            setHistoryCollapsed(false);
-                            setSearchCode(item.palletCode || "");
-                            await loadHistoryByCode(item.palletCode || "", { openDetail: true });
-                          } catch (err) {
-                            handleFlowError(err, "Не удалось открыть паллету.");
-                          }
-                        }}
-                      >
-                        <div className="tsd-card__title">{item.palletCode}</div>
-                        <div className="tsd-card__meta">
-                          Статус: {statusLabel(item.status)} • Ячейка: {item.currentLocation?.code || "-"}
-                        </div>
-                        <div className="tsd-card__meta">
-                          Поставщик: {item.supplierName || "-"} • Машина/ТТН: {item.inboundRef || "-"}
-                        </div>
-                      </button>
-                    ))}
-                  </div>
-                ) : null}
               </>
             ) : null}
 

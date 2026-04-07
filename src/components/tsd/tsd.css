@@ -676,28 +676,18 @@
 }
 
 .tsd-pallet-tabs {
-  display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
+  display: flex;
+  flex-wrap: wrap;
   gap: 8px;
   margin-bottom: 12px;
 }
 
 .tsd-pallet-tab {
-  border: 1px solid #cbd5e1 !important;
-  background: #ffffff !important;
-  border-radius: 12px;
-  min-height: 42px;
-  font-size: 14px;
-  font-weight: 600;
-  color: #0f172a !important;
-  cursor: pointer;
+  min-height: 38px;
 }
 
 .tsd-pallet-tab--active {
-  background: var(--tsd-accent) !important;
-  color: #ffffff !important;
-  border-color: transparent !important;
-  box-shadow: 0 0 0 2px rgba(14, 165, 233, 0.18);
+  box-shadow: 0 0 0 2px rgba(14, 165, 233, 0.2);
 }
 
 .tsd-pallet-history {
@@ -919,7 +909,7 @@
   }
 
   .tsd-pallet-tabs {
-    grid-template-columns: repeat(5, minmax(0, 1fr));
+    gap: 10px;
   }
 }
 
