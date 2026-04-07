@@ -950,19 +950,53 @@ function normalizeLocationCodeAlias(value) {
     .join("");
 }
 
+function toCyrillicLocationAlias(value) {
+  const normalized = normalizePalletCode(value);
+  if (!normalized) return "";
+  const map = {
+    A: "А",
+    B: "В",
+    C: "С",
+    E: "Е",
+    H: "Н",
+    K: "К",
+    M: "М",
+    O: "О",
+    P: "Р",
+    T: "Т",
+    X: "Х",
+    Y: "У",
+  };
+  return normalized
+    .split("")
+    .map((char) => map[char] || char)
+    .join("");
+}
+
 function parsePalletLocationInput(rawValue) {
   const raw = String(rawValue || "").trim();
   const normalizedRaw = normalizePalletCode(raw);
   const normalizedRawAlias = normalizeLocationCodeAlias(raw);
+  const normalizedRawCyrAlias = toCyrillicLocationAlias(normalizedRaw || raw);
   const payload = normalizedRaw.replace(/^BP:(LOC|LOCATION):/i, "");
   const normalizedPayload = normalizePalletCode(payload);
   const normalizedPayloadAlias = normalizeLocationCodeAlias(payload);
+  const normalizedPayloadCyrAlias = toCyrillicLocationAlias(normalizedPayload || payload);
   const numericPayload = Number(payload);
   const payloadId =
     Number.isFinite(numericPayload) && numericPayload > 0 ? Math.trunc(numericPayload) : null;
   const lookupTokens = Array.from(
     new Set(
-      [raw, normalizedRaw, normalizedRawAlias, payload, normalizedPayload, normalizedPayloadAlias]
+      [
+        raw,
+        normalizedRaw,
+        normalizedRawAlias,
+        normalizedRawCyrAlias,
+        payload,
+        normalizedPayload,
+        normalizedPayloadAlias,
+        normalizedPayloadCyrAlias,
+      ]
         .map((entry) => normalizeLocationLookupToken(entry))
         .filter(Boolean)
     )
@@ -971,9 +1005,11 @@ function parsePalletLocationInput(rawValue) {
     raw,
     normalizedRaw,
     normalizedRawAlias,
+    normalizedRawCyrAlias,
     payload,
     normalizedPayload,
     normalizedPayloadAlias,
+    normalizedPayloadCyrAlias,
     payloadId,
     lookupTokens,
   };
@@ -989,12 +1025,14 @@ async function resolveWarehouseLocationByInput(orgId, rawValue, tx = prisma) {
   const directOr = [
     { code: parsed.normalizedRaw },
     { code: parsed.normalizedRawAlias },
+    { code: parsed.normalizedRawCyrAlias },
     { qrCode: parsed.normalizedRaw },
     { name: parsed.raw },
   ];
   if (parsed.normalizedPayload && parsed.normalizedPayload !== parsed.normalizedRaw) {
     directOr.push({ code: parsed.normalizedPayload });
     directOr.push({ code: parsed.normalizedPayloadAlias });
+    directOr.push({ code: parsed.normalizedPayloadCyrAlias });
     directOr.push({ qrCode: parsed.normalizedPayload });
     directOr.push({ name: parsed.payload });
   }
@@ -1051,8 +1089,10 @@ function buildPalletLocationCandidates(rawValue, warehouseLocation = null) {
 
   addCode(parsed.normalizedRaw);
   addCode(parsed.normalizedRawAlias);
+  addCode(parsed.normalizedRawCyrAlias);
   addCode(parsed.normalizedPayload);
   addCode(parsed.normalizedPayloadAlias);
+  addCode(parsed.normalizedPayloadCyrAlias);
   addName(parsed.raw);
   addName(parsed.payload);
 
@@ -3092,10 +3132,12 @@ function normalizeComparableText(value) {
 }
 
 function normalizeLocationLookupToken(value) {
-  return String(value || "")
+  const normalized = String(value || "")
     .trim()
     .toUpperCase()
     .replace(/[^A-Z0-9А-ЯЁ]/g, "");
+  if (!normalized) return "";
+  return normalizeLocationCodeAlias(normalized);
 }
 
 function normalizeSkuToken(value) {
