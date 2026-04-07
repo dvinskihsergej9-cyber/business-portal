@@ -987,7 +987,6 @@ async function resolveWarehouseLocationByInput(orgId, rawValue, tx = prisma) {
   const candidates = await tx.warehouseLocation.findMany({
     where: {
       orgId: orgIdValue,
-      OR: [{ code: { not: null } }, { name: { not: null } }, { qrCode: { not: null } }],
     },
     select: { id: true, code: true, name: true, qrCode: true },
     take: 1200,
@@ -1072,7 +1071,6 @@ async function findPalletLocationsByInput(orgId, rawValue, tx = prisma) {
     const fallback = await tx.palletLocation.findMany({
       where: {
         orgId: orgIdValue,
-        OR: [{ code: { not: null } }, { name: { not: null } }],
       },
       select: { id: true, code: true, name: true },
       take: 1200,

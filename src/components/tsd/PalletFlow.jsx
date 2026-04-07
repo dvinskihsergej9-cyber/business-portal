@@ -1287,7 +1287,8 @@ export default function PalletFlow({
       setLocationControlResult(null);
       setLocationControlStep("confirm");
     } catch (err) {
-      handleFlowError(err, "Не удалось загрузить ожидаемые паллеты по ячейке.");
+      setSuccess("");
+      setError(normalizeErrorMessage(err, "Не удалось загрузить ожидаемые паллеты по ячейке."));
     } finally {
       setSearchLocationLoading(false);
     }
@@ -1369,7 +1370,8 @@ export default function PalletFlow({
         loadDiscrepancies();
       }
     } catch (err) {
-      handleFlowError(err, "Не удалось зафиксировать контроль ячейки.");
+      setSuccess("");
+      setError(normalizeErrorMessage(err, "Не удалось зафиксировать контроль ячейки."));
     } finally {
       setLocationControlSubmitting(false);
     }
