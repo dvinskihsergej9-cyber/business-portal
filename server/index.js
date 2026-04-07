@@ -976,15 +976,13 @@ function toCyrillicLocationAlias(value) {
 function parsePalletLocationInput(rawValue) {
   const raw = String(rawValue || "").trim();
   const normalizedRaw = normalizePalletCode(raw);
+  const hasLegacyLocPrefix = /^BP:LOC:/i.test(normalizedRaw);
   const normalizedRawAlias = normalizeLocationCodeAlias(raw);
   const normalizedRawCyrAlias = toCyrillicLocationAlias(normalizedRaw || raw);
-  const payload = normalizedRaw.replace(/^BP:(LOC|LOCATION):/i, "");
+  const payload = normalizedRaw.replace(/^BP:LOCATION:/i, "");
   const normalizedPayload = normalizePalletCode(payload);
   const normalizedPayloadAlias = normalizeLocationCodeAlias(payload);
   const normalizedPayloadCyrAlias = toCyrillicLocationAlias(normalizedPayload || payload);
-  const numericPayload = Number(payload);
-  const payloadId =
-    Number.isFinite(numericPayload) && numericPayload > 0 ? Math.trunc(numericPayload) : null;
   const lookupTokens = Array.from(
     new Set(
       [
@@ -1010,7 +1008,7 @@ function parsePalletLocationInput(rawValue) {
     normalizedPayload,
     normalizedPayloadAlias,
     normalizedPayloadCyrAlias,
-    payloadId,
+    hasLegacyLocPrefix,
     lookupTokens,
   };
 }
@@ -1020,7 +1018,7 @@ async function resolveWarehouseLocationByInput(orgId, rawValue, tx = prisma) {
   if (!orgIdValue) return null;
 
   const parsed = parsePalletLocationInput(rawValue);
-  if (!parsed.normalizedRaw) return null;
+  if (!parsed.normalizedRaw || parsed.hasLegacyLocPrefix) return null;
 
   const directOr = [
     { code: parsed.normalizedRaw },
@@ -1036,10 +1034,6 @@ async function resolveWarehouseLocationByInput(orgId, rawValue, tx = prisma) {
     directOr.push({ qrCode: parsed.normalizedPayload });
     directOr.push({ name: parsed.payload });
   }
-  if (parsed.payloadId) {
-    directOr.push({ id: parsed.payloadId });
-  }
-
   const directMatch = await tx.warehouseLocation.findFirst({
     where: {
       orgId: orgIdValue,
@@ -2825,6 +2819,40 @@ function buildLocationCode(location) {
     return `LOC-${parts.join("-")}`;
   }
   return `LOC-${padNumber(location.id)}`;
+}
+
+function buildLocationQrCode(location) {
+  if (!location) return "";
+  const fallbackCode = buildLocationCode(location);
+  const base = normalizePalletCode(location.code || location.name || fallbackCode);
+  if (!base) return "";
+  return `BP:LOCATION:${base}`;
+}
+
+function isLegacyLocationQrCode(value) {
+  const normalized = normalizePalletCode(value);
+  if (!normalized) return false;
+  if (normalized.startsWith("BP:LOC:")) return true;
+  return /^BP:LOCATION:\d+$/i.test(normalized);
+}
+
+async function ensureBusinessLocationQrCode(location, tx = prisma) {
+  if (!location?.id) return "";
+  const nextQrCode = buildLocationQrCode(location);
+  if (!nextQrCode) return "";
+
+  const currentQrCode = normalizePalletCode(location.qrCode);
+  if (currentQrCode === nextQrCode && !isLegacyLocationQrCode(currentQrCode)) {
+    return currentQrCode;
+  }
+
+  await ensureUniqueLocationCodes({ qrCode: nextQrCode }, location.id);
+  const updated = await tx.warehouseLocation.update({
+    where: { id: location.id },
+    data: { qrCode: nextQrCode },
+    select: { qrCode: true },
+  });
+  return normalizePalletCode(updated?.qrCode) || nextQrCode;
 }
 
 async function ensureUniqueItemCodes({ barcode, qrCode }, itemId) {
@@ -12036,10 +12064,13 @@ app.post("/api/warehouse/locations/:id/qr", auth, async (req, res) => {
     if (!location) {
       return res.status(404).json({ message: "Локация не найдена" });
     }
-    if (location.qrCode && !force) {
-      return res.json({ id: location.id, qrCode: location.qrCode });
+    const qrCode = buildLocationQrCode(location);
+    if (!qrCode) {
+      return res.status(400).json({ message: "Ошибка генерации QR локации" });
     }
-    const qrCode = `BP:LOC:${location.id}`;
+    if (location.qrCode && !force && !isLegacyLocationQrCode(location.qrCode)) {
+      return res.json({ id: location.id, qrCode: normalizePalletCode(location.qrCode) });
+    }
     await ensureUniqueLocationCodes({ qrCode }, id);
     const updated = await prisma.warehouseLocation.update({
       where: { id },
@@ -12063,22 +12094,23 @@ app.get("/api/warehouse/scan/resolve", auth, async (req, res) => {
     const hasRawId = Number.isFinite(rawId) && rawId > 0;
     const rawNormalized = normalizeLocationLookupToken(raw);
 
-    const isLoc = raw.startsWith("BP:LOC:") || raw.startsWith("BP:LOCATION:");
+    if (raw.toUpperCase().startsWith("BP:LOC:")) {
+      return res.status(404).json({ message: "LOCATION_NOT_FOUND" });
+    }
+
+    const isLoc = /^BP:LOCATION:/i.test(raw);
     const isItem =
       raw.startsWith("BP:ITEM:") ||
       raw.startsWith("BP:ARTICLE:") ||
       raw.startsWith("BP:PRODUCT:");
 
     if (isLoc) {
-      const payload = raw.replace(/^BP:(LOC|LOCATION):/, "");
-      const id = Number(payload);
-      const hasId = Number.isFinite(id) && id > 0;
+      const payload = raw.replace(/^BP:LOCATION:/i, "");
       const payloadNormalized = normalizeLocationLookupToken(payload);
       const location = await prisma.warehouseLocation.findFirst({
         where: {
           OR: [
             { qrCode: raw },
-            ...(hasId ? [{ id }] : []),
             { code: payload },
             { name: payload },
           ],
@@ -14006,23 +14038,17 @@ app.post("/api/warehouse/print/labels", auth, async (req, res) => {
       } else {
         const location = await prisma.warehouseLocation.findUnique({ where: { id } });
         if (!location) continue;
-        let qrValue = location.qrCode;
-        if (!qrValue) {
-          qrValue = `BP:LOC:${location.id}`;
-          await ensureUniqueLocationCodes({ qrCode: qrValue }, location.id);
-          await prisma.warehouseLocation.update({
-            where: { id: location.id },
-            data: { qrCode: qrValue },
-          });
-        }
+        const qrValue = await ensureBusinessLocationQrCode(location);
         const meta = [location.code, location.zone, location.aisle, location.rack, location.level]
           .filter(Boolean)
           .join(" / ");
+        const displayCode = normalizePalletCode(location.code || location.name || "");
         labels.push({
           kind: "location",
           title: location.name || `LOCATION ${location.id}`,
           subtitle: meta,
           qrValue,
+          displayCode: displayCode || qrValue,
         });
       }
     }
@@ -14096,7 +14122,7 @@ app.post("/api/warehouse/print/labels", auth, async (req, res) => {
                   <div class="title">${escapeHtml(r.title)}</div>
                   ${r.subtitle ? `<div class="subtitle">${escapeHtml(r.subtitle)}</div>` : ""}
                   <img class="qr" src="${r.qrImg}" />
-                  <div class="code">${escapeHtml(r.qrValue)}</div>
+                  <div class="code">${escapeHtml(r.displayCode || r.qrValue)}</div>
                 </div>
               `;
               })
@@ -14179,18 +14205,21 @@ app.post("/api/warehouse/qr/print", auth, async (req, res) => {
     let title = "";
     let subtitle = "";
     let qrValue = "";
+    let visibleCode = "";
     if (kind === "product") {
       const item = await prisma.item.findUnique({ where: { id: Number(id) } });
       if (!item) return res.status(404).json({ message: "Товар не найден" });
       title = item.name;
       subtitle = item.sku ? `Артикул: ${item.sku}` : "";
       qrValue = item.qrCode || `BP:PRODUCT:${item.id}`;
+      visibleCode = qrValue;
     } else {
       const location = await prisma.warehouseLocation.findUnique({ where: { id: Number(id) } });
       if (!location) return res.status(404).json({ message: "Локация не найдена" });
       title = `ЛОКАЦИЯ: ${location.name}`;
       subtitle = [location.zone, location.aisle, location.rack, location.level].filter(Boolean).join(" / ");
-      qrValue = location.qrCode || `BP:LOCATION:${location.id}`;
+      qrValue = await ensureBusinessLocationQrCode(location);
+      visibleCode = normalizePalletCode(location.code || location.name || "") || qrValue;
     }
 
     const qrBuf = await renderQrPng(qrValue);
@@ -14226,7 +14255,7 @@ app.post("/api/warehouse/qr/print", auth, async (req, res) => {
                 <div class="title">${title}</div>
                 ${subtitle ? `<div class="subtitle">${subtitle}</div>` : ""}
                 <img class="qr" src="${qrImg}" />
-                <div class="code">${qrValue}</div>
+                <div class="code">${visibleCode || qrValue}</div>
               </div>
             `
               )
@@ -14391,15 +14420,7 @@ app.post("/api/warehouse/labels/print", auth, async (req, res) => {
         const location = await prisma.warehouseLocation.findUnique({ where: { id: Number(entry.id) } });
         if (!location) continue;
         const codeValue = location.code || buildLocationCode(location);
-        let qrValue = location.qrCode;
-        if (!qrValue) {
-          qrValue = `BP:LOC:${location.id}`;
-          await ensureUniqueLocationCodes({ qrCode: qrValue }, location.id);
-          await prisma.warehouseLocation.update({
-            where: { id: location.id },
-            data: { qrCode: qrValue },
-          });
-        }
+        const qrValue = await ensureBusinessLocationQrCode(location);
         const meta = [location.zone, location.aisle, location.rack, location.level].filter(Boolean).join(" / ");
         for (let i = 0; i < qty; i += 1) {
           labels.push({
