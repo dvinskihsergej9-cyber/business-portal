@@ -1242,6 +1242,21 @@ function isPermissionDeniedForTable(err, tableName) {
   return joined.includes(`permission denied for table ${table}`);
 }
 
+function isMissingRelationError(err, relationName = "") {
+  const joined = [
+    String(err?.message || ""),
+    String(err?.stack || ""),
+    String(err?.cause?.message || ""),
+    String(err?.meta?.cause || ""),
+  ]
+    .join(" ")
+    .toLowerCase();
+  if (!joined.includes("does not exist")) return false;
+  if (!relationName) return joined.includes("relation");
+  const target = String(relationName || "").replace(/"/g, "").toLowerCase();
+  return joined.includes(target);
+}
+
 function toErrorDetails(err) {
   const details = {
     name: String(err?.name || ""),
@@ -7042,15 +7057,17 @@ app.get("/api/profile", auth, async (req, res) => {
         String(expected[0]?.currentLocation?.name || "").trim() ||
         resolvedLocationCode;
       const palletIds = expected.map((item) => item.id).filter(Boolean);
-      const openDiscrepanciesCount = palletIds.length
-        ? await prisma.palletDiscrepancy.count({
-            where: {
-              orgId,
-              palletId: { in: palletIds },
-              status: "OPEN",
-            },
-          })
-        : 0;
+      const discrepancyStorageReady = await isPalletDiscrepancyStorageReady(prisma);
+      const openDiscrepanciesCount =
+        discrepancyStorageReady && palletIds.length
+          ? await prisma.palletDiscrepancy.count({
+              where: {
+                orgId,
+                palletId: { in: palletIds },
+                status: "OPEN",
+              },
+            })
+          : 0;
 
       return res.json({
         location: {
@@ -7095,6 +7112,7 @@ app.get("/api/profile", auth, async (req, res) => {
             .filter(Boolean)
         )
       ).slice(0, 1200);
+      const discrepancyStorageReady = await isPalletDiscrepancyStorageReady(prisma);
 
       const reconcileResult = await prisma.$transaction(async (tx) => {
         const now = new Date();
@@ -7150,59 +7168,61 @@ app.get("/api/profile", auth, async (req, res) => {
 
         const createdMissingCodes = [];
         const openMissingCodes = [];
-        for (const pallet of missingPallets) {
-          const openDiscrepancy = await tx.palletDiscrepancy.findFirst({
-            where: {
-              orgId,
-              palletId: pallet.id,
-              status: "OPEN",
-            },
-            select: { id: true },
-          });
-          const palletCode = normalizePalletCode(pallet?.palletCode);
-          if (openDiscrepancy) {
-            openMissingCodes.push(palletCode);
-            await tx.palletDiscrepancy.update({
-              where: { id: openDiscrepancy.id },
+        if (discrepancyStorageReady) {
+          for (const pallet of missingPallets) {
+            const openDiscrepancy = await tx.palletDiscrepancy.findFirst({
+              where: {
+                orgId,
+                palletId: pallet.id,
+                status: "OPEN",
+              },
+              select: { id: true },
+            });
+            const palletCode = normalizePalletCode(pallet?.palletCode);
+            if (openDiscrepancy) {
+              openMissingCodes.push(palletCode);
+              await tx.palletDiscrepancy.update({
+                where: { id: openDiscrepancy.id },
+                data: {
+                  lastCheckedAt: now,
+                  locationId: pallet.currentLocationId || knownLocation?.id || null,
+                },
+              });
+              continue;
+            }
+
+            await tx.palletDiscrepancy.create({
               data: {
-                lastCheckedAt: now,
+                orgId,
+                palletId: pallet.id,
                 locationId: pallet.currentLocationId || knownLocation?.id || null,
+                status: "OPEN",
+                detectedAt: now,
+                detectedByUserId: req.user?.id || null,
+                lastCheckedAt: now,
               },
             });
-            continue;
-          }
+            createdMissingCodes.push(palletCode);
 
-          await tx.palletDiscrepancy.create({
-            data: {
+            await createPalletEventTx(tx, {
               orgId,
               palletId: pallet.id,
-              locationId: pallet.currentLocationId || knownLocation?.id || null,
-              status: "OPEN",
-              detectedAt: now,
-              detectedByUserId: req.user?.id || null,
-              lastCheckedAt: now,
-            },
-          });
-          createdMissingCodes.push(palletCode);
-
-          await createPalletEventTx(tx, {
-            orgId,
-            palletId: pallet.id,
-            type: "DISCREPANCY_OPEN",
-            fromStatus: pallet.status,
-            toStatus: pallet.status,
-            userId: req.user.id,
-            metaJson: {
-              locationCode: resolvedLocationCode,
-              locationName,
-              source: "LOCATION_CONTROL",
-              result: "MISSING",
-            },
-          });
+              type: "DISCREPANCY_OPEN",
+              fromStatus: pallet.status,
+              toStatus: pallet.status,
+              userId: req.user.id,
+              metaJson: {
+                locationCode: resolvedLocationCode,
+                locationName,
+                source: "LOCATION_CONTROL",
+                result: "MISSING",
+              },
+            });
+          }
         }
 
         let closedCount = 0;
-        if (foundPallets.length) {
+        if (discrepancyStorageReady && foundPallets.length) {
           const foundPalletIds = foundPallets.map((item) => item.id);
           const openToClose = await tx.palletDiscrepancy.findMany({
             where: {
@@ -7278,6 +7298,7 @@ app.get("/api/profile", auth, async (req, res) => {
         openedCount: reconcileResult.createdMissingCodes.length,
         alreadyOpenCount: reconcileResult.openMissingCodes.length,
         closedCount: reconcileResult.closedCount,
+        discrepancyEnabled: discrepancyStorageReady,
       });
     } catch (err) {
       console.error("pallet location-control reconcile error:", err);
@@ -7290,6 +7311,10 @@ app.get("/api/profile", auth, async (req, res) => {
       const orgId = Number(req.user?.orgId || 0);
       if (!orgId) {
         return res.status(400).json({ message: "ORG_REQUIRED" });
+      }
+      const discrepancyStorageReady = await isPalletDiscrepancyStorageReady(prisma);
+      if (!discrepancyStorageReady) {
+        return res.json({ items: [] });
       }
 
       const statusQuery = String(req.query?.status || req.query?.statuses || "ALL")
@@ -19829,12 +19854,28 @@ async function ensureLegacyTenantBackfill() {
   }
 }
 
-async function ensureEmailVerificationStorageReady() {
+function isPostgresDatabaseUrl() {
   const normalizedUrl = String(DATABASE_URL || "").trim().toLowerCase();
-  if (
-    !normalizedUrl.startsWith("postgresql://") &&
-    !normalizedUrl.startsWith("postgres://")
-  ) {
+  return normalizedUrl.startsWith("postgresql://") || normalizedUrl.startsWith("postgres://");
+}
+
+async function isPalletDiscrepancyStorageReady(tx = prismaBase) {
+  if (!isPostgresDatabaseUrl()) return true;
+  try {
+    const rows = await tx.$queryRawUnsafe(`
+      SELECT
+        to_regclass('public."PalletDiscrepancy"') AS "tableRegclass",
+        EXISTS (SELECT 1 FROM pg_type WHERE typname = 'PalletDiscrepancyStatus') AS "hasStatusType"
+    `);
+    const row = Array.isArray(rows) && rows.length ? rows[0] : null;
+    return Boolean(row?.tableRegclass) && Boolean(row?.hasStatusType);
+  } catch (err) {
+    return false;
+  }
+}
+
+async function ensureEmailVerificationStorageReady() {
+  if (!isPostgresDatabaseUrl()) {
     console.log(
       "[EMAIL_VERIFY_BOOTSTRAP] skipped: DATABASE_URL не PostgreSQL, runtime-инициализация не требуется."
     );
@@ -19887,9 +19928,101 @@ async function ensureEmailVerificationStorageReady() {
   console.log("[EMAIL_VERIFY_BOOTSTRAP] EmailVerificationCode table is ready.");
 }
 
+async function ensurePalletDiscrepancyStorageReady() {
+  if (!isPostgresDatabaseUrl()) {
+    return;
+  }
+
+  await prismaBase.$executeRawUnsafe(`
+    DO $$
+    BEGIN
+      IF NOT EXISTS (SELECT 1 FROM pg_type WHERE typname = 'PalletDiscrepancyStatus') THEN
+        CREATE TYPE "PalletDiscrepancyStatus" AS ENUM ('OPEN', 'CLOSED');
+      END IF;
+    END $$;
+  `);
+
+  await prismaBase.$executeRawUnsafe(`
+    ALTER TYPE "PalletEventType" ADD VALUE IF NOT EXISTS 'DISCREPANCY_OPEN';
+  `);
+  await prismaBase.$executeRawUnsafe(`
+    ALTER TYPE "PalletEventType" ADD VALUE IF NOT EXISTS 'DISCREPANCY_CLOSE';
+  `);
+
+  await prismaBase.$executeRawUnsafe(`
+    CREATE TABLE IF NOT EXISTS "PalletDiscrepancy" (
+      "id" SERIAL NOT NULL,
+      "orgId" INTEGER,
+      "palletId" INTEGER NOT NULL,
+      "locationId" INTEGER,
+      "status" "PalletDiscrepancyStatus" NOT NULL DEFAULT 'OPEN',
+      "detectedAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+      "detectedByUserId" INTEGER,
+      "lastCheckedAt" TIMESTAMP(3),
+      "closedAt" TIMESTAMP(3),
+      "closedByUserId" INTEGER,
+      "note" TEXT,
+      "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+      "updatedAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+      CONSTRAINT "PalletDiscrepancy_pkey" PRIMARY KEY ("id")
+    );
+  `);
+
+  await prismaBase.$executeRawUnsafe(`
+    CREATE INDEX IF NOT EXISTS "PalletDiscrepancy_orgId_status_detectedAt_idx"
+      ON "PalletDiscrepancy" ("orgId", "status", "detectedAt");
+  `);
+  await prismaBase.$executeRawUnsafe(`
+    CREATE INDEX IF NOT EXISTS "PalletDiscrepancy_orgId_palletId_status_idx"
+      ON "PalletDiscrepancy" ("orgId", "palletId", "status");
+  `);
+  await prismaBase.$executeRawUnsafe(`
+    CREATE INDEX IF NOT EXISTS "PalletDiscrepancy_orgId_locationId_status_idx"
+      ON "PalletDiscrepancy" ("orgId", "locationId", "status");
+  `);
+
+  await prismaBase.$executeRawUnsafe(`
+    DO $$
+    BEGIN
+      IF NOT EXISTS (
+        SELECT 1 FROM pg_constraint WHERE conname = 'PalletDiscrepancy_palletId_fkey'
+      ) THEN
+        ALTER TABLE "PalletDiscrepancy"
+          ADD CONSTRAINT "PalletDiscrepancy_palletId_fkey"
+          FOREIGN KEY ("palletId") REFERENCES "Pallet"("id") ON DELETE CASCADE ON UPDATE CASCADE;
+      END IF;
+
+      IF NOT EXISTS (
+        SELECT 1 FROM pg_constraint WHERE conname = 'PalletDiscrepancy_locationId_fkey'
+      ) THEN
+        ALTER TABLE "PalletDiscrepancy"
+          ADD CONSTRAINT "PalletDiscrepancy_locationId_fkey"
+          FOREIGN KEY ("locationId") REFERENCES "PalletLocation"("id") ON DELETE SET NULL ON UPDATE CASCADE;
+      END IF;
+
+      IF NOT EXISTS (
+        SELECT 1 FROM pg_constraint WHERE conname = 'PalletDiscrepancy_detectedByUserId_fkey'
+      ) THEN
+        ALTER TABLE "PalletDiscrepancy"
+          ADD CONSTRAINT "PalletDiscrepancy_detectedByUserId_fkey"
+          FOREIGN KEY ("detectedByUserId") REFERENCES "User"("id") ON DELETE SET NULL ON UPDATE CASCADE;
+      END IF;
+
+      IF NOT EXISTS (
+        SELECT 1 FROM pg_constraint WHERE conname = 'PalletDiscrepancy_closedByUserId_fkey'
+      ) THEN
+        ALTER TABLE "PalletDiscrepancy"
+          ADD CONSTRAINT "PalletDiscrepancy_closedByUserId_fkey"
+          FOREIGN KEY ("closedByUserId") REFERENCES "User"("id") ON DELETE SET NULL ON UPDATE CASCADE;
+      END IF;
+    END $$;
+  `);
+
+  console.log("[PALLET_DISCREPANCY_BOOTSTRAP] PalletDiscrepancy table is ready.");
+}
+
 async function ensureAuthDbPermissions() {
-  const normalizedUrl = String(DATABASE_URL || "").trim().toLowerCase();
-  if (!normalizedUrl.startsWith("postgresql://") && !normalizedUrl.startsWith("postgres://")) {
+  if (!isPostgresDatabaseUrl()) {
     return;
   }
 
@@ -19901,7 +20034,11 @@ async function ensureAuthDbPermissions() {
         has_table_privilege(current_user, 'public."User"', 'INSERT') AS "userInsert",
         has_table_privilege(current_user, 'public."User"', 'UPDATE') AS "userUpdate",
         has_table_privilege(current_user, 'public."User"', 'DELETE') AS "userDelete",
-        has_table_privilege(current_user, 'public."Organization"', 'SELECT') AS "orgSelect"
+        has_table_privilege(current_user, 'public."Organization"', 'SELECT') AS "orgSelect",
+        has_table_privilege(current_user, 'public."Item"', 'SELECT') AS "itemSelect",
+        has_table_privilege(current_user, 'public."WarehouseNotification"', 'SELECT') AS "notificationSelect",
+        has_table_privilege(current_user, 'public."Pallet"', 'SELECT') AS "palletSelect",
+        has_table_privilege(current_user, 'public."PalletLocation"', 'SELECT') AS "palletLocationSelect"
     `);
     return Array.isArray(rows) && rows.length ? rows[0] : null;
   };
@@ -19910,7 +20047,18 @@ async function ensureAuthDbPermissions() {
     const before = await loadPrivileges();
     const hasUserRead = Boolean(before?.userSelect);
     const hasOrgRead = Boolean(before?.orgSelect);
-    if (hasUserRead && hasOrgRead) {
+    const hasItemRead = Boolean(before?.itemSelect);
+    const hasNotificationRead = Boolean(before?.notificationSelect);
+    const hasPalletRead = Boolean(before?.palletSelect);
+    const hasPalletLocationRead = Boolean(before?.palletLocationSelect);
+    if (
+      hasUserRead &&
+      hasOrgRead &&
+      hasItemRead &&
+      hasNotificationRead &&
+      hasPalletRead &&
+      hasPalletLocationRead
+    ) {
       return;
     }
 
@@ -19920,11 +20068,7 @@ async function ensureAuthDbPermissions() {
         v_user text := current_user;
       BEGIN
         EXECUTE format('GRANT USAGE ON SCHEMA public TO %I', v_user);
-        EXECUTE format('GRANT SELECT, INSERT, UPDATE, DELETE, REFERENCES, TRIGGER ON TABLE public."User" TO %I', v_user);
-        EXECUTE format('GRANT SELECT, INSERT, UPDATE, DELETE, REFERENCES, TRIGGER ON TABLE public."Organization" TO %I', v_user);
-        EXECUTE format('GRANT SELECT, INSERT, UPDATE, DELETE ON TABLE public."EmailVerificationCode" TO %I', v_user);
-        EXECUTE format('GRANT SELECT, INSERT, UPDATE, DELETE ON TABLE public."PasswordResetToken" TO %I', v_user);
-        EXECUTE format('GRANT SELECT, INSERT, UPDATE, DELETE ON TABLE public."InviteToken" TO %I', v_user);
+        EXECUTE format('GRANT SELECT, INSERT, UPDATE, DELETE ON ALL TABLES IN SCHEMA public TO %I', v_user);
         EXECUTE format('GRANT USAGE, SELECT, UPDATE ON ALL SEQUENCES IN SCHEMA public TO %I', v_user);
       END
       $$;
@@ -19937,6 +20081,14 @@ async function ensureAuthDbPermissions() {
     if (!after?.orgSelect) {
       console.warn(
         "[DB_AUTH_PERMS] missing SELECT privilege on public.\"Organization\" for current_user."
+      );
+    }
+    if (!after?.itemSelect) {
+      console.warn("[DB_AUTH_PERMS] missing SELECT privilege on public.\"Item\" for current_user.");
+    }
+    if (!after?.notificationSelect) {
+      console.warn(
+        "[DB_AUTH_PERMS] missing SELECT privilege on public.\"WarehouseNotification\" for current_user."
       );
     }
   } catch (err) {
@@ -20504,15 +20656,21 @@ const HOST = "0.0.0.0";
 
 async function bootstrapServer() {
   try {
-    await ensureAuthDbPermissions();
-  } catch (err) {
-    console.error("[DB_AUTH_PERMS] bootstrap error:", err);
-  }
-
-  try {
     await ensureEmailVerificationStorageReady();
   } catch (err) {
     console.error("[EMAIL_VERIFY_BOOTSTRAP] error:", err);
+  }
+
+  try {
+    await ensurePalletDiscrepancyStorageReady();
+  } catch (err) {
+    console.error("[PALLET_DISCREPANCY_BOOTSTRAP] error:", err);
+  }
+
+  try {
+    await ensureAuthDbPermissions();
+  } catch (err) {
+    console.error("[DB_AUTH_PERMS] bootstrap error:", err);
   }
 
   try {
