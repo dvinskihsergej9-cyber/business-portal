@@ -267,12 +267,12 @@ function applySearchStatusPreset(items, statusPreset) {
 function mapPalletError(code, fallback = "Не удалось выполнить операцию.") {
   const normalized = String(code || "").trim().toUpperCase();
   if (normalized === "PALLET_NOT_FOUND") return "Паллета не найдена.";
-  if (normalized === "PALLET_CODE_REQUIRED") return "Отсканируйте код паллеты.";
-  if (normalized === "PALLET_LOCATION_REQUIRED") return "Отсканируйте код паллетной зоны.";
+  if (normalized === "PALLET_CODE_REQUIRED") return "Сканируйте или введите код паллеты.";
+  if (normalized === "PALLET_LOCATION_REQUIRED") return "Сканируйте или введите код ячейки.";
   if (normalized === "PALLET_SUPPLIER_REQUIRED") return "Укажите поставщика.";
   if (normalized === "PALLET_INBOUND_REF_REQUIRED") return "Укажите машину/ТТН.";
   if (normalized === "PALLET_DESTINATION_REQUIRED") return "Укажите РЦ назначения.";
-  if (normalized === "PALLET_GATE_REQUIRED") return "Укажите номер ворот.";
+  if (normalized === "PALLET_GATE_REQUIRED") return "Введите номер ворот.";
   if (normalized === "PALLET_STORE_STATUS_INVALID")
     return "Размещение возможно только для принятых/размещенных паллет.";
   if (normalized === "PALLET_STORE_RECEIVE_EXPIRED")
@@ -406,6 +406,8 @@ export default function PalletFlow({
   const [routeSheetItems, setRouteSheetItems] = useState([]);
   const [routeSheetSummary, setRouteSheetSummary] = useState(null);
   const [routeSheetLoading, setRouteSheetLoading] = useState(false);
+  const [warehouseLocations, setWarehouseLocations] = useState([]);
+  const [warehouseLocationsLoading, setWarehouseLocationsLoading] = useState(false);
   const [activeReceivePalletCodes, setActiveReceivePalletCodes] = useState([]);
   const [storeReceiveScopeLocked, setStoreReceiveScopeLocked] = useState(false);
   const strictStepLock =
@@ -707,7 +709,7 @@ export default function PalletFlow({
         throw new Error("Укажите машину/ТТН.");
       }
       if (!receiveGate) {
-        throw new Error("Укажите номер ворот.");
+        throw new Error("Введите номер ворот.");
       }
       const qtyRaw = String(receiveForm.qty || "").trim();
       const qty = Number.parseInt(qtyRaw, 10);
@@ -772,8 +774,8 @@ export default function PalletFlow({
       const locationCode = normalizeLocationCode(
         locationCodeOverride == null ? storeForm.locationCode : locationCodeOverride
       );
-      if (!palletCode) throw new Error("Отсканируйте паллету.");
-      if (!locationCode) throw new Error("Отсканируйте зону размещения.");
+      if (!palletCode) throw new Error("Сканируйте или введите паллету.");
+      if (!locationCode) throw new Error("Сканируйте или введите ячейку размещения.");
       await ensureStorePalletAllowed(palletCode);
       const dedupeKey = `${locationCode}|${palletCode}`;
       const now = Date.now();
@@ -828,9 +830,9 @@ export default function PalletFlow({
         palletCodeOverride == null ? dispatchForm.palletCode : palletCodeOverride
       );
       const dispatchGate = String(dispatchForm.dispatchGate || "").trim().toUpperCase();
-      if (!dispatchGate) throw new Error("Укажите номер ворот.");
-      if (!locationCode) throw new Error("Отсканируйте ячейку отбора.");
-      if (!palletCode) throw new Error("Отсканируйте паллету.");
+      if (!dispatchGate) throw new Error("Введите номер ворот.");
+      if (!locationCode) throw new Error("Сканируйте или введите ячейку отбора.");
+      if (!palletCode) throw new Error("Сканируйте или введите паллету.");
       const routeSheetId = Number(dispatchRouteSheetId || 0);
       if (!routeSheetId) {
         throw new Error("Сначала выберите маршрутный лист.");
@@ -990,6 +992,42 @@ export default function PalletFlow({
       handleFlowError(err, "Не удалось загрузить маршрутные листы.");
     } finally {
       setDispatchSheetsLoading(false);
+    }
+  };
+
+  const loadWarehouseLocations = async () => {
+    setWarehouseLocationsLoading(true);
+    try {
+      const response = await fetch(`${API_BASE}/warehouse/locations`, {
+        headers: authHeaders,
+      });
+      const data = await readJsonSafe(response);
+      if (!response.ok) {
+        throw new Error(mapPalletError(data?.message, "Не удалось загрузить список ячеек."));
+      }
+
+      const items = (Array.isArray(data) ? data : [])
+        .map((row) => {
+          const code = normalizeLocationCode(row?.code || "");
+          const name = String(row?.name || "").trim();
+          const value = code || normalizeLocationCode(name);
+          if (!value) return null;
+          return {
+            id: row?.id || value,
+            value,
+            code,
+            name,
+            label: name && code && name !== code ? `${name} (${code})` : name || code,
+          };
+        })
+        .filter(Boolean)
+        .sort((left, right) => String(left.label || "").localeCompare(String(right.label || ""), "ru"));
+      setWarehouseLocations(items);
+    } catch (err) {
+      console.warn("warehouse locations load failed", err);
+      setWarehouseLocations([]);
+    } finally {
+      setWarehouseLocationsLoading(false);
     }
   };
 
@@ -1395,6 +1433,13 @@ export default function PalletFlow({
   }, [activeTab]);
 
   useEffect(() => {
+    if (!["store", "dispatch", "locationControl"].includes(activeTab)) return;
+    if (warehouseLocations.length > 0) return;
+    loadWarehouseLocations();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [activeTab, warehouseLocations.length]);
+
+  useEffect(() => {
     if (activeTab !== "planning") return;
     loadPlanningSheets();
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -1763,7 +1808,7 @@ export default function PalletFlow({
                         receiveGate: String(event.target.value || "").toUpperCase(),
                       }))
                     }
-                    placeholder="Например, ВОРОТА-3"
+                    placeholder="Введите номер ворот"
                     disabled={loading}
                   />
                 </div>
@@ -1773,7 +1818,7 @@ export default function PalletFlow({
                     className="tsd-btn tsd-btn--primary"
                     onClick={() => {
                       if (!String(receiveForm.receiveGate || "").trim()) {
-                        handleFlowError("Укажите номер ворот.");
+                        handleFlowError("Введите номер ворот.");
                         return;
                       }
                       clearAlerts();
@@ -1893,7 +1938,6 @@ export default function PalletFlow({
                 }}
                 disabled={loading}
                 autoStart
-                showManual={false}
               />
             ) : null}
 
@@ -1930,8 +1974,50 @@ export default function PalletFlow({
                   disabled={loading}
                   autoStart
                   scanKind="barcode"
-                  showManual={false}
                 />
+                <div className="tsd-inline tsd-inline--two">
+                  <select
+                    className="tsd-input"
+                    value={storeForm.locationCode}
+                    onChange={(event) => {
+                      const selectedLocationCode = normalizeLocationCode(event.target.value);
+                      setStoreForm((prev) => ({ ...prev, locationCode: selectedLocationCode }));
+                    }}
+                    disabled={loading || warehouseLocationsLoading}
+                  >
+                    <option value="">
+                      {warehouseLocationsLoading ? "Загружаем ячейки..." : "Выберите ячейку"}
+                    </option>
+                    {warehouseLocations.map((location) => (
+                      <option key={`store-location-${location.id}`} value={location.value}>
+                        {location.label}
+                      </option>
+                    ))}
+                  </select>
+                  <button
+                    type="button"
+                    className="tsd-btn tsd-btn--secondary"
+                    onClick={async () => {
+                      const normalizedPalletCode = normalizePalletCode(storeForm.palletCode);
+                      if (!normalizedPalletCode) {
+                        handleFlowError("Сначала отсканируйте или введите паллету.");
+                        return;
+                      }
+                      const selectedLocationCode = normalizeLocationCode(storeForm.locationCode);
+                      if (!selectedLocationCode) {
+                        handleFlowError("Выберите ячейку.");
+                        return;
+                      }
+                      await handleStoreSubmit({
+                        palletCodeOverride: normalizedPalletCode,
+                        locationCodeOverride: selectedLocationCode,
+                      });
+                    }}
+                    disabled={loading || !normalizeLocationCode(storeForm.locationCode)}
+                  >
+                    Разместить
+                  </button>
+                </div>
               </>
             ) : null}
           </div>
@@ -2332,7 +2418,7 @@ export default function PalletFlow({
                         dispatchGate: String(event.target.value || "").toUpperCase(),
                       }))
                     }
-                    placeholder="Например, ВОРОТА-1"
+                    placeholder="Введите номер ворот"
                     disabled={loading}
                   />
                 </div>
@@ -2342,7 +2428,7 @@ export default function PalletFlow({
                     className="tsd-btn tsd-btn--primary"
                     onClick={() => {
                       if (!String(dispatchForm.dispatchGate || "").trim()) {
-                        handleFlowError("Укажите номер ворот.");
+                        handleFlowError("Введите номер ворот.");
                         return;
                       }
                       clearAlerts();
@@ -2388,8 +2474,47 @@ export default function PalletFlow({
                   disabled={loading}
                   autoStart
                   scanKind="barcode"
-                  showManual={false}
                 />
+                <div className="tsd-inline tsd-inline--two">
+                  <select
+                    className="tsd-input"
+                    value={dispatchForm.locationCode}
+                    onChange={(event) => {
+                      const selectedLocationCode = normalizeLocationCode(event.target.value);
+                      setDispatchForm((prev) => ({
+                        ...prev,
+                        locationCode: selectedLocationCode,
+                        palletCode: "",
+                      }));
+                    }}
+                    disabled={loading || warehouseLocationsLoading}
+                  >
+                    <option value="">
+                      {warehouseLocationsLoading ? "Загружаем ячейки..." : "Выберите ячейку"}
+                    </option>
+                    {warehouseLocations.map((location) => (
+                      <option key={`dispatch-location-${location.id}`} value={location.value}>
+                        {location.label}
+                      </option>
+                    ))}
+                  </select>
+                  <button
+                    type="button"
+                    className="tsd-btn tsd-btn--secondary"
+                    onClick={() => {
+                      const selectedLocationCode = normalizeLocationCode(dispatchForm.locationCode);
+                      if (!selectedLocationCode) {
+                        handleFlowError("Выберите ячейку.");
+                        return;
+                      }
+                      clearAlerts();
+                      setDispatchStep("pallet");
+                    }}
+                    disabled={loading || !normalizeLocationCode(dispatchForm.locationCode)}
+                  >
+                    Выбрать
+                  </button>
+                </div>
               </>
             ) : null}
 
@@ -2455,7 +2580,6 @@ export default function PalletFlow({
                   }}
                   disabled={loading}
                   autoStart
-                  showManual={false}
                 />
               </>
             ) : null}
