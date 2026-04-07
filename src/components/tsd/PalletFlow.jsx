@@ -118,7 +118,26 @@ function normalizePalletCode(rawValue) {
 }
 
 function normalizeLocationCode(rawValue) {
-  return String(rawValue || "").trim().toUpperCase().replace(/\s+/g, "");
+  const normalized = String(rawValue || "").trim().toUpperCase().replace(/\s+/g, "");
+  if (!normalized) return "";
+  const map = {
+    А: "A",
+    В: "B",
+    Е: "E",
+    К: "K",
+    М: "M",
+    Н: "H",
+    О: "O",
+    Р: "P",
+    С: "C",
+    Т: "T",
+    У: "Y",
+    Х: "X",
+  };
+  return normalized
+    .split("")
+    .map((char) => map[char] || char)
+    .join("");
 }
 
 function locationDisplayName(location) {

@@ -927,17 +927,42 @@ function normalizePalletCode(value) {
     .slice(0, 96);
 }
 
+function normalizeLocationCodeAlias(value) {
+  const normalized = normalizePalletCode(value);
+  if (!normalized) return "";
+  const map = {
+    А: "A",
+    В: "B",
+    Е: "E",
+    К: "K",
+    М: "M",
+    Н: "H",
+    О: "O",
+    Р: "P",
+    С: "C",
+    Т: "T",
+    У: "Y",
+    Х: "X",
+  };
+  return normalized
+    .split("")
+    .map((char) => map[char] || char)
+    .join("");
+}
+
 function parsePalletLocationInput(rawValue) {
   const raw = String(rawValue || "").trim();
   const normalizedRaw = normalizePalletCode(raw);
+  const normalizedRawAlias = normalizeLocationCodeAlias(raw);
   const payload = normalizedRaw.replace(/^BP:(LOC|LOCATION):/i, "");
   const normalizedPayload = normalizePalletCode(payload);
+  const normalizedPayloadAlias = normalizeLocationCodeAlias(payload);
   const numericPayload = Number(payload);
   const payloadId =
     Number.isFinite(numericPayload) && numericPayload > 0 ? Math.trunc(numericPayload) : null;
   const lookupTokens = Array.from(
     new Set(
-      [raw, normalizedRaw, payload, normalizedPayload]
+      [raw, normalizedRaw, normalizedRawAlias, payload, normalizedPayload, normalizedPayloadAlias]
         .map((entry) => normalizeLocationLookupToken(entry))
         .filter(Boolean)
     )
@@ -945,8 +970,10 @@ function parsePalletLocationInput(rawValue) {
   return {
     raw,
     normalizedRaw,
+    normalizedRawAlias,
     payload,
     normalizedPayload,
+    normalizedPayloadAlias,
     payloadId,
     lookupTokens,
   };
@@ -961,11 +988,13 @@ async function resolveWarehouseLocationByInput(orgId, rawValue, tx = prisma) {
 
   const directOr = [
     { code: parsed.normalizedRaw },
+    { code: parsed.normalizedRawAlias },
     { qrCode: parsed.normalizedRaw },
     { name: parsed.raw },
   ];
   if (parsed.normalizedPayload && parsed.normalizedPayload !== parsed.normalizedRaw) {
     directOr.push({ code: parsed.normalizedPayload });
+    directOr.push({ code: parsed.normalizedPayloadAlias });
     directOr.push({ qrCode: parsed.normalizedPayload });
     directOr.push({ name: parsed.payload });
   }
@@ -1021,7 +1050,9 @@ function buildPalletLocationCandidates(rawValue, warehouseLocation = null) {
   };
 
   addCode(parsed.normalizedRaw);
+  addCode(parsed.normalizedRawAlias);
   addCode(parsed.normalizedPayload);
+  addCode(parsed.normalizedPayloadAlias);
   addName(parsed.raw);
   addName(parsed.payload);
 
@@ -1236,7 +1267,9 @@ async function getOrCreatePalletLocationByCode(orgId, rawCode, tx = prisma) {
   const resolvedCode = normalizePalletCode(
     linkedWarehouseLocation?.code ||
       linkedWarehouseLocation?.name ||
+      parsedInput.normalizedPayloadAlias ||
       parsedInput.normalizedPayload ||
+      parsedInput.normalizedRawAlias ||
       parsedInput.normalizedRaw
   );
   if (!resolvedCode) {
