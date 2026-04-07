@@ -140,6 +140,36 @@ function normalizeLocationCode(rawValue) {
     .join("");
 }
 
+function toCyrillicLocationAlias(rawValue) {
+  const normalized = String(rawValue || "").trim().toUpperCase().replace(/\s+/g, "");
+  if (!normalized) return "";
+  const map = {
+    A: "А",
+    B: "В",
+    C: "С",
+    E: "Е",
+    H: "Н",
+    K: "К",
+    M: "М",
+    O: "О",
+    P: "Р",
+    T: "Т",
+    X: "Х",
+    Y: "У",
+  };
+  return normalized
+    .split("")
+    .map((char) => map[char] || char)
+    .join("");
+}
+
+function buildLocationCodeCandidates(rawValue) {
+  const source = String(rawValue || "").trim().toUpperCase().replace(/\s+/g, "");
+  const latin = normalizeLocationCode(source);
+  const cyrillic = toCyrillicLocationAlias(latin || source);
+  return Array.from(new Set([latin, cyrillic, source].filter(Boolean)));
+}
+
 function locationDisplayName(location) {
   const name = String(location?.name || "").trim();
   const code = String(location?.code || "").trim();
@@ -1275,7 +1305,8 @@ export default function PalletFlow({
   };
 
   const loadLocationPallets = async (rawLocationCode) => {
-    const locationCode = normalizeLocationCode(rawLocationCode || searchLocationCode);
+    const sourceLocationCode = rawLocationCode || searchLocationCode;
+    const locationCode = normalizeLocationCode(sourceLocationCode);
     if (!locationCode) {
       handleFlowError("Отсканируйте или введите код ячейки.");
       return;
@@ -1306,8 +1337,71 @@ export default function PalletFlow({
       setLocationControlResult(null);
       setLocationControlStep("confirm");
     } catch (err) {
-      setSuccess("");
-      setError(normalizeErrorMessage(err, "Не удалось загрузить ожидаемые паллеты по ячейке."));
+      const fallbackCandidates = buildLocationCodeCandidates(sourceLocationCode);
+      let fallbackItems = [];
+      let fallbackHadSuccess = false;
+      let fallbackError = null;
+
+      for (const candidate of fallbackCandidates) {
+        try {
+          const params = new URLSearchParams();
+          params.set("status", "STORED");
+          params.set("locationCode", candidate);
+          const fallbackResponse = await fetch(`${API_BASE}/pallets?${params.toString()}`, {
+            headers: authHeaders,
+          });
+          const fallbackData = await readJsonSafe(fallbackResponse);
+          if (!fallbackResponse.ok) {
+            fallbackError = new Error(
+              mapPalletError(fallbackData?.message, "Не удалось загрузить ожидаемые паллеты.")
+            );
+            continue;
+          }
+          fallbackHadSuccess = true;
+          const items = Array.isArray(fallbackData?.items) ? fallbackData.items : [];
+          fallbackItems = fallbackItems.concat(items);
+        } catch (fallbackErr) {
+          fallbackError = fallbackErr;
+        }
+      }
+
+      const fallbackByCode = new Map();
+      for (const item of fallbackItems) {
+        const code = normalizePalletCode(item?.palletCode);
+        if (!code) continue;
+        if (!fallbackByCode.has(code)) {
+          fallbackByCode.set(code, item);
+        }
+      }
+      const mergedFallbackItems = Array.from(fallbackByCode.values());
+      if (fallbackHadSuccess) {
+        const firstLocation = mergedFallbackItems[0]?.currentLocation || null;
+        const fallbackFoundCodes = mergedFallbackItems
+          .map((item) => normalizePalletCode(item?.palletCode))
+          .filter(Boolean);
+        setSearchLocationCode(
+          normalizeLocationCode(firstLocation?.code || fallbackCandidates[0] || locationCode)
+        );
+        setSearchLocationName(String(firstLocation?.name || "").trim());
+        setSearchLocationItems(mergedFallbackItems);
+        setLocationControlFoundCodes(fallbackFoundCodes);
+        setLocationControlResult(null);
+        setLocationControlStep("confirm");
+        if (mergedFallbackItems.length > 0) {
+          setSuccess("Ожидаемые паллеты загружены.");
+        } else {
+          setSuccess("Ожидаемых паллет в ячейке нет.");
+        }
+        setError("");
+      } else {
+        setSuccess("");
+        setError(
+          normalizeErrorMessage(
+            fallbackError || err,
+            "Не удалось загрузить ожидаемые паллеты по ячейке."
+          )
+        );
+      }
     } finally {
       setSearchLocationLoading(false);
     }
