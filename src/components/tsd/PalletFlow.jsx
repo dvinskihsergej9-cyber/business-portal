@@ -69,19 +69,27 @@ const INITIAL_PLANNING_FORM = {
 };
 
 function statusLabel(status) {
-  return PALLET_STATUS_LABELS[String(status || "").trim()] || String(status || "-");
+  const normalized = String(status || "").trim().toUpperCase();
+  if (!normalized) return "-";
+  return PALLET_STATUS_LABELS[normalized] || "Неизвестный статус";
 }
 
 function eventTypeLabel(type) {
-  return PALLET_EVENT_LABELS[String(type || "").trim()] || String(type || "-");
+  const normalized = String(type || "").trim().toUpperCase();
+  if (!normalized) return "-";
+  return PALLET_EVENT_LABELS[normalized] || "Событие";
 }
 
 function routeSheetStatusLabel(status) {
-  return ROUTE_SHEET_STATUS_LABELS[String(status || "").trim()] || String(status || "-");
+  const normalized = String(status || "").trim().toUpperCase();
+  if (!normalized) return "-";
+  return ROUTE_SHEET_STATUS_LABELS[normalized] || "Неизвестный статус";
 }
 
 function routeSheetItemStatusLabel(status) {
-  return ROUTE_SHEET_ITEM_STATUS_LABELS[String(status || "").trim()] || String(status || "-");
+  const normalized = String(status || "").trim().toUpperCase();
+  if (!normalized) return "-";
+  return ROUTE_SHEET_ITEM_STATUS_LABELS[normalized] || "Неизвестный статус";
 }
 
 function formatDateTime(value) {
@@ -103,29 +111,77 @@ function normalizeLocationCode(rawValue) {
   return String(rawValue || "").trim().toUpperCase().replace(/\s+/g, "");
 }
 
+const META_FIELD_DEFINITIONS = [
+  { canonical: "supplierName", label: "Поставщик", keys: ["supplierName"] },
+  { canonical: "inboundRef", label: "Машина/ТТН", keys: ["inboundRef"] },
+  { canonical: "receiveGate", label: "Ворота приемки", keys: ["receiveGate", "receive_gate"] },
+  { canonical: "dispatchGate", label: "Ворота отгрузки", keys: ["dispatchGate", "dispatch_gate"] },
+  { canonical: "gate", label: "Ворота", keys: ["gate"] },
+  {
+    canonical: "fromLocationCode",
+    label: "Из ячейки",
+    keys: ["fromLocationCode", "from_location_code"],
+  },
+  { canonical: "toLocationCode", label: "В ячейку", keys: ["toLocationCode", "to_location_code"] },
+  { canonical: "toLocationName", label: "Ячейка", keys: ["toLocationName", "to_location_name"] },
+  { canonical: "locationCode", label: "Ячейка", keys: ["locationCode", "location_code"] },
+  {
+    canonical: "scanLocationCode",
+    label: "Скан ячейки",
+    keys: ["scanLocationCode", "scan_location_code"],
+  },
+  { canonical: "destinationRc", label: "РЦ назначения", keys: ["destinationRc", "destination_rc"] },
+  { canonical: "route", label: "Маршрут", keys: ["route"] },
+  { canonical: "vehicle", label: "Машина", keys: ["vehicle"] },
+  { canonical: "driver", label: "Водитель", keys: ["driver"] },
+  { canonical: "notes", label: "Комментарий", keys: ["notes"] },
+  {
+    canonical: "routeSheetId",
+    label: "ID маршрутного листа",
+    keys: ["routeSheetId", "route_sheet_id"],
+  },
+  {
+    canonical: "routeSheetNumber",
+    label: "Номер маршрутного листа",
+    keys: ["routeSheetNumber", "route_sheet_number", "sheetNumber", "sheet_number"],
+  },
+  {
+    canonical: "plannedCount",
+    label: "Паллет в плане",
+    keys: ["plannedCount", "planned_count"],
+  },
+];
+
+function normalizeMetaValue(value) {
+  if (value == null) return "";
+  if (typeof value === "boolean") return value ? "Да" : "Нет";
+  const text = String(value).trim();
+  return text;
+}
+
 function renderMeta(metaJson) {
   if (!metaJson || typeof metaJson !== "object") return "";
-  const metaLabels = {
-    supplierName: "Поставщик",
-    inboundRef: "Машина/ТТН",
-    receiveGate: "Ворота приемки",
-    dispatchGate: "Ворота отгрузки",
-    gate: "Ворота",
-    receive_gate: "Ворота приемки",
-    dispatch_gate: "Ворота отгрузки",
-    fromLocationCode: "Из ячейки",
-    toLocationCode: "В ячейку",
-    toLocationName: "Ячейка",
-    destinationRc: "РЦ назначения",
-    route: "Маршрут",
-    vehicle: "Машина",
-    driver: "Водитель",
-    notes: "Комментарий",
-    scanLocationCode: "Скан ячейки",
-  };
-  const parts = Object.entries(metaJson)
-    .filter(([, value]) => value != null && String(value).trim() !== "")
-    .map(([key, value]) => `${metaLabels[key] || key}: ${String(value)}`);
+  const valueByCanonical = new Map();
+  for (const field of META_FIELD_DEFINITIONS) {
+    for (const key of field.keys) {
+      const normalizedValue = normalizeMetaValue(metaJson?.[key]);
+      if (!normalizedValue) continue;
+      valueByCanonical.set(field.canonical, normalizedValue);
+      break;
+    }
+  }
+  const plainGate = valueByCanonical.get("gate");
+  const receiveGate = valueByCanonical.get("receiveGate");
+  const dispatchGate = valueByCanonical.get("dispatchGate");
+  if (plainGate && (plainGate === receiveGate || plainGate === dispatchGate)) {
+    valueByCanonical.delete("gate");
+  }
+
+  const parts = META_FIELD_DEFINITIONS.flatMap((field) => {
+    const value = valueByCanonical.get(field.canonical);
+    if (!value) return [];
+    return [`${field.label}: ${value}`];
+  });
   return parts.join(" | ");
 }
 
@@ -281,6 +337,9 @@ export default function PalletFlow({ authHeaders, onBack, showInternalBack = tru
   const [searchDateTo, setSearchDateTo] = useState("");
   const [searchSuppliers, setSearchSuppliers] = useState([]);
   const [searchSuppliersLoading, setSearchSuppliersLoading] = useState(false);
+  const [searchLocationCode, setSearchLocationCode] = useState("");
+  const [searchLocationItems, setSearchLocationItems] = useState([]);
+  const [searchLocationLoading, setSearchLocationLoading] = useState(false);
   const [searchView, setSearchView] = useState("list");
   const [historyPallet, setHistoryPallet] = useState(null);
   const [historyEvents, setHistoryEvents] = useState([]);
@@ -337,6 +396,8 @@ export default function PalletFlow({ authHeaders, onBack, showInternalBack = tru
     setSearchDateFrom("");
     setSearchDateTo("");
     setSearchSuppliers([]);
+    setSearchLocationCode("");
+    setSearchLocationItems([]);
     setSearchView("list");
     setActiveReceivePalletCodes([]);
     setStoreReceiveScopeLocked(false);
@@ -1105,6 +1166,36 @@ export default function PalletFlow({ authHeaders, onBack, showInternalBack = tru
     }
   };
 
+  const loadLocationPallets = async (rawLocationCode) => {
+    const locationCode = normalizeLocationCode(rawLocationCode || searchLocationCode);
+    if (!locationCode) {
+      handleFlowError("Отсканируйте или введите код ячейки.");
+      return;
+    }
+
+    setSearchLocationLoading(true);
+    try {
+      clearAlerts();
+      const params = new URLSearchParams();
+      params.set("statuses", "STORED");
+      params.set("locationCode", locationCode);
+      const response = await fetch(`${API_BASE}/pallets?${params.toString()}`, {
+        headers: authHeaders,
+      });
+      const data = await readJsonSafe(response);
+      if (!response.ok) {
+        throw new Error(mapPalletError(data?.message, "Не удалось загрузить остаток по ячейке."));
+      }
+      const items = Array.isArray(data?.items) ? data.items : [];
+      setSearchLocationCode(locationCode);
+      setSearchLocationItems(items);
+    } catch (err) {
+      handleFlowError(err, "Не удалось загрузить остаток по ячейке.");
+    } finally {
+      setSearchLocationLoading(false);
+    }
+  };
+
   const loadSearchSuppliers = async () => {
     setSearchSuppliersLoading(true);
     try {
@@ -1550,7 +1641,7 @@ export default function PalletFlow({ authHeaders, onBack, showInternalBack = tru
                 <div className="tsd-action-bar">
                   <button
                     type="button"
-                    className="tsd-btn tsd-btn--ghost"
+                    className="tsd-btn tsd-btn--ghost tsd-btn--same-size"
                     onClick={resetReceiveScanFlow}
                     disabled={loading}
                   >
@@ -1558,7 +1649,7 @@ export default function PalletFlow({ authHeaders, onBack, showInternalBack = tru
                   </button>
                   <button
                     type="button"
-                    className="tsd-btn tsd-btn--primary tsd-btn--center"
+                    className="tsd-btn tsd-btn--primary tsd-btn--same-size"
                     onClick={openPrintFallback}
                   >
                     Открыть паспорт A4
@@ -1590,7 +1681,7 @@ export default function PalletFlow({ authHeaders, onBack, showInternalBack = tru
               <Scanner
                 label="Шаг 1. Скан паллеты"
                 hint="Сканируйте паспорт паллеты"
-                manualPlaceholder="bp:pallet:PLT-..."
+                manualPlaceholder="Код паллеты (например, PLT-...)"
                 onScan={async (value) => {
                   const scannedPalletCode = normalizePalletCode(value);
                   if (!scannedPalletCode) return;
@@ -2125,7 +2216,7 @@ export default function PalletFlow({ authHeaders, onBack, showInternalBack = tru
                 <Scanner
                   label="Шаг 4. Скан паллеты"
                   hint={`Ячейка ${dispatchForm.locationCode || "-"} принята. Сканируйте паллету.`}
-                  manualPlaceholder="bp:pallet:PLT-..."
+                  manualPlaceholder="Код паллеты (например, PLT-...)"
                   onScan={async (value) => {
                     const scannedPalletCode = normalizePalletCode(value);
                     if (!scannedPalletCode) return;
@@ -2287,12 +2378,89 @@ export default function PalletFlow({ authHeaders, onBack, showInternalBack = tru
                       setSearchDateFrom("");
                       setSearchDateTo("");
                       setSearchQuery("");
+                      setSearchLocationCode("");
+                      setSearchLocationItems([]);
                     }}
                     disabled={recentLoading}
                   >
                     Сбросить фильтры
                   </button>
                 </div>
+              </>
+            ) : null}
+
+            {searchView === "list" ? (
+              <>
+                <Scanner
+                  label="Контроль ячейки"
+                  hint="Отсканируйте ячейку, чтобы посмотреть остаток паллет в ней."
+                  manualPlaceholder="Введите код ячейки"
+                  onScan={async (value) => {
+                    await loadLocationPallets(value);
+                  }}
+                  disabled={searchLocationLoading || historyLoading}
+                  scanKind="barcode"
+                />
+                <div className="tsd-inline tsd-inline--two">
+                  <input
+                    className="tsd-input"
+                    value={searchLocationCode}
+                    onChange={(event) => setSearchLocationCode(event.target.value)}
+                    placeholder="Код ячейки"
+                    disabled={searchLocationLoading || historyLoading}
+                  />
+                  <button
+                    type="button"
+                    className="tsd-btn tsd-btn--secondary"
+                    onClick={async () => {
+                      await loadLocationPallets(searchLocationCode);
+                    }}
+                    disabled={searchLocationLoading || historyLoading}
+                  >
+                    {searchLocationLoading ? "Проверяем..." : "Показать остаток"}
+                  </button>
+                </div>
+                {searchLocationCode ? (
+                  <div className="tsd-card">
+                    <div className="tsd-card__title">Ячейка: {normalizeLocationCode(searchLocationCode)}</div>
+                    <div className="tsd-card__meta">Паллет в остатке: {searchLocationItems.length}</div>
+                  </div>
+                ) : null}
+                {searchLocationCode && !searchLocationLoading && !searchLocationItems.length ? (
+                  <div className="tsd-card">
+                    <div className="tsd-card__meta">В этой ячейке сейчас нет паллет в остатке.</div>
+                  </div>
+                ) : null}
+                {searchLocationItems.length ? (
+                  <div className="tsd-list">
+                    {searchLocationItems.map((item) => (
+                      <button
+                        key={`location-item-${item.id}`}
+                        type="button"
+                        className="tsd-card tsd-pallet-list-btn tsd-pallet-list-btn--received"
+                        onClick={async () => {
+                          try {
+                            clearAlerts();
+                            setSelectedPalletId(item.id);
+                            setHistoryCollapsed(false);
+                            setSearchCode(item.palletCode || "");
+                            await loadHistoryByCode(item.palletCode || "", { openDetail: true });
+                          } catch (err) {
+                            handleFlowError(err, "Не удалось открыть паллету.");
+                          }
+                        }}
+                      >
+                        <div className="tsd-card__title">{item.palletCode}</div>
+                        <div className="tsd-card__meta">
+                          Статус: {statusLabel(item.status)} • Ячейка: {item.currentLocation?.code || "-"}
+                        </div>
+                        <div className="tsd-card__meta">
+                          Поставщик: {item.supplierName || "-"} • Машина/ТТН: {item.inboundRef || "-"}
+                        </div>
+                      </button>
+                    ))}
+                  </div>
+                ) : null}
               </>
             ) : null}
 
@@ -2359,17 +2527,24 @@ export default function PalletFlow({ authHeaders, onBack, showInternalBack = tru
               <div className="tsd-pallet-history">
                 {historyEvents.map((event) => (
                   <div key={event.id} className="tsd-pallet-event">
-                    <div className="tsd-pallet-event__head">
-                      <span className="tsd-pallet-event__type">{eventTypeLabel(event.type)}</span>
-                      <span className="tsd-pallet-event__date">{formatDateTime(event.createdAt)}</span>
-                    </div>
-                    <div className="tsd-pallet-event__meta">
-                      {event.user?.name || event.user?.email || "Система"} • {statusLabel(event.fromStatus)} →{" "}
-                      {statusLabel(event.toStatus)}
-                    </div>
-                    {renderMeta(event.metaJson) ? (
-                      <div className="tsd-pallet-event__meta">{renderMeta(event.metaJson)}</div>
-                    ) : null}
+                    {(() => {
+                      const metaText = renderMeta(event.metaJson);
+                      return (
+                        <>
+                          <div className="tsd-pallet-event__head">
+                            <span className="tsd-pallet-event__type">{eventTypeLabel(event.type)}</span>
+                            <span className="tsd-pallet-event__date">{formatDateTime(event.createdAt)}</span>
+                          </div>
+                          <div className="tsd-pallet-event__meta">
+                            {event.user?.name || event.user?.email || "Система"} •{" "}
+                            {statusLabel(event.fromStatus)} → {statusLabel(event.toStatus)}
+                          </div>
+                          {metaText ? (
+                            <div className="tsd-pallet-event__meta">{metaText}</div>
+                          ) : null}
+                        </>
+                      );
+                    })()}
                   </div>
                 ))}
               </div>
