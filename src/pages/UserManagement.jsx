@@ -790,14 +790,6 @@ export default function UserManagement() {
               </option>
             ))}
           </select>
-          <button
-            type="button"
-            onClick={handleCreateUser}
-            disabled={createSaving}
-            className="admin-btn admin-btn--primary"
-          >
-            {createSaving ? "Создание..." : "Создать сотрудника"}
-          </button>
         </div>
 
         <div className="admin-users-permission-grid">
@@ -824,6 +816,17 @@ export default function UserManagement() {
               </div>
             </div>
           ))}
+        </div>
+
+        <div className="admin-users-create-actions">
+          <button
+            type="button"
+            onClick={handleCreateUser}
+            disabled={createSaving}
+            className="admin-btn admin-btn--primary"
+          >
+            {createSaving ? "Создание..." : "Создать сотрудника"}
+          </button>
         </div>
 
         {createError && (
