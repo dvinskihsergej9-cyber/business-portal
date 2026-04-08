@@ -8031,10 +8031,6 @@ app.get("/api/profile", auth, async (req, res) => {
       if (!palletId) {
         return res.status(400).json({ message: "PALLET_ID_REQUIRED" });
       }
-      const locationInput = normalizePalletCode(req.body?.locationCode);
-      if (!locationInput) {
-        return res.status(400).json({ message: "PALLET_LOCATION_REQUIRED" });
-      }
 
       const result = await prisma.$transaction(async (tx) => {
         const now = new Date();
@@ -8044,13 +8040,24 @@ app.get("/api/profile", auth, async (req, res) => {
         const pallet = open?.source === "table" ? open?.row?.pallet : open?.pallet;
         if (!pallet) return { error: "PALLET_NOT_FOUND" };
 
-        const targetLocation = await getOrCreatePalletLocationByCode(orgId, locationInput, tx);
+        const requestedLocationCode = normalizePalletCode(req.body?.locationCode);
+        const fallbackLocationCode =
+          String(open?.locationCode || "").trim() ||
+          String(open?.row?.location?.code || "").trim() ||
+          String(open?.row?.pallet?.currentLocation?.code || "").trim() ||
+          "";
+        const effectiveLocationCode = requestedLocationCode || fallbackLocationCode;
+        if (!effectiveLocationCode) return { error: "PALLET_LOCATION_REQUIRED" };
+
+        const targetLocation = await getOrCreatePalletLocationByCode(
+          orgId,
+          effectiveLocationCode,
+          tx
+        );
         if (!targetLocation?.id) return { error: "PALLET_LOCATION_REQUIRED" };
         const locationId = targetLocation.id;
         const locationCode =
-          String(targetLocation?.code || "").trim() ||
-          normalizePalletCode(locationInput) ||
-          null;
+          String(targetLocation?.code || "").trim() || normalizePalletCode(effectiveLocationCode) || null;
         const locationName =
           String(targetLocation?.name || "").trim() ||
           locationCode ||
