@@ -198,6 +198,11 @@ function isArchivedDiscrepancyItem(item) {
   return writeoffStatus === "APPROVED";
 }
 
+function isOpenDiscrepancyItem(item) {
+  const status = String(item?.status || "").trim().toUpperCase();
+  return status === "OPEN";
+}
+
 const META_FIELD_DEFINITIONS = [
   { canonical: "supplierName", label: "Поставщик", keys: ["supplierName"] },
   { canonical: "inboundRef", label: "Машина/ТТН", keys: ["inboundRef"] },
@@ -1463,8 +1468,13 @@ export default function PalletFlow({
   const loadDiscrepancies = async () => {
     setDiscrepanciesLoading(true);
     try {
-      const response = await fetch(`${API_BASE}/pallets/discrepancies?status=ALL&limit=300`, {
+      const params = new URLSearchParams();
+      params.set("status", "ALL");
+      params.set("limit", "300");
+      params.set("_ts", String(Date.now()));
+      const response = await fetch(`${API_BASE}/pallets/discrepancies?${params.toString()}`, {
         headers: authHeaders,
+        cache: "no-store",
       });
       const data = await readJsonSafe(response);
       if (!response.ok) {
@@ -1483,7 +1493,7 @@ export default function PalletFlow({
   };
 
   const activeDiscrepanciesItems = useMemo(
-    () => discrepanciesItems.filter((item) => !isArchivedDiscrepancyItem(item)),
+    () => discrepanciesItems.filter((item) => isOpenDiscrepancyItem(item)),
     [discrepanciesItems]
   );
   const archiveDiscrepanciesItems = useMemo(
