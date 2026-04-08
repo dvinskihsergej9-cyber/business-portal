@@ -1917,8 +1917,16 @@ async function getOpenDiscrepancyByPalletIdTx(orgId, palletId, tx = prisma) {
     writeoffRequest: normalizeDiscrepancyWriteoffForResponse(snapshot.writeoffRequest),
     noteParsed: null,
     pallet,
-    locationCode: String(pallet?.currentLocation?.code || "").trim() || "",
-    locationName: String(pallet?.currentLocation?.name || "").trim() || "",
+    locationCode:
+      String(snapshot?.event?.metaJson?.locationCode || "").trim() ||
+      String(snapshot?.event?.metaJson?.fromLocationCode || "").trim() ||
+      String(pallet?.currentLocation?.code || "").trim() ||
+      "",
+    locationName:
+      String(snapshot?.event?.metaJson?.locationName || "").trim() ||
+      String(snapshot?.event?.metaJson?.fromLocationName || "").trim() ||
+      String(pallet?.currentLocation?.name || "").trim() ||
+      "",
   };
 }
 
@@ -7745,6 +7753,14 @@ app.get("/api/profile", auth, async (req, res) => {
                   locationId: pallet.currentLocationId || knownLocation?.id || null,
                 },
               });
+              if (pallet.currentLocationId != null) {
+                await tx.pallet.update({
+                  where: { id: pallet.id },
+                  data: {
+                    currentLocationId: null,
+                  },
+                });
+              }
               continue;
             }
 
@@ -7761,6 +7777,13 @@ app.get("/api/profile", auth, async (req, res) => {
             });
             createdMissingCodes.push(palletCode);
 
+            await tx.pallet.update({
+              where: { id: pallet.id },
+              data: {
+                currentLocationId: null,
+              },
+            });
+
             await createPalletEventTx(tx, {
               orgId,
               palletId: pallet.id,
@@ -7769,6 +7792,10 @@ app.get("/api/profile", auth, async (req, res) => {
               toStatus: pallet.status,
               userId: req.user.id,
               metaJson: {
+                fromLocationCode:
+                  String(pallet?.currentLocation?.code || "").trim() || resolvedLocationCode,
+                fromLocationName:
+                  String(pallet?.currentLocation?.name || "").trim() || locationName,
                 locationCode: resolvedLocationCode,
                 locationName,
                 source: "LOCATION_CONTROL",
@@ -7782,6 +7809,14 @@ app.get("/api/profile", auth, async (req, res) => {
             const palletCode = normalizePalletCode(pallet?.palletCode);
             const latestState = eventStatesByPalletId.get(pallet.id)?.status || "";
             if (latestState === "OPEN") {
+              if (pallet.currentLocationId != null) {
+                await tx.pallet.update({
+                  where: { id: pallet.id },
+                  data: {
+                    currentLocationId: null,
+                  },
+                });
+              }
               openMissingCodes.push(palletCode);
               continue;
             }
@@ -7793,11 +7828,21 @@ app.get("/api/profile", auth, async (req, res) => {
               toStatus: pallet.status,
               userId: req.user.id,
               metaJson: {
+                fromLocationCode:
+                  String(pallet?.currentLocation?.code || "").trim() || resolvedLocationCode,
+                fromLocationName:
+                  String(pallet?.currentLocation?.name || "").trim() || locationName,
                 locationCode: resolvedLocationCode,
                 locationName,
                 source: "LOCATION_CONTROL",
                 result: "MISSING",
                 discrepancyStatus: "OPEN",
+              },
+            });
+            await tx.pallet.update({
+              where: { id: pallet.id },
+              data: {
+                currentLocationId: null,
               },
             });
             createdMissingCodes.push(palletCode);
@@ -7919,10 +7964,7 @@ app.get("/api/profile", auth, async (req, res) => {
       if (!orgId) {
         return res.status(400).json({ message: "ORG_REQUIRED" });
       }
-      const businessOwnerId = await getCrossdockBusinessOwnerId(orgId);
-      const canApproveWriteoff =
-        req.user?.isSystemOwner === true ||
-        (Number(req.user?.id || 0) > 0 && Number(req.user?.id || 0) === businessOwnerId);
+      const canApproveWriteoff = req.user?.isSystemOwner === true || req.user?.role === "ADMIN";
 
       const statusQuery = String(req.query?.status || req.query?.statuses || "ALL")
         .trim()
@@ -7989,6 +8031,10 @@ app.get("/api/profile", auth, async (req, res) => {
       if (!palletId) {
         return res.status(400).json({ message: "PALLET_ID_REQUIRED" });
       }
+      const locationInput = normalizePalletCode(req.body?.locationCode);
+      if (!locationInput) {
+        return res.status(400).json({ message: "PALLET_LOCATION_REQUIRED" });
+      }
 
       const result = await prisma.$transaction(async (tx) => {
         const now = new Date();
@@ -7998,17 +8044,15 @@ app.get("/api/profile", auth, async (req, res) => {
         const pallet = open?.source === "table" ? open?.row?.pallet : open?.pallet;
         if (!pallet) return { error: "PALLET_NOT_FOUND" };
 
-        const locationId =
-          open?.source === "table"
-            ? open?.row?.locationId || pallet.currentLocationId || null
-            : pallet.currentLocationId || null;
+        const targetLocation = await getOrCreatePalletLocationByCode(orgId, locationInput, tx);
+        if (!targetLocation?.id) return { error: "PALLET_LOCATION_REQUIRED" };
+        const locationId = targetLocation.id;
         const locationCode =
-          String(open?.locationCode || "").trim() ||
-          String(pallet?.currentLocation?.code || "").trim() ||
+          String(targetLocation?.code || "").trim() ||
+          normalizePalletCode(locationInput) ||
           null;
         const locationName =
-          String(open?.locationName || "").trim() ||
-          String(pallet?.currentLocation?.name || "").trim() ||
+          String(targetLocation?.name || "").trim() ||
           locationCode ||
           null;
 
@@ -8040,6 +8084,7 @@ app.get("/api/profile", auth, async (req, res) => {
             where: { id: open.row.id },
             data: {
               status: "CLOSED",
+              locationId,
               closedAt: now,
               closedByUserId: req.user?.id || null,
               lastCheckedAt: now,
@@ -8224,10 +8269,7 @@ app.get("/api/profile", auth, async (req, res) => {
       }
       const reason = normalizePalletText(req.body?.reason, 240);
 
-      const ownerId = await getCrossdockBusinessOwnerId(orgId);
-      const canApprove =
-        req.user?.isSystemOwner === true ||
-        (Number(req.user?.id || 0) > 0 && Number(req.user?.id || 0) === ownerId);
+      const canApprove = req.user?.isSystemOwner === true || req.user?.role === "ADMIN";
       if (!canApprove) {
         return res.status(403).json({ message: "PALLET_DISCREPANCY_WRITEOFF_OWNER_ONLY" });
       }
