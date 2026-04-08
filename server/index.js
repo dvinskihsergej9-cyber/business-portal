@@ -7388,12 +7388,7 @@ app.get("/api/profile", auth, async (req, res) => {
           select: { id: true },
         });
         if (!location) {
-          return res.json({
-            destinationRc,
-            route,
-            summary: { total: 0, byLocation: [] },
-            items: [],
-          });
+          return res.status(404).json({ message: "PALLET_LOCATION_NOT_FOUND" });
         }
         currentLocationId = location.id;
       }
@@ -7494,7 +7489,7 @@ app.get("/api/profile", auth, async (req, res) => {
           select: { id: true },
         });
         if (!location) {
-          return res.json({ items: [] });
+          return res.status(404).json({ message: "PALLET_LOCATION_NOT_FOUND" });
         }
         currentLocationId = location.id;
       }
