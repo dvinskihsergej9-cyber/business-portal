@@ -385,6 +385,41 @@
   color: #fff;
 }
 
+.tsd-btn--chip {
+  padding: 6px 10px;
+  border-radius: 10px;
+  border: 1px solid #cbd5e1;
+  background: #f8fafc;
+  color: #334155;
+  font-size: 12px;
+  font-weight: 600;
+  line-height: 1.2;
+}
+
+.tsd-btn--chip-active {
+  background: #e2e8f0;
+  color: #0f172a;
+  border-color: #94a3b8;
+}
+
+.tsd-btn--chip-success {
+  background: #ecfdf5;
+  color: #166534;
+  border-color: #86efac;
+}
+
+.tsd-btn--chip-warn {
+  background: #fff7ed;
+  color: #9a3412;
+  border-color: #fdba74;
+}
+
+.tsd-btn--chip-danger {
+  background: #fef2f2;
+  color: #991b1b;
+  border-color: #fca5a5;
+}
+
 .tsd-btn--ghost {
   background: transparent;
   border: 1px solid var(--tsd-border);
@@ -495,6 +530,13 @@
   max-width: 740px;
   margin: 0 auto;
   z-index: 30;
+}
+
+.tsd-discrepancy-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 10px;
 }
 
 .tsd-action-bar__row {

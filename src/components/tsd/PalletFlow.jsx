@@ -186,11 +186,16 @@ function discrepancyStatusLabel(status) {
 
 function discrepancyWriteoffStatusLabel(status) {
   const normalized = String(status || "").trim().toUpperCase();
-  if (normalized === "PENDING") return "Ожидает решения владельца";
+  if (normalized === "PENDING") return "Ожидает решения админа/владельца";
   if (normalized === "APPROVED") return "Списана с баланса";
   if (normalized === "REJECTED") return "Списание отклонено";
   if (normalized === "CANCELLED") return "Отменено: паллета найдена";
   return "";
+}
+
+function isArchivedDiscrepancyItem(item) {
+  const writeoffStatus = String(item?.writeoffRequest?.status || "").trim().toUpperCase();
+  return writeoffStatus === "APPROVED";
 }
 
 const META_FIELD_DEFINITIONS = [
@@ -403,7 +408,7 @@ function mapPalletError(code, fallback = "Не удалось выполнить
   if (normalized === "PALLET_DISCREPANCY_WRITEOFF_REQUEST_ERROR")
     return "Не удалось отправить запрос на списание.";
   if (normalized === "PALLET_DISCREPANCY_WRITEOFF_OWNER_ONLY")
-    return "Подтвердить или отклонить списание может только владелец бизнеса.";
+    return "Подтвердить или отклонить списание может только админ или владелец бизнеса.";
   if (normalized === "PALLET_DISCREPANCY_WRITEOFF_NOT_PENDING")
     return "Запрос на списание уже обработан или не создан.";
   if (normalized === "PALLET_DISCREPANCY_WRITEOFF_DECISION_INVALID")
@@ -464,6 +469,12 @@ export default function PalletFlow({
     canApproveWriteoff: false,
   });
   const [discrepancyActionKey, setDiscrepancyActionKey] = useState("");
+  const [discrepancyView, setDiscrepancyView] = useState("active");
+  const [foundDiscrepancyDraft, setFoundDiscrepancyDraft] = useState({
+    palletId: null,
+    palletCode: "",
+    locationCode: "",
+  });
   const [searchView, setSearchView] = useState("list");
   const [historyPallet, setHistoryPallet] = useState(null);
   const [historyEvents, setHistoryEvents] = useState([]);
@@ -534,6 +545,12 @@ export default function PalletFlow({
     setDiscrepancyTrackingEnabled(true);
     setDiscrepancyPermissions({ canApproveWriteoff: false });
     setDiscrepancyActionKey("");
+    setDiscrepancyView("active");
+    setFoundDiscrepancyDraft({
+      palletId: null,
+      palletCode: "",
+      locationCode: "",
+    });
     setSearchView("list");
     setActiveReceivePalletCodes([]);
     setStoreReceiveScopeLocked(false);
@@ -1465,6 +1482,17 @@ export default function PalletFlow({
     }
   };
 
+  const activeDiscrepanciesItems = useMemo(
+    () => discrepanciesItems.filter((item) => !isArchivedDiscrepancyItem(item)),
+    [discrepanciesItems]
+  );
+  const archiveDiscrepanciesItems = useMemo(
+    () => discrepanciesItems.filter((item) => isArchivedDiscrepancyItem(item)),
+    [discrepanciesItems]
+  );
+  const visibleDiscrepanciesItems =
+    discrepancyView === "archive" ? archiveDiscrepanciesItems : activeDiscrepanciesItems;
+
   const toggleLocationControlFoundCode = (palletCode) => {
     const normalized = normalizePalletCode(palletCode);
     if (!normalized) return;
@@ -1510,19 +1538,42 @@ export default function PalletFlow({
   };
 
   const handleDiscrepancyMarkFound = async (item) => {
-    const palletCode = String(item?.palletCode || "").trim() || "паллеты";
-    const confirmed = window.confirm(
-      `Подтвердить, что ${palletCode} найдена и вернуть паллету в ячейку?`
-    );
-    if (!confirmed) return;
+    const palletId = Number(item?.palletId || 0);
+    if (!palletId) return;
+    setFoundDiscrepancyDraft({
+      palletId,
+      palletCode: String(item?.palletCode || "").trim(),
+      locationCode: "",
+    });
+    setSuccess("");
+    setError("");
+  };
+
+  const handleDiscrepancyFoundConfirm = async () => {
+    const palletId = Number(foundDiscrepancyDraft?.palletId || 0);
+    if (!palletId) return;
+    const locationCode = normalizeLocationCode(foundDiscrepancyDraft?.locationCode);
+    if (!locationCode) {
+      setError("Сканируйте или введите ячейку, куда возвращается паллета.");
+      return;
+    }
+    const item = {
+      palletId,
+      palletCode: foundDiscrepancyDraft?.palletCode || "",
+    };
     const result = await runDiscrepancyAction(
       item,
       "mark-found",
-      null,
+      { locationCode },
       "Не удалось закрыть расхождение как найденное."
     );
     if (result) {
-      setSuccess("Паллета отмечена как найденная и возвращена в ячейку.");
+      setFoundDiscrepancyDraft({
+        palletId: null,
+        palletCode: "",
+        locationCode: "",
+      });
+      setSuccess("Паллета отмечена как найденная и возвращена в выбранную ячейку.");
     }
   };
 
@@ -1540,7 +1591,7 @@ export default function PalletFlow({
       "Не удалось отправить запрос на списание."
     );
     if (result) {
-      setSuccess("Запрос на списание отправлен владельцу бизнеса.");
+      setSuccess("Запрос на списание отправлен админу/владельцу.");
     }
   };
 
@@ -1716,6 +1767,16 @@ export default function PalletFlow({
     if (activeTab !== "discrepancies") return;
     loadDiscrepancies();
     // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [activeTab]);
+
+  useEffect(() => {
+    if (activeTab === "discrepancies") return;
+    setFoundDiscrepancyDraft({
+      palletId: null,
+      palletCode: "",
+      locationCode: "",
+    });
+    setDiscrepancyView("active");
   }, [activeTab]);
 
   useEffect(() => {
@@ -2995,7 +3056,89 @@ export default function PalletFlow({
               <div className="tsd-card__meta">
                 Красные строки: паллета не найдена (открыто). Зеленые: паллета найдена (закрыто).
               </div>
+              <div className="tsd-discrepancy-actions">
+                <button
+                  type="button"
+                  className={`tsd-btn tsd-btn--chip ${
+                    discrepancyView === "active" ? "tsd-btn--chip-active" : ""
+                  }`}
+                  onClick={() => setDiscrepancyView("active")}
+                >
+                  Активные ({activeDiscrepanciesItems.length})
+                </button>
+                <button
+                  type="button"
+                  className={`tsd-btn tsd-btn--chip ${
+                    discrepancyView === "archive" ? "tsd-btn--chip-active" : ""
+                  }`}
+                  onClick={() => setDiscrepancyView("archive")}
+                >
+                  Архив ({archiveDiscrepanciesItems.length})
+                </button>
+              </div>
             </div>
+
+            {discrepancyView === "active" && Number(foundDiscrepancyDraft?.palletId || 0) > 0 ? (
+              <div className="tsd-card">
+                <div className="tsd-card__title">
+                  Найденная паллета: {foundDiscrepancyDraft.palletCode || "-"}
+                </div>
+                <div className="tsd-card__meta">
+                  Сканируйте ячейку, куда сотрудник поставил паллету.
+                </div>
+                <Scanner
+                  label="Скан ячейки"
+                  hint="Наведите камеру на QR ячейки или введите код вручную"
+                  manualPlaceholder="Введите код ячейки, например: А01"
+                  onScan={async (value) => {
+                    setFoundDiscrepancyDraft((prev) => ({
+                      ...prev,
+                      locationCode: normalizeLocationCode(value),
+                    }));
+                  }}
+                  disabled={Boolean(discrepancyActionKey)}
+                  scanKind="mixed"
+                />
+                <div className="tsd-inline tsd-inline--two">
+                  <input
+                    className="tsd-input"
+                    value={foundDiscrepancyDraft.locationCode}
+                    onChange={(event) =>
+                      setFoundDiscrepancyDraft((prev) => ({
+                        ...prev,
+                        locationCode: event.target.value,
+                      }))
+                    }
+                    placeholder="Код ячейки"
+                    disabled={Boolean(discrepancyActionKey)}
+                  />
+                  <button
+                    type="button"
+                    className="tsd-btn tsd-btn--chip tsd-btn--chip-success"
+                    onClick={handleDiscrepancyFoundConfirm}
+                    disabled={Boolean(discrepancyActionKey)}
+                  >
+                    Подтвердить найдено
+                  </button>
+                </div>
+                <div className="tsd-discrepancy-actions">
+                  <button
+                    type="button"
+                    className="tsd-btn tsd-btn--chip"
+                    onClick={() =>
+                      setFoundDiscrepancyDraft({
+                        palletId: null,
+                        palletCode: "",
+                        locationCode: "",
+                      })
+                    }
+                    disabled={Boolean(discrepancyActionKey)}
+                  >
+                    Отмена
+                  </button>
+                </div>
+              </div>
+            ) : null}
 
             {discrepanciesLoading ? (
               <div className="tsd-card">
@@ -3011,15 +3154,19 @@ export default function PalletFlow({
               </div>
             ) : null}
 
-            {!discrepanciesLoading && discrepancyTrackingEnabled && !discrepanciesItems.length ? (
+            {!discrepanciesLoading && discrepancyTrackingEnabled && !visibleDiscrepanciesItems.length ? (
               <div className="tsd-card">
-                <div className="tsd-card__meta">Расхождений по паллетам нет.</div>
+                <div className="tsd-card__meta">
+                  {discrepancyView === "archive"
+                    ? "Архив списанных паллет пуст."
+                    : "Активных расхождений по паллетам нет."}
+                </div>
               </div>
             ) : null}
 
-            {!discrepanciesLoading && discrepanciesItems.length ? (
+            {!discrepanciesLoading && visibleDiscrepanciesItems.length ? (
               <div className="tsd-list">
-                {discrepanciesItems.map((item) => {
+                {visibleDiscrepanciesItems.map((item) => {
                   const status = String(item?.status || "").trim().toUpperCase();
                   const isOpen = status === "OPEN";
                   const writeoffStatus = String(item?.writeoffRequest?.status || "").trim().toUpperCase();
@@ -3055,10 +3202,10 @@ export default function PalletFlow({
                         </div>
                       ) : null}
                       {isOpen ? (
-                        <div className="tsd-action-bar">
+                        <div className="tsd-discrepancy-actions">
                           <button
                             type="button"
-                            className="tsd-btn tsd-btn--secondary"
+                            className="tsd-btn tsd-btn--chip tsd-btn--chip-success"
                             onClick={() => handleDiscrepancyMarkFound(item)}
                             disabled={anyActionRunning}
                           >
@@ -3067,7 +3214,7 @@ export default function PalletFlow({
                           {!isWriteoffPending ? (
                             <button
                               type="button"
-                              className="tsd-btn tsd-btn--primary"
+                              className="tsd-btn tsd-btn--chip tsd-btn--chip-warn"
                               onClick={() => handleDiscrepancyRequestWriteoff(item)}
                               disabled={anyActionRunning}
                             >
@@ -3077,10 +3224,10 @@ export default function PalletFlow({
                         </div>
                       ) : null}
                       {isOpen && isWriteoffPending && canApproveWriteoff ? (
-                        <div className="tsd-action-bar">
+                        <div className="tsd-discrepancy-actions">
                           <button
                             type="button"
-                            className="tsd-btn tsd-btn--danger"
+                            className="tsd-btn tsd-btn--chip tsd-btn--chip-danger"
                             onClick={() => handleDiscrepancyOwnerDecision(item, "APPROVE")}
                             disabled={anyActionRunning}
                           >
@@ -3088,7 +3235,7 @@ export default function PalletFlow({
                           </button>
                           <button
                             type="button"
-                            className="tsd-btn tsd-btn--secondary"
+                            className="tsd-btn tsd-btn--chip"
                             onClick={() => handleDiscrepancyOwnerDecision(item, "REJECT")}
                             disabled={anyActionRunning}
                           >
