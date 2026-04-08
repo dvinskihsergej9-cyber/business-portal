@@ -906,6 +906,7 @@ export default function PalletFlow({
       setSuccess("Успешно");
       setStoreStep("pallet");
       setStoreForm(INITIAL_STORE_FORM);
+      setActiveTab("receive");
       setActiveReceivePalletCodes((prev) => prev.filter((code) => code !== palletCode));
       setDispatchForm((prev) => ({
         ...prev,
