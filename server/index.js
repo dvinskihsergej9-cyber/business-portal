@@ -8065,19 +8065,43 @@ app.get("/api/profile", auth, async (req, res) => {
         const effectiveLocationCode = requestedLocationCode || fallbackLocationCode;
         if (!effectiveLocationCode) return { error: "PALLET_LOCATION_REQUIRED" };
 
-        const linkedWarehouseLocation = await resolveWarehouseLocationByInput(
-          orgId,
-          effectiveLocationCode,
-          tx
-        );
-        if (!linkedWarehouseLocation?.code) return { error: "PALLET_LOCATION_NOT_FOUND" };
+        let linkedWarehouseLocation = null;
+        let fallbackPalletLocation = null;
+        try {
+          const locationLookup = await findPalletLocationsByInput(orgId, effectiveLocationCode, tx);
+          linkedWarehouseLocation = locationLookup?.warehouseLocation || null;
+          const locationCandidates = Array.isArray(locationLookup?.palletLocations)
+            ? locationLookup.palletLocations
+            : [];
+          const normalizedRequestedCode = normalizePalletCode(effectiveLocationCode);
+          fallbackPalletLocation =
+            locationCandidates.find(
+              (entry) => normalizePalletCode(entry?.code) === normalizedRequestedCode
+            ) ||
+            locationCandidates[0] ||
+            null;
+        } catch (err) {
+          // In degraded DB-permission mode fallback to existing pallet-location code.
+          if (!isPermissionDeniedForTable(err, "WarehouseLocation")) {
+            throw err;
+          }
+          const normalizedRequestedCode = normalizePalletCode(effectiveLocationCode);
+          if (normalizedRequestedCode) {
+            fallbackPalletLocation = await tx.palletLocation.findFirst({
+              where: { orgId, code: normalizedRequestedCode },
+              select: { id: true, code: true, name: true },
+            });
+          }
+        }
 
-        const targetLocation = await getOrCreatePalletLocationByCode(
-          orgId,
-          linkedWarehouseLocation.code,
-          tx
-        );
-        if (!targetLocation?.id) return { error: "PALLET_LOCATION_REQUIRED" };
+        let targetLocation = null;
+        if (linkedWarehouseLocation?.code) {
+          targetLocation = await getOrCreatePalletLocationByCode(orgId, linkedWarehouseLocation.code, tx);
+        }
+        if (!targetLocation?.id && fallbackPalletLocation?.id) {
+          targetLocation = fallbackPalletLocation;
+        }
+        if (!targetLocation?.id) return { error: "PALLET_LOCATION_NOT_FOUND" };
         const locationId = targetLocation.id;
         const locationCode =
           String(targetLocation?.code || "").trim() || normalizePalletCode(effectiveLocationCode) || null;
@@ -8159,6 +8183,12 @@ app.get("/api/profile", auth, async (req, res) => {
 
       return res.json({ ok: true, palletId: result?.palletId || null });
     } catch (err) {
+      if (String(err?.code || "").trim().toUpperCase() === "LOCATION_CODE_REQUIRED") {
+        return res.status(400).json({ message: "PALLET_LOCATION_REQUIRED" });
+      }
+      if (String(err?.code || "").trim().toUpperCase() === "P2025") {
+        return res.status(404).json({ message: "PALLET_DISCREPANCY_NOT_FOUND" });
+      }
       console.error("pallet discrepancy mark-found error:", err);
       return res.status(500).json({ message: "PALLET_DISCREPANCY_MARK_FOUND_ERROR" });
     }
