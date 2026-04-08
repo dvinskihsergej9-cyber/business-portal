@@ -901,6 +901,7 @@ const PALLET_EVENT_TYPES = new Set([
 const ROUTE_SHEET_STATUSES = new Set(["DRAFT", "PUBLISHED", "LOADING", "COMPLETED", "CANCELLED"]);
 const ROUTE_SHEET_ITEM_STATUSES = new Set(["PLANNED", "LOADED", "CANCELLED"]);
 const PALLET_DISCREPANCY_STATUSES = new Set(["OPEN", "CLOSED"]);
+const PALLET_DISCREPANCY_WRITEOFF_STATUSES = new Set(["PENDING", "APPROVED", "REJECTED", "CANCELLED"]);
 const ROUTE_SHEET_EVENT_TYPES = new Set([
   "CREATE",
   "ADD_ITEM",
@@ -1342,6 +1343,11 @@ function normalizePalletDiscrepancyStatus(value, fallback = "") {
   return PALLET_DISCREPANCY_STATUSES.has(normalized) ? normalized : fallback;
 }
 
+function normalizePalletDiscrepancyWriteoffStatus(value, fallback = "") {
+  const normalized = String(value || "").trim().toUpperCase();
+  return PALLET_DISCREPANCY_WRITEOFF_STATUSES.has(normalized) ? normalized : fallback;
+}
+
 async function getOrCreatePalletLocationByCode(orgId, rawCode, tx = prisma) {
   const orgIdValue = Number(orgId || 0) || null;
   const parsedInput = parsePalletLocationInput(rawCode);
@@ -1465,7 +1471,106 @@ function palletEventToResponse(event) {
   };
 }
 
+function parsePalletDiscrepancyNote(note) {
+  const raw = typeof note === "string" ? note.trim() : "";
+  if (!raw) {
+    return { legacyText: "", writeoffRequest: null, raw };
+  }
+
+  try {
+    const parsed = JSON.parse(raw);
+    if (!parsed || typeof parsed !== "object") {
+      return { legacyText: raw, writeoffRequest: null, raw };
+    }
+    const legacyText = String(parsed?.legacyText || "").trim();
+    const request = parsed?.writeoffRequest;
+    const normalizedRequest =
+      request && typeof request === "object"
+        ? {
+            status: normalizePalletDiscrepancyWriteoffStatus(request?.status, ""),
+            requestedAt: request?.requestedAt || null,
+            requestedByUserId: Number(request?.requestedByUserId || 0) || null,
+            requestedByName: String(request?.requestedByName || "").trim() || null,
+            decidedAt: request?.decidedAt || null,
+            decidedByUserId: Number(request?.decidedByUserId || 0) || null,
+            decidedByName: String(request?.decidedByName || "").trim() || null,
+            reason: String(request?.reason || "").trim() || null,
+          }
+        : null;
+    return {
+      legacyText,
+      writeoffRequest: normalizedRequest?.status ? normalizedRequest : null,
+      raw,
+    };
+  } catch {
+    return { legacyText: raw, writeoffRequest: null, raw };
+  }
+}
+
+function serializePalletDiscrepancyNote({ legacyText = "", writeoffRequest = null } = {}) {
+  const payload = {};
+  const normalizedLegacyText = String(legacyText || "").trim();
+  if (normalizedLegacyText) {
+    payload.legacyText = normalizedLegacyText;
+  }
+
+  if (writeoffRequest && typeof writeoffRequest === "object") {
+    const status = normalizePalletDiscrepancyWriteoffStatus(writeoffRequest?.status, "");
+    if (status) {
+      payload.writeoffRequest = {
+        status,
+        requestedAt: writeoffRequest?.requestedAt || null,
+        requestedByUserId: Number(writeoffRequest?.requestedByUserId || 0) || null,
+        requestedByName: String(writeoffRequest?.requestedByName || "").trim() || null,
+        decidedAt: writeoffRequest?.decidedAt || null,
+        decidedByUserId: Number(writeoffRequest?.decidedByUserId || 0) || null,
+        decidedByName: String(writeoffRequest?.decidedByName || "").trim() || null,
+        reason: String(writeoffRequest?.reason || "").trim() || null,
+      };
+    }
+  }
+
+  if (!Object.keys(payload).length) return null;
+  return JSON.stringify(payload);
+}
+
+function normalizeDiscrepancyWriteoffForResponse(request) {
+  const status = normalizePalletDiscrepancyWriteoffStatus(request?.status, "");
+  if (!status) return null;
+  return {
+    status,
+    requestedAt: request?.requestedAt || null,
+    requestedByUserId: Number(request?.requestedByUserId || 0) || null,
+    requestedByName: String(request?.requestedByName || "").trim() || null,
+    decidedAt: request?.decidedAt || null,
+    decidedByUserId: Number(request?.decidedByUserId || 0) || null,
+    decidedByName: String(request?.decidedByName || "").trim() || null,
+    reason: String(request?.reason || "").trim() || null,
+  };
+}
+
+function extractDiscrepancyWriteoffFromMeta(metaJson) {
+  const meta = metaJson && typeof metaJson === "object" ? metaJson : null;
+  if (!meta) return null;
+  const status = normalizePalletDiscrepancyWriteoffStatus(
+    meta?.writeoffRequestStatus || meta?.writeoffStatus,
+    ""
+  );
+  if (!status) return null;
+  return normalizeDiscrepancyWriteoffForResponse({
+    status,
+    requestedAt: meta?.writeoffRequestedAt || null,
+    requestedByUserId: Number(meta?.writeoffRequestedByUserId || 0) || null,
+    requestedByName: String(meta?.writeoffRequestedByName || "").trim() || null,
+    decidedAt: meta?.writeoffDecidedAt || null,
+    decidedByUserId: Number(meta?.writeoffDecidedByUserId || 0) || null,
+    decidedByName: String(meta?.writeoffDecidedByName || "").trim() || null,
+    reason: String(meta?.writeoffReason || "").trim() || null,
+  });
+}
+
 function palletDiscrepancyToResponse(row) {
+  const parsedNote = parsePalletDiscrepancyNote(row?.note);
   const palletCode = String(row?.pallet?.palletCode || "").trim();
   const locationCode =
     String(row?.location?.code || "").trim() ||
@@ -1499,7 +1604,8 @@ function palletDiscrepancyToResponse(row) {
           email: row.closedByUser.email || "",
         }
       : null,
-    note: row?.note || null,
+    note: parsedNote.legacyText || null,
+    writeoffRequest: normalizeDiscrepancyWriteoffForResponse(parsedNote.writeoffRequest),
     lastCheckedAt: row?.lastCheckedAt || null,
     createdAt: row?.createdAt || null,
     updatedAt: row?.updatedAt || null,
@@ -1602,6 +1708,7 @@ function palletDiscrepancyEventToResponse(event, status) {
           }
         : null,
     note: null,
+    writeoffRequest: extractDiscrepancyWriteoffFromMeta(event?.metaJson),
     lastCheckedAt: event?.createdAt || null,
     createdAt: event?.createdAt || null,
     updatedAt: event?.createdAt || null,
@@ -1645,12 +1752,28 @@ async function loadLatestDiscrepancyStatesByPalletIdsFromEvents(orgId, palletIds
   for (const row of rows) {
     const palletId = Number(row?.palletId || 0);
     if (!palletId) continue;
-    if (byPalletId.has(palletId)) continue;
 
     const status = extractDiscrepancyStatusFromPalletEvent(row);
-    if (!status) continue;
+    const writeoffRequest = extractDiscrepancyWriteoffFromMeta(row?.metaJson);
+    if (!status && !writeoffRequest) continue;
 
-    byPalletId.set(palletId, { status, event: row });
+    const prev = byPalletId.get(palletId) || null;
+    const next = {
+      status: status || prev?.status || "",
+      writeoffRequest: writeoffRequest || prev?.writeoffRequest || null,
+      event: prev?.event || null,
+    };
+    if (status && !next.event) {
+      next.event = row;
+    }
+
+    byPalletId.set(palletId, next);
+  }
+
+  for (const [key, value] of byPalletId.entries()) {
+    if (!value?.status) {
+      byPalletId.delete(key);
+    }
   }
 
   return byPalletId;
@@ -1680,21 +1803,123 @@ async function loadLatestDiscrepancyItemsFromEvents(orgId, limit = 250, status =
     take: Math.max(2000, safeLimit * 40),
   });
 
-  const byPalletId = new Map();
+  const snapshots = new Map();
   for (const row of rows) {
     const palletId = Number(row?.palletId || 0);
     if (!palletId) continue;
-    if (byPalletId.has(palletId)) continue;
 
     const rowStatus = extractDiscrepancyStatusFromPalletEvent(row);
-    if (!rowStatus) continue;
-    if (status && rowStatus !== status) continue;
+    const rowWriteoff = extractDiscrepancyWriteoffFromMeta(row?.metaJson);
+    if (!rowStatus && !rowWriteoff) continue;
 
-    byPalletId.set(palletId, palletDiscrepancyEventToResponse(row, rowStatus));
-    if (byPalletId.size >= safeLimit) break;
+    const prev = snapshots.get(palletId) || null;
+    const next = {
+      status: rowStatus || prev?.status || "",
+      baseEvent: prev?.baseEvent || null,
+      writeoffRequest: rowWriteoff || prev?.writeoffRequest || null,
+    };
+    if (rowStatus && !next.baseEvent) {
+      next.baseEvent = row;
+    }
+    snapshots.set(palletId, next);
   }
 
-  return Array.from(byPalletId.values());
+  const items = [];
+  for (const [, snapshot] of snapshots.entries()) {
+    if (!snapshot?.status || !snapshot?.baseEvent) continue;
+    if (status && snapshot.status !== status) continue;
+    const item = palletDiscrepancyEventToResponse(snapshot.baseEvent, snapshot.status);
+    item.writeoffRequest = normalizeDiscrepancyWriteoffForResponse(snapshot.writeoffRequest);
+    items.push(item);
+  }
+
+  items.sort((a, b) => {
+    const ta = new Date(a?.detectedAt || a?.createdAt || 0).getTime();
+    const tb = new Date(b?.detectedAt || b?.createdAt || 0).getTime();
+    return tb - ta;
+  });
+
+  return items.slice(0, safeLimit);
+}
+
+function isDiscrepancyWriteoffPending(request) {
+  return normalizePalletDiscrepancyWriteoffStatus(request?.status, "") === "PENDING";
+}
+
+async function getOpenDiscrepancyByPalletIdTx(orgId, palletId, tx = prisma) {
+  const normalizedOrgId = Number(orgId || 0);
+  const normalizedPalletId = Number(palletId || 0);
+  if (!normalizedOrgId || !normalizedPalletId) return null;
+
+  const discrepancyStorageReady = await ensurePalletDiscrepancyStorageReadyForRuntime();
+  if (discrepancyStorageReady) {
+    const row = await tx.palletDiscrepancy.findFirst({
+      where: {
+        orgId: normalizedOrgId,
+        palletId: normalizedPalletId,
+        status: "OPEN",
+      },
+      include: {
+        pallet: {
+          include: {
+            currentLocation: true,
+          },
+        },
+        location: true,
+        detectedByUser: {
+          select: { id: true, name: true, email: true },
+        },
+      },
+      orderBy: [{ detectedAt: "desc" }, { id: "desc" }],
+    });
+    if (!row) return null;
+    const parsedNote = parsePalletDiscrepancyNote(row?.note);
+    return {
+      source: "table",
+      discrepancyStorageReady: true,
+      row,
+      status: "OPEN",
+      writeoffRequest: normalizeDiscrepancyWriteoffForResponse(parsedNote.writeoffRequest),
+      noteParsed: parsedNote,
+      locationCode:
+        String(row?.location?.code || "").trim() ||
+        String(row?.pallet?.currentLocation?.code || "").trim() ||
+        "",
+      locationName:
+        String(row?.location?.name || "").trim() ||
+        String(row?.pallet?.currentLocation?.name || "").trim() ||
+        "",
+    };
+  }
+
+  const snapshotByPallet = await loadLatestDiscrepancyStatesByPalletIdsFromEvents(
+    normalizedOrgId,
+    [normalizedPalletId],
+    tx
+  );
+  const snapshot = snapshotByPallet.get(normalizedPalletId) || null;
+  if (!snapshot || snapshot.status !== "OPEN") return null;
+  const pallet = await tx.pallet.findFirst({
+    where: {
+      orgId: normalizedOrgId,
+      id: normalizedPalletId,
+    },
+    include: {
+      currentLocation: true,
+    },
+  });
+  if (!pallet) return null;
+  return {
+    source: "events",
+    discrepancyStorageReady: false,
+    row: null,
+    status: snapshot.status,
+    writeoffRequest: normalizeDiscrepancyWriteoffForResponse(snapshot.writeoffRequest),
+    noteParsed: null,
+    pallet,
+    locationCode: String(pallet?.currentLocation?.code || "").trim() || "",
+    locationName: String(pallet?.currentLocation?.name || "").trim() || "",
+  };
 }
 
 function routeSheetItemToResponse(item) {
@@ -1978,6 +2203,21 @@ async function getCrossdockDiscrepancyRecipients(orgId) {
   return Array.from(unique.values());
 }
 
+async function getCrossdockBusinessOwnerId(orgId) {
+  const normalizedOrgId = Number(orgId || 0);
+  if (!normalizedOrgId) return 0;
+  const ownerCandidate = await prisma.user.findFirst({
+    where: {
+      orgId: normalizedOrgId,
+      role: "ADMIN",
+      isActive: true,
+    },
+    orderBy: [{ createdAt: "asc" }, { id: "asc" }],
+    select: { id: true },
+  });
+  return Number(ownerCandidate?.id || 0);
+}
+
 async function notifyCrossdockDiscrepancies({
   orgId,
   actorName = "",
@@ -2024,6 +2264,92 @@ async function notifyCrossdockDiscrepancies({
       sendWebPush: false,
     }).catch(() => null);
   }
+}
+
+async function notifyCrossdockWriteoffRequested({
+  orgId,
+  discrepancyId = null,
+  palletCode = "",
+  locationCode = "",
+  locationName = "",
+  actorName = "",
+  reason = "",
+}) {
+  const recipients = await getCrossdockDiscrepancyRecipients(orgId);
+  if (!recipients.length) return;
+
+  const palletLabel = String(palletCode || "").trim() || "-";
+  const locationLabel = String(locationName || "").trim() || String(locationCode || "").trim() || "-";
+  const actorLabel = String(actorName || "").trim() || "Сотрудник";
+  const reasonText = String(reason || "").trim();
+
+  const title = "Запрос на списание паллеты";
+  const message = reasonText
+    ? `${actorLabel} запросил списание паллеты ${palletLabel} (ячейка ${locationLabel}). Причина: ${reasonText}.`
+    : `${actorLabel} запросил списание паллеты ${palletLabel} (ячейка ${locationLabel}).`;
+
+  const payloadJson = {
+    scope: "crossdock_discrepancy_writeoff",
+    discrepancyId: Number(discrepancyId || 0) || null,
+    palletCode: palletLabel,
+    locationCode: String(locationCode || "").trim() || null,
+    locationName: String(locationName || "").trim() || null,
+    reason: reasonText || null,
+  };
+
+  for (const recipient of recipients) {
+    await createWarehouseNotification({
+      orgId: recipient.orgId,
+      userId: recipient.id,
+      type: "CROSSDOCK_DISCREPANCY_WRITEOFF",
+      title,
+      message,
+      linkUrl: CROSSDOCK_DISCREPANCIES_LINK,
+      payloadJson,
+      sendWebPush: false,
+    }).catch(() => null);
+  }
+}
+
+async function notifyCrossdockWriteoffDecision({
+  orgId,
+  targetUserId = null,
+  decision = "",
+  palletCode = "",
+  actorName = "",
+  reason = "",
+}) {
+  const recipientId = Number(targetUserId || 0);
+  if (!recipientId) return;
+
+  const normalizedDecision = String(decision || "").trim().toUpperCase();
+  const isApproved = normalizedDecision === "APPROVE";
+  const palletLabel = String(palletCode || "").trim() || "-";
+  const actorLabel = String(actorName || "").trim() || "Владелец";
+  const reasonText = String(reason || "").trim();
+
+  const title = isApproved ? "Списание одобрено" : "Списание отклонено";
+  const message = isApproved
+    ? `${actorLabel} одобрил списание паллеты ${palletLabel}.`
+    : reasonText
+      ? `${actorLabel} отклонил списание паллеты ${palletLabel}. Причина: ${reasonText}.`
+      : `${actorLabel} отклонил списание паллеты ${palletLabel}.`;
+
+  await createWarehouseNotification({
+    orgId: Number(orgId || 0) || null,
+    userId: recipientId,
+    type: "CROSSDOCK_DISCREPANCY_WRITEOFF_DECISION",
+    title,
+    message,
+    linkUrl: CROSSDOCK_DISCREPANCIES_LINK,
+    payloadJson: {
+      scope: "crossdock_discrepancy_writeoff_decision",
+      decision: isApproved ? "APPROVED" : "REJECTED",
+      palletCode: palletLabel,
+      reason: reasonText || null,
+    },
+    sendWebPush: false,
+  }).catch(() => null);
 }
 
 function hashInviteToken(token) {
@@ -7593,6 +7919,11 @@ app.get("/api/profile", auth, async (req, res) => {
       if (!orgId) {
         return res.status(400).json({ message: "ORG_REQUIRED" });
       }
+      const businessOwnerId = await getCrossdockBusinessOwnerId(orgId);
+      const canApproveWriteoff =
+        req.user?.isSystemOwner === true ||
+        (Number(req.user?.id || 0) > 0 && Number(req.user?.id || 0) === businessOwnerId);
+
       const statusQuery = String(req.query?.status || req.query?.statuses || "ALL")
         .trim()
         .toUpperCase();
@@ -7605,7 +7936,12 @@ app.get("/api/profile", auth, async (req, res) => {
       const discrepancyStorageReady = await ensurePalletDiscrepancyStorageReadyForRuntime();
       if (!discrepancyStorageReady) {
         const fallbackItems = await loadLatestDiscrepancyItemsFromEvents(orgId, limit, status, prisma);
-        return res.json({ items: fallbackItems, discrepancyEnabled: true, fallback: "events" });
+        return res.json({
+          items: fallbackItems,
+          discrepancyEnabled: true,
+          fallback: "events",
+          permissions: { canApproveWriteoff },
+        });
       }
 
       const rows = await prisma.palletDiscrepancy.findMany({
@@ -7634,10 +7970,441 @@ app.get("/api/profile", auth, async (req, res) => {
       return res.json({
         items: rows.map((row) => palletDiscrepancyToResponse(row)),
         discrepancyEnabled: true,
+        permissions: { canApproveWriteoff },
       });
     } catch (err) {
       console.error("pallet discrepancies list error:", err);
       return res.status(500).json({ message: "PALLET_DISCREPANCIES_LIST_ERROR" });
+    }
+  });
+
+  app.post("/api/pallets/discrepancies/:palletId/mark-found", auth, async (req, res) => {
+    try {
+      const orgId = Number(req.user?.orgId || 0);
+      if (!orgId) {
+        return res.status(400).json({ message: "ORG_REQUIRED" });
+      }
+
+      const palletId = Number(req.params?.palletId || 0);
+      if (!palletId) {
+        return res.status(400).json({ message: "PALLET_ID_REQUIRED" });
+      }
+
+      const result = await prisma.$transaction(async (tx) => {
+        const now = new Date();
+        const open = await getOpenDiscrepancyByPalletIdTx(orgId, palletId, tx);
+        if (!open) return { error: "PALLET_DISCREPANCY_NOT_FOUND" };
+
+        const pallet = open?.source === "table" ? open?.row?.pallet : open?.pallet;
+        if (!pallet) return { error: "PALLET_NOT_FOUND" };
+
+        const locationId =
+          open?.source === "table"
+            ? open?.row?.locationId || pallet.currentLocationId || null
+            : pallet.currentLocationId || null;
+        const locationCode =
+          String(open?.locationCode || "").trim() ||
+          String(pallet?.currentLocation?.code || "").trim() ||
+          null;
+        const locationName =
+          String(open?.locationName || "").trim() ||
+          String(pallet?.currentLocation?.name || "").trim() ||
+          locationCode ||
+          null;
+
+        if (pallet.status !== "STORED" || pallet.currentLocationId !== locationId) {
+          await tx.pallet.update({
+            where: { id: pallet.id },
+            data: {
+              status: "STORED",
+              currentLocationId: locationId,
+              storedAt: pallet.storedAt || now,
+            },
+          });
+        }
+
+        let nextWriteoffRequest = open?.writeoffRequest || null;
+        if (isDiscrepancyWriteoffPending(nextWriteoffRequest)) {
+          nextWriteoffRequest = {
+            ...nextWriteoffRequest,
+            status: "CANCELLED",
+            decidedAt: now.toISOString(),
+            decidedByUserId: Number(req.user?.id || 0) || null,
+            decidedByName: String(req.user?.name || "").trim() || null,
+            reason: "Найдена при повторной проверке",
+          };
+        }
+
+        if (open.source === "table" && open.row?.id) {
+          await tx.palletDiscrepancy.update({
+            where: { id: open.row.id },
+            data: {
+              status: "CLOSED",
+              closedAt: now,
+              closedByUserId: req.user?.id || null,
+              lastCheckedAt: now,
+              note: serializePalletDiscrepancyNote({
+                legacyText: open?.noteParsed?.legacyText || "",
+                writeoffRequest: nextWriteoffRequest,
+              }),
+            },
+          });
+        }
+
+        await createPalletEventTx(tx, {
+          orgId,
+          palletId: pallet.id,
+          type: "DISCREPANCY_CLOSE",
+          fromStatus: pallet.status,
+          toStatus: "STORED",
+          userId: req.user.id,
+          metaJson: {
+            locationCode,
+            locationName,
+            source: "DISCREPANCIES_TAB",
+            result: "FOUND",
+            discrepancyStatus: "CLOSED",
+            writeoffRequestStatus:
+              normalizePalletDiscrepancyWriteoffStatus(nextWriteoffRequest?.status, "") || null,
+            writeoffRequestedByUserId: Number(nextWriteoffRequest?.requestedByUserId || 0) || null,
+            writeoffRequestedByName: String(nextWriteoffRequest?.requestedByName || "").trim() || null,
+          },
+        });
+
+        return { ok: true, palletId: pallet.id };
+      });
+
+      if (result?.error) {
+        const code = String(result.error || "");
+        if (code === "PALLET_DISCREPANCY_NOT_FOUND" || code === "PALLET_NOT_FOUND") {
+          return res.status(404).json({ message: code });
+        }
+        return res.status(400).json({ message: code });
+      }
+
+      return res.json({ ok: true, palletId: result?.palletId || null });
+    } catch (err) {
+      console.error("pallet discrepancy mark-found error:", err);
+      return res.status(500).json({ message: "PALLET_DISCREPANCY_MARK_FOUND_ERROR" });
+    }
+  });
+
+  app.post("/api/pallets/discrepancies/:palletId/request-writeoff", auth, async (req, res) => {
+    try {
+      const orgId = Number(req.user?.orgId || 0);
+      if (!orgId) {
+        return res.status(400).json({ message: "ORG_REQUIRED" });
+      }
+
+      const palletId = Number(req.params?.palletId || 0);
+      if (!palletId) {
+        return res.status(400).json({ message: "PALLET_ID_REQUIRED" });
+      }
+
+      const reason = normalizePalletText(req.body?.reason, 240);
+      const txResult = await prisma.$transaction(async (tx) => {
+        const now = new Date();
+        const open = await getOpenDiscrepancyByPalletIdTx(orgId, palletId, tx);
+        if (!open) return { error: "PALLET_DISCREPANCY_NOT_FOUND" };
+        if (isDiscrepancyWriteoffPending(open?.writeoffRequest)) {
+          return { error: "PALLET_DISCREPANCY_WRITEOFF_ALREADY_PENDING" };
+        }
+
+        const pallet = open?.source === "table" ? open?.row?.pallet : open?.pallet;
+        if (!pallet) return { error: "PALLET_NOT_FOUND" };
+
+        const locationCode =
+          String(open?.locationCode || "").trim() ||
+          String(pallet?.currentLocation?.code || "").trim() ||
+          null;
+        const locationName =
+          String(open?.locationName || "").trim() ||
+          String(pallet?.currentLocation?.name || "").trim() ||
+          locationCode ||
+          null;
+
+        const writeoffRequest = {
+          status: "PENDING",
+          requestedAt: now.toISOString(),
+          requestedByUserId: Number(req.user?.id || 0) || null,
+          requestedByName: String(req.user?.name || "").trim() || null,
+          decidedAt: null,
+          decidedByUserId: null,
+          decidedByName: null,
+          reason: reason || null,
+        };
+
+        if (open.source === "table" && open.row?.id) {
+          await tx.palletDiscrepancy.update({
+            where: { id: open.row.id },
+            data: {
+              lastCheckedAt: now,
+              note: serializePalletDiscrepancyNote({
+                legacyText: open?.noteParsed?.legacyText || "",
+                writeoffRequest,
+              }),
+            },
+          });
+        }
+
+        await createPalletEventTx(tx, {
+          orgId,
+          palletId: pallet.id,
+          type: "MOVE",
+          fromStatus: pallet.status,
+          toStatus: pallet.status,
+          userId: req.user.id,
+          metaJson: {
+            source: "DISCREPANCIES_TAB",
+            action: "WRITEOFF_REQUEST",
+            discrepancyStatus: "OPEN",
+            locationCode,
+            locationName,
+            writeoffRequestStatus: "PENDING",
+            writeoffRequestedAt: writeoffRequest.requestedAt,
+            writeoffRequestedByUserId: writeoffRequest.requestedByUserId,
+            writeoffRequestedByName: writeoffRequest.requestedByName,
+            writeoffReason: writeoffRequest.reason,
+          },
+        });
+
+        return {
+          ok: true,
+          discrepancyId: open?.row?.id || null,
+          palletCode: String(pallet?.palletCode || "").trim() || null,
+          locationCode,
+          locationName,
+          reason: writeoffRequest.reason,
+        };
+      });
+
+      if (txResult?.error) {
+        const code = String(txResult.error || "");
+        if (code === "PALLET_DISCREPANCY_NOT_FOUND" || code === "PALLET_NOT_FOUND") {
+          return res.status(404).json({ message: code });
+        }
+        if (code === "PALLET_DISCREPANCY_WRITEOFF_ALREADY_PENDING") {
+          return res.status(409).json({ message: code });
+        }
+        return res.status(400).json({ message: code });
+      }
+
+      await notifyCrossdockWriteoffRequested({
+        orgId,
+        discrepancyId: txResult?.discrepancyId || null,
+        palletCode: txResult?.palletCode || "",
+        locationCode: txResult?.locationCode || "",
+        locationName: txResult?.locationName || "",
+        actorName: req.user?.name || "",
+        reason: txResult?.reason || "",
+      }).catch(() => null);
+
+      return res.json({ ok: true, palletCode: txResult?.palletCode || null });
+    } catch (err) {
+      console.error("pallet discrepancy request-writeoff error:", err);
+      return res.status(500).json({ message: "PALLET_DISCREPANCY_WRITEOFF_REQUEST_ERROR" });
+    }
+  });
+
+  app.post("/api/pallets/discrepancies/:palletId/owner-decision", auth, async (req, res) => {
+    try {
+      const orgId = Number(req.user?.orgId || 0);
+      if (!orgId) {
+        return res.status(400).json({ message: "ORG_REQUIRED" });
+      }
+
+      const palletId = Number(req.params?.palletId || 0);
+      if (!palletId) {
+        return res.status(400).json({ message: "PALLET_ID_REQUIRED" });
+      }
+
+      const decision = String(req.body?.decision || "").trim().toUpperCase();
+      if (!["APPROVE", "REJECT"].includes(decision)) {
+        return res.status(400).json({ message: "PALLET_DISCREPANCY_WRITEOFF_DECISION_INVALID" });
+      }
+      const reason = normalizePalletText(req.body?.reason, 240);
+
+      const ownerId = await getCrossdockBusinessOwnerId(orgId);
+      const canApprove =
+        req.user?.isSystemOwner === true ||
+        (Number(req.user?.id || 0) > 0 && Number(req.user?.id || 0) === ownerId);
+      if (!canApprove) {
+        return res.status(403).json({ message: "PALLET_DISCREPANCY_WRITEOFF_OWNER_ONLY" });
+      }
+
+      const txResult = await prisma.$transaction(async (tx) => {
+        const now = new Date();
+        const open = await getOpenDiscrepancyByPalletIdTx(orgId, palletId, tx);
+        if (!open) return { error: "PALLET_DISCREPANCY_NOT_FOUND" };
+        if (!isDiscrepancyWriteoffPending(open?.writeoffRequest)) {
+          return { error: "PALLET_DISCREPANCY_WRITEOFF_NOT_PENDING" };
+        }
+
+        const pallet = open?.source === "table" ? open?.row?.pallet : open?.pallet;
+        if (!pallet) return { error: "PALLET_NOT_FOUND" };
+
+        const locationCode =
+          String(open?.locationCode || "").trim() ||
+          String(pallet?.currentLocation?.code || "").trim() ||
+          null;
+        const locationName =
+          String(open?.locationName || "").trim() ||
+          String(pallet?.currentLocation?.name || "").trim() ||
+          locationCode ||
+          null;
+
+        const writeoffRequest = {
+          ...(open?.writeoffRequest || {}),
+          status: decision === "APPROVE" ? "APPROVED" : "REJECTED",
+          decidedAt: now.toISOString(),
+          decidedByUserId: Number(req.user?.id || 0) || null,
+          decidedByName: String(req.user?.name || "").trim() || null,
+          reason: reason || open?.writeoffRequest?.reason || null,
+        };
+
+        if (open.source === "table" && open.row?.id) {
+          await tx.palletDiscrepancy.update({
+            where: { id: open.row.id },
+            data:
+              decision === "APPROVE"
+                ? {
+                    status: "CLOSED",
+                    closedAt: now,
+                    closedByUserId: req.user?.id || null,
+                    lastCheckedAt: now,
+                    note: serializePalletDiscrepancyNote({
+                      legacyText: open?.noteParsed?.legacyText || "",
+                      writeoffRequest,
+                    }),
+                  }
+                : {
+                    lastCheckedAt: now,
+                    note: serializePalletDiscrepancyNote({
+                      legacyText: open?.noteParsed?.legacyText || "",
+                      writeoffRequest,
+                    }),
+                  },
+          });
+        }
+
+        if (decision === "APPROVE") {
+          await tx.pallet.update({
+            where: { id: pallet.id },
+            data: {
+              status: "CANCELLED",
+              currentLocationId: null,
+            },
+          });
+
+          await createPalletEventTx(tx, {
+            orgId,
+            palletId: pallet.id,
+            type: "CANCEL",
+            fromStatus: pallet.status,
+            toStatus: "CANCELLED",
+            userId: req.user.id,
+            metaJson: {
+              source: "DISCREPANCIES_TAB",
+              action: "WRITEOFF_APPROVE",
+              locationCode,
+              locationName,
+              writeoffRequestStatus: "APPROVED",
+              writeoffRequestedAt: open?.writeoffRequest?.requestedAt || null,
+              writeoffRequestedByUserId: open?.writeoffRequest?.requestedByUserId || null,
+              writeoffRequestedByName: open?.writeoffRequest?.requestedByName || null,
+              writeoffDecidedAt: writeoffRequest.decidedAt,
+              writeoffDecidedByUserId: writeoffRequest.decidedByUserId,
+              writeoffDecidedByName: writeoffRequest.decidedByName,
+              writeoffReason: writeoffRequest.reason,
+            },
+          });
+
+          await createPalletEventTx(tx, {
+            orgId,
+            palletId: pallet.id,
+            type: "DISCREPANCY_CLOSE",
+            fromStatus: pallet.status,
+            toStatus: "CANCELLED",
+            userId: req.user.id,
+            metaJson: {
+              source: "DISCREPANCIES_TAB",
+              result: "WRITEOFF",
+              discrepancyStatus: "CLOSED",
+              locationCode,
+              locationName,
+              writeoffRequestStatus: "APPROVED",
+              writeoffRequestedAt: open?.writeoffRequest?.requestedAt || null,
+              writeoffRequestedByUserId: open?.writeoffRequest?.requestedByUserId || null,
+              writeoffRequestedByName: open?.writeoffRequest?.requestedByName || null,
+              writeoffDecidedAt: writeoffRequest.decidedAt,
+              writeoffDecidedByUserId: writeoffRequest.decidedByUserId,
+              writeoffDecidedByName: writeoffRequest.decidedByName,
+              writeoffReason: writeoffRequest.reason,
+            },
+          });
+        } else {
+          await createPalletEventTx(tx, {
+            orgId,
+            palletId: pallet.id,
+            type: "MOVE",
+            fromStatus: pallet.status,
+            toStatus: pallet.status,
+            userId: req.user.id,
+            metaJson: {
+              source: "DISCREPANCIES_TAB",
+              action: "WRITEOFF_REJECT",
+              discrepancyStatus: "OPEN",
+              locationCode,
+              locationName,
+              writeoffRequestStatus: "REJECTED",
+              writeoffRequestedAt: open?.writeoffRequest?.requestedAt || null,
+              writeoffRequestedByUserId: open?.writeoffRequest?.requestedByUserId || null,
+              writeoffRequestedByName: open?.writeoffRequest?.requestedByName || null,
+              writeoffDecidedAt: writeoffRequest.decidedAt,
+              writeoffDecidedByUserId: writeoffRequest.decidedByUserId,
+              writeoffDecidedByName: writeoffRequest.decidedByName,
+              writeoffReason: writeoffRequest.reason,
+            },
+          });
+        }
+
+        return {
+          ok: true,
+          decision,
+          requestedByUserId: Number(open?.writeoffRequest?.requestedByUserId || 0) || null,
+          palletCode: String(pallet?.palletCode || "").trim() || null,
+          reason: writeoffRequest.reason,
+        };
+      });
+
+      if (txResult?.error) {
+        const code = String(txResult.error || "");
+        if (code === "PALLET_DISCREPANCY_NOT_FOUND" || code === "PALLET_NOT_FOUND") {
+          return res.status(404).json({ message: code });
+        }
+        if (code === "PALLET_DISCREPANCY_WRITEOFF_NOT_PENDING") {
+          return res.status(409).json({ message: code });
+        }
+        return res.status(400).json({ message: code });
+      }
+
+      await notifyCrossdockWriteoffDecision({
+        orgId,
+        targetUserId: txResult?.requestedByUserId || null,
+        decision: txResult?.decision || "",
+        palletCode: txResult?.palletCode || "",
+        actorName: req.user?.name || "",
+        reason: txResult?.reason || "",
+      }).catch(() => null);
+
+      return res.json({
+        ok: true,
+        decision: txResult?.decision || null,
+        palletCode: txResult?.palletCode || null,
+      });
+    } catch (err) {
+      console.error("pallet discrepancy owner-decision error:", err);
+      return res.status(500).json({ message: "PALLET_DISCREPANCY_WRITEOFF_DECISION_ERROR" });
     }
   });
 
