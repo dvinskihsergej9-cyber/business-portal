@@ -1506,6 +1506,197 @@ function palletDiscrepancyToResponse(row) {
   };
 }
 
+function isDiscrepancyPalletEventType(value) {
+  const normalized = String(value || "").trim().toUpperCase();
+  return normalized === "DISCREPANCY_OPEN" || normalized === "DISCREPANCY_CLOSE";
+}
+
+function isPalletEventTypeEnumValueMissing(err) {
+  const joined = [
+    String(err?.message || ""),
+    String(err?.stack || ""),
+    String(err?.cause?.message || ""),
+    String(err?.meta?.cause || ""),
+  ]
+    .join(" ")
+    .toLowerCase();
+  return (
+    joined.includes("invalid input value for enum") &&
+    joined.includes("palleteventtype")
+  );
+}
+
+function buildDiscrepancyFallbackMeta(metaJson, eventType) {
+  const base = metaJson && typeof metaJson === "object" ? { ...metaJson } : {};
+  const normalizedType = String(eventType || "").trim().toUpperCase();
+  if (!base.discrepancyType) {
+    base.discrepancyType = normalizedType;
+  }
+  if (!base.discrepancyStatus) {
+    base.discrepancyStatus = normalizedType === "DISCREPANCY_CLOSE" ? "CLOSED" : "OPEN";
+  }
+  if (!base.source) {
+    base.source = "LOCATION_CONTROL";
+  }
+  return base;
+}
+
+function extractDiscrepancyStatusFromPalletEvent(event) {
+  const type = String(event?.type || "").trim().toUpperCase();
+  if (type === "DISCREPANCY_OPEN") return "OPEN";
+  if (type === "DISCREPANCY_CLOSE") return "CLOSED";
+
+  const meta = event?.metaJson && typeof event.metaJson === "object" ? event.metaJson : null;
+  if (!meta) return "";
+
+  const metaType = String(meta?.discrepancyType || "").trim().toUpperCase();
+  if (metaType === "DISCREPANCY_OPEN") return "OPEN";
+  if (metaType === "DISCREPANCY_CLOSE") return "CLOSED";
+
+  const metaStatus = normalizePalletDiscrepancyStatus(meta?.discrepancyStatus, "");
+  if (metaStatus) return metaStatus;
+
+  const source = String(meta?.source || "").trim().toUpperCase();
+  const result = String(meta?.result || "").trim().toUpperCase();
+  if (source === "LOCATION_CONTROL" && result === "MISSING") return "OPEN";
+  if (source === "LOCATION_CONTROL" && result === "FOUND") return "CLOSED";
+
+  return "";
+}
+
+function palletDiscrepancyEventToResponse(event, status) {
+  const normalizedStatus = normalizePalletDiscrepancyStatus(status, "OPEN");
+  const palletCode = String(event?.pallet?.palletCode || "").trim();
+  const locationCode =
+    String(event?.metaJson?.locationCode || "").trim() ||
+    String(event?.pallet?.currentLocation?.code || "").trim();
+  const locationName =
+    String(event?.metaJson?.locationName || "").trim() ||
+    String(event?.pallet?.currentLocation?.name || "").trim();
+
+  return {
+    id: `event-${event?.id || `${event?.palletId || "x"}-${event?.createdAt || Date.now()}`}`,
+    status: normalizedStatus,
+    palletId: event?.palletId || null,
+    palletCode: palletCode || null,
+    location: {
+      id: event?.pallet?.currentLocation?.id || null,
+      code: locationCode || null,
+      name: locationName || null,
+    },
+    detectedAt: event?.createdAt || null,
+    detectedBy: event?.user
+      ? {
+          id: event.user.id,
+          name: event.user.name || "",
+          email: event.user.email || "",
+        }
+      : null,
+    closedAt: normalizedStatus === "CLOSED" ? event?.createdAt || null : null,
+    closedBy:
+      normalizedStatus === "CLOSED" && event?.user
+        ? {
+            id: event.user.id,
+            name: event.user.name || "",
+            email: event.user.email || "",
+          }
+        : null,
+    note: null,
+    lastCheckedAt: event?.createdAt || null,
+    createdAt: event?.createdAt || null,
+    updatedAt: event?.createdAt || null,
+  };
+}
+
+async function loadLatestDiscrepancyStatesByPalletIdsFromEvents(orgId, palletIds, tx = prisma) {
+  const normalizedOrgId = Number(orgId || 0) || null;
+  const ids = Array.from(
+    new Set(
+      (Array.isArray(palletIds) ? palletIds : [])
+        .map((value) => Number(value || 0))
+        .filter((value) => Number.isInteger(value) && value > 0)
+    )
+  );
+  if (!normalizedOrgId || !ids.length) {
+    return new Map();
+  }
+
+  const rows = await tx.palletEvent.findMany({
+    where: {
+      orgId: normalizedOrgId,
+      palletId: { in: ids },
+      type: { in: ["DISCREPANCY_OPEN", "DISCREPANCY_CLOSE", "MOVE"] },
+    },
+    include: {
+      pallet: {
+        include: {
+          currentLocation: true,
+        },
+      },
+      user: {
+        select: { id: true, name: true, email: true },
+      },
+    },
+    orderBy: [{ createdAt: "desc" }, { id: "desc" }],
+    take: Math.max(1500, ids.length * 24),
+  });
+
+  const byPalletId = new Map();
+  for (const row of rows) {
+    const palletId = Number(row?.palletId || 0);
+    if (!palletId) continue;
+    if (byPalletId.has(palletId)) continue;
+
+    const status = extractDiscrepancyStatusFromPalletEvent(row);
+    if (!status) continue;
+
+    byPalletId.set(palletId, { status, event: row });
+  }
+
+  return byPalletId;
+}
+
+async function loadLatestDiscrepancyItemsFromEvents(orgId, limit = 250, status = "", tx = prisma) {
+  const normalizedOrgId = Number(orgId || 0) || null;
+  if (!normalizedOrgId) return [];
+
+  const safeLimit = Math.max(1, Math.min(500, Number(limit || 250)));
+  const rows = await tx.palletEvent.findMany({
+    where: {
+      orgId: normalizedOrgId,
+      type: { in: ["DISCREPANCY_OPEN", "DISCREPANCY_CLOSE", "MOVE"] },
+    },
+    include: {
+      pallet: {
+        include: {
+          currentLocation: true,
+        },
+      },
+      user: {
+        select: { id: true, name: true, email: true },
+      },
+    },
+    orderBy: [{ createdAt: "desc" }, { id: "desc" }],
+    take: Math.max(2000, safeLimit * 40),
+  });
+
+  const byPalletId = new Map();
+  for (const row of rows) {
+    const palletId = Number(row?.palletId || 0);
+    if (!palletId) continue;
+    if (byPalletId.has(palletId)) continue;
+
+    const rowStatus = extractDiscrepancyStatusFromPalletEvent(row);
+    if (!rowStatus) continue;
+    if (status && rowStatus !== status) continue;
+
+    byPalletId.set(palletId, palletDiscrepancyEventToResponse(row, rowStatus));
+    if (byPalletId.size >= safeLimit) break;
+  }
+
+  return Array.from(byPalletId.values());
+}
+
 function routeSheetItemToResponse(item) {
   return {
     id: item?.id,
@@ -1628,32 +1819,60 @@ async function createPalletEventTx(
   const normalizedOrgId = Number(orgId || 0) || null;
   const normalizedUserId = Number(userId || 0) || null;
   const normalizedMetaJson = metaJson && typeof metaJson === "object" ? metaJson : null;
+  const isDiscrepancyType = isDiscrepancyPalletEventType(normalizedType);
 
-  try {
-    return await tx.palletEvent.create({
+  const createByPrisma = async (eventType, eventMeta) =>
+    tx.palletEvent.create({
       data: {
         orgId: normalizedOrgId,
         palletId,
-        type: normalizedType,
+        type: eventType,
         fromStatus: normalizedFromStatus,
         toStatus: normalizedToStatus,
         userId: normalizedUserId,
-        metaJson: normalizedMetaJson,
+        metaJson: eventMeta,
       },
     });
-  } catch (err) {
-    if (!isPermissionDeniedForTable(err, "User")) {
-      throw err;
-    }
 
+  const createByRaw = async (eventType, eventMeta) => {
     const inserted = await tx.$queryRaw`
       INSERT INTO "PalletEvent"
         ("orgId", "palletId", "type", "fromStatus", "toStatus", "userId", "metaJson", "createdAt")
       VALUES
-        (${normalizedOrgId}, ${palletId}, ${normalizedType}, ${normalizedFromStatus}, ${normalizedToStatus}, ${normalizedUserId}, CAST(${normalizedMetaJson ? JSON.stringify(normalizedMetaJson) : null} AS jsonb), NOW())
+        (${normalizedOrgId}, ${palletId}, ${eventType}, ${normalizedFromStatus}, ${normalizedToStatus}, ${normalizedUserId}, CAST(${eventMeta ? JSON.stringify(eventMeta) : null} AS jsonb), NOW())
       RETURNING "id", "orgId", "palletId", "type", "fromStatus", "toStatus", "userId", "metaJson", "createdAt"
     `;
     return Array.isArray(inserted) && inserted.length ? inserted[0] : null;
+  };
+
+  try {
+    return await createByPrisma(normalizedType, normalizedMetaJson);
+  } catch (err) {
+    if (isDiscrepancyType && isPalletEventTypeEnumValueMissing(err)) {
+      const fallbackMeta = buildDiscrepancyFallbackMeta(normalizedMetaJson, normalizedType);
+      try {
+        return await createByPrisma("MOVE", fallbackMeta);
+      } catch (fallbackErr) {
+        if (!isPermissionDeniedForTable(fallbackErr, "User")) {
+          throw fallbackErr;
+        }
+        return createByRaw("MOVE", fallbackMeta);
+      }
+    }
+
+    if (!isPermissionDeniedForTable(err, "User")) {
+      throw err;
+    }
+
+    try {
+      return await createByRaw(normalizedType, normalizedMetaJson);
+    } catch (rawErr) {
+      if (isDiscrepancyType && isPalletEventTypeEnumValueMissing(rawErr)) {
+        const fallbackMeta = buildDiscrepancyFallbackMeta(normalizedMetaJson, normalizedType);
+        return createByRaw("MOVE", fallbackMeta);
+      }
+      throw rawErr;
+    }
   }
 }
 
@@ -7058,16 +7277,23 @@ app.get("/api/profile", auth, async (req, res) => {
         resolvedLocationCode;
       const palletIds = expected.map((item) => item.id).filter(Boolean);
       const discrepancyStorageReady = await ensurePalletDiscrepancyStorageReadyForRuntime();
-      const openDiscrepanciesCount =
-        discrepancyStorageReady && palletIds.length
-          ? await prisma.palletDiscrepancy.count({
-              where: {
-                orgId,
-                palletId: { in: palletIds },
-                status: "OPEN",
-              },
-            })
-          : 0;
+      let openDiscrepanciesCount = 0;
+      if (palletIds.length) {
+        if (discrepancyStorageReady) {
+          openDiscrepanciesCount = await prisma.palletDiscrepancy.count({
+            where: {
+              orgId,
+              palletId: { in: palletIds },
+              status: "OPEN",
+            },
+          });
+        } else {
+          const byPalletId = await loadLatestDiscrepancyStatesByPalletIdsFromEvents(orgId, palletIds, prisma);
+          openDiscrepanciesCount = Array.from(byPalletId.values()).filter(
+            (entry) => entry?.status === "OPEN"
+          ).length;
+        }
+      }
 
       return res.json({
         location: {
@@ -7079,7 +7305,7 @@ app.get("/api/profile", auth, async (req, res) => {
         summary: {
           expectedCount: expected.length,
           openDiscrepanciesCount,
-          discrepancyEnabled: discrepancyStorageReady,
+          discrepancyEnabled: true,
         },
       });
     } catch (err) {
@@ -7169,6 +7395,10 @@ app.get("/api/profile", auth, async (req, res) => {
 
         const createdMissingCodes = [];
         const openMissingCodes = [];
+        const knownPalletIds = expected.map((item) => item.id).filter(Boolean);
+        const eventStatesByPalletId = !discrepancyStorageReady
+          ? await loadLatestDiscrepancyStatesByPalletIdsFromEvents(orgId, knownPalletIds, tx)
+          : new Map();
         if (discrepancyStorageReady) {
           for (const pallet of missingPallets) {
             const openDiscrepancy = await tx.palletDiscrepancy.findFirst({
@@ -7217,35 +7447,83 @@ app.get("/api/profile", auth, async (req, res) => {
                 locationName,
                 source: "LOCATION_CONTROL",
                 result: "MISSING",
+                discrepancyStatus: "OPEN",
               },
             });
+          }
+        } else {
+          for (const pallet of missingPallets) {
+            const palletCode = normalizePalletCode(pallet?.palletCode);
+            const latestState = eventStatesByPalletId.get(pallet.id)?.status || "";
+            if (latestState === "OPEN") {
+              openMissingCodes.push(palletCode);
+              continue;
+            }
+            await createPalletEventTx(tx, {
+              orgId,
+              palletId: pallet.id,
+              type: "DISCREPANCY_OPEN",
+              fromStatus: pallet.status,
+              toStatus: pallet.status,
+              userId: req.user.id,
+              metaJson: {
+                locationCode: resolvedLocationCode,
+                locationName,
+                source: "LOCATION_CONTROL",
+                result: "MISSING",
+                discrepancyStatus: "OPEN",
+              },
+            });
+            createdMissingCodes.push(palletCode);
           }
         }
 
         let closedCount = 0;
-        if (discrepancyStorageReady && foundPallets.length) {
-          const foundPalletIds = foundPallets.map((item) => item.id);
-          const openToClose = await tx.palletDiscrepancy.findMany({
-            where: {
-              orgId,
-              palletId: { in: foundPalletIds },
-              status: "OPEN",
-            },
-            select: { id: true, palletId: true },
-          });
-          for (const discrepancy of openToClose) {
-            await tx.palletDiscrepancy.update({
-              where: { id: discrepancy.id },
-              data: {
-                status: "CLOSED",
-                closedAt: now,
-                closedByUserId: req.user?.id || null,
-                lastCheckedAt: now,
+        if (foundPallets.length) {
+          if (discrepancyStorageReady) {
+            const foundPalletIds = foundPallets.map((item) => item.id);
+            const openToClose = await tx.palletDiscrepancy.findMany({
+              where: {
+                orgId,
+                palletId: { in: foundPalletIds },
+                status: "OPEN",
               },
+              select: { id: true, palletId: true },
             });
-            closedCount += 1;
-            const pallet = foundPallets.find((item) => item.id === discrepancy.palletId);
-            if (pallet) {
+            for (const discrepancy of openToClose) {
+              await tx.palletDiscrepancy.update({
+                where: { id: discrepancy.id },
+                data: {
+                  status: "CLOSED",
+                  closedAt: now,
+                  closedByUserId: req.user?.id || null,
+                  lastCheckedAt: now,
+                },
+              });
+              closedCount += 1;
+              const pallet = foundPallets.find((item) => item.id === discrepancy.palletId);
+              if (pallet) {
+                await createPalletEventTx(tx, {
+                  orgId,
+                  palletId: pallet.id,
+                  type: "DISCREPANCY_CLOSE",
+                  fromStatus: pallet.status,
+                  toStatus: pallet.status,
+                  userId: req.user.id,
+                  metaJson: {
+                    locationCode: resolvedLocationCode,
+                    locationName,
+                    source: "LOCATION_CONTROL",
+                    result: "FOUND",
+                    discrepancyStatus: "CLOSED",
+                  },
+                });
+              }
+            }
+          } else {
+            for (const pallet of foundPallets) {
+              const latestState = eventStatesByPalletId.get(pallet.id)?.status || "";
+              if (latestState !== "OPEN") continue;
               await createPalletEventTx(tx, {
                 orgId,
                 palletId: pallet.id,
@@ -7258,8 +7536,10 @@ app.get("/api/profile", auth, async (req, res) => {
                   locationName,
                   source: "LOCATION_CONTROL",
                   result: "FOUND",
+                  discrepancyStatus: "CLOSED",
                 },
               });
+              closedCount += 1;
             }
           }
         }
@@ -7299,7 +7579,7 @@ app.get("/api/profile", auth, async (req, res) => {
         openedCount: reconcileResult.createdMissingCodes.length,
         alreadyOpenCount: reconcileResult.openMissingCodes.length,
         closedCount: reconcileResult.closedCount,
-        discrepancyEnabled: discrepancyStorageReady,
+        discrepancyEnabled: true,
       });
     } catch (err) {
       console.error("pallet location-control reconcile error:", err);
@@ -7313,11 +7593,6 @@ app.get("/api/profile", auth, async (req, res) => {
       if (!orgId) {
         return res.status(400).json({ message: "ORG_REQUIRED" });
       }
-      const discrepancyStorageReady = await ensurePalletDiscrepancyStorageReadyForRuntime();
-      if (!discrepancyStorageReady) {
-        return res.json({ items: [], discrepancyEnabled: false });
-      }
-
       const statusQuery = String(req.query?.status || req.query?.statuses || "ALL")
         .trim()
         .toUpperCase();
@@ -7327,6 +7602,11 @@ app.get("/api/profile", auth, async (req, res) => {
         return res.status(400).json({ message: "PALLET_DISCREPANCY_STATUS_INVALID" });
       }
       const limit = Math.max(1, Math.min(500, Number(req.query?.limit || 250)));
+      const discrepancyStorageReady = await ensurePalletDiscrepancyStorageReadyForRuntime();
+      if (!discrepancyStorageReady) {
+        const fallbackItems = await loadLatestDiscrepancyItemsFromEvents(orgId, limit, status, prisma);
+        return res.json({ items: fallbackItems, discrepancyEnabled: true, fallback: "events" });
+      }
 
       const rows = await prisma.palletDiscrepancy.findMany({
         where: {
@@ -19969,10 +20249,26 @@ async function ensurePalletDiscrepancyStorageReady() {
   `);
 
   await prismaBase.$executeRawUnsafe(`
-    ALTER TYPE "PalletEventType" ADD VALUE IF NOT EXISTS 'DISCREPANCY_OPEN';
+    DO $$
+    BEGIN
+      BEGIN
+        ALTER TYPE "PalletEventType" ADD VALUE IF NOT EXISTS 'DISCREPANCY_OPEN';
+      EXCEPTION
+        WHEN insufficient_privilege THEN
+          RAISE NOTICE 'skip enum alter DISCREPANCY_OPEN: insufficient privilege';
+      END;
+    END $$;
   `);
   await prismaBase.$executeRawUnsafe(`
-    ALTER TYPE "PalletEventType" ADD VALUE IF NOT EXISTS 'DISCREPANCY_CLOSE';
+    DO $$
+    BEGIN
+      BEGIN
+        ALTER TYPE "PalletEventType" ADD VALUE IF NOT EXISTS 'DISCREPANCY_CLOSE';
+      EXCEPTION
+        WHEN insufficient_privilege THEN
+          RAISE NOTICE 'skip enum alter DISCREPANCY_CLOSE: insufficient privilege';
+      END;
+    END $$;
   `);
 
   await prismaBase.$executeRawUnsafe(`
@@ -20093,7 +20389,12 @@ async function ensureAuthDbPermissions() {
       DECLARE
         v_user text := current_user;
       BEGIN
-        EXECUTE format('GRANT USAGE ON SCHEMA public TO %I', v_user);
+        BEGIN
+          EXECUTE format('GRANT USAGE, CREATE ON SCHEMA public TO %I', v_user);
+        EXCEPTION
+          WHEN insufficient_privilege THEN
+            EXECUTE format('GRANT USAGE ON SCHEMA public TO %I', v_user);
+        END;
         EXECUTE format('GRANT SELECT, INSERT, UPDATE, DELETE ON ALL TABLES IN SCHEMA public TO %I', v_user);
         EXECUTE format('GRANT USAGE, SELECT, UPDATE ON ALL SEQUENCES IN SCHEMA public TO %I', v_user);
       END
