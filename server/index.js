@@ -7580,6 +7580,9 @@ app.get("/api/profile", auth, async (req, res) => {
         orgId,
         locationInput
       );
+      if (!warehouseLocation) {
+        return res.status(404).json({ message: "PALLET_LOCATION_NOT_FOUND" });
+      }
       const knownLocation = palletLocations[0] || null;
       const locationIds = palletLocations.map((location) => location.id).filter(Boolean);
       const expected = await prisma.pallet.findMany({
@@ -7686,6 +7689,11 @@ app.get("/api/profile", auth, async (req, res) => {
           locationInput,
           tx
         );
+        if (!warehouseLocation) {
+          const error = new Error("PALLET_LOCATION_NOT_FOUND");
+          error.code = "PALLET_LOCATION_NOT_FOUND";
+          throw error;
+        }
         const knownLocation = palletLocations[0] || null;
         const locationIds = palletLocations.map((location) => location.id).filter(Boolean);
         const expected = await tx.pallet.findMany({
@@ -8062,9 +8070,16 @@ app.get("/api/profile", auth, async (req, res) => {
         const effectiveLocationCode = requestedLocationCode || fallbackLocationCode;
         if (!effectiveLocationCode) return { error: "PALLET_LOCATION_REQUIRED" };
 
-        const targetLocation = await getOrCreatePalletLocationByCode(
+        const linkedWarehouseLocation = await resolveWarehouseLocationByInput(
           orgId,
           effectiveLocationCode,
+          tx
+        );
+        if (!linkedWarehouseLocation?.code) return { error: "PALLET_LOCATION_NOT_FOUND" };
+
+        const targetLocation = await getOrCreatePalletLocationByCode(
+          orgId,
+          linkedWarehouseLocation.code,
           tx
         );
         if (!targetLocation?.id) return { error: "PALLET_LOCATION_REQUIRED" };
