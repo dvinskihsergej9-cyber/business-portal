@@ -2306,7 +2306,7 @@ async function notifyCrossdockWriteoffRequested({
       message,
       linkUrl: CROSSDOCK_DISCREPANCIES_LINK,
       payloadJson,
-      sendWebPush: false,
+      sendWebPush: true,
     }).catch(() => null);
   }
 }
@@ -2348,7 +2348,7 @@ async function notifyCrossdockWriteoffDecision({
       palletCode: palletLabel,
       reason: reasonText || null,
     },
-    sendWebPush: false,
+    sendWebPush: true,
   }).catch(() => null);
 }
 
