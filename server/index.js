@@ -1759,8 +1759,8 @@ async function loadLatestDiscrepancyStatesByPalletIdsFromEvents(orgId, palletIds
 
     const prev = byPalletId.get(palletId) || null;
     const next = {
-      status: status || prev?.status || "",
-      writeoffRequest: writeoffRequest || prev?.writeoffRequest || null,
+      status: prev?.status || status || "",
+      writeoffRequest: prev?.writeoffRequest || writeoffRequest || null,
       event: prev?.event || null,
     };
     if (status && !next.event) {
@@ -1814,9 +1814,9 @@ async function loadLatestDiscrepancyItemsFromEvents(orgId, limit = 250, status =
 
     const prev = snapshots.get(palletId) || null;
     const next = {
-      status: rowStatus || prev?.status || "",
+      status: prev?.status || rowStatus || "",
       baseEvent: prev?.baseEvent || null,
-      writeoffRequest: rowWriteoff || prev?.writeoffRequest || null,
+      writeoffRequest: prev?.writeoffRequest || rowWriteoff || null,
     };
     if (rowStatus && !next.baseEvent) {
       next.baseEvent = row;
