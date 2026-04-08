@@ -433,6 +433,7 @@ export default function PalletFlow({
   const [locationControlResult, setLocationControlResult] = useState(null);
   const [discrepanciesItems, setDiscrepanciesItems] = useState([]);
   const [discrepanciesLoading, setDiscrepanciesLoading] = useState(false);
+  const [discrepancyTrackingEnabled, setDiscrepancyTrackingEnabled] = useState(true);
   const [searchView, setSearchView] = useState("list");
   const [historyPallet, setHistoryPallet] = useState(null);
   const [historyEvents, setHistoryEvents] = useState([]);
@@ -500,6 +501,7 @@ export default function PalletFlow({
     setLocationControlFoundCodes([]);
     setLocationControlResult(null);
     setDiscrepanciesItems([]);
+    setDiscrepancyTrackingEnabled(true);
     setSearchView("list");
     setActiveReceivePalletCodes([]);
     setStoreReceiveScopeLocked(false);
@@ -1326,6 +1328,7 @@ export default function PalletFlow({
         throw new Error(mapPalletError(data?.message, "Не удалось загрузить ожидаемые паллеты."));
       }
       const location = data?.location || null;
+      const discrepancyEnabled = data?.summary?.discrepancyEnabled !== false;
       const items = Array.isArray(data?.expectedPallets) ? data.expectedPallets : [];
       const foundCodes = items
         .map((item) => normalizePalletCode(item?.palletCode))
@@ -1335,6 +1338,7 @@ export default function PalletFlow({
       setSearchLocationItems(items);
       setLocationControlFoundCodes(foundCodes);
       setLocationControlResult(null);
+      setDiscrepancyTrackingEnabled(discrepancyEnabled);
       setLocationControlStep("confirm");
     } catch (err) {
       const fallbackCandidates = buildLocationCodeCandidates(sourceLocationCode);
@@ -1417,6 +1421,7 @@ export default function PalletFlow({
       if (!response.ok) {
         throw new Error(mapPalletError(data?.message, "Не удалось загрузить список расхождений."));
       }
+      setDiscrepancyTrackingEnabled(data?.discrepancyEnabled !== false);
       setDiscrepanciesItems(Array.isArray(data?.items) ? data.items : []);
     } catch (err) {
       setError(normalizeErrorMessage(err, "Не удалось загрузить список расхождений."));
@@ -1468,13 +1473,21 @@ export default function PalletFlow({
         openedCount: Number(data?.openedCount || 0),
         alreadyOpenCount: Number(data?.alreadyOpenCount || 0),
         closedCount: Number(data?.closedCount || 0),
+        discrepancyEnabled: data?.discrepancyEnabled !== false,
       };
       setLocationControlResult(result);
+      setDiscrepancyTrackingEnabled(result.discrepancyEnabled);
 
       if (result.missingPalletCodes.length) {
-        setSuccess(
-          `Контроль сохранен: не найдено ${result.missingPalletCodes.length} паллет. Расхождения зафиксированы.`
-        );
+        if (result.discrepancyEnabled) {
+          setSuccess(
+            `Контроль сохранен: не найдено ${result.missingPalletCodes.length} паллет. Расхождения зафиксированы.`
+          );
+        } else {
+          setSuccess(
+            `Контроль сохранен: не найдено ${result.missingPalletCodes.length} паллет. Журнал расхождений временно недоступен (БД).`
+          );
+        }
       } else {
         setSuccess("Контроль сохранен: расхождений не найдено.");
       }
@@ -2826,6 +2839,12 @@ export default function PalletFlow({
                       Новых расхождений: {locationControlResult.openedCount} • Уже открытых:{" "}
                       {locationControlResult.alreadyOpenCount} • Закрытых: {locationControlResult.closedCount}
                     </div>
+                    {!locationControlResult.discrepancyEnabled ? (
+                      <div className="tsd-card__meta">
+                        Внимание: журнал расхождений временно недоступен, записи в раздел «Расхождения» не
+                        создаются.
+                      </div>
+                    ) : null}
                     {locationControlResult.missingPalletCodes?.length ? (
                       <div className="tsd-card__meta">
                         Недостающие паллеты: {locationControlResult.missingPalletCodes.join(", ")}
@@ -2853,7 +2872,15 @@ export default function PalletFlow({
               </div>
             ) : null}
 
-            {!discrepanciesLoading && !discrepanciesItems.length ? (
+            {!discrepanciesLoading && !discrepancyTrackingEnabled ? (
+              <div className="tsd-card">
+                <div className="tsd-card__meta">
+                  Журнал расхождений временно недоступен: нет доступа БД к таблице расхождений.
+                </div>
+              </div>
+            ) : null}
+
+            {!discrepanciesLoading && discrepancyTrackingEnabled && !discrepanciesItems.length ? (
               <div className="tsd-card">
                 <div className="tsd-card__meta">Расхождений по паллетам нет.</div>
               </div>

@@ -7057,7 +7057,7 @@ app.get("/api/profile", auth, async (req, res) => {
         String(expected[0]?.currentLocation?.name || "").trim() ||
         resolvedLocationCode;
       const palletIds = expected.map((item) => item.id).filter(Boolean);
-      const discrepancyStorageReady = await isPalletDiscrepancyStorageReady(prisma);
+      const discrepancyStorageReady = await ensurePalletDiscrepancyStorageReadyForRuntime();
       const openDiscrepanciesCount =
         discrepancyStorageReady && palletIds.length
           ? await prisma.palletDiscrepancy.count({
@@ -7079,6 +7079,7 @@ app.get("/api/profile", auth, async (req, res) => {
         summary: {
           expectedCount: expected.length,
           openDiscrepanciesCount,
+          discrepancyEnabled: discrepancyStorageReady,
         },
       });
     } catch (err) {
@@ -7112,7 +7113,7 @@ app.get("/api/profile", auth, async (req, res) => {
             .filter(Boolean)
         )
       ).slice(0, 1200);
-      const discrepancyStorageReady = await isPalletDiscrepancyStorageReady(prisma);
+      const discrepancyStorageReady = await ensurePalletDiscrepancyStorageReadyForRuntime();
 
       const reconcileResult = await prisma.$transaction(async (tx) => {
         const now = new Date();
@@ -7312,9 +7313,9 @@ app.get("/api/profile", auth, async (req, res) => {
       if (!orgId) {
         return res.status(400).json({ message: "ORG_REQUIRED" });
       }
-      const discrepancyStorageReady = await isPalletDiscrepancyStorageReady(prisma);
+      const discrepancyStorageReady = await ensurePalletDiscrepancyStorageReadyForRuntime();
       if (!discrepancyStorageReady) {
-        return res.json({ items: [] });
+        return res.json({ items: [], discrepancyEnabled: false });
       }
 
       const statusQuery = String(req.query?.status || req.query?.statuses || "ALL")
@@ -7352,6 +7353,7 @@ app.get("/api/profile", auth, async (req, res) => {
 
       return res.json({
         items: rows.map((row) => palletDiscrepancyToResponse(row)),
+        discrepancyEnabled: true,
       });
     } catch (err) {
       console.error("pallet discrepancies list error:", err);
@@ -19872,6 +19874,30 @@ async function isPalletDiscrepancyStorageReady(tx = prismaBase) {
   } catch (err) {
     return false;
   }
+}
+
+let palletDiscrepancyStorageEnsurePromise = null;
+
+async function ensurePalletDiscrepancyStorageReadyForRuntime() {
+  if (!isPostgresDatabaseUrl()) return true;
+
+  const alreadyReady = await isPalletDiscrepancyStorageReady(prisma);
+  if (alreadyReady) return true;
+
+  if (!palletDiscrepancyStorageEnsurePromise) {
+    palletDiscrepancyStorageEnsurePromise = (async () => {
+      try {
+        await ensurePalletDiscrepancyStorageReady();
+      } catch (err) {
+        console.warn("[PALLET_DISCREPANCY_BOOTSTRAP] runtime ensure failed:", err);
+      } finally {
+        palletDiscrepancyStorageEnsurePromise = null;
+      }
+    })();
+  }
+
+  await palletDiscrepancyStorageEnsurePromise;
+  return isPalletDiscrepancyStorageReady(prisma);
 }
 
 async function ensureEmailVerificationStorageReady() {
