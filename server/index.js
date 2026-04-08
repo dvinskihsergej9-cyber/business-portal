@@ -3724,9 +3724,6 @@ app.post("/api/safety/assignments/:id/remind", auth, requireHr, async (req, res)
       return res.status(404).json({ message: "Assignment not found" });
     }
 
-    if (!assignment.employee?.telegramChatId) {
-      return res.status(400).json({ message: "У сотрудника не указан Telegram ID." });
-    }
     if (!assignment.dueDate) {
       return res.status(400).json({ message: "Не задан срок инструктажа." });
     }
@@ -4607,55 +4604,14 @@ function buildReceiveActHtml(order, rows, orgInfo) {
   `;
 }
 
-// ================== TELEGRAM БОТ (ТЕСТОВЫЙ) ==================
-
-const TELEGRAM_BOT_TOKEN =
-  "8254839296:AAGnAvL09dFoMyHzIyRqi2FZ11G6tJgDee4";
-const TELEGRAM_GROUP_CHAT_ID = "-4974442288";
-const TELEGRAM_API = `https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}`;
-
-// универсальная отправка сообщения
-async function sendTelegramMessage(chatId, text, extra = {}) {
-  try {
-    if (!TELEGRAM_BOT_TOKEN || !chatId) {
-      console.log("[Telegram] TOKEN или chatId не указан, отправка пропущена");
-      return;
-    }
-
-    const url = `${TELEGRAM_API}/sendMessage`;
-
-    const body = {
-      chat_id: chatId,
-      text,
-      parse_mode: "HTML",
-      disable_web_page_preview: true,
-      ...extra,
-    };
-
-    const res = await fetch(url, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(body),
-    });
-
-    if (!res.ok) {
-      const data = await res.text();
-      console.error("[Telegram] Ошибка отправки:", data);
-    }
-  } catch (err) {
-    console.error("[Telegram] Ошибка:", err);
-  }
-}
-
-// Удобная обёртка: отправить сообщение именно в складской групповой чат
-function sendWarehouseGroupMessage(text, extra = {}) {
-  return sendTelegramMessage(TELEGRAM_GROUP_CHAT_ID, text, extra);
-}
-
 async function sendSafetyReminderForAssignment(a, force = false) {
-  if (!a?.employee?.telegramChatId || !a.dueDate) return false;
+  if (!a?.dueDate) return false;
+  const orgId = Number(a?.orgId || a?.employee?.orgId || 0);
+  if (!orgId) return false;
+
   const now = new Date();
   const due = new Date(a.dueDate);
+  if (Number.isNaN(due.getTime())) return false;
   const diffDays = Math.floor((due - now) / (1000 * 60 * 60 * 24));
   if (!force && diffDays > 3) return false;
 
@@ -4665,21 +4621,38 @@ async function sendSafetyReminderForAssignment(a, force = false) {
     if (hoursSince < 20) return false;
   }
 
-  const title = a.instruction?.title || "Инструкция";
+  const instructionTitle = String(a?.instruction?.title || "").trim() || "Инструкция";
+  const employeeName = String(a?.employee?.fullName || "").trim() || "Сотрудник";
   const dueStr = due.toLocaleDateString("ru-RU");
-  const lines = [
-    "Напоминание по инструктажу",
-    "",
-    `Инструкция: ${title}`,
-    `Сотрудник: ${a.employee.fullName}`,
-    `Срок: ${dueStr}`,
+  const statusText =
     diffDays >= 0
       ? `Осталось дней: ${diffDays + 1}`
-      : `Просрочено на ${Math.abs(diffDays)} дн.`,
-  ];
+      : `Просрочено на ${Math.abs(diffDays)} дн.`;
+  const title = "Напоминание по инструктажу";
+  const message = `Инструкция: ${instructionTitle}. Сотрудник: ${employeeName}. Срок: ${dueStr}. ${statusText}`;
 
-  const textMsg = lines.join("\n");
-  await sendTelegramMessage(a.employee.telegramChatId, textMsg);
+  const recipients = await getCrossdockDiscrepancyRecipients(orgId);
+  if (!recipients.length) return false;
+  for (const recipient of recipients) {
+    await createWarehouseNotification({
+      orgId: recipient.orgId,
+      userId: recipient.id,
+      type: "SAFETY_REMINDER",
+      title,
+      message,
+      linkUrl: "/hr",
+      payloadJson: {
+        scope: "safety_reminder",
+        assignmentId: Number(a?.id || 0) || null,
+        employeeName,
+        instructionTitle,
+        dueDate: due.toISOString(),
+        diffDays,
+      },
+      sendWebPush: true,
+    }).catch(() => null);
+  }
+
   await prisma.safetyAssignment.update({
     where: { id: a.id },
     data: { lastReminderAt: now },
@@ -4705,230 +4678,7 @@ async function sendSafetyReminders() {
 
 // старт фоновых задач переносим после проверки готовности БД
 
-// обработка callback_query (кнопка "✅ Выполнено")
-
-function extractRequestIdFromTitle(title) {
-  if (!title) return null;
-  const match = String(title).match(/\u0417\u0430\u044f\u0432\u043a\u0430 \u0441\u043a\u043b\u0430\u0434\u0430 #(\d+)/);
-  if (!match) return null;
-  const id = Number(match[1]);
-  return Number.isFinite(id) ? id : null;
-}
-
-async function handleTelegramUpdate(update) {
-  if (!update.callback_query) return;
-
-  const { id: callbackId, data, from } = update.callback_query;
-
-  if (!data) return;
-
-  const isIssueDone = data.startsWith("issue_done:");
-  const isDone = data.startsWith("done:");
-  if (!isIssueDone && !isDone) {
-    return;
-  }
-
-  const taskId = parseInt(data.split(":")[1], 10);
-  if (!taskId) return;
-
-  try {
-    const task = await prisma.warehouseTask.findUnique({
-      where: { id: taskId },
-    });
-
-    if (!task) {
-      await fetch(`${TELEGRAM_API}/answerCallbackQuery`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          callback_query_id: callbackId,
-          text: "\u0417\u0430\u0434\u0430\u0447\u0430 \u043d\u0435 \u043d\u0430\u0439\u0434\u0435\u043d\u0430 \u0438\u043b\u0438 \u0443\u0434\u0430\u043b\u0435\u043d\u0430.",
-          show_alert: false,
-        }),
-      });
-      return;
-    }
-
-    if (
-      task.executorChatId &&
-      String(task.executorChatId) !== String(from.id)
-    ) {
-      await fetch(`${TELEGRAM_API}/answerCallbackQuery`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          callback_query_id: callbackId,
-          text: "\u042d\u0442\u0430 \u0437\u0430\u0434\u0430\u0447\u0430 \u043d\u0430\u0437\u043d\u0430\u0447\u0435\u043d\u0430 \u0434\u0440\u0443\u0433\u043e\u043c\u0443 \u0438\u0441\u043f\u043e\u043b\u043d\u0438\u0442\u0435\u043b\u044e.",
-          show_alert: true,
-        }),
-      });
-      return;
-    }
-
-    await prisma.warehouseTask.update({
-      where: { id: taskId },
-      data: {
-        status: "DONE",
-        lastReminderAt: null,
-      },
-    });
-
-    try {
-      const requestId = extractRequestIdFromTitle(task.title);
-      if (requestId) {
-        const request = await prisma.warehouseRequest.findUnique({
-          where: { id: requestId },
-          include: { items: true },
-        });
-
-        await autoPostRequestToStock(requestId, task.assignerId);
-      }
-    } catch (e) {
-      console.error("[Telegram] autoPostRequestFromTask error:", e);
-    }
-
-    await fetch(`${TELEGRAM_API}/answerCallbackQuery`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        callback_query_id: callbackId,
-        text: isIssueDone
-          ? "\u041e\u0442\u043c\u0435\u0447\u0435\u043d\u043e \u00ab\u0412\u044b\u0434\u0430\u043d\u043e\u00bb. \u0417\u0430\u044f\u0432\u043a\u0430 \u043e\u0431\u043d\u043e\u0432\u043b\u0435\u043d\u0430."
-          : "\u0417\u0430\u0434\u0430\u0447\u0430 \u043e\u0442\u043c\u0435\u0447\u0435\u043d\u0430 \u043a\u0430\u043a \u0432\u044b\u043f\u043e\u043b\u043d\u0435\u043d\u043d\u0430\u044f.",
-        show_alert: false,
-      }),
-    });
-
-    await sendTelegramMessage(
-      from.id,
-      `\u0417\u0430\u0434\u0430\u0447\u0430 <b>${task.title}</b> \u043e\u0442\u043c\u0435\u0447\u0435\u043d\u0430 \u043a\u0430\u043a \u0432\u044b\u043f\u043e\u043b\u043d\u0435\u043d\u043d\u0430\u044f.`
-    );
-
-    await sendWarehouseGroupMessage(
-      `\u0417\u0430\u0434\u0430\u0447\u0430 <b>${task.title}</b> \u0432\u044b\u043f\u043e\u043b\u043d\u0435\u043d\u0430 \u043f\u043e\u043b\u044c\u0437\u043e\u0432\u0430\u0442\u0435\u043b\u0435\u043c ${from.first_name || from.username || from.id}.`
-    );
-
-    console.log(
-      `[Telegram] \u0437\u0430\u0434\u0430\u0447\u0430 ${taskId} \u043e\u0442\u043c\u0435\u0447\u0435\u043d\u0430 \u043a\u0430\u043a \u0432\u044b\u043f\u043e\u043b\u043d\u0435\u043d\u043d\u0430\u044f \u043f\u043e\u043b\u044c\u0437\u043e\u0432\u0430\u0442\u0435\u043b\u0435\u043c ${from.id}`
-    );
-  } catch (err) {
-    console.error("[handleTelegramUpdate] error:", err);
-  }
-}
-
-let telegramOffset = 0;
-
-
-
-
-async function startTelegramPolling() {
-  console.log("▶️ Запуск long polling Telegram...");
-
-  while (true) {
-    try {
-      const url = `${TELEGRAM_API}/getUpdates?timeout=25&offset=${telegramOffset}`;
-
-      const res = await fetch(url);
-      const data = await res.json();
-
-      if (!data.ok) {
-        console.error("[startTelegramPolling] Ответ Telegram с ошибкой:", data);
-        await new Promise((r) => setTimeout(r, 5000));
-        continue;
-      }
-
-      if (Array.isArray(data.result) && data.result.length > 0) {
-        for (const update of data.result) {
-          telegramOffset = update.update_id + 1;
-          await handleTelegramUpdate(update);
-        }
-      }
-    } catch (err) {
-      console.error("[startTelegramPolling] Ошибка:", err);
-      await new Promise((r) => setTimeout(r, 5000));
-    }
-  }
-}
-
 // ================== НАПОМИНАНИЯ ПО ЗАДАЧАМ СКЛАДА ==================
-
-
-function buildWarehouseTaskTelegramText({ task, dueStr, kind, isExecutor }) {
-  const title = task?.title || "";
-  const executor = task?.executorName || "";
-  const lines = [];
-
-  if (kind === "due_soon") {
-    lines.push("\u26A0\uFE0F \u0421\u043A\u043E\u0440\u043E \u0438\u0441\u0442\u0435\u043A\u0430\u0435\u0442 \u0441\u0440\u043E\u043A" + (isExecutor ? " \u0432\u0430\u0448\u0435\u0439 \u0437\u0430\u0434\u0430\u0447\u0438" : " \u043F\u043E \u0437\u0430\u0434\u0430\u0447\u0435"));
-  } else {
-    lines.push("\u23F0 \u041F\u0440\u043E\u0441\u0440\u043E\u0447\u0435\u043D\u0430 \u0437\u0430\u0434\u0430\u0447\u0430" + (isExecutor ? "" : ""));
-  }
-
-  lines.push("");
-  lines.push(`\u0417\u0430\u0434\u0430\u0447\u0430: ${title}`);
-  if (!isExecutor && executor) {
-    lines.push(`\u0418\u0441\u043F\u043E\u043B\u043D\u0438\u0442\u0435\u043B\u044C: ${executor}`);
-  }
-  lines.push(`\u0421\u0440\u043E\u043A: ${dueStr}`);
-
-  return lines.join("\n");
-}
-
-function buildWarehouseTaskCreatedTelegramText(task) {
-  const title = task?.title || "";
-  const author = task?.assigner?.name || task?.assigner?.email || task?.assignerName || "";
-  const details = task?.description || "";
-  const due = task?.dueDate ? new Date(task.dueDate) : null;
-  const dueStr = due && !Number.isNaN(due.getTime())
-    ? due.toLocaleString("ru-RU", { day: "2-digit", month: "2-digit", year: "numeric", hour: "2-digit", minute: "2-digit" })
-    : "";
-
-  const lines = [];
-  lines.push("\u{1F44B} \u041d\u043e\u0432\u0430\u044f \u0437\u0430\u0434\u0430\u0447\u0430 \u0441\u043a\u043b\u0430\u0434\u0430");
-  lines.push("");
-  lines.push(`\u{1F4DD} \u0417\u0430\u0434\u0430\u0447\u0430: ${title}`);
-  if (details) {
-    lines.push(`\u{1F4C4} \u0414\u0435\u0442\u0430\u043b\u0438: ${details}`);
-  }
-  if (dueStr) {
-    lines.push(`\u23F0 \u0421\u0440\u043e\u043a: ${dueStr}`);
-  }
-  if (author) {
-    lines.push("");
-    lines.push(`\u{1F464} \u041d\u0430\u0437\u043d\u0430\u0447\u0438\u043b: ${author}`);
-  }
-  return lines.join("\n");
-}
-function buildWarehouseTaskAssignedTelegramText(task, { forExecutor }) {
-  const title = task?.title || "";
-  const details = task?.description || "";
-  const due = task?.dueDate ? new Date(task.dueDate) : null;
-  const dueStr = due && !Number.isNaN(due.getTime())
-    ? due.toLocaleString("ru-RU", { day: "2-digit", month: "2-digit", year: "numeric", hour: "2-digit", minute: "2-digit" })
-    : "";
-  const assigner = task?.assigner?.name || task?.assigner?.email || "";
-
-  const lines = [];
-  lines.push(forExecutor
-    ? "\u{1F44B} \u0412\u0430\u043c \u043d\u0430\u0437\u043d\u0430\u0447\u0435\u043d\u0430 \u0437\u0430\u0434\u0430\u0447\u0430 \u0441\u043a\u043b\u0430\u0434\u0430"
-    : "\u{1F44B} \u041d\u0430\u0437\u043d\u0430\u0447\u0435\u043d\u0430 \u0437\u0430\u0434\u0430\u0447\u0430 \u0441\u043a\u043b\u0430\u0434\u0430"
-  );
-  lines.push("");
-  lines.push(`\u{1F4DD} \u0417\u0430\u0434\u0430\u0447\u0430: ${title}`);
-  if (details) {
-    lines.push(`\u{1F4C4} \u0414\u0435\u0442\u0430\u043b\u0438: ${details}`);
-  }
-  if (dueStr) {
-    lines.push(`\u23F0 \u0421\u0440\u043e\u043a: ${dueStr}`);
-  }
-  if (assigner) {
-    lines.push("");
-    lines.push(`\u{1F464} \u041d\u0430\u0437\u043d\u0430\u0447\u0438\u043b: ${assigner}`);
-  }
-  return lines.join("\n");
-}
-
-
 
 async function checkWarehouseTaskNotifications() {
   try {
@@ -5073,6 +4823,7 @@ async function getLowStockItems() {
     if (currentStock < item.minStock) {
       result.push({
         id: item.id,
+        orgId: Number(item.orgId || 0) || null,
         name: item.name,
         unit: item.unit,
         minStock: item.minStock,
@@ -5084,28 +4835,62 @@ async function getLowStockItems() {
   return result;
 }
 
-// 2. Отправить один общий отчёт в складской чат
+// 2. Отправить сводку по низким остаткам во внутренние уведомления (админы/владелец)
 async function sendDailyLowStockSummary() {
   try {
     const lowItems = await getLowStockItems();
     const now = new Date();
     const dateStr = now.toLocaleDateString("ru-RU");
 
-    if (lowItems.length === 0) {
-      await sendWarehouseGroupMessage(
-        `✅ На конец дня (${dateStr}) товаров ниже минимального остатка нет.`
-      );
-      return;
+    if (!lowItems.length) return;
+
+    const byOrg = new Map();
+    for (const item of lowItems) {
+      const orgId = Number(item?.orgId || 0);
+      if (!orgId) continue;
+      if (!byOrg.has(orgId)) byOrg.set(orgId, []);
+      byOrg.get(orgId).push(item);
     }
+    if (!byOrg.size) return;
 
-    let text = `📦 Список товаров для дозаказа на ${dateStr}:\n\n`;
+    for (const [orgId, orgItems] of byOrg.entries()) {
+      const recipients = await getCrossdockDiscrepancyRecipients(orgId);
+      if (!recipients.length) continue;
 
-    for (const it of lowItems) {
-      text += `• ${it.name} — сейчас ${it.currentStock} ${it.unit || ""
-        }, минимум ${it.minStock}\n`;
+      const preview = orgItems
+        .slice(0, 8)
+        .map((it) => `• ${it.name}: ${it.currentStock} ${it.unit || "шт."} (мин. ${it.minStock})`)
+        .join("; ");
+      const tail = orgItems.length > 8 ? `; +ещё ${orgItems.length - 8}` : "";
+
+      const title = "Низкий остаток товаров";
+      const message = `На ${dateStr} ниже минимума: ${orgItems.length}. ${preview}${tail}`;
+      const payloadJson = {
+        scope: "low_stock_summary",
+        date: dateStr,
+        total: orgItems.length,
+        items: orgItems.slice(0, 30).map((it) => ({
+          id: Number(it?.id || 0) || null,
+          name: String(it?.name || "").trim(),
+          currentStock: Number(it?.currentStock || 0),
+          minStock: Number(it?.minStock || 0),
+          unit: String(it?.unit || "").trim() || null,
+        })),
+      };
+
+      for (const recipient of recipients) {
+        await createWarehouseNotification({
+          orgId: recipient.orgId,
+          userId: recipient.id,
+          type: "LOW_STOCK_SUMMARY",
+          title,
+          message,
+          linkUrl: "/warehouse",
+          payloadJson,
+          sendWebPush: true,
+        }).catch(() => null);
+      }
     }
-
-    await sendWarehouseGroupMessage(text);
   } catch (err) {
     console.error("[sendDailyLowStockSummary] Ошибка:", err);
   }
@@ -11872,7 +11657,7 @@ app.post("/api/warehouse/requests", auth, async (req, res) => {
       },
     });
 
-    // 4. Создаём задачу и шлём в Telegram
+    // 4. Создаём задачу (уведомления только внутри приложения)
     try {
       await createWarehouseTaskFromRequest(created, req.user.id);
     } catch (err) {
@@ -21829,20 +21614,6 @@ app.post("/api/warehouse/stock/adjustment", requireAdmin, async (req, res) => {
       .json({ message: "Ошибка сервера при корректировке остатков." });
   }
 });
-
-// запуск long polling Telegram (только при явном включении)
-const TELEGRAM_POLLING_ENABLED =
-  String(process.env.TELEGRAM_POLLING_ENABLED || "").toLowerCase() === "true";
-
-if (TELEGRAM_POLLING_ENABLED) {
-  startTelegramPolling().catch((err) =>
-    console.error("Ошибка при запуске startTelegramPolling:", err)
-  );
-} else {
-  console.log(
-    "[Telegram] long polling отключен (установите TELEGRAM_POLLING_ENABLED=true для включения)."
-  );
-}
 
 // ================== ЗАПУСК СЕРВЕРА ==================
 
