@@ -7600,6 +7600,10 @@ app.get("/api/profile", auth, async (req, res) => {
         orderBy: [{ palletCode: "asc" }, { id: "asc" }],
         take: 800,
       });
+      const locationExists = Boolean(warehouseLocation || knownLocation || expected.length > 0);
+      if (!locationExists) {
+        return res.status(404).json({ message: "PALLET_LOCATION_NOT_FOUND" });
+      }
 
       const resolvedLocationCode =
         normalizePalletCode(warehouseLocation?.code || knownLocation?.code || locationInput) ||
@@ -7702,6 +7706,12 @@ app.get("/api/profile", auth, async (req, res) => {
           orderBy: [{ palletCode: "asc" }, { id: "asc" }],
           take: 800,
         });
+        const locationExists = Boolean(warehouseLocation || knownLocation || expected.length > 0);
+        if (!locationExists) {
+          const error = new Error("PALLET_LOCATION_NOT_FOUND");
+          error.code = "PALLET_LOCATION_NOT_FOUND";
+          throw error;
+        }
         const resolvedLocationCode =
           normalizePalletCode(warehouseLocation?.code || knownLocation?.code || locationInput) ||
           locationInput;
@@ -7953,6 +7963,9 @@ app.get("/api/profile", auth, async (req, res) => {
         discrepancyEnabled: true,
       });
     } catch (err) {
+      if (String(err?.code || err?.message || "").trim().toUpperCase() === "PALLET_LOCATION_NOT_FOUND") {
+        return res.status(404).json({ message: "PALLET_LOCATION_NOT_FOUND" });
+      }
       console.error("pallet location-control reconcile error:", err);
       return res.status(500).json({ message: "PALLET_LOCATION_CONTROL_RECONCILE_ERROR" });
     }

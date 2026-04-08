@@ -337,6 +337,7 @@ function mapPalletError(code, fallback = "Не удалось выполнить
   if (normalized === "PALLET_NOT_FOUND") return "Паллета не найдена.";
   if (normalized === "PALLET_CODE_REQUIRED") return "Сканируйте или введите код паллеты.";
   if (normalized === "PALLET_LOCATION_REQUIRED") return "Сканируйте или введите код ячейки.";
+  if (normalized === "PALLET_LOCATION_NOT_FOUND") return "Ячейка не найдена.";
   if (normalized === "PALLET_SUPPLIER_REQUIRED") return "Укажите поставщика.";
   if (normalized === "PALLET_INBOUND_REF_REQUIRED") return "Укажите машину/ТТН.";
   if (normalized === "PALLET_DESTINATION_REQUIRED") return "Укажите РЦ назначения.";
@@ -1379,7 +1380,11 @@ export default function PalletFlow({
       );
       const data = await readJsonSafe(response);
       if (!response.ok) {
-        throw new Error(mapPalletError(data?.message, "Не удалось загрузить ожидаемые паллеты."));
+        const codedError = new Error(
+          mapPalletError(data?.message, "Не удалось загрузить ожидаемые паллеты.")
+        );
+        codedError.code = String(data?.message || "").trim().toUpperCase();
+        throw codedError;
       }
       const location = data?.location || null;
       const discrepancyEnabled = data?.summary?.discrepancyEnabled !== false;
@@ -1395,6 +1400,12 @@ export default function PalletFlow({
       setDiscrepancyTrackingEnabled(discrepancyEnabled);
       setLocationControlStep("confirm");
     } catch (err) {
+      const errorCode = String(err?.code || "").trim().toUpperCase();
+      if (errorCode === "PALLET_LOCATION_NOT_FOUND") {
+        setSuccess("");
+        setError("Ячейка не найдена.");
+        return;
+      }
       const fallbackCandidates = buildLocationCodeCandidates(sourceLocationCode);
       let fallbackItems = [];
       let fallbackHadSuccess = false;
