@@ -542,7 +542,7 @@ export default function AdminWarehousePanel() {
 
 
   return (
-    <div className="admin-console__card" style={{ position: "relative" }}>
+    <div className="admin-console__card admin-panel admin-panel--warehouse" style={{ position: "relative" }}>
       <div className="admin-console__card-title">Склад</div>
       <div className="admin-console__card-text">
         Редактирование товаров, ячеек и заявок.

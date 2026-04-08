@@ -109,7 +109,7 @@ export default function AdminOrderStatusHistoryPanel() {
   }, [loadHistory]);
 
   return (
-    <div className="admin-console__card">
+    <div className="admin-console__card admin-panel">
       <div className="admin-console__card-title">Журнал статусов заказов</div>
       <div className="admin-console__card-text">
         Общая история переходов по заказам: кто и когда перевел заказ в следующий статус.
@@ -185,7 +185,7 @@ export default function AdminOrderStatusHistoryPanel() {
         </div>
       </div>
 
-      <div style={{ display: "flex", gap: 8, marginTop: 12 }}>
+      <div className="admin-panel__toolbar">
         <button
           type="button"
           className="admin-btn admin-btn--primary"
@@ -252,7 +252,7 @@ export default function AdminOrderStatusHistoryPanel() {
         </table>
       </div>
 
-      <div style={{ display: "flex", alignItems: "center", gap: 10, marginTop: 12 }}>
+      <div className="admin-panel__pager">
         <button
           type="button"
           className="admin-btn admin-btn--ghost"

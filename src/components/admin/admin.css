@@ -532,6 +532,72 @@
   color: #64748b;
 }
 
+.admin-panel {
+  position: relative;
+  overflow: hidden;
+  border-color: #dbeafe;
+  background: linear-gradient(180deg, #f8fbff 0%, #ffffff 55%);
+  box-shadow: 0 10px 26px rgba(30, 64, 175, 0.08);
+}
+
+.admin-panel::before {
+  content: "";
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: 0;
+  height: 3px;
+  background: linear-gradient(90deg, #38bdf8 0%, #2563eb 100%);
+  pointer-events: none;
+}
+
+.admin-panel--nested {
+  border-color: #dbe3f1;
+  background: linear-gradient(180deg, #ffffff 0%, #f8fbff 100%);
+  box-shadow: inset 0 1px 0 rgba(148, 163, 184, 0.08);
+}
+
+.admin-panel .admin-console__card-title {
+  font-size: 18px;
+  color: #0f172a;
+}
+
+.admin-panel .admin-console__card-text {
+  color: #64748b;
+}
+
+.admin-panel .admin-table-wrapper {
+  border-color: #dbe3f1;
+}
+
+.admin-panel .admin-table th {
+  background: #f1f7ff;
+}
+
+.admin-panel__section-title {
+  margin-top: 16px;
+  margin-bottom: 8px;
+  font-size: 15px;
+  font-weight: 700;
+  color: #0f172a;
+}
+
+.admin-panel__toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  margin-top: 12px;
+}
+
+.admin-panel__pager {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 10px;
+  margin-top: 12px;
+}
+
 .admin-users-create-card {
   border-color: #dbeafe;
   background: linear-gradient(180deg, #f8fbff 0%, #ffffff 52%);
@@ -639,6 +705,39 @@
 .admin-users-page__alert {
   margin-top: 12px;
   margin-bottom: 12px;
+}
+
+.admin-tenants-page {
+  display: grid;
+  gap: 12px;
+}
+
+.admin-tenants-page__intro {
+  display: grid;
+  gap: 6px;
+}
+
+.admin-tenants-page__intro h1 {
+  margin: 0;
+  font-size: clamp(30px, 3vw, 42px);
+  letter-spacing: -0.02em;
+  color: #0f172a;
+}
+
+.admin-tenants-page__intro p {
+  margin: 0;
+  max-width: 780px;
+  color: #64748b;
+}
+
+.admin-tenants-password-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 8px;
+}
+
+.admin-tenants-password-row .admin-btn {
+  white-space: nowrap;
 }
 
 .admin-alert--error {
@@ -1015,6 +1114,10 @@
   .admin-users-permission-grid {
     grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
   }
+
+  .admin-panel__pager {
+    gap: 8px;
+  }
 }
 
 @media (max-width: 768px) {
@@ -1069,6 +1172,19 @@
   }
 
   .admin-users-password-row .admin-btn {
+    width: 100%;
+  }
+
+  .admin-tenants-password-row {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .admin-tenants-password-row .admin-btn {
+    width: 100%;
+  }
+
+  .admin-panel__toolbar .admin-btn,
+  .admin-panel__pager .admin-btn {
     width: 100%;
   }
 

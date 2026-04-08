@@ -96,7 +96,7 @@ export default function AdminMarketingSettingsPanel() {
 
   if (loading) {
     return (
-      <div className="admin-console__card">
+      <div className="admin-console__card admin-panel">
         <div className="admin-console__card-title">Рассылка</div>
         <div className="admin-muted">Загрузка настроек...</div>
       </div>
@@ -104,7 +104,7 @@ export default function AdminMarketingSettingsPanel() {
   }
 
   return (
-    <div className="admin-console__card">
+    <div className="admin-console__card admin-panel">
       <div className="admin-console__card-title">Рассылка</div>
       <div className="admin-console__card-text">
         Управление получением писем с новостями и полезными материалами сервиса.

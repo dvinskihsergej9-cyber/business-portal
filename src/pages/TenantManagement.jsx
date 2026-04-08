@@ -390,14 +390,16 @@ export default function TenantManagement() {
   }
 
   return (
-    <div className="admin-page" style={{ padding: 24 }}>
-      <h1>Клиенты (SaaS)</h1>
-      <p>
-        Создание новых компаний и их администраторов. Данные клиентов изолированы
-        друг от друга.
-      </p>
+    <div className="admin-page admin-tenants-page" style={{ padding: 24 }}>
+      <div className="admin-tenants-page__intro">
+        <h1>Клиенты (SaaS)</h1>
+        <p>
+          Создание новых компаний и их администраторов. Данные клиентов изолированы
+          друг от друга.
+        </p>
+      </div>
 
-      <div className="admin-console__card" style={{ marginTop: 16 }}>
+      <div className="admin-console__card admin-panel" style={{ marginTop: 16 }}>
         <div className="admin-console__card-title">Новый клиент</div>
         <form className="admin-form" onSubmit={handleSubmit}>
           <div className="admin-form__row">
@@ -443,7 +445,7 @@ export default function TenantManagement() {
             </div>
             <div>
               <label className="admin-label">Пароль администратора</label>
-              <div style={{ display: "flex", gap: 8 }}>
+              <div className="admin-tenants-password-row">
                 <input
                   className="admin-input"
                   type="text"
@@ -488,7 +490,7 @@ export default function TenantManagement() {
         {success && <div className="admin-muted">{success}</div>}
       </div>
 
-      <div className="admin-console__card" style={{ marginTop: 16 }}>
+      <div className="admin-console__card admin-panel" style={{ marginTop: 16 }}>
         <div className="admin-console__card-title">Список клиентов</div>
         <div style={{ marginTop: 10, marginBottom: 10 }}>
           <input

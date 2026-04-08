@@ -305,7 +305,7 @@ export default function AdminSupportPanel() {
   const isSelectedTicketResolved = selectedTicket?.status === "RESOLVED";
 
   return (
-    <div className="admin-console__card admin-support-inbox">
+    <div className="admin-console__card admin-panel admin-support-inbox">
       <div className="admin-console__card-title">Поддержка</div>
       <div className="admin-console__card-text">
         Слева список чатов, справа переписка и управление статусом проблемы.

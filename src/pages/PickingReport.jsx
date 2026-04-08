@@ -88,7 +88,7 @@ export default function PickingReport() {
   }, []);
 
   return (
-    <div className="admin-console__card">
+    <div className="admin-console__card admin-panel">
       <div className="admin-console__card-title">Биллинг ресурсов</div>
       <div className="admin-console__card-text">
         Отчёт по отбору заявок сотрудниками за выбранный период.
@@ -115,7 +115,7 @@ export default function PickingReport() {
         </div>
       </div>
 
-      <div className="admin-table__actions" style={{ marginTop: 10 }}>
+      <div className="admin-panel__toolbar">
         <button
           type="button"
           className="admin-btn admin-btn--primary"
@@ -129,7 +129,7 @@ export default function PickingReport() {
       {error && <div className="admin-alert admin-alert--error">{error}</div>}
 
       {!error && (
-        <div className="admin-console__card" style={{ marginTop: 12 }}>
+        <div className="admin-console__card admin-panel admin-panel--nested" style={{ marginTop: 12 }}>
           <div className="admin-console__card-title">Итоги</div>
           <div className="admin-console__card-text">
             Сотрудников: {report.totals.workers || 0} • Заявок:{" "}

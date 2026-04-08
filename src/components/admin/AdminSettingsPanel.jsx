@@ -37,7 +37,7 @@ export default function AdminSettingsPanel() {
   };
 
   return (
-    <div className="admin-console__card">
+    <div className="admin-console__card admin-panel">
       <div className="admin-console__card-title">Portal settings</div>
       <div className="admin-console__card-text">
         System settings placeholder.

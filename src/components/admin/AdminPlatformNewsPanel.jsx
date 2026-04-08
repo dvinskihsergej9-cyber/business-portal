@@ -122,7 +122,7 @@ export default function AdminPlatformNewsPanel() {
   };
 
   return (
-    <div className="admin-console__card">
+    <div className="admin-console__card admin-panel">
       <div className="admin-console__card-title">Новости платформы</div>
       <div className="admin-console__card-text">
         Рассылка общих уведомлений владельцам компаний через колокольчик и push.
@@ -198,7 +198,7 @@ export default function AdminPlatformNewsPanel() {
       {error ? <div className="admin-alert admin-alert--error">{error}</div> : null}
       {success ? <div className="admin-muted">{success}</div> : null}
 
-      <div className="admin-console__card-title" style={{ marginTop: 18 }}>
+      <div className="admin-console__card-title admin-panel__section-title">
         История рассылок
       </div>
       {loading ? <div className="admin-muted">Загрузка...</div> : null}
@@ -239,7 +239,7 @@ export default function AdminPlatformNewsPanel() {
         </table>
       </div>
 
-      <div style={{ display: "flex", alignItems: "center", gap: 10, marginTop: 12 }}>
+      <div className="admin-panel__pager">
         <button
           type="button"
           className="admin-btn admin-btn--ghost"
