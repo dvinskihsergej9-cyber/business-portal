@@ -184,6 +184,15 @@ function discrepancyStatusLabel(status) {
   return "Неизвестно";
 }
 
+function discrepancyWriteoffStatusLabel(status) {
+  const normalized = String(status || "").trim().toUpperCase();
+  if (normalized === "PENDING") return "Ожидает решения владельца";
+  if (normalized === "APPROVED") return "Списана с баланса";
+  if (normalized === "REJECTED") return "Списание отклонено";
+  if (normalized === "CANCELLED") return "Отменено: паллета найдена";
+  return "";
+}
+
 const META_FIELD_DEFINITIONS = [
   { canonical: "supplierName", label: "Поставщик", keys: ["supplierName"] },
   { canonical: "inboundRef", label: "Машина/ТТН", keys: ["inboundRef"] },
@@ -384,6 +393,23 @@ function mapPalletError(code, fallback = "Не удалось выполнить
     return "Не удалось зафиксировать результат контроля ячейки.";
   if (normalized === "PALLET_DISCREPANCIES_LIST_ERROR")
     return "Не удалось загрузить список расхождений.";
+  if (normalized === "PALLET_ID_REQUIRED") return "Не передана паллета для операции.";
+  if (normalized === "PALLET_DISCREPANCY_NOT_FOUND")
+    return "Открытое расхождение по паллете не найдено.";
+  if (normalized === "PALLET_DISCREPANCY_MARK_FOUND_ERROR")
+    return "Не удалось закрыть расхождение как найденное.";
+  if (normalized === "PALLET_DISCREPANCY_WRITEOFF_ALREADY_PENDING")
+    return "Запрос на списание уже отправлен владельцу.";
+  if (normalized === "PALLET_DISCREPANCY_WRITEOFF_REQUEST_ERROR")
+    return "Не удалось отправить запрос на списание.";
+  if (normalized === "PALLET_DISCREPANCY_WRITEOFF_OWNER_ONLY")
+    return "Подтвердить или отклонить списание может только владелец бизнеса.";
+  if (normalized === "PALLET_DISCREPANCY_WRITEOFF_NOT_PENDING")
+    return "Запрос на списание уже обработан или не создан.";
+  if (normalized === "PALLET_DISCREPANCY_WRITEOFF_DECISION_INVALID")
+    return "Некорректное решение по списанию.";
+  if (normalized === "PALLET_DISCREPANCY_WRITEOFF_DECISION_ERROR")
+    return "Не удалось обработать решение владельца.";
   if (normalized.startsWith("DATE_")) return "Проверьте корректность даты фильтра.";
   return fallback;
 }
@@ -434,6 +460,10 @@ export default function PalletFlow({
   const [discrepanciesItems, setDiscrepanciesItems] = useState([]);
   const [discrepanciesLoading, setDiscrepanciesLoading] = useState(false);
   const [discrepancyTrackingEnabled, setDiscrepancyTrackingEnabled] = useState(true);
+  const [discrepancyPermissions, setDiscrepancyPermissions] = useState({
+    canApproveWriteoff: false,
+  });
+  const [discrepancyActionKey, setDiscrepancyActionKey] = useState("");
   const [searchView, setSearchView] = useState("list");
   const [historyPallet, setHistoryPallet] = useState(null);
   const [historyEvents, setHistoryEvents] = useState([]);
@@ -502,6 +532,8 @@ export default function PalletFlow({
     setLocationControlResult(null);
     setDiscrepanciesItems([]);
     setDiscrepancyTrackingEnabled(true);
+    setDiscrepancyPermissions({ canApproveWriteoff: false });
+    setDiscrepancyActionKey("");
     setSearchView("list");
     setActiveReceivePalletCodes([]);
     setStoreReceiveScopeLocked(false);
@@ -1422,6 +1454,9 @@ export default function PalletFlow({
         throw new Error(mapPalletError(data?.message, "Не удалось загрузить список расхождений."));
       }
       setDiscrepancyTrackingEnabled(data?.discrepancyEnabled !== false);
+      setDiscrepancyPermissions({
+        canApproveWriteoff: data?.permissions?.canApproveWriteoff === true,
+      });
       setDiscrepanciesItems(Array.isArray(data?.items) ? data.items : []);
     } catch (err) {
       setError(normalizeErrorMessage(err, "Не удалось загрузить список расхождений."));
@@ -1439,6 +1474,102 @@ export default function PalletFlow({
       }
       return [...prev, normalized];
     });
+  };
+
+  const runDiscrepancyAction = async (item, action, body = null, fallbackMessage = "") => {
+    const palletId = Number(item?.palletId || 0);
+    if (!palletId) {
+      setError("Не удалось определить паллету для действия.");
+      return;
+    }
+    const actionKey = `${palletId}:${action}`;
+    setDiscrepancyActionKey(actionKey);
+    try {
+      clearAlerts();
+      const response = await fetch(
+        `${API_BASE}/pallets/discrepancies/${encodeURIComponent(palletId)}/${action}`,
+        {
+          method: "POST",
+          headers: authHeaders,
+          ...(body ? { body: JSON.stringify(body) } : {}),
+        }
+      );
+      const data = await readJsonSafe(response);
+      if (!response.ok) {
+        throw new Error(mapPalletError(data?.message, fallbackMessage || "Не удалось выполнить действие."));
+      }
+      await loadDiscrepancies();
+      return data || null;
+    } catch (err) {
+      setSuccess("");
+      setError(normalizeErrorMessage(err, fallbackMessage || "Не удалось выполнить действие."));
+      return null;
+    } finally {
+      setDiscrepancyActionKey("");
+    }
+  };
+
+  const handleDiscrepancyMarkFound = async (item) => {
+    const palletCode = String(item?.palletCode || "").trim() || "паллеты";
+    const confirmed = window.confirm(
+      `Подтвердить, что ${palletCode} найдена и вернуть паллету в ячейку?`
+    );
+    if (!confirmed) return;
+    const result = await runDiscrepancyAction(
+      item,
+      "mark-found",
+      null,
+      "Не удалось закрыть расхождение как найденное."
+    );
+    if (result) {
+      setSuccess("Паллета отмечена как найденная и возвращена в ячейку.");
+    }
+  };
+
+  const handleDiscrepancyRequestWriteoff = async (item) => {
+    const palletCode = String(item?.palletCode || "").trim() || "паллеты";
+    const reason = window.prompt(
+      `Причина запроса списания для ${palletCode} (необязательно):`,
+      ""
+    );
+    if (reason === null) return;
+    const result = await runDiscrepancyAction(
+      item,
+      "request-writeoff",
+      { reason: String(reason || "").trim() },
+      "Не удалось отправить запрос на списание."
+    );
+    if (result) {
+      setSuccess("Запрос на списание отправлен владельцу бизнеса.");
+    }
+  };
+
+  const handleDiscrepancyOwnerDecision = async (item, decision) => {
+    const normalizedDecision = String(decision || "").trim().toUpperCase();
+    const isApprove = normalizedDecision === "APPROVE";
+    const palletCode = String(item?.palletCode || "").trim() || "паллеты";
+    const promptText = isApprove
+      ? `Подтвердить списание ${palletCode} с баланса склада?`
+      : `Отклонить списание ${palletCode}?`;
+    const confirmed = window.confirm(promptText);
+    if (!confirmed) return;
+
+    let reason = "";
+    if (!isApprove) {
+      const input = window.prompt("Причина отклонения (необязательно):", "");
+      if (input === null) return;
+      reason = String(input || "").trim();
+    }
+
+    const result = await runDiscrepancyAction(
+      item,
+      "owner-decision",
+      { decision: normalizedDecision, reason },
+      isApprove ? "Не удалось подтвердить списание." : "Не удалось отклонить списание."
+    );
+    if (result) {
+      setSuccess(isApprove ? "Списание паллеты подтверждено владельцем." : "Списание паллеты отклонено.");
+    }
   };
 
   const handleLocationControlConfirm = async () => {
@@ -2891,6 +3022,17 @@ export default function PalletFlow({
                 {discrepanciesItems.map((item) => {
                   const status = String(item?.status || "").trim().toUpperCase();
                   const isOpen = status === "OPEN";
+                  const writeoffStatus = String(item?.writeoffRequest?.status || "").trim().toUpperCase();
+                  const isWriteoffPending = writeoffStatus === "PENDING";
+                  const canApproveWriteoff = discrepancyPermissions.canApproveWriteoff === true;
+                  const palletId = Number(item?.palletId || 0);
+                  const foundActionKey = `${palletId}:mark-found`;
+                  const requestActionKey = `${palletId}:request-writeoff`;
+                  const approveActionKey = `${palletId}:owner-decision`;
+                  const anyActionRunning =
+                    discrepancyActionKey === foundActionKey ||
+                    discrepancyActionKey === requestActionKey ||
+                    discrepancyActionKey === approveActionKey;
                   return (
                     <div
                       key={`discrepancy-${item.id}`}
@@ -2907,6 +3049,53 @@ export default function PalletFlow({
                         {String(item?.detectedBy?.name || "").trim() || "-"}
                       </div>
                       <div className="tsd-card__meta">Статус: {discrepancyStatusLabel(status)}</div>
+                      {writeoffStatus ? (
+                        <div className="tsd-card__meta">
+                          Запрос на списание: {discrepancyWriteoffStatusLabel(writeoffStatus)}
+                        </div>
+                      ) : null}
+                      {isOpen ? (
+                        <div className="tsd-action-bar">
+                          <button
+                            type="button"
+                            className="tsd-btn tsd-btn--secondary"
+                            onClick={() => handleDiscrepancyMarkFound(item)}
+                            disabled={anyActionRunning}
+                          >
+                            Найден
+                          </button>
+                          {!isWriteoffPending ? (
+                            <button
+                              type="button"
+                              className="tsd-btn tsd-btn--primary"
+                              onClick={() => handleDiscrepancyRequestWriteoff(item)}
+                              disabled={anyActionRunning}
+                            >
+                              Не найден
+                            </button>
+                          ) : null}
+                        </div>
+                      ) : null}
+                      {isOpen && isWriteoffPending && canApproveWriteoff ? (
+                        <div className="tsd-action-bar">
+                          <button
+                            type="button"
+                            className="tsd-btn tsd-btn--danger"
+                            onClick={() => handleDiscrepancyOwnerDecision(item, "APPROVE")}
+                            disabled={anyActionRunning}
+                          >
+                            Списать с баланса
+                          </button>
+                          <button
+                            type="button"
+                            className="tsd-btn tsd-btn--secondary"
+                            onClick={() => handleDiscrepancyOwnerDecision(item, "REJECT")}
+                            disabled={anyActionRunning}
+                          >
+                            Отклонить
+                          </button>
+                        </div>
+                      ) : null}
                     </div>
                   );
                 })}

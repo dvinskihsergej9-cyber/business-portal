@@ -380,6 +380,11 @@
   color: #0f172a;
 }
 
+.tsd-btn--danger {
+  background: #dc2626;
+  color: #fff;
+}
+
 .tsd-btn--ghost {
   background: transparent;
   border: 1px solid var(--tsd-border);
