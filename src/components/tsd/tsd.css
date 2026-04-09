@@ -797,6 +797,11 @@
   background: #f0fdf4;
 }
 
+.tsd-discrepancy-row--archived {
+  border-color: #cbd5e1;
+  background: #f8fafc;
+}
+
 .tsd-pallet-list-btn--stored {
   border-color: #86efac;
   background: #f0fdf4;
@@ -840,6 +845,13 @@
   display: flex;
   justify-content: center;
   margin: 14px 0 10px;
+}
+
+.tsd-location-control-row__actions {
+  margin-top: 10px;
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
 }
 
 .tsd-btn--center {

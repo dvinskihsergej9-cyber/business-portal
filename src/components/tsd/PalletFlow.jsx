@@ -193,7 +193,9 @@ function locationDisplayName(location) {
   return name || code || "-";
 }
 
-function discrepancyStatusLabel(status) {
+function discrepancyStatusLabel(status, writeoffStatus = "") {
+  const normalizedWriteoff = String(writeoffStatus || "").trim().toUpperCase();
+  if (normalizedWriteoff === "APPROVED") return "Списана с баланса";
   const normalized = String(status || "").trim().toUpperCase();
   if (normalized === "OPEN") return "Не найдена";
   if (normalized === "CLOSED") return "Найдена";
@@ -1731,15 +1733,31 @@ export default function PalletFlow({
   const visibleDiscrepanciesItems =
     discrepancyView === "archive" ? archiveDiscrepanciesItems : activeDiscrepanciesItems;
 
-  const toggleLocationControlFoundCode = (palletCode) => {
+  const setLocationControlFoundStatus = (palletCode, isFound) => {
     const normalized = normalizePalletCode(palletCode);
     if (!normalized) return;
     setLocationControlFoundCodes((prev) => {
-      if (prev.includes(normalized)) {
+      const alreadyFound = prev.includes(normalized);
+      if (isFound && !alreadyFound) {
+        return [...prev, normalized];
+      }
+      if (!isFound && alreadyFound) {
         return prev.filter((code) => code !== normalized);
       }
-      return [...prev, normalized];
+      return prev;
     });
+  };
+
+  const applyLocationControlFoundToAll = (isFound) => {
+    if (!searchLocationItems.length) return;
+    if (!isFound) {
+      setLocationControlFoundCodes([]);
+      return;
+    }
+    const allCodes = searchLocationItems
+      .map((item) => normalizePalletCode(item?.palletCode))
+      .filter(Boolean);
+    setLocationControlFoundCodes(Array.from(new Set(allCodes)));
   };
 
   const runDiscrepancyAction = async (item, action, body = null, fallbackMessage = "") => {
@@ -3235,32 +3253,68 @@ export default function PalletFlow({
                 </div>
 
                 {searchLocationItems.length ? (
-                  <div className="tsd-list">
-                    {searchLocationItems.map((item) => {
-                      const code = normalizePalletCode(item?.palletCode);
-                      const isFound = locationControlFoundCodes.includes(code);
-                      return (
-                        <button
-                          key={`location-control-item-${item.id}`}
-                          type="button"
-                          className={`tsd-card tsd-pallet-list-btn ${
-                            isFound
-                              ? "tsd-pallet-list-btn--stored tsd-pallet-list-btn--selected"
-                              : "tsd-pallet-list-btn--received"
-                          }`}
-                          onClick={() => toggleLocationControlFoundCode(code)}
-                        >
-                          <div className="tsd-card__title">{item.palletCode || "-"}</div>
-                          <div className="tsd-card__meta">
-                            Ячейка: {locationDisplayName(item.currentLocation)}
+                  <>
+                    <div className="tsd-discrepancy-actions">
+                      <button
+                        type="button"
+                        className="tsd-btn tsd-btn--chip tsd-btn--chip-success"
+                        onClick={() => applyLocationControlFoundToAll(true)}
+                        disabled={locationControlSubmitting}
+                      >
+                        Отметить все найдено
+                      </button>
+                      <button
+                        type="button"
+                        className="tsd-btn tsd-btn--chip tsd-btn--chip-warn"
+                        onClick={() => applyLocationControlFoundToAll(false)}
+                        disabled={locationControlSubmitting}
+                      >
+                        Отметить все не найдено
+                      </button>
+                    </div>
+                    <div className="tsd-list">
+                      {searchLocationItems.map((item) => {
+                        const code = normalizePalletCode(item?.palletCode);
+                        const isFound = locationControlFoundCodes.includes(code);
+                        return (
+                          <div
+                            key={`location-control-item-${item.id}`}
+                            className={`tsd-card tsd-pallet-list-btn ${
+                              isFound
+                                ? "tsd-pallet-list-btn--stored tsd-pallet-list-btn--selected"
+                                : "tsd-pallet-list-btn--received"
+                            }`}
+                          >
+                            <div className="tsd-card__title">{item.palletCode || "-"}</div>
+                            <div className="tsd-card__meta">
+                              Ячейка: {locationDisplayName(item.currentLocation)}
+                            </div>
+                            <div className="tsd-card__meta">
+                              Статус контроля: {isFound ? "Найдена" : "Не найдена"}
+                            </div>
+                            <div className="tsd-location-control-row__actions">
+                              <button
+                                type="button"
+                                className="tsd-btn tsd-btn--chip tsd-btn--chip-success"
+                                onClick={() => setLocationControlFoundStatus(code, true)}
+                                disabled={locationControlSubmitting || isFound}
+                              >
+                                Найдена
+                              </button>
+                              <button
+                                type="button"
+                                className="tsd-btn tsd-btn--chip tsd-btn--chip-warn"
+                                onClick={() => setLocationControlFoundStatus(code, false)}
+                                disabled={locationControlSubmitting || !isFound}
+                              >
+                                Не найдена
+                              </button>
+                            </div>
                           </div>
-                          <div className="tsd-card__meta">
-                            Статус контроля: {isFound ? "Найдена" : "Не найдена"}
-                          </div>
-                        </button>
-                      );
-                    })}
-                  </div>
+                        );
+                      })}
+                    </div>
+                  </>
                 ) : (
                   <div className="tsd-card">
                     <div className="tsd-card__meta">
@@ -3326,7 +3380,8 @@ export default function PalletFlow({
             <div className="tsd-card">
               <div className="tsd-card__title">Расхождения</div>
               <div className="tsd-card__meta">
-                Красные строки: паллета не найдена (открыто). Зеленые: паллета найдена (закрыто).
+                Красные строки: паллета не найдена (активно). Зеленые: паллета найдена. Серые: списана с
+                баланса (архив).
               </div>
               <div className="tsd-discrepancy-actions">
                 <button
@@ -3442,6 +3497,7 @@ export default function PalletFlow({
                   const status = String(item?.status || "").trim().toUpperCase();
                   const isOpen = status === "OPEN";
                   const writeoffStatus = String(item?.writeoffRequest?.status || "").trim().toUpperCase();
+                  const isWriteoffApproved = writeoffStatus === "APPROVED";
                   const isWriteoffPending = writeoffStatus === "PENDING";
                   const canApproveWriteoff = discrepancyPermissions.canApproveWriteoff === true;
                   const palletId = Number(item?.palletId || 0);
@@ -3456,7 +3512,11 @@ export default function PalletFlow({
                     <div
                       key={`discrepancy-${item.id}`}
                       className={`tsd-card tsd-discrepancy-row ${
-                        isOpen ? "tsd-discrepancy-row--open" : "tsd-discrepancy-row--closed"
+                        isOpen
+                          ? "tsd-discrepancy-row--open"
+                          : isWriteoffApproved
+                            ? "tsd-discrepancy-row--archived"
+                            : "tsd-discrepancy-row--closed"
                       }`}
                     >
                       <div className="tsd-card__title">{item?.palletCode || "-"}</div>
@@ -3467,7 +3527,9 @@ export default function PalletFlow({
                         Выявлено: {formatDateTime(item?.detectedAt)} • Выявил:{" "}
                         {String(item?.detectedBy?.name || "").trim() || "-"}
                       </div>
-                      <div className="tsd-card__meta">Статус: {discrepancyStatusLabel(status)}</div>
+                      <div className="tsd-card__meta">
+                        Статус: {discrepancyStatusLabel(status, writeoffStatus)}
+                      </div>
                       {writeoffStatus ? (
                         <div className="tsd-card__meta">
                           Запрос на списание: {discrepancyWriteoffStatusLabel(writeoffStatus)}
