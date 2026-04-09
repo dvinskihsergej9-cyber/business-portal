@@ -6118,6 +6118,27 @@ app.get("/api/profile", auth, async (req, res) => {
     }
   });
 
+  app.get("/api/pallets/route-sheets/next-number", auth, async (req, res) => {
+    try {
+      const orgId = Number(req.user?.orgId || 0);
+      if (!orgId) {
+        return res.status(400).json({ message: "ORG_REQUIRED" });
+      }
+
+      const plannedDate =
+        toIsoDateOrNull(req.query?.plannedDate || req.query?.date || null) || new Date();
+      const sheetNumber = await generateUniqueRouteSheetNumber(orgId, plannedDate, prisma);
+
+      return res.json({
+        sheetNumber,
+        year: plannedDate.getUTCFullYear(),
+      });
+    } catch (err) {
+      console.error("route-sheet next-number error:", err);
+      return res.status(500).json({ message: "ROUTE_SHEET_NEXT_NUMBER_ERROR" });
+    }
+  });
+
   app.post("/api/pallets/route-sheets", auth, async (req, res) => {
     try {
       const orgId = Number(req.user?.orgId || 0);

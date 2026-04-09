@@ -109,6 +109,22 @@ function formatDateTime(value) {
   return parsed.toLocaleString("ru-RU");
 }
 
+function formatDateOnly(value) {
+  if (!value) return "-";
+  const parsed = new Date(value);
+  if (Number.isNaN(parsed.getTime())) return String(value);
+  return parsed.toLocaleDateString("ru-RU");
+}
+
+function escapeHtml(value) {
+  return String(value ?? "")
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;")
+    .replace(/'/g, "&#39;");
+}
+
 function normalizePalletCode(rawValue) {
   const raw = String(rawValue || "").trim();
   if (!raw) return "";
@@ -201,6 +217,163 @@ function isArchivedDiscrepancyItem(item) {
 function isOpenDiscrepancyItem(item) {
   const status = String(item?.status || "").trim().toUpperCase();
   return status === "OPEN";
+}
+
+function buildRouteSheetPrintHtml(routeSheet) {
+  const sheetNumber = String(routeSheet?.sheetNumber || "").trim() || `МЛ-${routeSheet?.id || "-"}`;
+  const printedAt = new Date().toLocaleString("ru-RU");
+  const plannedDate = formatDateOnly(routeSheet?.plannedDate);
+  const items = Array.isArray(routeSheet?.items) ? routeSheet.items : [];
+
+  const rows = items
+    .map((item, index) => {
+      const palletCode = String(item?.pallet?.palletCode || "").trim() || "-";
+      const location = locationDisplayName(item?.pallet?.currentLocation);
+      const supplierName = String(item?.pallet?.supplierName || "").trim() || "-";
+      const inboundRef = String(item?.pallet?.inboundRef || "").trim() || "-";
+      const status = routeSheetItemStatusLabel(item?.status);
+      return `
+        <tr>
+          <td>${index + 1}</td>
+          <td>${escapeHtml(palletCode)}</td>
+          <td>${escapeHtml(location)}</td>
+          <td>${escapeHtml(supplierName)}</td>
+          <td>${escapeHtml(inboundRef)}</td>
+          <td>${escapeHtml(status)}</td>
+        </tr>
+      `;
+    })
+    .join("");
+
+  return `
+    <html>
+      <head>
+        <meta charset="utf-8" />
+        <title>Маршрутный лист ${escapeHtml(sheetNumber)}</title>
+        <style>
+          body {
+            margin: 18px;
+            font-family: "Segoe UI", Arial, sans-serif;
+            color: #0f172a;
+          }
+          h1 {
+            margin: 0 0 8px;
+            font-size: 26px;
+          }
+          .meta {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 8px 16px;
+            margin: 12px 0 16px;
+            font-size: 14px;
+          }
+          .meta-item {
+            border: 1px solid #cbd5e1;
+            border-radius: 10px;
+            padding: 8px 10px;
+            background: #f8fafc;
+          }
+          .meta-item b {
+            color: #1e293b;
+          }
+          table {
+            width: 100%;
+            border-collapse: collapse;
+          }
+          th, td {
+            border: 1px solid #cbd5e1;
+            padding: 8px 10px;
+            font-size: 13px;
+            text-align: left;
+            vertical-align: top;
+          }
+          th {
+            background: #e2e8f0;
+            font-weight: 700;
+          }
+          .print-actions {
+            position: sticky;
+            bottom: 0;
+            margin-top: 16px;
+            display: flex;
+            gap: 10px;
+            justify-content: flex-end;
+            padding-top: 10px;
+            background: #fff;
+          }
+          .print-btn {
+            border: 1px solid #94a3b8;
+            border-radius: 10px;
+            background: #f8fafc;
+            padding: 8px 12px;
+            cursor: pointer;
+            font-weight: 600;
+          }
+          .print-btn-primary {
+            background: #0284c7;
+            border-color: #0284c7;
+            color: #fff;
+          }
+          @media print {
+            .print-actions { display: none; }
+            body { margin: 8mm; }
+          }
+        </style>
+      </head>
+      <body>
+        <h1>Маршрутный лист ${escapeHtml(sheetNumber)}</h1>
+        <div style="font-size:12px;color:#475569;">Отпечатан: ${escapeHtml(printedAt)}</div>
+        <div class="meta">
+          <div class="meta-item"><b>Клиент:</b> ${escapeHtml(routeSheet?.clientName || "-")}</div>
+          <div class="meta-item"><b>РЦ:</b> ${escapeHtml(routeSheet?.destinationRc || "-")}</div>
+          <div class="meta-item"><b>Дата рейса:</b> ${escapeHtml(plannedDate)}</div>
+          <div class="meta-item"><b>Маршрут:</b> ${escapeHtml(routeSheet?.route || "-")}</div>
+          <div class="meta-item"><b>Машина:</b> ${escapeHtml(routeSheet?.vehicle || "-")}</div>
+          <div class="meta-item"><b>Водитель:</b> ${escapeHtml(routeSheet?.driver || "-")}</div>
+          <div class="meta-item"><b>Статус:</b> ${escapeHtml(routeSheetStatusLabel(routeSheet?.status))}</div>
+          <div class="meta-item"><b>Паллет в плане:</b> ${Number(routeSheet?.summary?.planned || 0)}</div>
+        </div>
+        <table>
+          <thead>
+            <tr>
+              <th>№</th>
+              <th>Паллета</th>
+              <th>Ячейка</th>
+              <th>Поставщик</th>
+              <th>Машина/ТТН</th>
+              <th>Статус</th>
+            </tr>
+          </thead>
+          <tbody>
+            ${
+              rows ||
+              '<tr><td colspan="6" style="text-align:center;color:#64748b;">В маршрутном листе пока нет паллет.</td></tr>'
+            }
+          </tbody>
+        </table>
+        <div class="print-actions">
+          <button class="print-btn print-btn-primary" onclick="window.print()">Печать</button>
+          <button class="print-btn" onclick="returnToApp()">Закрыть</button>
+        </div>
+        <script>
+          function returnToApp() {
+            try {
+              if (window.opener && !window.opener.closed) {
+                window.close();
+                return;
+              }
+            } catch (e) {}
+            if (window.history.length > 1) {
+              window.history.back();
+              return;
+            }
+            window.location.href = "/warehouse?section=crossdock&crossdockTab=planning";
+          }
+          window.setTimeout(function() { window.print(); }, 180);
+        </script>
+      </body>
+    </html>
+  `;
 }
 
 const META_FIELD_DEFINITIONS = [
@@ -396,6 +569,8 @@ function mapPalletError(code, fallback = "Не удалось выполнить
     return "Не удалось удалить паллету из маршрутного листа.";
   if (normalized === "ROUTE_SHEET_PUBLISH_ERROR")
     return "Не удалось выгрузить маршрутный лист на склад.";
+  if (normalized === "ROUTE_SHEET_NEXT_NUMBER_ERROR")
+    return "Не удалось получить следующий номер маршрутного листа.";
   if (normalized === "ROUTE_SHEET_DISPATCH_ERROR")
     return "Не удалось выполнить отгрузку по маршрутному листу.";
   if (normalized === "PALLET_LOCATION_CONTROL_EXPECTED_ERROR")
@@ -497,6 +672,8 @@ export default function PalletFlow({
   const [planningCandidateQuery, setPlanningCandidateQuery] = useState("");
   const [planningSelectedCodes, setPlanningSelectedCodes] = useState([]);
   const [planningBusy, setPlanningBusy] = useState(false);
+  const [planningNextNumber, setPlanningNextNumber] = useState("");
+  const [planningNextNumberLoading, setPlanningNextNumberLoading] = useState(false);
   const [dispatchSheets, setDispatchSheets] = useState([]);
   const [dispatchSheetsLoading, setDispatchSheetsLoading] = useState(false);
   const [dispatchRouteSheetId, setDispatchRouteSheetId] = useState(null);
@@ -534,6 +711,7 @@ export default function PalletFlow({
     setPlanningCandidates([]);
     setPlanningCandidateQuery("");
     setPlanningSelectedCodes([]);
+    setPlanningNextNumber("");
     setSearchCode("");
     setSearchStatus("ACTIVE");
     setSearchQuery("");
@@ -649,19 +827,24 @@ export default function PalletFlow({
     setRouteSheetSummary(null);
   };
 
-  const openPrintFallback = () => {
-    if (!printFallback.html) return;
+  const openPrintableHtml = (html) => {
+    const normalizedHtml = String(html || "");
+    if (!normalizedHtml) return;
     try {
-      openHtmlDocumentInNewTab(printFallback.html, {
-        popupBlockedMessage:
-          "Не удалось открыть новый таб. Документ откроется в текущем окне.",
+      openHtmlDocumentInNewTab(normalizedHtml, {
+        popupBlockedMessage: "Не удалось открыть новый таб. Документ откроется в текущем окне.",
       });
     } catch {
-      const blob = new Blob([printFallback.html], { type: "text/html;charset=utf-8" });
+      const blob = new Blob([normalizedHtml], { type: "text/html;charset=utf-8" });
       const url = URL.createObjectURL(blob);
       window.location.href = url;
       window.setTimeout(() => URL.revokeObjectURL(url), 60_000);
     }
+  };
+
+  const openPrintFallback = () => {
+    if (!printFallback.html) return;
+    openPrintableHtml(printFallback.html);
   };
 
   const printPalletPassports = async (palletCodes) => {
@@ -670,17 +853,7 @@ export default function PalletFlow({
     try {
       const printReady = await buildPalletLabelsBatchHtml(palletCodes);
       setPrintFallback(printReady);
-      try {
-        openHtmlDocumentInNewTab(printReady.html, {
-          popupBlockedMessage:
-            "Не удалось открыть новый таб. Документ откроется в текущем окне.",
-        });
-      } catch {
-        const blob = new Blob([printReady.html], { type: "text/html;charset=utf-8" });
-        const url = URL.createObjectURL(blob);
-        window.location.href = url;
-        window.setTimeout(() => URL.revokeObjectURL(url), 60_000);
-      }
+      openPrintableHtml(printReady.html);
     } catch (err) {
       handleFlowError(err, "Не удалось подготовить паспорт паллеты.");
     } finally {
@@ -1081,6 +1254,32 @@ export default function PalletFlow({
     }
   };
 
+  const loadPlanningNextNumber = async (rawPlannedDate = planningForm.plannedDate) => {
+    const plannedDate = String(rawPlannedDate || "").trim();
+    if (!plannedDate) {
+      setPlanningNextNumber("");
+      return;
+    }
+    setPlanningNextNumberLoading(true);
+    try {
+      const params = new URLSearchParams();
+      params.set("plannedDate", plannedDate);
+      const response = await fetch(`${API_BASE}/pallets/route-sheets/next-number?${params.toString()}`, {
+        headers: authHeaders,
+      });
+      const data = await readJsonSafe(response);
+      if (!response.ok) {
+        throw new Error(mapPalletError(data?.message, "Не удалось получить следующий номер МЛ."));
+      }
+      setPlanningNextNumber(String(data?.sheetNumber || "").trim());
+    } catch (err) {
+      console.warn("planning next-number load failed", err);
+      setPlanningNextNumber("");
+    } finally {
+      setPlanningNextNumberLoading(false);
+    }
+  };
+
   const loadDispatchSheets = async () => {
     setDispatchSheetsLoading(true);
     try {
@@ -1359,6 +1558,23 @@ export default function PalletFlow({
       handleFlowError(err, "Ошибка загрузки списка паллет.");
     } finally {
       setRecentLoading(false);
+    }
+  };
+
+  const handlePlanningSheetPrint = () => {
+    if (!planningSheet?.id) {
+      setSuccess("");
+      setError("Сначала создайте или откройте маршрутный лист.");
+      return;
+    }
+    try {
+      clearAlerts();
+      const printHtml = buildRouteSheetPrintHtml(planningSheet);
+      openPrintableHtml(printHtml);
+      setSuccess("Маршрутный лист открыт для печати.");
+    } catch (err) {
+      setSuccess("");
+      setError(normalizeErrorMessage(err, "Не удалось подготовить печать маршрутного листа."));
     }
   };
 
@@ -1779,6 +1995,18 @@ export default function PalletFlow({
 
   useEffect(() => {
     if (activeTab !== "planning") return;
+    if (planningSheet?.id) return;
+    if (!planningForm.plannedDate) {
+      const today = new Date().toISOString().slice(0, 10);
+      setPlanningForm((prev) => (prev.plannedDate ? prev : { ...prev, plannedDate: today }));
+      return;
+    }
+    loadPlanningNextNumber(planningForm.plannedDate);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [activeTab, planningSheet?.id, planningForm.plannedDate]);
+
+  useEffect(() => {
+    if (activeTab !== "planning") return;
     if (!planningSheet?.id) return;
     if (planningSheet.status !== "DRAFT") return;
     loadPlanningCandidates();
@@ -2016,6 +2244,7 @@ export default function PalletFlow({
                   setPlanningSelectedCodes([]);
                   setPlanningCandidates([]);
                   setPlanningCandidateQuery("");
+                  setPlanningNextNumber("");
                 }
                 if (tab.id === "search") {
                   setSearchView("list");
@@ -2390,12 +2619,14 @@ export default function PalletFlow({
                 <div className="tsd-inline tsd-inline--two">
                   <input
                     className="tsd-input"
-                    value={planningForm.destinationRc}
-                    onChange={(event) =>
-                      setPlanningForm((prev) => ({ ...prev, destinationRc: event.target.value }))
+                    value={
+                      planningNextNumberLoading
+                        ? "Подбираем номер МЛ..."
+                        : planningNextNumber || "Номер МЛ появится автоматически"
                     }
-                    placeholder="РЦ назначения *"
-                    disabled={planningBusy}
+                    placeholder="Номер МЛ (авто)"
+                    disabled
+                    readOnly
                   />
                   <input
                     className="tsd-input"
@@ -2404,6 +2635,17 @@ export default function PalletFlow({
                     onChange={(event) =>
                       setPlanningForm((prev) => ({ ...prev, plannedDate: event.target.value }))
                     }
+                    disabled={planningBusy}
+                  />
+                </div>
+                <div className="tsd-qty-input">
+                  <input
+                    className="tsd-input"
+                    value={planningForm.destinationRc}
+                    onChange={(event) =>
+                      setPlanningForm((prev) => ({ ...prev, destinationRc: event.target.value }))
+                    }
+                    placeholder="РЦ назначения *"
                     disabled={planningBusy}
                   />
                 </div>
@@ -2507,6 +2749,14 @@ export default function PalletFlow({
                 <div className="tsd-card">
                   <div className="tsd-inline tsd-inline--two">
                     <div className="tsd-card__title">МЛ {planningSheet.sheetNumber}</div>
+                    <button
+                      type="button"
+                      className="tsd-btn tsd-btn--chip"
+                      onClick={handlePlanningSheetPrint}
+                      disabled={planningBusy || routeSheetLoading}
+                    >
+                      Печать МЛ
+                    </button>
                   </div>
                   <div className="tsd-card__meta">
                     {routeSheetStatusLabel(planningSheet.status)} • Клиент: {planningSheet.clientName || "-"}
