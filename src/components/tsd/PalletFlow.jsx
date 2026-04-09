@@ -694,12 +694,35 @@ export default function PalletFlow({
   const [warehouseLocationsLoading, setWarehouseLocationsLoading] = useState(false);
   const [activeReceivePalletCodes, setActiveReceivePalletCodes] = useState([]);
   const [storeReceiveScopeLocked, setStoreReceiveScopeLocked] = useState(false);
+  const locationControlLastSyncedKeyRef = useRef("");
   const strictStepLock =
     activeTab === "store" || (activeTab === "dispatch" && dispatchStep !== "setup");
 
   const clearAlerts = () => {
     setError("");
     setSuccess("");
+  };
+
+  const buildLocationControlSyncKey = (rawLocationCode, foundCodes) => {
+    const locationCode = normalizeLocationCode(rawLocationCode);
+    const codes = Array.from(
+      new Set((Array.isArray(foundCodes) ? foundCodes : []).map((code) => normalizePalletCode(code)).filter(Boolean))
+    ).sort();
+    return `${locationCode}|${codes.join(",")}`;
+  };
+
+  const locationControlSuccessMessage = (result) => {
+    const missingCount = Array.isArray(result?.missingPalletCodes) ? result.missingPalletCodes.length : 0;
+    if (missingCount > 0) {
+      if (result?.discrepancyEnabled !== false) {
+        return `Контроль сохранен: не найдено ${missingCount} паллет. Расхождения зафиксированы.`;
+      }
+      return `Контроль сохранен: не найдено ${missingCount} паллет. Журнал расхождений временно недоступен (БД).`;
+    }
+    if (Number(result?.openedCount || 0) > 0 || Number(result?.alreadyOpenCount || 0) > 0) {
+      return "Контроль сохранен: расхождения зафиксированы.";
+    }
+    return "Контроль сохранен: расхождений не найдено.";
   };
 
   const resetToCrossdockStart = () => {
@@ -735,6 +758,7 @@ export default function PalletFlow({
     setLocationControlStep("scan");
     setLocationControlFoundCodes([]);
     setLocationControlResult(null);
+    locationControlLastSyncedKeyRef.current = "";
     setDiscrepanciesItems([]);
     setDiscrepancyTrackingEnabled(true);
     setDiscrepancyPermissions({ canApproveWriteoff: false });
@@ -1671,6 +1695,7 @@ export default function PalletFlow({
       setSearchLocationItems(items);
       setLocationControlFoundCodes(foundCodes);
       setLocationControlResult(null);
+      locationControlLastSyncedKeyRef.current = "";
       setDiscrepancyTrackingEnabled(discrepancyEnabled);
       setLocationControlStep("confirm");
     } catch (err) {
@@ -1729,6 +1754,7 @@ export default function PalletFlow({
         setSearchLocationItems(mergedFallbackItems);
         setLocationControlFoundCodes(fallbackFoundCodes);
         setLocationControlResult(null);
+        locationControlLastSyncedKeyRef.current = "";
         setLocationControlStep("confirm");
         if (mergedFallbackItems.length > 0) {
           setSuccess("Ожидаемые паллеты загружены.");
@@ -1828,21 +1854,10 @@ export default function PalletFlow({
       };
       setLocationControlResult(result);
       setDiscrepancyTrackingEnabled(result.discrepancyEnabled);
+      locationControlLastSyncedKeyRef.current = buildLocationControlSyncKey(locationCode, payload.foundPalletCodes);
 
       if (showSuccessModal) {
-        if (result.missingPalletCodes.length) {
-          if (result.discrepancyEnabled) {
-            setSuccess(
-              `Контроль сохранен: не найдено ${result.missingPalletCodes.length} паллет. Расхождения зафиксированы.`
-            );
-          } else {
-            setSuccess(
-              `Контроль сохранен: не найдено ${result.missingPalletCodes.length} паллет. Журнал расхождений временно недоступен (БД).`
-            );
-          }
-        } else {
-          setSuccess("Контроль сохранен: расхождений не найдено.");
-        }
+        setSuccess(locationControlSuccessMessage(result));
       } else {
         setSuccess("");
       }
@@ -1998,6 +2013,12 @@ export default function PalletFlow({
   };
 
   const handleLocationControlConfirm = async () => {
+    const currentSyncKey = buildLocationControlSyncKey(searchLocationCode, locationControlFoundCodes);
+    if (locationControlResult && locationControlLastSyncedKeyRef.current === currentSyncKey) {
+      setError("");
+      setSuccess(locationControlSuccessMessage(locationControlResult));
+      return;
+    }
     await submitLocationControl(locationControlFoundCodes, { showSuccessModal: true });
   };
 
