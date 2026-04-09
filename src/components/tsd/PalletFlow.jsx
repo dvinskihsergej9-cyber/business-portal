@@ -328,7 +328,6 @@ function buildRouteSheetPrintHtml(routeSheet) {
           <div class="meta-item"><b>Клиент:</b> ${escapeHtml(routeSheet?.clientName || "-")}</div>
           <div class="meta-item"><b>РЦ:</b> ${escapeHtml(routeSheet?.destinationRc || "-")}</div>
           <div class="meta-item"><b>Дата рейса:</b> ${escapeHtml(plannedDate)}</div>
-          <div class="meta-item"><b>Маршрут:</b> ${escapeHtml(routeSheet?.route || "-")}</div>
           <div class="meta-item"><b>Машина:</b> ${escapeHtml(routeSheet?.vehicle || "-")}</div>
           <div class="meta-item"><b>Водитель:</b> ${escapeHtml(routeSheet?.driver || "-")}</div>
           <div class="meta-item"><b>Статус:</b> ${escapeHtml(routeSheetStatusLabel(routeSheet?.status))}</div>
