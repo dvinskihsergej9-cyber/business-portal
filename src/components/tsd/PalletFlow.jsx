@@ -529,6 +529,8 @@ function mapPalletError(code, fallback = "Не удалось выполнить
     return "Отгрузить можно только паллету в статусе «Размещена».";
   if (normalized === "PALLET_ARCHIVE_STATUS_INVALID")
     return "Нельзя отправить в архив паллету в статусе «Отгружена».";
+  if (normalized === "PALLET_ARCHIVE_OWNER_ONLY")
+    return "Отправить паллету в архив может только админ или владелец бизнеса.";
   if (normalized === "PALLET_ARCHIVE_ERROR")
     return "Не удалось отправить паллету в архив.";
   if (normalized === "PALLET_LOCATION_MISMATCH")

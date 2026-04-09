@@ -7371,6 +7371,10 @@ app.get("/api/profile", auth, async (req, res) => {
       if (!orgId) {
         return res.status(400).json({ message: "ORG_REQUIRED" });
       }
+      const canArchive = req.user?.isSystemOwner === true || req.user?.role === "ADMIN";
+      if (!canArchive) {
+        return res.status(403).json({ message: "PALLET_ARCHIVE_OWNER_ONLY" });
+      }
 
       const palletCode = normalizePalletCode(req.params?.palletCode);
       if (!palletCode) {
