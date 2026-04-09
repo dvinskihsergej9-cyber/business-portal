@@ -9762,7 +9762,7 @@ app.get("/api/settings/org-profile", auth, async (req, res) => {
     if (req.user?.role != "ADMIN") {
       return res.status(403).json({ message: "NO_ACCESS" });
     }
-    if (!hasPermission(req.user, PERMISSION_KEYS.APP_WAREHOUSE)) {
+    if (!hasPermission(req.user, PERMISSION_KEYS.ADMIN_WAREHOUSE)) {
       return res.status(403).json({ message: "NO_ACCESS" });
     }
     const targetOrgId = req.user.isSystemOwner
@@ -9786,7 +9786,7 @@ app.put("/api/settings/org-profile", auth, async (req, res) => {
     if (req.user?.role != "ADMIN") {
       return res.status(403).json({ message: "NO_ACCESS" });
     }
-    if (!hasPermission(req.user, PERMISSION_KEYS.APP_WAREHOUSE)) {
+    if (!hasPermission(req.user, PERMISSION_KEYS.ADMIN_WAREHOUSE)) {
       return res.status(403).json({ message: "NO_ACCESS" });
     }
     const {
