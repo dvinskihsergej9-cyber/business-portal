@@ -1733,31 +1733,16 @@ export default function PalletFlow({
   const visibleDiscrepanciesItems =
     discrepancyView === "archive" ? archiveDiscrepanciesItems : activeDiscrepanciesItems;
 
-  const setLocationControlFoundStatus = (palletCode, isFound) => {
+  const toggleLocationControlFoundStatus = (palletCode) => {
     const normalized = normalizePalletCode(palletCode);
     if (!normalized) return;
     setLocationControlFoundCodes((prev) => {
       const alreadyFound = prev.includes(normalized);
-      if (isFound && !alreadyFound) {
-        return [...prev, normalized];
-      }
-      if (!isFound && alreadyFound) {
+      if (alreadyFound) {
         return prev.filter((code) => code !== normalized);
       }
-      return prev;
+      return [...prev, normalized];
     });
-  };
-
-  const applyLocationControlFoundToAll = (isFound) => {
-    if (!searchLocationItems.length) return;
-    if (!isFound) {
-      setLocationControlFoundCodes([]);
-      return;
-    }
-    const allCodes = searchLocationItems
-      .map((item) => normalizePalletCode(item?.palletCode))
-      .filter(Boolean);
-    setLocationControlFoundCodes(Array.from(new Set(allCodes)));
   };
 
   const runDiscrepancyAction = async (item, action, body = null, fallbackMessage = "") => {
@@ -3253,68 +3238,42 @@ export default function PalletFlow({
                 </div>
 
                 {searchLocationItems.length ? (
-                  <>
-                    <div className="tsd-discrepancy-actions">
-                      <button
-                        type="button"
-                        className="tsd-btn tsd-btn--chip tsd-btn--chip-success"
-                        onClick={() => applyLocationControlFoundToAll(true)}
-                        disabled={locationControlSubmitting}
-                      >
-                        Отметить все найдено
-                      </button>
-                      <button
-                        type="button"
-                        className="tsd-btn tsd-btn--chip tsd-btn--chip-warn"
-                        onClick={() => applyLocationControlFoundToAll(false)}
-                        disabled={locationControlSubmitting}
-                      >
-                        Отметить все не найдено
-                      </button>
-                    </div>
-                    <div className="tsd-list">
-                      {searchLocationItems.map((item) => {
-                        const code = normalizePalletCode(item?.palletCode);
-                        const isFound = locationControlFoundCodes.includes(code);
-                        return (
-                          <div
-                            key={`location-control-item-${item.id}`}
-                            className={`tsd-card tsd-pallet-list-btn ${
-                              isFound
-                                ? "tsd-pallet-list-btn--stored tsd-pallet-list-btn--selected"
-                                : "tsd-pallet-list-btn--received"
-                            }`}
-                          >
-                            <div className="tsd-card__title">{item.palletCode || "-"}</div>
-                            <div className="tsd-card__meta">
-                              Ячейка: {locationDisplayName(item.currentLocation)}
-                            </div>
-                            <div className="tsd-card__meta">
-                              Статус контроля: {isFound ? "Найдена" : "Не найдена"}
-                            </div>
-                            <div className="tsd-location-control-row__actions">
-                              <button
-                                type="button"
-                                className="tsd-btn tsd-btn--chip tsd-btn--chip-success"
-                                onClick={() => setLocationControlFoundStatus(code, true)}
-                                disabled={locationControlSubmitting || isFound}
-                              >
-                                Найдена
-                              </button>
-                              <button
-                                type="button"
-                                className="tsd-btn tsd-btn--chip tsd-btn--chip-warn"
-                                onClick={() => setLocationControlFoundStatus(code, false)}
-                                disabled={locationControlSubmitting || !isFound}
-                              >
-                                Не найдена
-                              </button>
-                            </div>
+                  <div className="tsd-list">
+                    {searchLocationItems.map((item) => {
+                      const code = normalizePalletCode(item?.palletCode);
+                      const isFound = locationControlFoundCodes.includes(code);
+                      return (
+                        <div
+                          key={`location-control-item-${item.id}`}
+                          className={`tsd-card tsd-pallet-list-btn ${
+                            isFound
+                              ? "tsd-pallet-list-btn--stored tsd-pallet-list-btn--selected"
+                              : "tsd-pallet-list-btn--received"
+                          }`}
+                        >
+                          <div className="tsd-card__title">{item.palletCode || "-"}</div>
+                          <div className="tsd-card__meta">
+                            Ячейка: {locationDisplayName(item.currentLocation)}
                           </div>
-                        );
-                      })}
-                    </div>
-                  </>
+                          <div className="tsd-card__meta">
+                            Статус контроля: {isFound ? "Найдена" : "Не найдена"}
+                          </div>
+                          <div className="tsd-location-control-row__actions">
+                            <button
+                              type="button"
+                              className={`tsd-btn tsd-btn--chip ${
+                                isFound ? "tsd-btn--chip-warn" : "tsd-btn--chip-success"
+                              }`}
+                              onClick={() => toggleLocationControlFoundStatus(code)}
+                              disabled={locationControlSubmitting}
+                            >
+                              {isFound ? "Не найдена" : "Вернуть в найденные"}
+                            </button>
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
                 ) : (
                   <div className="tsd-card">
                     <div className="tsd-card__meta">
