@@ -7365,6 +7365,106 @@ app.get("/api/profile", auth, async (req, res) => {
     }
   });
 
+  app.post("/api/pallets/:palletCode/archive", auth, async (req, res) => {
+    try {
+      const orgId = Number(req.user?.orgId || 0);
+      if (!orgId) {
+        return res.status(400).json({ message: "ORG_REQUIRED" });
+      }
+
+      const palletCode = normalizePalletCode(req.params?.palletCode);
+      if (!palletCode) {
+        return res.status(400).json({ message: "PALLET_CODE_REQUIRED" });
+      }
+      const reason = normalizePalletText(req.body?.reason, 240) || null;
+
+      const archivedId = await prisma.$transaction(async (tx) => {
+        const now = new Date();
+        const pallet = await tx.pallet.findFirst({
+          where: { orgId, palletCode },
+          include: { currentLocation: true },
+        });
+        if (!pallet) {
+          const error = new Error("PALLET_NOT_FOUND");
+          error.code = "PALLET_NOT_FOUND";
+          throw error;
+        }
+        if (pallet.status === "CANCELLED") {
+          return { palletId: pallet.id, idempotent: true };
+        }
+        if (pallet.status === "DISPATCHED") {
+          const error = new Error("PALLET_ARCHIVE_STATUS_INVALID");
+          error.code = "PALLET_ARCHIVE_STATUS_INVALID";
+          throw error;
+        }
+
+        const updateResult = await tx.pallet.updateMany({
+          where: {
+            id: pallet.id,
+            status: pallet.status,
+          },
+          data: {
+            status: "CANCELLED",
+            currentLocationId: null,
+          },
+        });
+        if (updateResult.count !== 1) {
+          const error = new Error("PALLET_STATE_CHANGED");
+          error.code = "PALLET_STATE_CHANGED";
+          throw error;
+        }
+
+        await createPalletEventTx(tx, {
+          orgId,
+          palletId: pallet.id,
+          type: "CANCEL",
+          fromStatus: pallet.status,
+          toStatus: "CANCELLED",
+          userId: req.user.id,
+          metaJson: {
+            source: "SEARCH_TAB",
+            action: "ARCHIVE",
+            reason,
+            fromLocationCode: pallet.currentLocation?.code || null,
+            fromLocationName: pallet.currentLocation?.name || null,
+          },
+        });
+
+        return { palletId: pallet.id, idempotent: false };
+      });
+
+      const updated = archivedId?.palletId
+        ? await prisma.pallet.findFirst({
+            where: { orgId, id: archivedId.palletId },
+            include: {
+              currentLocation: true,
+              dispatch: true,
+            },
+          })
+        : null;
+
+      if (!updated) {
+        return res.status(500).json({ message: "PALLET_ARCHIVE_ERROR" });
+      }
+      return res.json({
+        pallet: palletToResponse(updated),
+        idempotent: Boolean(archivedId?.idempotent),
+      });
+    } catch (err) {
+      if (err?.code === "PALLET_NOT_FOUND") {
+        return res.status(404).json({ message: "PALLET_NOT_FOUND" });
+      }
+      if (err?.code === "PALLET_ARCHIVE_STATUS_INVALID") {
+        return res.status(409).json({ message: "PALLET_ARCHIVE_STATUS_INVALID" });
+      }
+      if (err?.code === "PALLET_STATE_CHANGED") {
+        return res.status(409).json({ message: "PALLET_STATE_CHANGED" });
+      }
+      console.error("pallet archive error:", err);
+      return res.status(500).json({ message: "PALLET_ARCHIVE_ERROR" });
+    }
+  });
+
   app.get("/api/pallets/location-control/:locationCode/expected", auth, async (req, res) => {
     try {
       const orgId = Number(req.user?.orgId || 0);

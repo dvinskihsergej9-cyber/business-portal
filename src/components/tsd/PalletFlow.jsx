@@ -61,7 +61,6 @@ const INITIAL_DISPATCH_FORM = {
 const INITIAL_PLANNING_FORM = {
   clientName: "",
   destinationRc: "",
-  route: "",
   vehicle: "",
   driver: "",
   plannedDate: "",
@@ -504,6 +503,9 @@ function applySearchStatusPreset(items, statusPreset) {
   if (preset === "DISPATCHED") {
     return source.filter((item) => normalizePalletStatusValue(item?.status) === "DISPATCHED");
   }
+  if (preset === "ARCHIVE") {
+    return source.filter((item) => normalizePalletStatusValue(item?.status) === "CANCELLED");
+  }
   return source;
 }
 
@@ -525,6 +527,10 @@ function mapPalletError(code, fallback = "Не удалось выполнить
     return "Паллета уже размещена. Повторное размещение через этот шаг недоступно.";
   if (normalized === "PALLET_DISPATCH_STATUS_INVALID")
     return "Отгрузить можно только паллету в статусе «Размещена».";
+  if (normalized === "PALLET_ARCHIVE_STATUS_INVALID")
+    return "Нельзя отправить в архив паллету в статусе «Отгружена».";
+  if (normalized === "PALLET_ARCHIVE_ERROR")
+    return "Не удалось отправить паллету в архив.";
   if (normalized === "PALLET_LOCATION_MISMATCH")
     return "Скан ячейки не совпадает с текущей ячейкой паллеты.";
   if (normalized === "PALLET_DB_PERMISSION_USER_TABLE")
@@ -1346,7 +1352,7 @@ export default function PalletFlow({
       const payload = {
         clientName: String(planningForm.clientName || "").trim(),
         destinationRc: String(planningForm.destinationRc || "").trim(),
-        route: String(planningForm.route || "").trim() || null,
+        route: null,
         vehicle: String(planningForm.vehicle || "").trim().toUpperCase(),
         driver: String(planningForm.driver || "").trim(),
         plannedDate: planningForm.plannedDate ? new Date(planningForm.plannedDate).toISOString() : "",
@@ -1544,6 +1550,7 @@ export default function PalletFlow({
       const statusPreset = searchStatus;
       if (statusPreset === "ACTIVE") params.set("statuses", "RECEIVED,STORED");
       if (statusPreset === "DISPATCHED") params.set("statuses", "DISPATCHED");
+      if (statusPreset === "ARCHIVE") params.set("statuses", "CANCELLED");
       if (searchQuery) params.set("q", searchQuery.trim());
       if (searchSupplier) params.set("supplierName", searchSupplier.trim());
       if (searchDateFrom) params.set("dateFrom", searchDateFrom);
@@ -1577,6 +1584,52 @@ export default function PalletFlow({
     } catch (err) {
       setSuccess("");
       setError(normalizeErrorMessage(err, "Не удалось подготовить печать маршрутного листа."));
+    }
+  };
+
+  const handleSearchOpenDetails = async (item) => {
+    try {
+      clearAlerts();
+      setSelectedPalletId(item?.id || null);
+      setHistoryCollapsed(false);
+      setSearchCode(item?.palletCode || "");
+      await loadHistoryByCode(item?.palletCode || "", { openDetail: true });
+    } catch (err) {
+      handleFlowError(err, "Не удалось открыть паллету.");
+    }
+  };
+
+  const archivePalletFromSearch = async (item) => {
+    const palletCode = normalizePalletCode(item?.palletCode || "");
+    if (!palletCode) return;
+    const confirmed = window.confirm(`Отправить паллету ${palletCode} в архив?`);
+    if (!confirmed) return;
+    const reason = window.prompt("Причина архивирования (необязательно):", "");
+    if (reason === null) return;
+
+    setLoading(true);
+    try {
+      clearAlerts();
+      const response = await fetch(`${API_BASE}/pallets/${encodeURIComponent(palletCode)}/archive`, {
+        method: "POST",
+        headers: authHeaders,
+        body: JSON.stringify({ reason: String(reason || "").trim() }),
+      });
+      const data = await readJsonSafe(response);
+      if (!response.ok) {
+        throw new Error(mapPalletError(data?.message, "Не удалось отправить паллету в архив."));
+      }
+      setSuccess(`Паллета ${palletCode} отправлена в архив.`);
+      if (historyPallet?.palletCode === palletCode && data?.pallet) {
+        setHistoryPallet(data.pallet);
+        await loadHistoryByCode(palletCode, { openDetail: true });
+      }
+      await loadRecentPallets();
+    } catch (err) {
+      setSuccess("");
+      setError(normalizeErrorMessage(err, "Не удалось отправить паллету в архив."));
+    } finally {
+      setLoading(false);
     }
   };
 
@@ -1733,16 +1786,94 @@ export default function PalletFlow({
   const visibleDiscrepanciesItems =
     discrepancyView === "archive" ? archiveDiscrepanciesItems : activeDiscrepanciesItems;
 
-  const toggleLocationControlFoundStatus = (palletCode) => {
+  const submitLocationControl = async (foundPalletCodes, { showSuccessModal = true } = {}) => {
+    const locationCode = normalizeLocationCode(searchLocationCode);
+    if (!locationCode) {
+      handleFlowError("Сначала отсканируйте ячейку.");
+      return false;
+    }
+    setLocationControlSubmitting(true);
+    try {
+      if (showSuccessModal) {
+        clearAlerts();
+      } else {
+        setError("");
+      }
+      const payload = {
+        foundPalletCodes: Array.isArray(foundPalletCodes) ? foundPalletCodes : [],
+      };
+      const response = await fetch(
+        `${API_BASE}/pallets/location-control/${encodeURIComponent(locationCode)}/reconcile`,
+        {
+          method: "POST",
+          headers: authHeaders,
+          body: JSON.stringify(payload),
+        }
+      );
+      const data = await readJsonSafe(response);
+      if (!response.ok) {
+        throw new Error(mapPalletError(data?.message, "Не удалось зафиксировать контроль ячейки."));
+      }
+      const result = {
+        location: data?.location || null,
+        expectedCount: Number(data?.expectedCount || 0),
+        actualCount: Number(data?.actualCount || 0),
+        missingPalletCodes: Array.isArray(data?.missingPalletCodes) ? data.missingPalletCodes : [],
+        openedCount: Number(data?.openedCount || 0),
+        alreadyOpenCount: Number(data?.alreadyOpenCount || 0),
+        closedCount: Number(data?.closedCount || 0),
+        discrepancyEnabled: data?.discrepancyEnabled !== false,
+      };
+      setLocationControlResult(result);
+      setDiscrepancyTrackingEnabled(result.discrepancyEnabled);
+
+      if (showSuccessModal) {
+        if (result.missingPalletCodes.length) {
+          if (result.discrepancyEnabled) {
+            setSuccess(
+              `Контроль сохранен: не найдено ${result.missingPalletCodes.length} паллет. Расхождения зафиксированы.`
+            );
+          } else {
+            setSuccess(
+              `Контроль сохранен: не найдено ${result.missingPalletCodes.length} паллет. Журнал расхождений временно недоступен (БД).`
+            );
+          }
+        } else {
+          setSuccess("Контроль сохранен: расхождений не найдено.");
+        }
+      } else {
+        setSuccess("");
+      }
+
+      if (activeTab === "discrepancies" || result.openedCount > 0 || result.closedCount > 0) {
+        loadDiscrepancies();
+      }
+      return true;
+    } catch (err) {
+      if (showSuccessModal) {
+        setSuccess("");
+      }
+      setError(normalizeErrorMessage(err, "Не удалось зафиксировать контроль ячейки."));
+      return false;
+    } finally {
+      setLocationControlSubmitting(false);
+    }
+  };
+
+  const markLocationControlMissing = async (palletCode) => {
+    if (locationControlSubmitting) return;
     const normalized = normalizePalletCode(palletCode);
     if (!normalized) return;
-    setLocationControlFoundCodes((prev) => {
-      const alreadyFound = prev.includes(normalized);
-      if (alreadyFound) {
-        return prev.filter((code) => code !== normalized);
-      }
-      return [...prev, normalized];
-    });
+    const currentCodes = Array.isArray(locationControlFoundCodes) ? locationControlFoundCodes : [];
+    const alreadyFound = currentCodes.includes(normalized);
+    if (!alreadyFound) return;
+    const nextCodes = currentCodes.filter((code) => code !== normalized);
+
+    setLocationControlFoundCodes(nextCodes);
+    const applied = await submitLocationControl(nextCodes, { showSuccessModal: false });
+    if (!applied) {
+      setLocationControlFoundCodes(currentCodes);
+    }
   };
 
   const runDiscrepancyAction = async (item, action, body = null, fallbackMessage = "") => {
@@ -1865,65 +1996,7 @@ export default function PalletFlow({
   };
 
   const handleLocationControlConfirm = async () => {
-    const locationCode = normalizeLocationCode(searchLocationCode);
-    if (!locationCode) {
-      handleFlowError("Сначала отсканируйте ячейку.");
-      return;
-    }
-    setLocationControlSubmitting(true);
-    try {
-      clearAlerts();
-      const payload = {
-        foundPalletCodes: locationControlFoundCodes,
-      };
-      const response = await fetch(
-        `${API_BASE}/pallets/location-control/${encodeURIComponent(locationCode)}/reconcile`,
-        {
-          method: "POST",
-          headers: authHeaders,
-          body: JSON.stringify(payload),
-        }
-      );
-      const data = await readJsonSafe(response);
-      if (!response.ok) {
-        throw new Error(mapPalletError(data?.message, "Не удалось зафиксировать контроль ячейки."));
-      }
-      const result = {
-        location: data?.location || null,
-        expectedCount: Number(data?.expectedCount || 0),
-        actualCount: Number(data?.actualCount || 0),
-        missingPalletCodes: Array.isArray(data?.missingPalletCodes) ? data.missingPalletCodes : [],
-        openedCount: Number(data?.openedCount || 0),
-        alreadyOpenCount: Number(data?.alreadyOpenCount || 0),
-        closedCount: Number(data?.closedCount || 0),
-        discrepancyEnabled: data?.discrepancyEnabled !== false,
-      };
-      setLocationControlResult(result);
-      setDiscrepancyTrackingEnabled(result.discrepancyEnabled);
-
-      if (result.missingPalletCodes.length) {
-        if (result.discrepancyEnabled) {
-          setSuccess(
-            `Контроль сохранен: не найдено ${result.missingPalletCodes.length} паллет. Расхождения зафиксированы.`
-          );
-        } else {
-          setSuccess(
-            `Контроль сохранен: не найдено ${result.missingPalletCodes.length} паллет. Журнал расхождений временно недоступен (БД).`
-          );
-        }
-      } else {
-        setSuccess("Контроль сохранен: расхождений не найдено.");
-      }
-
-      if (activeTab === "discrepancies" || result.openedCount > 0 || result.closedCount > 0) {
-        loadDiscrepancies();
-      }
-    } catch (err) {
-      setSuccess("");
-      setError(normalizeErrorMessage(err, "Не удалось зафиксировать контроль ячейки."));
-    } finally {
-      setLocationControlSubmitting(false);
-    }
+    await submitLocationControl(locationControlFoundCodes, { showSuccessModal: true });
   };
 
   const loadSearchSuppliers = async () => {
@@ -2676,17 +2749,6 @@ export default function PalletFlow({
                   />
                 </div>
                 <div className="tsd-qty-input">
-                  <input
-                    className="tsd-input"
-                    value={planningForm.route}
-                    onChange={(event) =>
-                      setPlanningForm((prev) => ({ ...prev, route: event.target.value }))
-                    }
-                    placeholder="Маршрут (необязательно)"
-                    disabled={planningBusy}
-                  />
-                </div>
-                <div className="tsd-qty-input">
                   <textarea
                     className="tsd-input"
                     rows={2}
@@ -3261,13 +3323,11 @@ export default function PalletFlow({
                           <div className="tsd-location-control-row__actions">
                             <button
                               type="button"
-                              className={`tsd-btn tsd-btn--chip ${
-                                isFound ? "tsd-btn--chip-warn" : "tsd-btn--chip-success"
-                              }`}
-                              onClick={() => toggleLocationControlFoundStatus(code)}
-                              disabled={locationControlSubmitting}
+                              className="tsd-btn tsd-btn--chip tsd-btn--chip-warn"
+                              onClick={() => markLocationControlMissing(code)}
+                              disabled={locationControlSubmitting || !isFound}
                             >
-                              {isFound ? "Не найдена" : "Вернуть в найденные"}
+                              Не найдена
                             </button>
                           </div>
                         </div>
@@ -3603,6 +3663,7 @@ export default function PalletFlow({
                     <option value="">Все статусы</option>
                     <option value="ACTIVE">Принято</option>
                     <option value="DISPATCHED">Отгружено</option>
+                    <option value="ARCHIVE">Архив (списанные)</option>
                   </select>
                   <select
                     className="tsd-input"
@@ -3681,6 +3742,18 @@ export default function PalletFlow({
                     >
                       Печать паспорта
                     </button>
+                    {normalizePalletStatusValue(historyPallet.status) !== "CANCELLED" ? (
+                      <button
+                        type="button"
+                        className="tsd-btn tsd-btn--chip tsd-btn--chip-warn tsd-btn--compact"
+                        onClick={async () => {
+                          await archivePalletFromSearch(historyPallet);
+                        }}
+                        disabled={loading}
+                      >
+                        В архив
+                      </button>
+                    ) : null}
                   </div>
                 </div>
                 {!historyCollapsed ? (
@@ -3754,37 +3827,52 @@ export default function PalletFlow({
 
             {recentItems.length && searchView === "list" ? (
               <div className="tsd-list">
-                {recentItems.slice(0, 40).map((item) => (
-                  <button
-                    key={item.id}
-                    type="button"
-                    className={`tsd-card tsd-pallet-list-btn ${
-                      normalizePalletStatusValue(item.status) === "DISPATCHED"
-                        ? "tsd-pallet-list-btn--stored"
-                        : "tsd-pallet-list-btn--received"
-                    } ${selectedPalletId === item.id ? "tsd-pallet-list-btn--selected" : ""}`}
-                    onClick={async () => {
-                      try {
-                        clearAlerts();
-                        setSelectedPalletId(item.id);
-                        setHistoryCollapsed(false);
-                        setSearchCode(item.palletCode || "");
-                        await loadHistoryByCode(item.palletCode || "", { openDetail: true });
-                      } catch (err) {
-                        handleFlowError(err, "Не удалось открыть паллету.");
-                      }
-                    }}
-                  >
-                    <div className="tsd-card__title">{item.palletCode}</div>
-                    <div className="tsd-card__meta">Статус: {statusLabel(item.status)}</div>
-                    <div className="tsd-card__meta">
-                      Локация: {locationDisplayName(item.currentLocation)}
+                {recentItems.slice(0, 40).map((item) => {
+                  const normalizedStatus = normalizePalletStatusValue(item.status);
+                  return (
+                    <div
+                      key={item.id}
+                      className={`tsd-card tsd-pallet-list-btn ${
+                        normalizedStatus === "DISPATCHED" || normalizedStatus === "CANCELLED"
+                          ? "tsd-pallet-list-btn--stored"
+                          : "tsd-pallet-list-btn--received"
+                      } ${selectedPalletId === item.id ? "tsd-pallet-list-btn--selected" : ""}`}
+                    >
+                      <div className="tsd-card__title">{item.palletCode}</div>
+                      <div className="tsd-card__meta">Статус: {statusLabel(item.status)}</div>
+                      <div className="tsd-card__meta">
+                        Локация: {locationDisplayName(item.currentLocation)}
+                      </div>
+                      <div className="tsd-card__meta">
+                        Поставщик: {item.supplierName || "-"} • Машина/ТТН: {item.inboundRef || "-"}
+                      </div>
+                      <div className="tsd-discrepancy-actions">
+                        <button
+                          type="button"
+                          className="tsd-btn tsd-btn--chip"
+                          onClick={async () => {
+                            await handleSearchOpenDetails(item);
+                          }}
+                          disabled={loading}
+                        >
+                          Открыть
+                        </button>
+                        {normalizedStatus !== "CANCELLED" ? (
+                          <button
+                            type="button"
+                            className="tsd-btn tsd-btn--chip tsd-btn--chip-warn"
+                            onClick={async () => {
+                              await archivePalletFromSearch(item);
+                            }}
+                            disabled={loading}
+                          >
+                            В архив
+                          </button>
+                        ) : null}
+                      </div>
                     </div>
-                    <div className="tsd-card__meta">
-                      Поставщик: {item.supplierName || "-"} • Машина/ТТН: {item.inboundRef || "-"}
-                    </div>
-                  </button>
-                ))}
+                  );
+                })}
               </div>
             ) : null}
           </div>
