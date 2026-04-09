@@ -107,6 +107,8 @@ const EXTRA_ERROR_MESSAGES = {
   EMAIL_VERIFY_CODE_INVALID: "Неверный код подтверждения.",
   EMAIL_VERIFY_TOO_MANY_ATTEMPTS: "Превышено число попыток. Запросите новый код.",
   EMAIL_VERIFY_RATE_LIMIT: "Слишком часто. Подождите и повторите.",
+  EMAIL_VERIFY_DELIVERY_FAILED:
+    "Не удалось отправить код подтверждения. Проверьте почтовые настройки и повторите попытку.",
   EMAIL_VERIFY_ERROR: "Не удалось подтвердить почту. Повторите попытку.",
   MANUFACTURED_AT_REQUIRED: "Укажите дату изготовления.",
   NAME_REQUIRED: "Укажите название.",

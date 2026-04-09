@@ -642,6 +642,16 @@ const WEB_PUSH_SUBJECT = String(
 ).trim();
 const WEB_PUSH_ENABLED = Boolean(WEB_PUSH_PUBLIC_KEY && WEB_PUSH_PRIVATE_KEY);
 
+function parseEnvBoolean(value, fallback = false) {
+  const normalized = String(value || "")
+    .trim()
+    .toLowerCase();
+  if (!normalized) return fallback;
+  if (["1", "true", "yes", "on"].includes(normalized)) return true;
+  if (["0", "false", "no", "off"].includes(normalized)) return false;
+  return fallback;
+}
+
 if (WEB_PUSH_ENABLED) {
   try {
     webpush.setVapidDetails(
@@ -656,13 +666,15 @@ if (WEB_PUSH_ENABLED) {
 
 function getMailTransport() {
   if (mailTransport) return mailTransport;
-  const host = process.env.MAIL_HOST;
-  const user = process.env.MAIL_USER;
-  const pass = process.env.MAIL_PASS;
+  const host = String(process.env.MAIL_HOST || "").trim();
+  const user = String(process.env.MAIL_USER || "").trim();
+  const pass = String(process.env.MAIL_PASS || "").trim();
   if (!host || !user || !pass) return null;
 
-  const port = Number(process.env.MAIL_PORT || 465);
-  const secure = String(process.env.MAIL_SECURE || "true") === "true";
+  const parsedPort = Number(process.env.MAIL_PORT || 465);
+  const port = Number.isFinite(parsedPort) && parsedPort > 0 ? parsedPort : 465;
+  const secureFallback = port === 465;
+  const secure = parseEnvBoolean(process.env.MAIL_SECURE, secureFallback);
   mailTransport = nodemailer.createTransport({
     host,
     port,
@@ -2474,8 +2486,9 @@ async function sendEmailVerificationCode(email, code) {
   const text = `Код подтверждения регистрации: ${code}. Код действует 10 минут.`;
 
   if (!transport) {
+    console.error("[EMAIL_VERIFY] Mail transport unavailable: MAIL_HOST/MAIL_USER/MAIL_PASS not configured.");
     console.log(`[EMAIL_VERIFY] ${email}: ${code}`);
-    return { sent: false };
+    return { sent: false, error: "MAIL_NOT_CONFIGURED" };
   }
 
   const from = process.env.MAIL_FROM || `СкладОнлайн <${process.env.MAIL_USER}>`;
@@ -2497,6 +2510,24 @@ async function sendEmailVerificationCode(email, code) {
     console.log(`[EMAIL_VERIFY] ${email}: ${code}`);
     return { sent: false, error: err.message };
   }
+}
+
+async function ensureEmailVerificationCodeDelivered(email, code) {
+  const result = await sendEmailVerificationCode(email, code);
+  if (result?.sent) {
+    return result;
+  }
+
+  const normalizedError = String(result?.error || "").trim().toUpperCase();
+  if (normalizedError === "MAIL_TIMEOUT") {
+    const timeoutError = new Error("MAIL_TIMEOUT");
+    timeoutError.status = 503;
+    throw timeoutError;
+  }
+
+  const deliveryError = new Error("EMAIL_VERIFY_DELIVERY_FAILED");
+  deliveryError.status = 503;
+  throw deliveryError;
 }
 
 async function sendNewClientNotification({
@@ -5050,7 +5081,7 @@ app.post("/api/register", async (req, res) => {
         note: JSON.stringify(consentSnapshot),
       },
     });
-    await sendEmailVerificationCode(normalizedEmail, code);
+    await ensureEmailVerificationCodeDelivered(normalizedEmail, code);
 
     res.status(200).json({
       ok: true,
@@ -5059,6 +5090,9 @@ app.post("/api/register", async (req, res) => {
       message: "Код подтверждения отправлен на почту.",
     });
   } catch (err) {
+    if (err?.status && err?.message) {
+      return res.status(err.status).json({ message: err.message });
+    }
     console.error("register error:", err);
     res.status(500).json({ message: "Ошибка сервера при регистрации" });
   }
@@ -5337,10 +5371,13 @@ app.post("/api/auth/resend-email-code", async (req, res) => {
         note: lastCode?.note || null,
       },
     });
-    await sendEmailVerificationCode(user.email, code);
+    await ensureEmailVerificationCodeDelivered(user.email, code);
 
     return res.json({ message: "Код подтверждения отправлен повторно." });
   } catch (err) {
+    if (err?.status && err?.message) {
+      return res.status(err.status).json({ message: err.message });
+    }
     console.error("resend email code error:", err);
     return res.status(500).json({ message: "EMAIL_VERIFY_ERROR" });
   }
