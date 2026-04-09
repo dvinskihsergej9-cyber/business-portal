@@ -228,6 +228,38 @@ function normalizeEmail(value) {
   return String(value || "").trim().toLowerCase();
 }
 
+async function findUserByEmailInsensitive(email, tx = prisma) {
+  const normalizedEmail = normalizeEmail(email);
+  if (!normalizedEmail) return null;
+
+  let user = await tx.user.findUnique({
+    where: { email: normalizedEmail },
+  });
+  if (!user) {
+    user = await tx.user.findFirst({
+      where: {
+        email: {
+          equals: normalizedEmail,
+          mode: "insensitive",
+        },
+      },
+    });
+  }
+  if (!user) return null;
+
+  if (normalizeEmail(user.email) !== normalizedEmail) {
+    try {
+      user = await tx.user.update({
+        where: { id: user.id },
+        data: { email: normalizedEmail },
+      });
+    } catch (err) {
+      if (err?.code !== "P2002") throw err;
+    }
+  }
+  return user;
+}
+
 function isValidRegistrationEmail(value) {
   const normalized = normalizeEmail(value);
   if (!/^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/u.test(normalized)) return false;
@@ -721,6 +753,7 @@ async function createWarehouseNotification({
   message,
   linkUrl = null,
   payloadJson = null,
+  sendWebPush = true,
 }) {
   if (!userId || !title || !message) return null;
   const normalizedOrgId = orgId || null;
@@ -738,20 +771,23 @@ async function createWarehouseNotification({
     },
   });
 
-  await sendWebPushToUser(normalizedOrgId, userId, {
-    title,
-    body: message,
-    url: linkUrl || "/warehouse",
-    notificationId: notification.id,
-    type,
-  }).catch((err) => {
-    console.error("[PUSH] Ошибка отправки:", err);
-  });
+  if (sendWebPush) {
+    await sendWebPushToUser(normalizedOrgId, userId, {
+      title,
+      body: message,
+      url: linkUrl || "/warehouse",
+      notificationId: notification.id,
+      type,
+    }).catch((err) => {
+      console.error("[PUSH] Ошибка отправки:", err);
+    });
+  }
 
   return notification;
 }
 
 const TASKS_JOURNAL_LINK = "/warehouse?section=tasks&taskView=journal";
+const CROSSDOCK_DISCREPANCIES_LINK = "/warehouse?section=crossdock&crossdockTab=discrepancies";
 const PLATFORM_NEWS_ADMIN_LINK = "/admin/platform-news";
 const PLATFORM_NEWS_TYPE = "PLATFORM_NEWS";
 const PLATFORM_NEWS_BROADCAST_TYPE = "PLATFORM_NEWS_BROADCAST";
@@ -859,9 +895,13 @@ const PALLET_EVENT_TYPES = new Set([
   "MOVE",
   "DISPATCH",
   "CANCEL",
+  "DISCREPANCY_OPEN",
+  "DISCREPANCY_CLOSE",
 ]);
 const ROUTE_SHEET_STATUSES = new Set(["DRAFT", "PUBLISHED", "LOADING", "COMPLETED", "CANCELLED"]);
 const ROUTE_SHEET_ITEM_STATUSES = new Set(["PLANNED", "LOADED", "CANCELLED"]);
+const PALLET_DISCREPANCY_STATUSES = new Set(["OPEN", "CLOSED"]);
+const PALLET_DISCREPANCY_WRITEOFF_STATUSES = new Set(["PENDING", "APPROVED", "REJECTED", "CANCELLED"]);
 const ROUTE_SHEET_EVENT_TYPES = new Set([
   "CREATE",
   "ADD_ITEM",
@@ -920,6 +960,256 @@ function normalizePalletCode(value) {
     .slice(0, 96);
 }
 
+function normalizeLocationCodeAlias(value) {
+  const normalized = normalizePalletCode(value);
+  if (!normalized) return "";
+  const map = {
+    А: "A",
+    В: "B",
+    Е: "E",
+    К: "K",
+    М: "M",
+    Н: "H",
+    О: "O",
+    Р: "P",
+    С: "C",
+    Т: "T",
+    У: "Y",
+    Х: "X",
+  };
+  return normalized
+    .split("")
+    .map((char) => map[char] || char)
+    .join("");
+}
+
+function toCyrillicLocationAlias(value) {
+  const normalized = normalizePalletCode(value);
+  if (!normalized) return "";
+  const map = {
+    A: "А",
+    B: "В",
+    C: "С",
+    E: "Е",
+    H: "Н",
+    K: "К",
+    M: "М",
+    O: "О",
+    P: "Р",
+    T: "Т",
+    X: "Х",
+    Y: "У",
+  };
+  return normalized
+    .split("")
+    .map((char) => map[char] || char)
+    .join("");
+}
+
+function parsePalletLocationInput(rawValue) {
+  const raw = String(rawValue || "").trim();
+  const normalizedRaw = normalizePalletCode(raw);
+  const hasLegacyLocPrefix = /^BP:LOC:/i.test(normalizedRaw);
+  const normalizedRawAlias = normalizeLocationCodeAlias(raw);
+  const normalizedRawCyrAlias = toCyrillicLocationAlias(normalizedRaw || raw);
+  const payload = normalizedRaw.replace(/^BP:(LOC|LOCATION):/i, "");
+  const normalizedPayload = normalizePalletCode(payload);
+  const normalizedPayloadAlias = normalizeLocationCodeAlias(payload);
+  const normalizedPayloadCyrAlias = toCyrillicLocationAlias(normalizedPayload || payload);
+  const numericPayload = Number(payload);
+  const payloadId =
+    Number.isFinite(numericPayload) && numericPayload > 0 ? Math.trunc(numericPayload) : null;
+  const lookupTokens = Array.from(
+    new Set(
+      [
+        raw,
+        normalizedRaw,
+        normalizedRawAlias,
+        normalizedRawCyrAlias,
+        payload,
+        normalizedPayload,
+        normalizedPayloadAlias,
+        normalizedPayloadCyrAlias,
+      ]
+        .map((entry) => normalizeLocationLookupToken(entry))
+        .filter(Boolean)
+    )
+  );
+  return {
+    raw,
+    normalizedRaw,
+    normalizedRawAlias,
+    normalizedRawCyrAlias,
+    payload,
+    normalizedPayload,
+    normalizedPayloadAlias,
+    normalizedPayloadCyrAlias,
+    payloadId,
+    hasLegacyLocPrefix,
+    lookupTokens,
+  };
+}
+
+async function resolveWarehouseLocationByInput(orgId, rawValue, tx = prisma) {
+  const orgIdValue = Number(orgId || 0) || null;
+  if (!orgIdValue) return null;
+
+  const parsed = parsePalletLocationInput(rawValue);
+  if (!parsed.normalizedRaw) return null;
+
+  const directOr = [
+    { code: parsed.normalizedRaw },
+    { code: parsed.normalizedRawAlias },
+    { code: parsed.normalizedRawCyrAlias },
+    { qrCode: parsed.normalizedRaw },
+    { name: parsed.raw },
+  ];
+  if (parsed.normalizedPayload && parsed.normalizedPayload !== parsed.normalizedRaw) {
+    directOr.push({ code: parsed.normalizedPayload });
+    directOr.push({ code: parsed.normalizedPayloadAlias });
+    directOr.push({ code: parsed.normalizedPayloadCyrAlias });
+    directOr.push({ qrCode: parsed.normalizedPayload });
+    directOr.push({ name: parsed.payload });
+  }
+  if (parsed.payloadId) {
+    directOr.push({ id: parsed.payloadId });
+  }
+  const directMatch = await tx.warehouseLocation.findFirst({
+    where: {
+      orgId: orgIdValue,
+      OR: directOr,
+    },
+    select: { id: true, code: true, name: true, qrCode: true },
+  });
+  if (directMatch) return directMatch;
+
+  if (!parsed.lookupTokens.length) return null;
+
+  const candidates = await tx.warehouseLocation.findMany({
+    where: {
+      orgId: orgIdValue,
+    },
+    select: { id: true, code: true, name: true, qrCode: true },
+    take: 1200,
+  });
+
+  return (
+    candidates.find((entry) => {
+      const codeToken = normalizeLocationLookupToken(entry.code);
+      const nameToken = normalizeLocationLookupToken(entry.name);
+      const qrToken = normalizeLocationLookupToken(entry.qrCode);
+      return (
+        (codeToken && parsed.lookupTokens.includes(codeToken)) ||
+        (nameToken && parsed.lookupTokens.includes(nameToken)) ||
+        (qrToken && parsed.lookupTokens.includes(qrToken))
+      );
+    }) || null
+  );
+}
+
+function buildPalletLocationCandidates(rawValue, warehouseLocation = null) {
+  const parsed = parsePalletLocationInput(rawValue);
+  const codeCandidates = new Set();
+  const nameCandidates = new Set();
+
+  const addCode = (value) => {
+    const normalized = normalizePalletCode(value);
+    if (normalized) codeCandidates.add(normalized);
+  };
+  const addName = (value) => {
+    const normalized = normalizePalletText(value, 120);
+    if (normalized) nameCandidates.add(normalized);
+  };
+
+  addCode(parsed.normalizedRaw);
+  addCode(parsed.normalizedRawAlias);
+  addCode(parsed.normalizedRawCyrAlias);
+  addCode(parsed.normalizedPayload);
+  addCode(parsed.normalizedPayloadAlias);
+  addCode(parsed.normalizedPayloadCyrAlias);
+  addName(parsed.raw);
+  addName(parsed.payload);
+
+  if (warehouseLocation) {
+    addCode(warehouseLocation.code);
+    addCode(warehouseLocation.name);
+    addCode(warehouseLocation.qrCode);
+    addName(warehouseLocation.name);
+  }
+
+  return {
+    codeCandidates: Array.from(codeCandidates),
+    nameCandidates: Array.from(nameCandidates),
+    lookupTokens: parsed.lookupTokens,
+  };
+}
+
+async function findPalletLocationsByInput(orgId, rawValue, tx = prisma) {
+  const orgIdValue = Number(orgId || 0) || null;
+  if (!orgIdValue) {
+    return { warehouseLocation: null, palletLocations: [] };
+  }
+
+  const warehouseLocation = await resolveWarehouseLocationByInput(orgIdValue, rawValue, tx);
+  const candidates = buildPalletLocationCandidates(rawValue, warehouseLocation);
+
+  const whereOr = [];
+  if (candidates.codeCandidates.length) {
+    whereOr.push({ code: { in: candidates.codeCandidates } });
+  }
+  if (candidates.nameCandidates.length) {
+    whereOr.push({ name: { in: candidates.nameCandidates } });
+  }
+
+  let palletLocations = whereOr.length
+    ? await tx.palletLocation.findMany({
+        where: {
+          orgId: orgIdValue,
+          OR: whereOr,
+        },
+        select: { id: true, code: true, name: true },
+        take: 120,
+      })
+    : [];
+
+  if (!palletLocations.length && candidates.lookupTokens.length) {
+    const fallback = await tx.palletLocation.findMany({
+      where: {
+        orgId: orgIdValue,
+      },
+      select: { id: true, code: true, name: true },
+      take: 1200,
+    });
+    palletLocations = fallback.filter((entry) => {
+      const codeToken = normalizeLocationLookupToken(entry.code);
+      const nameToken = normalizeLocationLookupToken(entry.name);
+      return (
+        (codeToken && candidates.lookupTokens.includes(codeToken)) ||
+        (nameToken && candidates.lookupTokens.includes(nameToken))
+      );
+    });
+  }
+
+  return { warehouseLocation, palletLocations };
+}
+
+function doesLocationInputMatchPalletLocation(rawValue, warehouseLocation, palletLocation) {
+  if (!palletLocation) return false;
+
+  const candidates = buildPalletLocationCandidates(rawValue, warehouseLocation);
+  const tokenSet = new Set(
+    [
+      ...candidates.codeCandidates,
+      ...candidates.nameCandidates.map((entry) => normalizePalletCode(entry)),
+    ].filter(Boolean)
+  );
+  if (!tokenSet.size) return false;
+
+  const palletCode = normalizePalletCode(palletLocation.code);
+  const palletName = normalizePalletCode(palletLocation.name);
+  return Boolean((palletCode && tokenSet.has(palletCode)) || (palletName && tokenSet.has(palletName)));
+}
+
 function normalizePalletText(value, maxLength = 240) {
   return String(value || "").replace(/\r\n?/g, "\n").trim().slice(0, maxLength);
 }
@@ -951,6 +1241,21 @@ function isPermissionDeniedForTable(err, tableName) {
   const table = String(tableName || "").trim().toLowerCase();
   if (!table) return joined.includes("permission denied for table");
   return joined.includes(`permission denied for table ${table}`);
+}
+
+function isMissingRelationError(err, relationName = "") {
+  const joined = [
+    String(err?.message || ""),
+    String(err?.stack || ""),
+    String(err?.cause?.message || ""),
+    String(err?.meta?.cause || ""),
+  ]
+    .join(" ")
+    .toLowerCase();
+  if (!joined.includes("does not exist")) return false;
+  if (!relationName) return joined.includes("relation");
+  const target = String(relationName || "").replace(/"/g, "").toLowerCase();
+  return joined.includes(target);
 }
 
 function toErrorDetails(err) {
@@ -988,15 +1293,38 @@ async function generateUniquePalletCode(orgId, tx = prisma) {
   throw new Error("PALLET_CODE_GENERATION_FAILED");
 }
 
-async function generateUniqueRouteSheetNumber(orgId, tx = prisma) {
+async function generateUniqueRouteSheetNumber(orgId, plannedDate = null, tx = prisma) {
   const targetOrgId = Number(orgId || 0) || null;
-  for (let attempt = 0; attempt < 8; attempt += 1) {
-    const now = new Date();
-    const dateToken = `${now.getUTCFullYear()}${String(now.getUTCMonth() + 1).padStart(2, "0")}${String(
-      now.getUTCDate()
-    ).padStart(2, "0")}`;
-    const randomPart = crypto.randomBytes(2).toString("hex").toUpperCase();
-    const candidate = `ML-${dateToken}-${randomPart}`;
+  const validPlannedDate =
+    plannedDate instanceof Date && !Number.isNaN(plannedDate.getTime()) ? plannedDate : new Date();
+  const counterYear = validPlannedDate.getUTCFullYear();
+  const prefix = `ML-${counterYear}-`;
+
+  const existingRows = await tx.palletRouteSheet.findMany({
+    where: {
+      orgId: targetOrgId,
+      sheetNumber: { startsWith: prefix },
+    },
+    select: { sheetNumber: true },
+    orderBy: [{ id: "desc" }],
+    take: 5000,
+  });
+
+  let maxSequence = 0;
+  for (const row of existingRows) {
+    const value = String(row?.sheetNumber || "").trim();
+    const match = /^ML-(\d{4})-(\d{1,6})$/i.exec(value);
+    if (!match) continue;
+    if (Number(match[1]) !== counterYear) continue;
+    const sequence = Number(match[2]);
+    if (Number.isFinite(sequence) && sequence > maxSequence) {
+      maxSequence = sequence;
+    }
+  }
+
+  for (let attempt = 0; attempt < 24; attempt += 1) {
+    const nextSequence = maxSequence + 1 + attempt;
+    const candidate = `ML-${counterYear}-${String(nextSequence).padStart(6, "0")}`;
     const exists = await tx.palletRouteSheet.findFirst({
       where: {
         orgId: targetOrgId,
@@ -1006,32 +1334,67 @@ async function generateUniqueRouteSheetNumber(orgId, tx = prisma) {
     });
     if (!exists) return candidate;
   }
+
   throw new Error("ROUTE_SHEET_NUMBER_GENERATION_FAILED");
+}
+
+function normalizePalletDiscrepancyStatus(value, fallback = "") {
+  const normalized = String(value || "").trim().toUpperCase();
+  return PALLET_DISCREPANCY_STATUSES.has(normalized) ? normalized : fallback;
+}
+
+function normalizePalletDiscrepancyWriteoffStatus(value, fallback = "") {
+  const normalized = String(value || "").trim().toUpperCase();
+  return PALLET_DISCREPANCY_WRITEOFF_STATUSES.has(normalized) ? normalized : fallback;
 }
 
 async function getOrCreatePalletLocationByCode(orgId, rawCode, tx = prisma) {
   const orgIdValue = Number(orgId || 0) || null;
-  const code = normalizePalletCode(rawCode);
-  if (!code) {
+  const parsedInput = parsePalletLocationInput(rawCode);
+  if (!parsedInput.normalizedRaw) {
     const error = new Error("LOCATION_CODE_REQUIRED");
     error.code = "LOCATION_CODE_REQUIRED";
     throw error;
   }
 
+  const linkedWarehouseLocation = await resolveWarehouseLocationByInput(orgIdValue, rawCode, tx);
+  const resolvedCode = normalizePalletCode(
+    linkedWarehouseLocation?.code ||
+      linkedWarehouseLocation?.name ||
+      parsedInput.normalizedPayloadAlias ||
+      parsedInput.normalizedPayload ||
+      parsedInput.normalizedRawAlias ||
+      parsedInput.normalizedRaw
+  );
+  if (!resolvedCode) {
+    const error = new Error("LOCATION_CODE_REQUIRED");
+    error.code = "LOCATION_CODE_REQUIRED";
+    throw error;
+  }
+  const resolvedName = normalizePalletText(linkedWarehouseLocation?.name, 120) || resolvedCode;
+
   const existing = await tx.palletLocation.findFirst({
     where: {
       orgId: orgIdValue,
-      code,
+      code: resolvedCode,
     },
   });
-  if (existing) return existing;
+  if (existing) {
+    if (existing.name !== resolvedName) {
+      return tx.palletLocation.update({
+        where: { id: existing.id },
+        data: { name: resolvedName },
+      });
+    }
+    return existing;
+  }
 
   try {
     return await tx.palletLocation.create({
       data: {
         orgId: orgIdValue,
-        code,
-        name: code,
+        code: resolvedCode,
+        name: resolvedName,
       },
     });
   } catch (err) {
@@ -1039,7 +1402,7 @@ async function getOrCreatePalletLocationByCode(orgId, rawCode, tx = prisma) {
     return tx.palletLocation.findFirst({
       where: {
         orgId: orgIdValue,
-        code,
+        code: resolvedCode,
       },
     });
   }
@@ -1105,6 +1468,465 @@ function palletEventToResponse(event) {
           email: event.user.email || "",
         }
       : null,
+  };
+}
+
+function parsePalletDiscrepancyNote(note) {
+  const raw = typeof note === "string" ? note.trim() : "";
+  if (!raw) {
+    return { legacyText: "", writeoffRequest: null, raw };
+  }
+
+  try {
+    const parsed = JSON.parse(raw);
+    if (!parsed || typeof parsed !== "object") {
+      return { legacyText: raw, writeoffRequest: null, raw };
+    }
+    const legacyText = String(parsed?.legacyText || "").trim();
+    const request = parsed?.writeoffRequest;
+    const normalizedRequest =
+      request && typeof request === "object"
+        ? {
+            status: normalizePalletDiscrepancyWriteoffStatus(request?.status, ""),
+            requestedAt: request?.requestedAt || null,
+            requestedByUserId: Number(request?.requestedByUserId || 0) || null,
+            requestedByName: String(request?.requestedByName || "").trim() || null,
+            decidedAt: request?.decidedAt || null,
+            decidedByUserId: Number(request?.decidedByUserId || 0) || null,
+            decidedByName: String(request?.decidedByName || "").trim() || null,
+            reason: String(request?.reason || "").trim() || null,
+          }
+        : null;
+    return {
+      legacyText,
+      writeoffRequest: normalizedRequest?.status ? normalizedRequest : null,
+      raw,
+    };
+  } catch {
+    return { legacyText: raw, writeoffRequest: null, raw };
+  }
+}
+
+function serializePalletDiscrepancyNote({ legacyText = "", writeoffRequest = null } = {}) {
+  const payload = {};
+  const normalizedLegacyText = String(legacyText || "").trim();
+  if (normalizedLegacyText) {
+    payload.legacyText = normalizedLegacyText;
+  }
+
+  if (writeoffRequest && typeof writeoffRequest === "object") {
+    const status = normalizePalletDiscrepancyWriteoffStatus(writeoffRequest?.status, "");
+    if (status) {
+      payload.writeoffRequest = {
+        status,
+        requestedAt: writeoffRequest?.requestedAt || null,
+        requestedByUserId: Number(writeoffRequest?.requestedByUserId || 0) || null,
+        requestedByName: String(writeoffRequest?.requestedByName || "").trim() || null,
+        decidedAt: writeoffRequest?.decidedAt || null,
+        decidedByUserId: Number(writeoffRequest?.decidedByUserId || 0) || null,
+        decidedByName: String(writeoffRequest?.decidedByName || "").trim() || null,
+        reason: String(writeoffRequest?.reason || "").trim() || null,
+      };
+    }
+  }
+
+  if (!Object.keys(payload).length) return null;
+  return JSON.stringify(payload);
+}
+
+function normalizeDiscrepancyWriteoffForResponse(request) {
+  const status = normalizePalletDiscrepancyWriteoffStatus(request?.status, "");
+  if (!status) return null;
+  return {
+    status,
+    requestedAt: request?.requestedAt || null,
+    requestedByUserId: Number(request?.requestedByUserId || 0) || null,
+    requestedByName: String(request?.requestedByName || "").trim() || null,
+    decidedAt: request?.decidedAt || null,
+    decidedByUserId: Number(request?.decidedByUserId || 0) || null,
+    decidedByName: String(request?.decidedByName || "").trim() || null,
+    reason: String(request?.reason || "").trim() || null,
+  };
+}
+
+function extractDiscrepancyWriteoffFromMeta(metaJson) {
+  const meta = metaJson && typeof metaJson === "object" ? metaJson : null;
+  if (!meta) return null;
+  const status = normalizePalletDiscrepancyWriteoffStatus(
+    meta?.writeoffRequestStatus || meta?.writeoffStatus,
+    ""
+  );
+  if (!status) return null;
+  return normalizeDiscrepancyWriteoffForResponse({
+    status,
+    requestedAt: meta?.writeoffRequestedAt || null,
+    requestedByUserId: Number(meta?.writeoffRequestedByUserId || 0) || null,
+    requestedByName: String(meta?.writeoffRequestedByName || "").trim() || null,
+    decidedAt: meta?.writeoffDecidedAt || null,
+    decidedByUserId: Number(meta?.writeoffDecidedByUserId || 0) || null,
+    decidedByName: String(meta?.writeoffDecidedByName || "").trim() || null,
+    reason: String(meta?.writeoffReason || "").trim() || null,
+  });
+}
+
+function palletDiscrepancyToResponse(row) {
+  const parsedNote = parsePalletDiscrepancyNote(row?.note);
+  const palletCode = String(row?.pallet?.palletCode || "").trim();
+  const locationCode =
+    String(row?.location?.code || "").trim() ||
+    String(row?.pallet?.currentLocation?.code || "").trim();
+  const locationName =
+    String(row?.location?.name || "").trim() ||
+    String(row?.pallet?.currentLocation?.name || "").trim();
+  return {
+    id: row?.id || null,
+    status: normalizePalletDiscrepancyStatus(row?.status, "OPEN"),
+    palletId: row?.palletId || null,
+    palletCode: palletCode || null,
+    location: {
+      id: row?.location?.id || row?.pallet?.currentLocation?.id || null,
+      code: locationCode || null,
+      name: locationName || null,
+    },
+    detectedAt: row?.detectedAt || row?.createdAt || null,
+    detectedBy: row?.detectedByUser
+      ? {
+          id: row.detectedByUser.id,
+          name: row.detectedByUser.name || "",
+          email: row.detectedByUser.email || "",
+        }
+      : null,
+    closedAt: row?.closedAt || null,
+    closedBy: row?.closedByUser
+      ? {
+          id: row.closedByUser.id,
+          name: row.closedByUser.name || "",
+          email: row.closedByUser.email || "",
+        }
+      : null,
+    note: parsedNote.legacyText || null,
+    writeoffRequest: normalizeDiscrepancyWriteoffForResponse(parsedNote.writeoffRequest),
+    lastCheckedAt: row?.lastCheckedAt || null,
+    createdAt: row?.createdAt || null,
+    updatedAt: row?.updatedAt || null,
+  };
+}
+
+function isDiscrepancyPalletEventType(value) {
+  const normalized = String(value || "").trim().toUpperCase();
+  return normalized === "DISCREPANCY_OPEN" || normalized === "DISCREPANCY_CLOSE";
+}
+
+function isPalletEventTypeEnumValueMissing(err) {
+  const joined = [
+    String(err?.message || ""),
+    String(err?.stack || ""),
+    String(err?.cause?.message || ""),
+    String(err?.meta?.cause || ""),
+  ]
+    .join(" ")
+    .toLowerCase();
+  return (
+    joined.includes("invalid input value for enum") &&
+    joined.includes("palleteventtype")
+  );
+}
+
+function buildDiscrepancyFallbackMeta(metaJson, eventType) {
+  const base = metaJson && typeof metaJson === "object" ? { ...metaJson } : {};
+  const normalizedType = String(eventType || "").trim().toUpperCase();
+  if (!base.discrepancyType) {
+    base.discrepancyType = normalizedType;
+  }
+  if (!base.discrepancyStatus) {
+    base.discrepancyStatus = normalizedType === "DISCREPANCY_CLOSE" ? "CLOSED" : "OPEN";
+  }
+  if (!base.source) {
+    base.source = "LOCATION_CONTROL";
+  }
+  return base;
+}
+
+function extractDiscrepancyStatusFromPalletEvent(event) {
+  const type = String(event?.type || "").trim().toUpperCase();
+  if (type === "DISCREPANCY_OPEN") return "OPEN";
+  if (type === "DISCREPANCY_CLOSE") return "CLOSED";
+
+  const meta = event?.metaJson && typeof event.metaJson === "object" ? event.metaJson : null;
+  if (!meta) return "";
+
+  const metaType = String(meta?.discrepancyType || "").trim().toUpperCase();
+  if (metaType === "DISCREPANCY_OPEN") return "OPEN";
+  if (metaType === "DISCREPANCY_CLOSE") return "CLOSED";
+
+  const metaStatus = normalizePalletDiscrepancyStatus(meta?.discrepancyStatus, "");
+  if (metaStatus) return metaStatus;
+
+  const source = String(meta?.source || "").trim().toUpperCase();
+  const result = String(meta?.result || "").trim().toUpperCase();
+  if (source === "LOCATION_CONTROL" && result === "MISSING") return "OPEN";
+  if (source === "LOCATION_CONTROL" && result === "FOUND") return "CLOSED";
+
+  return "";
+}
+
+function palletDiscrepancyEventToResponse(event, status) {
+  const normalizedStatus = normalizePalletDiscrepancyStatus(status, "OPEN");
+  const palletCode = String(event?.pallet?.palletCode || "").trim();
+  const locationCode =
+    String(event?.metaJson?.locationCode || "").trim() ||
+    String(event?.pallet?.currentLocation?.code || "").trim();
+  const locationName =
+    String(event?.metaJson?.locationName || "").trim() ||
+    String(event?.pallet?.currentLocation?.name || "").trim();
+
+  return {
+    id: `event-${event?.id || `${event?.palletId || "x"}-${event?.createdAt || Date.now()}`}`,
+    status: normalizedStatus,
+    palletId: event?.palletId || null,
+    palletCode: palletCode || null,
+    location: {
+      id: event?.pallet?.currentLocation?.id || null,
+      code: locationCode || null,
+      name: locationName || null,
+    },
+    detectedAt: event?.createdAt || null,
+    detectedBy: event?.user
+      ? {
+          id: event.user.id,
+          name: event.user.name || "",
+          email: event.user.email || "",
+        }
+      : null,
+    closedAt: normalizedStatus === "CLOSED" ? event?.createdAt || null : null,
+    closedBy:
+      normalizedStatus === "CLOSED" && event?.user
+        ? {
+            id: event.user.id,
+            name: event.user.name || "",
+            email: event.user.email || "",
+          }
+        : null,
+    note: null,
+    writeoffRequest: extractDiscrepancyWriteoffFromMeta(event?.metaJson),
+    lastCheckedAt: event?.createdAt || null,
+    createdAt: event?.createdAt || null,
+    updatedAt: event?.createdAt || null,
+  };
+}
+
+async function loadLatestDiscrepancyStatesByPalletIdsFromEvents(orgId, palletIds, tx = prisma) {
+  const normalizedOrgId = Number(orgId || 0) || null;
+  const ids = Array.from(
+    new Set(
+      (Array.isArray(palletIds) ? palletIds : [])
+        .map((value) => Number(value || 0))
+        .filter((value) => Number.isInteger(value) && value > 0)
+    )
+  );
+  if (!normalizedOrgId || !ids.length) {
+    return new Map();
+  }
+
+  const rows = await tx.palletEvent.findMany({
+    where: {
+      orgId: normalizedOrgId,
+      palletId: { in: ids },
+      type: { in: ["DISCREPANCY_OPEN", "DISCREPANCY_CLOSE", "MOVE"] },
+    },
+    include: {
+      pallet: {
+        include: {
+          currentLocation: true,
+        },
+      },
+      user: {
+        select: { id: true, name: true, email: true },
+      },
+    },
+    orderBy: [{ createdAt: "desc" }, { id: "desc" }],
+    take: Math.max(1500, ids.length * 24),
+  });
+
+  const byPalletId = new Map();
+  for (const row of rows) {
+    const palletId = Number(row?.palletId || 0);
+    if (!palletId) continue;
+
+    const status = extractDiscrepancyStatusFromPalletEvent(row);
+    const writeoffRequest = extractDiscrepancyWriteoffFromMeta(row?.metaJson);
+    if (!status && !writeoffRequest) continue;
+
+    const prev = byPalletId.get(palletId) || null;
+    const next = {
+      status: prev?.status || status || "",
+      writeoffRequest: prev?.writeoffRequest || writeoffRequest || null,
+      event: prev?.event || null,
+    };
+    if (status && !next.event) {
+      next.event = row;
+    }
+
+    byPalletId.set(palletId, next);
+  }
+
+  for (const [key, value] of byPalletId.entries()) {
+    if (!value?.status) {
+      byPalletId.delete(key);
+    }
+  }
+
+  return byPalletId;
+}
+
+async function loadLatestDiscrepancyItemsFromEvents(orgId, limit = 250, status = "", tx = prisma) {
+  const normalizedOrgId = Number(orgId || 0) || null;
+  if (!normalizedOrgId) return [];
+
+  const safeLimit = Math.max(1, Math.min(500, Number(limit || 250)));
+  const rows = await tx.palletEvent.findMany({
+    where: {
+      orgId: normalizedOrgId,
+      type: { in: ["DISCREPANCY_OPEN", "DISCREPANCY_CLOSE", "MOVE"] },
+    },
+    include: {
+      pallet: {
+        include: {
+          currentLocation: true,
+        },
+      },
+      user: {
+        select: { id: true, name: true, email: true },
+      },
+    },
+    orderBy: [{ createdAt: "desc" }, { id: "desc" }],
+    take: Math.max(2000, safeLimit * 40),
+  });
+
+  const snapshots = new Map();
+  for (const row of rows) {
+    const palletId = Number(row?.palletId || 0);
+    if (!palletId) continue;
+
+    const rowStatus = extractDiscrepancyStatusFromPalletEvent(row);
+    const rowWriteoff = extractDiscrepancyWriteoffFromMeta(row?.metaJson);
+    if (!rowStatus && !rowWriteoff) continue;
+
+    const prev = snapshots.get(palletId) || null;
+    const next = {
+      status: prev?.status || rowStatus || "",
+      baseEvent: prev?.baseEvent || null,
+      writeoffRequest: prev?.writeoffRequest || rowWriteoff || null,
+    };
+    if (rowStatus && !next.baseEvent) {
+      next.baseEvent = row;
+    }
+    snapshots.set(palletId, next);
+  }
+
+  const items = [];
+  for (const [, snapshot] of snapshots.entries()) {
+    if (!snapshot?.status || !snapshot?.baseEvent) continue;
+    if (status && snapshot.status !== status) continue;
+    const item = palletDiscrepancyEventToResponse(snapshot.baseEvent, snapshot.status);
+    item.writeoffRequest = normalizeDiscrepancyWriteoffForResponse(snapshot.writeoffRequest);
+    items.push(item);
+  }
+
+  items.sort((a, b) => {
+    const ta = new Date(a?.detectedAt || a?.createdAt || 0).getTime();
+    const tb = new Date(b?.detectedAt || b?.createdAt || 0).getTime();
+    return tb - ta;
+  });
+
+  return items.slice(0, safeLimit);
+}
+
+function isDiscrepancyWriteoffPending(request) {
+  return normalizePalletDiscrepancyWriteoffStatus(request?.status, "") === "PENDING";
+}
+
+async function getOpenDiscrepancyByPalletIdTx(orgId, palletId, tx = prisma) {
+  const normalizedOrgId = Number(orgId || 0);
+  const normalizedPalletId = Number(palletId || 0);
+  if (!normalizedOrgId || !normalizedPalletId) return null;
+
+  const discrepancyStorageReady = await ensurePalletDiscrepancyStorageReadyForRuntime();
+  if (discrepancyStorageReady) {
+    const row = await tx.palletDiscrepancy.findFirst({
+      where: {
+        orgId: normalizedOrgId,
+        palletId: normalizedPalletId,
+        status: "OPEN",
+      },
+      include: {
+        pallet: {
+          include: {
+            currentLocation: true,
+          },
+        },
+        location: true,
+        detectedByUser: {
+          select: { id: true, name: true, email: true },
+        },
+      },
+      orderBy: [{ detectedAt: "desc" }, { id: "desc" }],
+    });
+    if (!row) return null;
+    const parsedNote = parsePalletDiscrepancyNote(row?.note);
+    return {
+      source: "table",
+      discrepancyStorageReady: true,
+      row,
+      status: "OPEN",
+      writeoffRequest: normalizeDiscrepancyWriteoffForResponse(parsedNote.writeoffRequest),
+      noteParsed: parsedNote,
+      locationCode:
+        String(row?.location?.code || "").trim() ||
+        String(row?.pallet?.currentLocation?.code || "").trim() ||
+        "",
+      locationName:
+        String(row?.location?.name || "").trim() ||
+        String(row?.pallet?.currentLocation?.name || "").trim() ||
+        "",
+    };
+  }
+
+  const snapshotByPallet = await loadLatestDiscrepancyStatesByPalletIdsFromEvents(
+    normalizedOrgId,
+    [normalizedPalletId],
+    tx
+  );
+  const snapshot = snapshotByPallet.get(normalizedPalletId) || null;
+  if (!snapshot || snapshot.status !== "OPEN") return null;
+  const pallet = await tx.pallet.findFirst({
+    where: {
+      orgId: normalizedOrgId,
+      id: normalizedPalletId,
+    },
+    include: {
+      currentLocation: true,
+    },
+  });
+  if (!pallet) return null;
+  return {
+    source: "events",
+    discrepancyStorageReady: false,
+    row: null,
+    status: snapshot.status,
+    writeoffRequest: normalizeDiscrepancyWriteoffForResponse(snapshot.writeoffRequest),
+    noteParsed: null,
+    pallet,
+    locationCode:
+      String(snapshot?.event?.metaJson?.locationCode || "").trim() ||
+      String(snapshot?.event?.metaJson?.fromLocationCode || "").trim() ||
+      String(pallet?.currentLocation?.code || "").trim() ||
+      "",
+    locationName:
+      String(snapshot?.event?.metaJson?.locationName || "").trim() ||
+      String(snapshot?.event?.metaJson?.fromLocationName || "").trim() ||
+      String(pallet?.currentLocation?.name || "").trim() ||
+      "",
   };
 }
 
@@ -1230,32 +2052,60 @@ async function createPalletEventTx(
   const normalizedOrgId = Number(orgId || 0) || null;
   const normalizedUserId = Number(userId || 0) || null;
   const normalizedMetaJson = metaJson && typeof metaJson === "object" ? metaJson : null;
+  const isDiscrepancyType = isDiscrepancyPalletEventType(normalizedType);
 
-  try {
-    return await tx.palletEvent.create({
+  const createByPrisma = async (eventType, eventMeta) =>
+    tx.palletEvent.create({
       data: {
         orgId: normalizedOrgId,
         palletId,
-        type: normalizedType,
+        type: eventType,
         fromStatus: normalizedFromStatus,
         toStatus: normalizedToStatus,
         userId: normalizedUserId,
-        metaJson: normalizedMetaJson,
+        metaJson: eventMeta,
       },
     });
-  } catch (err) {
-    if (!isPermissionDeniedForTable(err, "User")) {
-      throw err;
-    }
 
+  const createByRaw = async (eventType, eventMeta) => {
     const inserted = await tx.$queryRaw`
       INSERT INTO "PalletEvent"
         ("orgId", "palletId", "type", "fromStatus", "toStatus", "userId", "metaJson", "createdAt")
       VALUES
-        (${normalizedOrgId}, ${palletId}, ${normalizedType}, ${normalizedFromStatus}, ${normalizedToStatus}, ${normalizedUserId}, CAST(${normalizedMetaJson ? JSON.stringify(normalizedMetaJson) : null} AS jsonb), NOW())
+        (${normalizedOrgId}, ${palletId}, ${eventType}, ${normalizedFromStatus}, ${normalizedToStatus}, ${normalizedUserId}, CAST(${eventMeta ? JSON.stringify(eventMeta) : null} AS jsonb), NOW())
       RETURNING "id", "orgId", "palletId", "type", "fromStatus", "toStatus", "userId", "metaJson", "createdAt"
     `;
     return Array.isArray(inserted) && inserted.length ? inserted[0] : null;
+  };
+
+  try {
+    return await createByPrisma(normalizedType, normalizedMetaJson);
+  } catch (err) {
+    if (isDiscrepancyType && isPalletEventTypeEnumValueMissing(err)) {
+      const fallbackMeta = buildDiscrepancyFallbackMeta(normalizedMetaJson, normalizedType);
+      try {
+        return await createByPrisma("MOVE", fallbackMeta);
+      } catch (fallbackErr) {
+        if (!isPermissionDeniedForTable(fallbackErr, "User")) {
+          throw fallbackErr;
+        }
+        return createByRaw("MOVE", fallbackMeta);
+      }
+    }
+
+    if (!isPermissionDeniedForTable(err, "User")) {
+      throw err;
+    }
+
+    try {
+      return await createByRaw(normalizedType, normalizedMetaJson);
+    } catch (rawErr) {
+      if (isDiscrepancyType && isPalletEventTypeEnumValueMissing(rawErr)) {
+        const fallbackMeta = buildDiscrepancyFallbackMeta(normalizedMetaJson, normalizedType);
+        return createByRaw("MOVE", fallbackMeta);
+      }
+      throw rawErr;
+    }
   }
 }
 
@@ -1329,6 +2179,185 @@ async function notifySupportOperators(actorUserId, payload) {
       payloadJson: payload?.payloadJson || null,
     }).catch(() => null);
   }
+}
+
+async function getCrossdockDiscrepancyRecipients(orgId) {
+  const normalizedOrgId = Number(orgId || 0);
+  if (!normalizedOrgId) return [];
+
+  const admins = await prisma.user.findMany({
+    where: {
+      orgId: normalizedOrgId,
+      role: "ADMIN",
+      isActive: true,
+    },
+    orderBy: [{ createdAt: "asc" }, { id: "asc" }],
+    select: { id: true, orgId: true },
+    take: 200,
+  });
+  if (!admins.length) return [];
+
+  const ownerId = Number(admins[0]?.id || 0);
+  const unique = new Map();
+  for (const admin of admins) {
+    const userId = Number(admin?.id || 0);
+    if (!userId) continue;
+    unique.set(userId, {
+      id: userId,
+      orgId: Number(admin?.orgId || 0) || null,
+      isOwner: userId === ownerId,
+    });
+  }
+  return Array.from(unique.values());
+}
+
+async function getCrossdockBusinessOwnerId(orgId) {
+  const normalizedOrgId = Number(orgId || 0);
+  if (!normalizedOrgId) return 0;
+  const ownerCandidate = await prisma.user.findFirst({
+    where: {
+      orgId: normalizedOrgId,
+      role: "ADMIN",
+      isActive: true,
+    },
+    orderBy: [{ createdAt: "asc" }, { id: "asc" }],
+    select: { id: true },
+  });
+  return Number(ownerCandidate?.id || 0);
+}
+
+async function notifyCrossdockDiscrepancies({
+  orgId,
+  actorName = "",
+  locationCode = "",
+  locationName = "",
+  missingCodes = [],
+}) {
+  const recipients = await getCrossdockDiscrepancyRecipients(orgId);
+  if (!recipients.length) return;
+
+  const normalizedMissingCodes = Array.from(
+    new Set(
+      (Array.isArray(missingCodes) ? missingCodes : [])
+        .map((item) => normalizePalletCode(item))
+        .filter(Boolean)
+    )
+  ).slice(0, 80);
+  const missingCount = normalizedMissingCodes.length;
+  if (!missingCount) return;
+
+  const locationLabel = String(locationName || "").trim() || String(locationCode || "").trim() || "-";
+  const actorLabel = String(actorName || "").trim();
+  const title = "Расхождение кросс-докинга";
+  const message = actorLabel
+    ? `Ячейка ${locationLabel}: не найдено паллет — ${missingCount}. Проверил: ${actorLabel}.`
+    : `Ячейка ${locationLabel}: не найдено паллет — ${missingCount}.`;
+  const payloadJson = {
+    scope: "crossdock_discrepancy",
+    locationCode: String(locationCode || "").trim() || null,
+    locationName: String(locationName || "").trim() || null,
+    missingCount,
+    missingCodes: normalizedMissingCodes,
+  };
+
+  for (const recipient of recipients) {
+    await createWarehouseNotification({
+      orgId: recipient.orgId,
+      userId: recipient.id,
+      type: "CROSSDOCK_DISCREPANCY",
+      title,
+      message,
+      linkUrl: CROSSDOCK_DISCREPANCIES_LINK,
+      payloadJson,
+      sendWebPush: false,
+    }).catch(() => null);
+  }
+}
+
+async function notifyCrossdockWriteoffRequested({
+  orgId,
+  discrepancyId = null,
+  palletCode = "",
+  locationCode = "",
+  locationName = "",
+  actorName = "",
+  reason = "",
+}) {
+  const recipients = await getCrossdockDiscrepancyRecipients(orgId);
+  if (!recipients.length) return;
+
+  const palletLabel = String(palletCode || "").trim() || "-";
+  const locationLabel = String(locationName || "").trim() || String(locationCode || "").trim() || "-";
+  const actorLabel = String(actorName || "").trim() || "Сотрудник";
+  const reasonText = String(reason || "").trim();
+
+  const title = "Запрос на списание паллеты";
+  const message = reasonText
+    ? `${actorLabel} запросил списание паллеты ${palletLabel} (ячейка ${locationLabel}). Причина: ${reasonText}.`
+    : `${actorLabel} запросил списание паллеты ${palletLabel} (ячейка ${locationLabel}).`;
+
+  const payloadJson = {
+    scope: "crossdock_discrepancy_writeoff",
+    discrepancyId: Number(discrepancyId || 0) || null,
+    palletCode: palletLabel,
+    locationCode: String(locationCode || "").trim() || null,
+    locationName: String(locationName || "").trim() || null,
+    reason: reasonText || null,
+  };
+
+  for (const recipient of recipients) {
+    await createWarehouseNotification({
+      orgId: recipient.orgId,
+      userId: recipient.id,
+      type: "CROSSDOCK_DISCREPANCY_WRITEOFF",
+      title,
+      message,
+      linkUrl: CROSSDOCK_DISCREPANCIES_LINK,
+      payloadJson,
+      sendWebPush: true,
+    }).catch(() => null);
+  }
+}
+
+async function notifyCrossdockWriteoffDecision({
+  orgId,
+  targetUserId = null,
+  decision = "",
+  palletCode = "",
+  actorName = "",
+  reason = "",
+}) {
+  const recipientId = Number(targetUserId || 0);
+  if (!recipientId) return;
+
+  const normalizedDecision = String(decision || "").trim().toUpperCase();
+  const isApproved = normalizedDecision === "APPROVE";
+  const palletLabel = String(palletCode || "").trim() || "-";
+  const actorLabel = String(actorName || "").trim() || "Владелец";
+  const reasonText = String(reason || "").trim();
+
+  const title = isApproved ? "Списание одобрено" : "Списание отклонено";
+  const message = isApproved
+    ? `${actorLabel} одобрил списание паллеты ${palletLabel}.`
+    : reasonText
+      ? `${actorLabel} отклонил списание паллеты ${palletLabel}. Причина: ${reasonText}.`
+      : `${actorLabel} отклонил списание паллеты ${palletLabel}.`;
+
+  await createWarehouseNotification({
+    orgId: Number(orgId || 0) || null,
+    userId: recipientId,
+    type: "CROSSDOCK_DISCREPANCY_WRITEOFF_DECISION",
+    title,
+    message,
+    linkUrl: CROSSDOCK_DISCREPANCIES_LINK,
+    payloadJson: {
+      scope: "crossdock_discrepancy_writeoff_decision",
+      decision: isApproved ? "APPROVED" : "REJECTED",
+      palletCode: palletLabel,
+      reason: reasonText || null,
+    },
+    sendWebPush: true,
+  }).catch(() => null);
 }
 
 function hashInviteToken(token) {
@@ -2399,6 +3428,40 @@ function buildLocationCode(location) {
   return `LOC-${padNumber(location.id)}`;
 }
 
+function buildLocationQrCode(location) {
+  if (!location) return "";
+  const fallbackCode = buildLocationCode(location);
+  const base = normalizePalletCode(location.code || location.name || fallbackCode);
+  if (!base) return "";
+  return `BP:LOCATION:${base}`;
+}
+
+function isLegacyLocationQrCode(value) {
+  const normalized = normalizePalletCode(value);
+  if (!normalized) return false;
+  if (normalized.startsWith("BP:LOC:")) return true;
+  return /^BP:LOCATION:\d+$/i.test(normalized);
+}
+
+async function ensureBusinessLocationQrCode(location, tx = prisma) {
+  if (!location?.id) return "";
+  const nextQrCode = buildLocationQrCode(location);
+  if (!nextQrCode) return "";
+
+  const currentQrCode = normalizePalletCode(location.qrCode);
+  if (currentQrCode === nextQrCode && !isLegacyLocationQrCode(currentQrCode)) {
+    return currentQrCode;
+  }
+
+  await ensureUniqueLocationCodes({ qrCode: nextQrCode }, location.id);
+  const updated = await tx.warehouseLocation.update({
+    where: { id: location.id },
+    data: { qrCode: nextQrCode },
+    select: { qrCode: true },
+  });
+  return normalizePalletCode(updated?.qrCode) || nextQrCode;
+}
+
 async function ensureUniqueItemCodes({ barcode, qrCode }, itemId) {
   if (barcode) {
     const existing = await prisma.item.findFirst({
@@ -2661,9 +3724,6 @@ app.post("/api/safety/assignments/:id/remind", auth, requireHr, async (req, res)
       return res.status(404).json({ message: "Assignment not found" });
     }
 
-    if (!assignment.employee?.telegramChatId) {
-      return res.status(400).json({ message: "У сотрудника не указан Telegram ID." });
-    }
     if (!assignment.dueDate) {
       return res.status(400).json({ message: "Не задан срок инструктажа." });
     }
@@ -2704,10 +3764,12 @@ function normalizeComparableText(value) {
 }
 
 function normalizeLocationLookupToken(value) {
-  return String(value || "")
+  const normalized = String(value || "")
     .trim()
     .toUpperCase()
     .replace(/[^A-Z0-9А-ЯЁ]/g, "");
+  if (!normalized) return "";
+  return normalizeLocationCodeAlias(normalized);
 }
 
 function normalizeSkuToken(value) {
@@ -3542,55 +4604,14 @@ function buildReceiveActHtml(order, rows, orgInfo) {
   `;
 }
 
-// ================== TELEGRAM БОТ (ТЕСТОВЫЙ) ==================
-
-const TELEGRAM_BOT_TOKEN =
-  "8254839296:AAGnAvL09dFoMyHzIyRqi2FZ11G6tJgDee4";
-const TELEGRAM_GROUP_CHAT_ID = "-4974442288";
-const TELEGRAM_API = `https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}`;
-
-// универсальная отправка сообщения
-async function sendTelegramMessage(chatId, text, extra = {}) {
-  try {
-    if (!TELEGRAM_BOT_TOKEN || !chatId) {
-      console.log("[Telegram] TOKEN или chatId не указан, отправка пропущена");
-      return;
-    }
-
-    const url = `${TELEGRAM_API}/sendMessage`;
-
-    const body = {
-      chat_id: chatId,
-      text,
-      parse_mode: "HTML",
-      disable_web_page_preview: true,
-      ...extra,
-    };
-
-    const res = await fetch(url, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(body),
-    });
-
-    if (!res.ok) {
-      const data = await res.text();
-      console.error("[Telegram] Ошибка отправки:", data);
-    }
-  } catch (err) {
-    console.error("[Telegram] Ошибка:", err);
-  }
-}
-
-// Удобная обёртка: отправить сообщение именно в складской групповой чат
-function sendWarehouseGroupMessage(text, extra = {}) {
-  return sendTelegramMessage(TELEGRAM_GROUP_CHAT_ID, text, extra);
-}
-
 async function sendSafetyReminderForAssignment(a, force = false) {
-  if (!a?.employee?.telegramChatId || !a.dueDate) return false;
+  if (!a?.dueDate) return false;
+  const orgId = Number(a?.orgId || a?.employee?.orgId || 0);
+  if (!orgId) return false;
+
   const now = new Date();
   const due = new Date(a.dueDate);
+  if (Number.isNaN(due.getTime())) return false;
   const diffDays = Math.floor((due - now) / (1000 * 60 * 60 * 24));
   if (!force && diffDays > 3) return false;
 
@@ -3600,21 +4621,38 @@ async function sendSafetyReminderForAssignment(a, force = false) {
     if (hoursSince < 20) return false;
   }
 
-  const title = a.instruction?.title || "Инструкция";
+  const instructionTitle = String(a?.instruction?.title || "").trim() || "Инструкция";
+  const employeeName = String(a?.employee?.fullName || "").trim() || "Сотрудник";
   const dueStr = due.toLocaleDateString("ru-RU");
-  const lines = [
-    "Напоминание по инструктажу",
-    "",
-    `Инструкция: ${title}`,
-    `Сотрудник: ${a.employee.fullName}`,
-    `Срок: ${dueStr}`,
+  const statusText =
     diffDays >= 0
       ? `Осталось дней: ${diffDays + 1}`
-      : `Просрочено на ${Math.abs(diffDays)} дн.`,
-  ];
+      : `Просрочено на ${Math.abs(diffDays)} дн.`;
+  const title = "Напоминание по инструктажу";
+  const message = `Инструкция: ${instructionTitle}. Сотрудник: ${employeeName}. Срок: ${dueStr}. ${statusText}`;
 
-  const textMsg = lines.join("\n");
-  await sendTelegramMessage(a.employee.telegramChatId, textMsg);
+  const recipients = await getCrossdockDiscrepancyRecipients(orgId);
+  if (!recipients.length) return false;
+  for (const recipient of recipients) {
+    await createWarehouseNotification({
+      orgId: recipient.orgId,
+      userId: recipient.id,
+      type: "SAFETY_REMINDER",
+      title,
+      message,
+      linkUrl: "/hr",
+      payloadJson: {
+        scope: "safety_reminder",
+        assignmentId: Number(a?.id || 0) || null,
+        employeeName,
+        instructionTitle,
+        dueDate: due.toISOString(),
+        diffDays,
+      },
+      sendWebPush: true,
+    }).catch(() => null);
+  }
+
   await prisma.safetyAssignment.update({
     where: { id: a.id },
     data: { lastReminderAt: now },
@@ -3640,230 +4678,7 @@ async function sendSafetyReminders() {
 
 // старт фоновых задач переносим после проверки готовности БД
 
-// обработка callback_query (кнопка "✅ Выполнено")
-
-function extractRequestIdFromTitle(title) {
-  if (!title) return null;
-  const match = String(title).match(/\u0417\u0430\u044f\u0432\u043a\u0430 \u0441\u043a\u043b\u0430\u0434\u0430 #(\d+)/);
-  if (!match) return null;
-  const id = Number(match[1]);
-  return Number.isFinite(id) ? id : null;
-}
-
-async function handleTelegramUpdate(update) {
-  if (!update.callback_query) return;
-
-  const { id: callbackId, data, from } = update.callback_query;
-
-  if (!data) return;
-
-  const isIssueDone = data.startsWith("issue_done:");
-  const isDone = data.startsWith("done:");
-  if (!isIssueDone && !isDone) {
-    return;
-  }
-
-  const taskId = parseInt(data.split(":")[1], 10);
-  if (!taskId) return;
-
-  try {
-    const task = await prisma.warehouseTask.findUnique({
-      where: { id: taskId },
-    });
-
-    if (!task) {
-      await fetch(`${TELEGRAM_API}/answerCallbackQuery`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          callback_query_id: callbackId,
-          text: "\u0417\u0430\u0434\u0430\u0447\u0430 \u043d\u0435 \u043d\u0430\u0439\u0434\u0435\u043d\u0430 \u0438\u043b\u0438 \u0443\u0434\u0430\u043b\u0435\u043d\u0430.",
-          show_alert: false,
-        }),
-      });
-      return;
-    }
-
-    if (
-      task.executorChatId &&
-      String(task.executorChatId) !== String(from.id)
-    ) {
-      await fetch(`${TELEGRAM_API}/answerCallbackQuery`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          callback_query_id: callbackId,
-          text: "\u042d\u0442\u0430 \u0437\u0430\u0434\u0430\u0447\u0430 \u043d\u0430\u0437\u043d\u0430\u0447\u0435\u043d\u0430 \u0434\u0440\u0443\u0433\u043e\u043c\u0443 \u0438\u0441\u043f\u043e\u043b\u043d\u0438\u0442\u0435\u043b\u044e.",
-          show_alert: true,
-        }),
-      });
-      return;
-    }
-
-    await prisma.warehouseTask.update({
-      where: { id: taskId },
-      data: {
-        status: "DONE",
-        lastReminderAt: null,
-      },
-    });
-
-    try {
-      const requestId = extractRequestIdFromTitle(task.title);
-      if (requestId) {
-        const request = await prisma.warehouseRequest.findUnique({
-          where: { id: requestId },
-          include: { items: true },
-        });
-
-        await autoPostRequestToStock(requestId, task.assignerId);
-      }
-    } catch (e) {
-      console.error("[Telegram] autoPostRequestFromTask error:", e);
-    }
-
-    await fetch(`${TELEGRAM_API}/answerCallbackQuery`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        callback_query_id: callbackId,
-        text: isIssueDone
-          ? "\u041e\u0442\u043c\u0435\u0447\u0435\u043d\u043e \u00ab\u0412\u044b\u0434\u0430\u043d\u043e\u00bb. \u0417\u0430\u044f\u0432\u043a\u0430 \u043e\u0431\u043d\u043e\u0432\u043b\u0435\u043d\u0430."
-          : "\u0417\u0430\u0434\u0430\u0447\u0430 \u043e\u0442\u043c\u0435\u0447\u0435\u043d\u0430 \u043a\u0430\u043a \u0432\u044b\u043f\u043e\u043b\u043d\u0435\u043d\u043d\u0430\u044f.",
-        show_alert: false,
-      }),
-    });
-
-    await sendTelegramMessage(
-      from.id,
-      `\u0417\u0430\u0434\u0430\u0447\u0430 <b>${task.title}</b> \u043e\u0442\u043c\u0435\u0447\u0435\u043d\u0430 \u043a\u0430\u043a \u0432\u044b\u043f\u043e\u043b\u043d\u0435\u043d\u043d\u0430\u044f.`
-    );
-
-    await sendWarehouseGroupMessage(
-      `\u0417\u0430\u0434\u0430\u0447\u0430 <b>${task.title}</b> \u0432\u044b\u043f\u043e\u043b\u043d\u0435\u043d\u0430 \u043f\u043e\u043b\u044c\u0437\u043e\u0432\u0430\u0442\u0435\u043b\u0435\u043c ${from.first_name || from.username || from.id}.`
-    );
-
-    console.log(
-      `[Telegram] \u0437\u0430\u0434\u0430\u0447\u0430 ${taskId} \u043e\u0442\u043c\u0435\u0447\u0435\u043d\u0430 \u043a\u0430\u043a \u0432\u044b\u043f\u043e\u043b\u043d\u0435\u043d\u043d\u0430\u044f \u043f\u043e\u043b\u044c\u0437\u043e\u0432\u0430\u0442\u0435\u043b\u0435\u043c ${from.id}`
-    );
-  } catch (err) {
-    console.error("[handleTelegramUpdate] error:", err);
-  }
-}
-
-let telegramOffset = 0;
-
-
-
-
-async function startTelegramPolling() {
-  console.log("▶️ Запуск long polling Telegram...");
-
-  while (true) {
-    try {
-      const url = `${TELEGRAM_API}/getUpdates?timeout=25&offset=${telegramOffset}`;
-
-      const res = await fetch(url);
-      const data = await res.json();
-
-      if (!data.ok) {
-        console.error("[startTelegramPolling] Ответ Telegram с ошибкой:", data);
-        await new Promise((r) => setTimeout(r, 5000));
-        continue;
-      }
-
-      if (Array.isArray(data.result) && data.result.length > 0) {
-        for (const update of data.result) {
-          telegramOffset = update.update_id + 1;
-          await handleTelegramUpdate(update);
-        }
-      }
-    } catch (err) {
-      console.error("[startTelegramPolling] Ошибка:", err);
-      await new Promise((r) => setTimeout(r, 5000));
-    }
-  }
-}
-
 // ================== НАПОМИНАНИЯ ПО ЗАДАЧАМ СКЛАДА ==================
-
-
-function buildWarehouseTaskTelegramText({ task, dueStr, kind, isExecutor }) {
-  const title = task?.title || "";
-  const executor = task?.executorName || "";
-  const lines = [];
-
-  if (kind === "due_soon") {
-    lines.push("\u26A0\uFE0F \u0421\u043A\u043E\u0440\u043E \u0438\u0441\u0442\u0435\u043A\u0430\u0435\u0442 \u0441\u0440\u043E\u043A" + (isExecutor ? " \u0432\u0430\u0448\u0435\u0439 \u0437\u0430\u0434\u0430\u0447\u0438" : " \u043F\u043E \u0437\u0430\u0434\u0430\u0447\u0435"));
-  } else {
-    lines.push("\u23F0 \u041F\u0440\u043E\u0441\u0440\u043E\u0447\u0435\u043D\u0430 \u0437\u0430\u0434\u0430\u0447\u0430" + (isExecutor ? "" : ""));
-  }
-
-  lines.push("");
-  lines.push(`\u0417\u0430\u0434\u0430\u0447\u0430: ${title}`);
-  if (!isExecutor && executor) {
-    lines.push(`\u0418\u0441\u043F\u043E\u043B\u043D\u0438\u0442\u0435\u043B\u044C: ${executor}`);
-  }
-  lines.push(`\u0421\u0440\u043E\u043A: ${dueStr}`);
-
-  return lines.join("\n");
-}
-
-function buildWarehouseTaskCreatedTelegramText(task) {
-  const title = task?.title || "";
-  const author = task?.assigner?.name || task?.assigner?.email || task?.assignerName || "";
-  const details = task?.description || "";
-  const due = task?.dueDate ? new Date(task.dueDate) : null;
-  const dueStr = due && !Number.isNaN(due.getTime())
-    ? due.toLocaleString("ru-RU", { day: "2-digit", month: "2-digit", year: "numeric", hour: "2-digit", minute: "2-digit" })
-    : "";
-
-  const lines = [];
-  lines.push("\u{1F44B} \u041d\u043e\u0432\u0430\u044f \u0437\u0430\u0434\u0430\u0447\u0430 \u0441\u043a\u043b\u0430\u0434\u0430");
-  lines.push("");
-  lines.push(`\u{1F4DD} \u0417\u0430\u0434\u0430\u0447\u0430: ${title}`);
-  if (details) {
-    lines.push(`\u{1F4C4} \u0414\u0435\u0442\u0430\u043b\u0438: ${details}`);
-  }
-  if (dueStr) {
-    lines.push(`\u23F0 \u0421\u0440\u043e\u043a: ${dueStr}`);
-  }
-  if (author) {
-    lines.push("");
-    lines.push(`\u{1F464} \u041d\u0430\u0437\u043d\u0430\u0447\u0438\u043b: ${author}`);
-  }
-  return lines.join("\n");
-}
-function buildWarehouseTaskAssignedTelegramText(task, { forExecutor }) {
-  const title = task?.title || "";
-  const details = task?.description || "";
-  const due = task?.dueDate ? new Date(task.dueDate) : null;
-  const dueStr = due && !Number.isNaN(due.getTime())
-    ? due.toLocaleString("ru-RU", { day: "2-digit", month: "2-digit", year: "numeric", hour: "2-digit", minute: "2-digit" })
-    : "";
-  const assigner = task?.assigner?.name || task?.assigner?.email || "";
-
-  const lines = [];
-  lines.push(forExecutor
-    ? "\u{1F44B} \u0412\u0430\u043c \u043d\u0430\u0437\u043d\u0430\u0447\u0435\u043d\u0430 \u0437\u0430\u0434\u0430\u0447\u0430 \u0441\u043a\u043b\u0430\u0434\u0430"
-    : "\u{1F44B} \u041d\u0430\u0437\u043d\u0430\u0447\u0435\u043d\u0430 \u0437\u0430\u0434\u0430\u0447\u0430 \u0441\u043a\u043b\u0430\u0434\u0430"
-  );
-  lines.push("");
-  lines.push(`\u{1F4DD} \u0417\u0430\u0434\u0430\u0447\u0430: ${title}`);
-  if (details) {
-    lines.push(`\u{1F4C4} \u0414\u0435\u0442\u0430\u043b\u0438: ${details}`);
-  }
-  if (dueStr) {
-    lines.push(`\u23F0 \u0421\u0440\u043e\u043a: ${dueStr}`);
-  }
-  if (assigner) {
-    lines.push("");
-    lines.push(`\u{1F464} \u041d\u0430\u0437\u043d\u0430\u0447\u0438\u043b: ${assigner}`);
-  }
-  return lines.join("\n");
-}
-
-
 
 async function checkWarehouseTaskNotifications() {
   try {
@@ -4008,6 +4823,7 @@ async function getLowStockItems() {
     if (currentStock < item.minStock) {
       result.push({
         id: item.id,
+        orgId: Number(item.orgId || 0) || null,
         name: item.name,
         unit: item.unit,
         minStock: item.minStock,
@@ -4019,28 +4835,62 @@ async function getLowStockItems() {
   return result;
 }
 
-// 2. Отправить один общий отчёт в складской чат
+// 2. Отправить сводку по низким остаткам во внутренние уведомления (админы/владелец)
 async function sendDailyLowStockSummary() {
   try {
     const lowItems = await getLowStockItems();
     const now = new Date();
     const dateStr = now.toLocaleDateString("ru-RU");
 
-    if (lowItems.length === 0) {
-      await sendWarehouseGroupMessage(
-        `✅ На конец дня (${dateStr}) товаров ниже минимального остатка нет.`
-      );
-      return;
+    if (!lowItems.length) return;
+
+    const byOrg = new Map();
+    for (const item of lowItems) {
+      const orgId = Number(item?.orgId || 0);
+      if (!orgId) continue;
+      if (!byOrg.has(orgId)) byOrg.set(orgId, []);
+      byOrg.get(orgId).push(item);
     }
+    if (!byOrg.size) return;
 
-    let text = `📦 Список товаров для дозаказа на ${dateStr}:\n\n`;
+    for (const [orgId, orgItems] of byOrg.entries()) {
+      const recipients = await getCrossdockDiscrepancyRecipients(orgId);
+      if (!recipients.length) continue;
 
-    for (const it of lowItems) {
-      text += `• ${it.name} — сейчас ${it.currentStock} ${it.unit || ""
-        }, минимум ${it.minStock}\n`;
+      const preview = orgItems
+        .slice(0, 8)
+        .map((it) => `• ${it.name}: ${it.currentStock} ${it.unit || "шт."} (мин. ${it.minStock})`)
+        .join("; ");
+      const tail = orgItems.length > 8 ? `; +ещё ${orgItems.length - 8}` : "";
+
+      const title = "Низкий остаток товаров";
+      const message = `На ${dateStr} ниже минимума: ${orgItems.length}. ${preview}${tail}`;
+      const payloadJson = {
+        scope: "low_stock_summary",
+        date: dateStr,
+        total: orgItems.length,
+        items: orgItems.slice(0, 30).map((it) => ({
+          id: Number(it?.id || 0) || null,
+          name: String(it?.name || "").trim(),
+          currentStock: Number(it?.currentStock || 0),
+          minStock: Number(it?.minStock || 0),
+          unit: String(it?.unit || "").trim() || null,
+        })),
+      };
+
+      for (const recipient of recipients) {
+        await createWarehouseNotification({
+          orgId: recipient.orgId,
+          userId: recipient.id,
+          type: "LOW_STOCK_SUMMARY",
+          title,
+          message,
+          linkUrl: "/warehouse",
+          payloadJson,
+          sendWebPush: true,
+        }).catch(() => null);
+      }
     }
-
-    await sendWarehouseGroupMessage(text);
   } catch (err) {
     console.error("[sendDailyLowStockSummary] Ошибка:", err);
   }
@@ -4244,28 +5094,7 @@ app.post("/api/login", async (req, res) => {
     }
 
     if (!user) {
-      const normalizedEmail = normalizeEmail(normalizedLogin);
-      user = await prisma.user.findUnique({
-        where: { email: normalizedEmail },
-      });
-      if (!user) {
-        const legacyRows = await prisma.$queryRaw`
-          SELECT "id" FROM "User"
-          WHERE LOWER(TRIM("email")) = LOWER(${normalizedEmail})
-          LIMIT 1
-        `;
-        const legacyId = Number(legacyRows?.[0]?.id || 0);
-        if (legacyId) {
-          user = await prisma.user.findUnique({ where: { id: legacyId } });
-          if (user && user.email !== normalizedEmail) {
-            await prisma.user.update({
-              where: { id: user.id },
-              data: { email: normalizedEmail },
-            });
-            user.email = normalizedEmail;
-          }
-        }
-      }
+      user = await findUserByEmailInsensitive(normalizedLogin);
     }
     if (!user) {
       console.warn(`[LOGIN_FAIL] user not found: ${normalizedLogin}`);
@@ -5289,6 +6118,27 @@ app.get("/api/profile", auth, async (req, res) => {
     }
   });
 
+  app.get("/api/pallets/route-sheets/next-number", auth, async (req, res) => {
+    try {
+      const orgId = Number(req.user?.orgId || 0);
+      if (!orgId) {
+        return res.status(400).json({ message: "ORG_REQUIRED" });
+      }
+
+      const plannedDate =
+        toIsoDateOrNull(req.query?.plannedDate || req.query?.date || null) || new Date();
+      const sheetNumber = await generateUniqueRouteSheetNumber(orgId, plannedDate, prisma);
+
+      return res.json({
+        sheetNumber,
+        year: plannedDate.getUTCFullYear(),
+      });
+    } catch (err) {
+      console.error("route-sheet next-number error:", err);
+      return res.status(500).json({ message: "ROUTE_SHEET_NEXT_NUMBER_ERROR" });
+    }
+  });
+
   app.post("/api/pallets/route-sheets", auth, async (req, res) => {
     try {
       const orgId = Number(req.user?.orgId || 0);
@@ -5321,7 +6171,7 @@ app.get("/api/profile", auth, async (req, res) => {
       }
 
       const createdId = await prisma.$transaction(async (tx) => {
-        const sheetNumber = await generateUniqueRouteSheetNumber(orgId, tx);
+        const sheetNumber = await generateUniqueRouteSheetNumber(orgId, plannedDate, tx);
         const created = await tx.palletRouteSheet.create({
           data: {
             orgId,
@@ -5861,12 +6711,12 @@ app.get("/api/profile", auth, async (req, res) => {
       }
 
       const palletCode = normalizePalletCode(req.body?.palletCode);
-      const locationCode = normalizePalletCode(req.body?.locationCode);
+      const locationInput = normalizePalletCode(req.body?.locationCode);
       const dispatchGate = normalizePalletGate(req.body?.dispatchGate ?? req.body?.gate, 40) || null;
       if (!palletCode) {
         return res.status(400).json({ message: "PALLET_CODE_REQUIRED" });
       }
-      if (!locationCode) {
+      if (!locationInput) {
         return res.status(400).json({ message: "PALLET_LOCATION_REQUIRED" });
       }
       if (!dispatchGate) {
@@ -5911,7 +6761,20 @@ app.get("/api/profile", auth, async (req, res) => {
           error.code = "PALLET_DISPATCH_STATUS_INVALID";
           throw error;
         }
-        if (!pallet.currentLocation?.code || pallet.currentLocation.code !== locationCode) {
+        const resolvedWarehouseLocation = await resolveWarehouseLocationByInput(
+          orgId,
+          locationInput,
+          tx
+        );
+        const resolvedLocationCode =
+          normalizePalletCode(resolvedWarehouseLocation?.code || locationInput) || locationInput;
+        if (
+          !doesLocationInputMatchPalletLocation(
+            locationInput,
+            resolvedWarehouseLocation,
+            pallet.currentLocation
+          )
+        ) {
           const error = new Error("PALLET_LOCATION_MISMATCH");
           error.code = "PALLET_LOCATION_MISMATCH";
           throw error;
@@ -6007,7 +6870,7 @@ app.get("/api/profile", auth, async (req, res) => {
           userId: req.user.id,
           metaJson: {
             palletCode,
-            locationCode,
+            locationCode: resolvedLocationCode,
             dispatchGate,
             gate: dispatchGate,
           },
@@ -6027,7 +6890,7 @@ app.get("/api/profile", auth, async (req, res) => {
             driver: routeSheet.driver || null,
             notes: routeSheet.notes || null,
             fromLocationCode: pallet.currentLocation?.code || null,
-            scanLocationCode: locationCode,
+            scanLocationCode: resolvedLocationCode,
             dispatchGate,
             gate: dispatchGate,
             routeSheetId,
@@ -6150,7 +7013,7 @@ app.get("/api/profile", auth, async (req, res) => {
       }
 
       const palletCode = normalizePalletCode(req.body?.palletCode);
-      const locationCode = normalizePalletCode(req.body?.locationCode);
+      const locationInput = normalizePalletCode(req.body?.locationCode);
       const destinationRc = normalizePalletText(req.body?.destinationRc, 120);
       const dispatchGate = normalizePalletGate(req.body?.dispatchGate ?? req.body?.gate, 40) || null;
       const route = normalizePalletText(req.body?.route, 120) || null;
@@ -6161,7 +7024,7 @@ app.get("/api/profile", auth, async (req, res) => {
       if (!palletCode) {
         return res.status(400).json({ message: "PALLET_CODE_REQUIRED" });
       }
-      if (!locationCode) {
+      if (!locationInput) {
         return res.status(400).json({ message: "PALLET_LOCATION_REQUIRED" });
       }
       if (!destinationRc) {
@@ -6192,7 +7055,20 @@ app.get("/api/profile", auth, async (req, res) => {
           error.code = "PALLET_DISPATCH_STATUS_INVALID";
           throw error;
         }
-        if (!pallet.currentLocation?.code || pallet.currentLocation.code !== locationCode) {
+        const resolvedWarehouseLocation = await resolveWarehouseLocationByInput(
+          orgId,
+          locationInput,
+          tx
+        );
+        const resolvedLocationCode =
+          normalizePalletCode(resolvedWarehouseLocation?.code || locationInput) || locationInput;
+        if (
+          !doesLocationInputMatchPalletLocation(
+            locationInput,
+            resolvedWarehouseLocation,
+            pallet.currentLocation
+          )
+        ) {
           const error = new Error("PALLET_LOCATION_MISMATCH");
           error.code = "PALLET_LOCATION_MISMATCH";
           throw error;
@@ -6242,7 +7118,7 @@ app.get("/api/profile", auth, async (req, res) => {
             driver,
             notes,
             fromLocationCode: pallet.currentLocation?.code || null,
-            scanLocationCode: locationCode,
+            scanLocationCode: resolvedLocationCode,
             dispatchGate,
             gate: dispatchGate,
           },
@@ -6318,12 +7194,7 @@ app.get("/api/profile", auth, async (req, res) => {
           select: { id: true },
         });
         if (!location) {
-          return res.json({
-            destinationRc,
-            route,
-            summary: { total: 0, byLocation: [] },
-            items: [],
-          });
+          return res.status(404).json({ message: "PALLET_LOCATION_NOT_FOUND" });
         }
         currentLocationId = location.id;
       }
@@ -6424,7 +7295,7 @@ app.get("/api/profile", auth, async (req, res) => {
           select: { id: true },
         });
         if (!location) {
-          return res.json({ items: [] });
+          return res.status(404).json({ message: "PALLET_LOCATION_NOT_FOUND" });
         }
         currentLocationId = location.id;
       }
@@ -6491,6 +7362,1061 @@ app.get("/api/profile", auth, async (req, res) => {
     } catch (err) {
       console.error("pallet list error:", err);
       return res.status(500).json({ message: "PALLET_LIST_ERROR" });
+    }
+  });
+
+  app.post("/api/pallets/:palletCode/archive", auth, async (req, res) => {
+    try {
+      const orgId = Number(req.user?.orgId || 0);
+      if (!orgId) {
+        return res.status(400).json({ message: "ORG_REQUIRED" });
+      }
+      const canArchive = req.user?.isSystemOwner === true || req.user?.role === "ADMIN";
+      if (!canArchive) {
+        return res.status(403).json({ message: "PALLET_ARCHIVE_OWNER_ONLY" });
+      }
+
+      const palletCode = normalizePalletCode(req.params?.palletCode);
+      if (!palletCode) {
+        return res.status(400).json({ message: "PALLET_CODE_REQUIRED" });
+      }
+      const reason = normalizePalletText(req.body?.reason, 240) || null;
+
+      const archivedId = await prisma.$transaction(async (tx) => {
+        const now = new Date();
+        const pallet = await tx.pallet.findFirst({
+          where: { orgId, palletCode },
+          include: { currentLocation: true },
+        });
+        if (!pallet) {
+          const error = new Error("PALLET_NOT_FOUND");
+          error.code = "PALLET_NOT_FOUND";
+          throw error;
+        }
+        if (pallet.status === "CANCELLED") {
+          return { palletId: pallet.id, idempotent: true };
+        }
+        if (pallet.status === "DISPATCHED") {
+          const error = new Error("PALLET_ARCHIVE_STATUS_INVALID");
+          error.code = "PALLET_ARCHIVE_STATUS_INVALID";
+          throw error;
+        }
+
+        const updateResult = await tx.pallet.updateMany({
+          where: {
+            id: pallet.id,
+            status: pallet.status,
+          },
+          data: {
+            status: "CANCELLED",
+            currentLocationId: null,
+          },
+        });
+        if (updateResult.count !== 1) {
+          const error = new Error("PALLET_STATE_CHANGED");
+          error.code = "PALLET_STATE_CHANGED";
+          throw error;
+        }
+
+        await createPalletEventTx(tx, {
+          orgId,
+          palletId: pallet.id,
+          type: "CANCEL",
+          fromStatus: pallet.status,
+          toStatus: "CANCELLED",
+          userId: req.user.id,
+          metaJson: {
+            source: "SEARCH_TAB",
+            action: "ARCHIVE",
+            reason,
+            fromLocationCode: pallet.currentLocation?.code || null,
+            fromLocationName: pallet.currentLocation?.name || null,
+          },
+        });
+
+        return { palletId: pallet.id, idempotent: false };
+      });
+
+      const updated = archivedId?.palletId
+        ? await prisma.pallet.findFirst({
+            where: { orgId, id: archivedId.palletId },
+            include: {
+              currentLocation: true,
+              dispatch: true,
+            },
+          })
+        : null;
+
+      if (!updated) {
+        return res.status(500).json({ message: "PALLET_ARCHIVE_ERROR" });
+      }
+      return res.json({
+        pallet: palletToResponse(updated),
+        idempotent: Boolean(archivedId?.idempotent),
+      });
+    } catch (err) {
+      if (err?.code === "PALLET_NOT_FOUND") {
+        return res.status(404).json({ message: "PALLET_NOT_FOUND" });
+      }
+      if (err?.code === "PALLET_ARCHIVE_STATUS_INVALID") {
+        return res.status(409).json({ message: "PALLET_ARCHIVE_STATUS_INVALID" });
+      }
+      if (err?.code === "PALLET_STATE_CHANGED") {
+        return res.status(409).json({ message: "PALLET_STATE_CHANGED" });
+      }
+      console.error("pallet archive error:", err);
+      return res.status(500).json({ message: "PALLET_ARCHIVE_ERROR" });
+    }
+  });
+
+  app.get("/api/pallets/location-control/:locationCode/expected", auth, async (req, res) => {
+    try {
+      const orgId = Number(req.user?.orgId || 0);
+      if (!orgId) {
+        return res.status(400).json({ message: "ORG_REQUIRED" });
+      }
+
+      const locationInput = normalizePalletCode(req.params?.locationCode);
+      if (!locationInput) {
+        return res.status(400).json({ message: "PALLET_LOCATION_REQUIRED" });
+      }
+
+      const { warehouseLocation, palletLocations } = await findPalletLocationsByInput(
+        orgId,
+        locationInput
+      );
+      if (!warehouseLocation) {
+        return res.status(404).json({ message: "PALLET_LOCATION_NOT_FOUND" });
+      }
+      const knownLocation = palletLocations[0] || null;
+      const locationIds = palletLocations.map((location) => location.id).filter(Boolean);
+      const expected = await prisma.pallet.findMany({
+        where: {
+          orgId,
+          status: "STORED",
+          ...(locationIds.length
+            ? { currentLocationId: { in: locationIds } }
+            : {
+                currentLocation: {
+                  is: { code: locationInput },
+                },
+              }),
+        },
+        include: {
+          currentLocation: true,
+        },
+        orderBy: [{ palletCode: "asc" }, { id: "asc" }],
+        take: 800,
+      });
+      const locationExists = Boolean(warehouseLocation || knownLocation || expected.length > 0);
+      if (!locationExists) {
+        return res.status(404).json({ message: "PALLET_LOCATION_NOT_FOUND" });
+      }
+
+      const resolvedLocationCode =
+        normalizePalletCode(warehouseLocation?.code || knownLocation?.code || locationInput) ||
+        locationInput;
+      const locationName =
+        String(warehouseLocation?.name || "").trim() ||
+        String(knownLocation?.name || "").trim() ||
+        String(expected[0]?.currentLocation?.name || "").trim() ||
+        resolvedLocationCode;
+      const palletIds = expected.map((item) => item.id).filter(Boolean);
+      const discrepancyStorageReady = await ensurePalletDiscrepancyStorageReadyForRuntime();
+      let openDiscrepanciesCount = 0;
+      if (palletIds.length) {
+        if (discrepancyStorageReady) {
+          openDiscrepanciesCount = await prisma.palletDiscrepancy.count({
+            where: {
+              orgId,
+              palletId: { in: palletIds },
+              status: "OPEN",
+            },
+          });
+        } else {
+          const byPalletId = await loadLatestDiscrepancyStatesByPalletIdsFromEvents(orgId, palletIds, prisma);
+          openDiscrepanciesCount = Array.from(byPalletId.values()).filter(
+            (entry) => entry?.status === "OPEN"
+          ).length;
+        }
+      }
+
+      return res.json({
+        location: {
+          id: knownLocation?.id || null,
+          code: resolvedLocationCode,
+          name: locationName,
+        },
+        expectedPallets: expected.map((item) => palletToResponse(item)),
+        summary: {
+          expectedCount: expected.length,
+          openDiscrepanciesCount,
+          discrepancyEnabled: true,
+        },
+      });
+    } catch (err) {
+      console.error("pallet location-control expected error:", err);
+      return res.status(500).json({ message: "PALLET_LOCATION_CONTROL_EXPECTED_ERROR" });
+    }
+  });
+
+  app.post("/api/pallets/location-control/:locationCode/reconcile", auth, async (req, res) => {
+    try {
+      const orgId = Number(req.user?.orgId || 0);
+      if (!orgId) {
+        return res.status(400).json({ message: "ORG_REQUIRED" });
+      }
+
+      const locationInput = normalizePalletCode(req.params?.locationCode);
+      if (!locationInput) {
+        return res.status(400).json({ message: "PALLET_LOCATION_REQUIRED" });
+      }
+
+      const rawFoundCodes = Array.isArray(req.body?.foundPalletCodes)
+        ? req.body.foundPalletCodes
+        : [];
+      const foundPalletCodes = Array.from(
+        new Set(
+          rawFoundCodes
+            .map((entry) => {
+              if (typeof entry === "string") return normalizePalletCode(entry);
+              return normalizePalletCode(entry?.palletCode);
+            })
+            .filter(Boolean)
+        )
+      ).slice(0, 1200);
+      const discrepancyStorageReady = await ensurePalletDiscrepancyStorageReadyForRuntime();
+
+      const reconcileResult = await prisma.$transaction(async (tx) => {
+        const now = new Date();
+        const { warehouseLocation, palletLocations } = await findPalletLocationsByInput(
+          orgId,
+          locationInput,
+          tx
+        );
+        if (!warehouseLocation) {
+          const error = new Error("PALLET_LOCATION_NOT_FOUND");
+          error.code = "PALLET_LOCATION_NOT_FOUND";
+          throw error;
+        }
+        const knownLocation = palletLocations[0] || null;
+        const locationIds = palletLocations.map((location) => location.id).filter(Boolean);
+        const expected = await tx.pallet.findMany({
+          where: {
+            orgId,
+            status: "STORED",
+            ...(locationIds.length
+              ? { currentLocationId: { in: locationIds } }
+              : {
+                  currentLocation: {
+                    is: { code: locationInput },
+                  },
+                }),
+          },
+          include: {
+            currentLocation: true,
+          },
+          orderBy: [{ palletCode: "asc" }, { id: "asc" }],
+          take: 800,
+        });
+        const locationExists = Boolean(warehouseLocation || knownLocation || expected.length > 0);
+        if (!locationExists) {
+          const error = new Error("PALLET_LOCATION_NOT_FOUND");
+          error.code = "PALLET_LOCATION_NOT_FOUND";
+          throw error;
+        }
+        const resolvedLocationCode =
+          normalizePalletCode(warehouseLocation?.code || knownLocation?.code || locationInput) ||
+          locationInput;
+
+        const expectedByCode = new Map();
+        for (const pallet of expected) {
+          const code = normalizePalletCode(pallet?.palletCode);
+          if (!code) continue;
+          expectedByCode.set(code, pallet);
+        }
+
+        const foundSet = new Set(foundPalletCodes.filter((code) => expectedByCode.has(code)));
+        const missingPallets = expected.filter(
+          (pallet) => !foundSet.has(normalizePalletCode(pallet?.palletCode))
+        );
+        const foundPallets = expected.filter((pallet) =>
+          foundSet.has(normalizePalletCode(pallet?.palletCode))
+        );
+
+        const locationName =
+          String(warehouseLocation?.name || "").trim() ||
+          String(knownLocation?.name || "").trim() ||
+          String(expected[0]?.currentLocation?.name || "").trim() ||
+          resolvedLocationCode;
+
+        const createdMissingCodes = [];
+        const openMissingCodes = [];
+        const knownPalletIds = expected.map((item) => item.id).filter(Boolean);
+        const eventStatesByPalletId = !discrepancyStorageReady
+          ? await loadLatestDiscrepancyStatesByPalletIdsFromEvents(orgId, knownPalletIds, tx)
+          : new Map();
+        if (discrepancyStorageReady) {
+          for (const pallet of missingPallets) {
+            const openDiscrepancy = await tx.palletDiscrepancy.findFirst({
+              where: {
+                orgId,
+                palletId: pallet.id,
+                status: "OPEN",
+              },
+              select: { id: true },
+            });
+            const palletCode = normalizePalletCode(pallet?.palletCode);
+            if (openDiscrepancy) {
+              openMissingCodes.push(palletCode);
+              await tx.palletDiscrepancy.update({
+                where: { id: openDiscrepancy.id },
+                data: {
+                  lastCheckedAt: now,
+                  locationId: pallet.currentLocationId || knownLocation?.id || null,
+                },
+              });
+              if (pallet.currentLocationId != null) {
+                await tx.pallet.update({
+                  where: { id: pallet.id },
+                  data: {
+                    currentLocationId: null,
+                  },
+                });
+              }
+              continue;
+            }
+
+            await tx.palletDiscrepancy.create({
+              data: {
+                orgId,
+                palletId: pallet.id,
+                locationId: pallet.currentLocationId || knownLocation?.id || null,
+                status: "OPEN",
+                detectedAt: now,
+                detectedByUserId: req.user?.id || null,
+                lastCheckedAt: now,
+              },
+            });
+            createdMissingCodes.push(palletCode);
+
+            await tx.pallet.update({
+              where: { id: pallet.id },
+              data: {
+                currentLocationId: null,
+              },
+            });
+
+            await createPalletEventTx(tx, {
+              orgId,
+              palletId: pallet.id,
+              type: "DISCREPANCY_OPEN",
+              fromStatus: pallet.status,
+              toStatus: pallet.status,
+              userId: req.user.id,
+              metaJson: {
+                fromLocationCode:
+                  String(pallet?.currentLocation?.code || "").trim() || resolvedLocationCode,
+                fromLocationName:
+                  String(pallet?.currentLocation?.name || "").trim() || locationName,
+                locationCode: resolvedLocationCode,
+                locationName,
+                source: "LOCATION_CONTROL",
+                result: "MISSING",
+                discrepancyStatus: "OPEN",
+              },
+            });
+          }
+        } else {
+          for (const pallet of missingPallets) {
+            const palletCode = normalizePalletCode(pallet?.palletCode);
+            const latestState = eventStatesByPalletId.get(pallet.id)?.status || "";
+            if (latestState === "OPEN") {
+              if (pallet.currentLocationId != null) {
+                await tx.pallet.update({
+                  where: { id: pallet.id },
+                  data: {
+                    currentLocationId: null,
+                  },
+                });
+              }
+              openMissingCodes.push(palletCode);
+              continue;
+            }
+            await createPalletEventTx(tx, {
+              orgId,
+              palletId: pallet.id,
+              type: "DISCREPANCY_OPEN",
+              fromStatus: pallet.status,
+              toStatus: pallet.status,
+              userId: req.user.id,
+              metaJson: {
+                fromLocationCode:
+                  String(pallet?.currentLocation?.code || "").trim() || resolvedLocationCode,
+                fromLocationName:
+                  String(pallet?.currentLocation?.name || "").trim() || locationName,
+                locationCode: resolvedLocationCode,
+                locationName,
+                source: "LOCATION_CONTROL",
+                result: "MISSING",
+                discrepancyStatus: "OPEN",
+              },
+            });
+            await tx.pallet.update({
+              where: { id: pallet.id },
+              data: {
+                currentLocationId: null,
+              },
+            });
+            createdMissingCodes.push(palletCode);
+          }
+        }
+
+        let closedCount = 0;
+        if (foundPallets.length) {
+          if (discrepancyStorageReady) {
+            const foundPalletIds = foundPallets.map((item) => item.id);
+            const openToClose = await tx.palletDiscrepancy.findMany({
+              where: {
+                orgId,
+                palletId: { in: foundPalletIds },
+                status: "OPEN",
+              },
+              select: { id: true, palletId: true },
+            });
+            for (const discrepancy of openToClose) {
+              await tx.palletDiscrepancy.update({
+                where: { id: discrepancy.id },
+                data: {
+                  status: "CLOSED",
+                  closedAt: now,
+                  closedByUserId: req.user?.id || null,
+                  lastCheckedAt: now,
+                },
+              });
+              closedCount += 1;
+              const pallet = foundPallets.find((item) => item.id === discrepancy.palletId);
+              if (pallet) {
+                await createPalletEventTx(tx, {
+                  orgId,
+                  palletId: pallet.id,
+                  type: "DISCREPANCY_CLOSE",
+                  fromStatus: pallet.status,
+                  toStatus: pallet.status,
+                  userId: req.user.id,
+                  metaJson: {
+                    locationCode: resolvedLocationCode,
+                    locationName,
+                    source: "LOCATION_CONTROL",
+                    result: "FOUND",
+                    discrepancyStatus: "CLOSED",
+                  },
+                });
+              }
+            }
+          } else {
+            for (const pallet of foundPallets) {
+              const latestState = eventStatesByPalletId.get(pallet.id)?.status || "";
+              if (latestState !== "OPEN") continue;
+              await createPalletEventTx(tx, {
+                orgId,
+                palletId: pallet.id,
+                type: "DISCREPANCY_CLOSE",
+                fromStatus: pallet.status,
+                toStatus: pallet.status,
+                userId: req.user.id,
+                metaJson: {
+                  locationCode: resolvedLocationCode,
+                  locationName,
+                  source: "LOCATION_CONTROL",
+                  result: "FOUND",
+                  discrepancyStatus: "CLOSED",
+                },
+              });
+              closedCount += 1;
+            }
+          }
+        }
+
+        return {
+          locationCode: resolvedLocationCode,
+          locationName,
+          expectedCount: expected.length,
+          actualCount: foundPallets.length,
+          missingPalletCodes: missingPallets
+            .map((item) => normalizePalletCode(item?.palletCode))
+            .filter(Boolean),
+          createdMissingCodes,
+          openMissingCodes,
+          closedCount,
+        };
+      });
+
+      if (reconcileResult.createdMissingCodes.length) {
+        await notifyCrossdockDiscrepancies({
+          orgId,
+          actorName: req.user?.name || "",
+          locationCode: reconcileResult.locationCode,
+          locationName: reconcileResult.locationName,
+          missingCodes: reconcileResult.createdMissingCodes,
+        }).catch(() => null);
+      }
+
+      return res.json({
+        location: {
+          code: reconcileResult.locationCode,
+          name: reconcileResult.locationName,
+        },
+        expectedCount: reconcileResult.expectedCount,
+        actualCount: reconcileResult.actualCount,
+        missingPalletCodes: reconcileResult.missingPalletCodes,
+        openedCount: reconcileResult.createdMissingCodes.length,
+        alreadyOpenCount: reconcileResult.openMissingCodes.length,
+        closedCount: reconcileResult.closedCount,
+        discrepancyEnabled: true,
+      });
+    } catch (err) {
+      if (String(err?.code || err?.message || "").trim().toUpperCase() === "PALLET_LOCATION_NOT_FOUND") {
+        return res.status(404).json({ message: "PALLET_LOCATION_NOT_FOUND" });
+      }
+      console.error("pallet location-control reconcile error:", err);
+      return res.status(500).json({ message: "PALLET_LOCATION_CONTROL_RECONCILE_ERROR" });
+    }
+  });
+
+  app.get("/api/pallets/discrepancies", auth, async (req, res) => {
+    try {
+      const orgId = Number(req.user?.orgId || 0);
+      if (!orgId) {
+        return res.status(400).json({ message: "ORG_REQUIRED" });
+      }
+      const canApproveWriteoff = req.user?.isSystemOwner === true || req.user?.role === "ADMIN";
+
+      const statusQuery = String(req.query?.status || req.query?.statuses || "ALL")
+        .trim()
+        .toUpperCase();
+      const status =
+        statusQuery === "ALL" ? "" : normalizePalletDiscrepancyStatus(statusQuery, "");
+      if (statusQuery !== "ALL" && !status) {
+        return res.status(400).json({ message: "PALLET_DISCREPANCY_STATUS_INVALID" });
+      }
+      const limit = Math.max(1, Math.min(500, Number(req.query?.limit || 250)));
+      const discrepancyStorageReady = await ensurePalletDiscrepancyStorageReadyForRuntime();
+      if (!discrepancyStorageReady) {
+        const fallbackItems = await loadLatestDiscrepancyItemsFromEvents(orgId, limit, status, prisma);
+        return res.json({
+          items: fallbackItems,
+          discrepancyEnabled: true,
+          fallback: "events",
+          permissions: { canApproveWriteoff },
+        });
+      }
+
+      const rows = await prisma.palletDiscrepancy.findMany({
+        where: {
+          orgId,
+          ...(status ? { status } : {}),
+        },
+        include: {
+          pallet: {
+            include: {
+              currentLocation: true,
+            },
+          },
+          location: true,
+          detectedByUser: {
+            select: { id: true, name: true, email: true },
+          },
+          closedByUser: {
+            select: { id: true, name: true, email: true },
+          },
+        },
+        orderBy: [{ status: "asc" }, { detectedAt: "desc" }, { id: "desc" }],
+        take: limit,
+      });
+
+      return res.json({
+        items: rows.map((row) => palletDiscrepancyToResponse(row)),
+        discrepancyEnabled: true,
+        permissions: { canApproveWriteoff },
+      });
+    } catch (err) {
+      console.error("pallet discrepancies list error:", err);
+      return res.status(500).json({ message: "PALLET_DISCREPANCIES_LIST_ERROR" });
+    }
+  });
+
+  app.post("/api/pallets/discrepancies/:palletId/mark-found", auth, async (req, res) => {
+    try {
+      const orgId = Number(req.user?.orgId || 0);
+      if (!orgId) {
+        return res.status(400).json({ message: "ORG_REQUIRED" });
+      }
+
+      const palletId = Number(req.params?.palletId || 0);
+      if (!palletId) {
+        return res.status(400).json({ message: "PALLET_ID_REQUIRED" });
+      }
+
+      const result = await prisma.$transaction(async (tx) => {
+        const now = new Date();
+        const open = await getOpenDiscrepancyByPalletIdTx(orgId, palletId, tx);
+        if (!open) return { error: "PALLET_DISCREPANCY_NOT_FOUND" };
+
+        const pallet = open?.source === "table" ? open?.row?.pallet : open?.pallet;
+        if (!pallet) return { error: "PALLET_NOT_FOUND" };
+
+        const requestedLocationCode = normalizePalletCode(req.body?.locationCode);
+        const fallbackLocationCode =
+          String(open?.locationCode || "").trim() ||
+          String(open?.row?.location?.code || "").trim() ||
+          String(open?.row?.pallet?.currentLocation?.code || "").trim() ||
+          "";
+        const effectiveLocationCode = requestedLocationCode || fallbackLocationCode;
+        if (!effectiveLocationCode) return { error: "PALLET_LOCATION_REQUIRED" };
+
+        let linkedWarehouseLocation = null;
+        let fallbackPalletLocation = null;
+        try {
+          const locationLookup = await findPalletLocationsByInput(orgId, effectiveLocationCode, tx);
+          linkedWarehouseLocation = locationLookup?.warehouseLocation || null;
+          const locationCandidates = Array.isArray(locationLookup?.palletLocations)
+            ? locationLookup.palletLocations
+            : [];
+          const normalizedRequestedCode = normalizePalletCode(effectiveLocationCode);
+          fallbackPalletLocation =
+            locationCandidates.find(
+              (entry) => normalizePalletCode(entry?.code) === normalizedRequestedCode
+            ) ||
+            locationCandidates[0] ||
+            null;
+        } catch (err) {
+          // In degraded DB-permission mode fallback to existing pallet-location code.
+          if (!isPermissionDeniedForTable(err, "WarehouseLocation")) {
+            throw err;
+          }
+          const normalizedRequestedCode = normalizePalletCode(effectiveLocationCode);
+          if (normalizedRequestedCode) {
+            fallbackPalletLocation = await tx.palletLocation.findFirst({
+              where: { orgId, code: normalizedRequestedCode },
+              select: { id: true, code: true, name: true },
+            });
+          }
+        }
+
+        let targetLocation = null;
+        if (linkedWarehouseLocation?.code) {
+          targetLocation = await getOrCreatePalletLocationByCode(orgId, linkedWarehouseLocation.code, tx);
+        }
+        if (!targetLocation?.id && fallbackPalletLocation?.id) {
+          targetLocation = fallbackPalletLocation;
+        }
+        if (!targetLocation?.id) return { error: "PALLET_LOCATION_NOT_FOUND" };
+        const locationId = targetLocation.id;
+        const locationCode =
+          String(targetLocation?.code || "").trim() || normalizePalletCode(effectiveLocationCode) || null;
+        const locationName =
+          String(targetLocation?.name || "").trim() ||
+          locationCode ||
+          null;
+
+        if (pallet.status !== "STORED" || pallet.currentLocationId !== locationId) {
+          await tx.pallet.update({
+            where: { id: pallet.id },
+            data: {
+              status: "STORED",
+              currentLocationId: locationId,
+              storedAt: pallet.storedAt || now,
+            },
+          });
+        }
+
+        let nextWriteoffRequest = open?.writeoffRequest || null;
+        if (isDiscrepancyWriteoffPending(nextWriteoffRequest)) {
+          nextWriteoffRequest = {
+            ...nextWriteoffRequest,
+            status: "CANCELLED",
+            decidedAt: now.toISOString(),
+            decidedByUserId: Number(req.user?.id || 0) || null,
+            decidedByName: String(req.user?.name || "").trim() || null,
+            reason: "Найдена при повторной проверке",
+          };
+        }
+
+        if (open.source === "table" && open.row?.id) {
+          await tx.palletDiscrepancy.update({
+            where: { id: open.row.id },
+            data: {
+              status: "CLOSED",
+              locationId,
+              closedAt: now,
+              closedByUserId: req.user?.id || null,
+              lastCheckedAt: now,
+              note: serializePalletDiscrepancyNote({
+                legacyText: open?.noteParsed?.legacyText || "",
+                writeoffRequest: nextWriteoffRequest,
+              }),
+            },
+          });
+        }
+
+        await createPalletEventTx(tx, {
+          orgId,
+          palletId: pallet.id,
+          type: "DISCREPANCY_CLOSE",
+          fromStatus: pallet.status,
+          toStatus: "STORED",
+          userId: req.user.id,
+          metaJson: {
+            locationCode,
+            locationName,
+            source: "DISCREPANCIES_TAB",
+            result: "FOUND",
+            discrepancyStatus: "CLOSED",
+            writeoffRequestStatus:
+              normalizePalletDiscrepancyWriteoffStatus(nextWriteoffRequest?.status, "") || null,
+            writeoffRequestedByUserId: Number(nextWriteoffRequest?.requestedByUserId || 0) || null,
+            writeoffRequestedByName: String(nextWriteoffRequest?.requestedByName || "").trim() || null,
+          },
+        });
+
+        return { ok: true, palletId: pallet.id };
+      });
+
+      if (result?.error) {
+        const code = String(result.error || "");
+        if (code === "PALLET_DISCREPANCY_NOT_FOUND" || code === "PALLET_NOT_FOUND") {
+          return res.status(404).json({ message: code });
+        }
+        return res.status(400).json({ message: code });
+      }
+
+      return res.json({ ok: true, palletId: result?.palletId || null });
+    } catch (err) {
+      if (String(err?.code || "").trim().toUpperCase() === "LOCATION_CODE_REQUIRED") {
+        return res.status(400).json({ message: "PALLET_LOCATION_REQUIRED" });
+      }
+      if (String(err?.code || "").trim().toUpperCase() === "P2025") {
+        return res.status(404).json({ message: "PALLET_DISCREPANCY_NOT_FOUND" });
+      }
+      console.error("pallet discrepancy mark-found error:", err);
+      return res.status(500).json({ message: "PALLET_DISCREPANCY_MARK_FOUND_ERROR" });
+    }
+  });
+
+  app.post("/api/pallets/discrepancies/:palletId/request-writeoff", auth, async (req, res) => {
+    try {
+      const orgId = Number(req.user?.orgId || 0);
+      if (!orgId) {
+        return res.status(400).json({ message: "ORG_REQUIRED" });
+      }
+
+      const palletId = Number(req.params?.palletId || 0);
+      if (!palletId) {
+        return res.status(400).json({ message: "PALLET_ID_REQUIRED" });
+      }
+
+      const reason = normalizePalletText(req.body?.reason, 240);
+      const txResult = await prisma.$transaction(async (tx) => {
+        const now = new Date();
+        const open = await getOpenDiscrepancyByPalletIdTx(orgId, palletId, tx);
+        if (!open) return { error: "PALLET_DISCREPANCY_NOT_FOUND" };
+        if (isDiscrepancyWriteoffPending(open?.writeoffRequest)) {
+          return { error: "PALLET_DISCREPANCY_WRITEOFF_ALREADY_PENDING" };
+        }
+
+        const pallet = open?.source === "table" ? open?.row?.pallet : open?.pallet;
+        if (!pallet) return { error: "PALLET_NOT_FOUND" };
+
+        const locationCode =
+          String(open?.locationCode || "").trim() ||
+          String(pallet?.currentLocation?.code || "").trim() ||
+          null;
+        const locationName =
+          String(open?.locationName || "").trim() ||
+          String(pallet?.currentLocation?.name || "").trim() ||
+          locationCode ||
+          null;
+
+        const writeoffRequest = {
+          status: "PENDING",
+          requestedAt: now.toISOString(),
+          requestedByUserId: Number(req.user?.id || 0) || null,
+          requestedByName: String(req.user?.name || "").trim() || null,
+          decidedAt: null,
+          decidedByUserId: null,
+          decidedByName: null,
+          reason: reason || null,
+        };
+
+        if (open.source === "table" && open.row?.id) {
+          await tx.palletDiscrepancy.update({
+            where: { id: open.row.id },
+            data: {
+              lastCheckedAt: now,
+              note: serializePalletDiscrepancyNote({
+                legacyText: open?.noteParsed?.legacyText || "",
+                writeoffRequest,
+              }),
+            },
+          });
+        }
+
+        await createPalletEventTx(tx, {
+          orgId,
+          palletId: pallet.id,
+          type: "MOVE",
+          fromStatus: pallet.status,
+          toStatus: pallet.status,
+          userId: req.user.id,
+          metaJson: {
+            source: "DISCREPANCIES_TAB",
+            action: "WRITEOFF_REQUEST",
+            discrepancyStatus: "OPEN",
+            locationCode,
+            locationName,
+            writeoffRequestStatus: "PENDING",
+            writeoffRequestedAt: writeoffRequest.requestedAt,
+            writeoffRequestedByUserId: writeoffRequest.requestedByUserId,
+            writeoffRequestedByName: writeoffRequest.requestedByName,
+            writeoffReason: writeoffRequest.reason,
+          },
+        });
+
+        return {
+          ok: true,
+          discrepancyId: open?.row?.id || null,
+          palletCode: String(pallet?.palletCode || "").trim() || null,
+          locationCode,
+          locationName,
+          reason: writeoffRequest.reason,
+        };
+      });
+
+      if (txResult?.error) {
+        const code = String(txResult.error || "");
+        if (code === "PALLET_DISCREPANCY_NOT_FOUND" || code === "PALLET_NOT_FOUND") {
+          return res.status(404).json({ message: code });
+        }
+        if (code === "PALLET_DISCREPANCY_WRITEOFF_ALREADY_PENDING") {
+          return res.status(409).json({ message: code });
+        }
+        return res.status(400).json({ message: code });
+      }
+
+      await notifyCrossdockWriteoffRequested({
+        orgId,
+        discrepancyId: txResult?.discrepancyId || null,
+        palletCode: txResult?.palletCode || "",
+        locationCode: txResult?.locationCode || "",
+        locationName: txResult?.locationName || "",
+        actorName: req.user?.name || "",
+        reason: txResult?.reason || "",
+      }).catch(() => null);
+
+      return res.json({ ok: true, palletCode: txResult?.palletCode || null });
+    } catch (err) {
+      console.error("pallet discrepancy request-writeoff error:", err);
+      return res.status(500).json({ message: "PALLET_DISCREPANCY_WRITEOFF_REQUEST_ERROR" });
+    }
+  });
+
+  app.post("/api/pallets/discrepancies/:palletId/owner-decision", auth, async (req, res) => {
+    try {
+      const orgId = Number(req.user?.orgId || 0);
+      if (!orgId) {
+        return res.status(400).json({ message: "ORG_REQUIRED" });
+      }
+
+      const palletId = Number(req.params?.palletId || 0);
+      if (!palletId) {
+        return res.status(400).json({ message: "PALLET_ID_REQUIRED" });
+      }
+
+      const decision = String(req.body?.decision || "").trim().toUpperCase();
+      if (!["APPROVE", "REJECT"].includes(decision)) {
+        return res.status(400).json({ message: "PALLET_DISCREPANCY_WRITEOFF_DECISION_INVALID" });
+      }
+      const reason = normalizePalletText(req.body?.reason, 240);
+
+      const canApprove = req.user?.isSystemOwner === true || req.user?.role === "ADMIN";
+      if (!canApprove) {
+        return res.status(403).json({ message: "PALLET_DISCREPANCY_WRITEOFF_OWNER_ONLY" });
+      }
+
+      const txResult = await prisma.$transaction(async (tx) => {
+        const now = new Date();
+        const open = await getOpenDiscrepancyByPalletIdTx(orgId, palletId, tx);
+        if (!open) return { error: "PALLET_DISCREPANCY_NOT_FOUND" };
+        if (!isDiscrepancyWriteoffPending(open?.writeoffRequest)) {
+          return { error: "PALLET_DISCREPANCY_WRITEOFF_NOT_PENDING" };
+        }
+
+        const pallet = open?.source === "table" ? open?.row?.pallet : open?.pallet;
+        if (!pallet) return { error: "PALLET_NOT_FOUND" };
+
+        const locationCode =
+          String(open?.locationCode || "").trim() ||
+          String(pallet?.currentLocation?.code || "").trim() ||
+          null;
+        const locationName =
+          String(open?.locationName || "").trim() ||
+          String(pallet?.currentLocation?.name || "").trim() ||
+          locationCode ||
+          null;
+
+        const writeoffRequest = {
+          ...(open?.writeoffRequest || {}),
+          status: decision === "APPROVE" ? "APPROVED" : "REJECTED",
+          decidedAt: now.toISOString(),
+          decidedByUserId: Number(req.user?.id || 0) || null,
+          decidedByName: String(req.user?.name || "").trim() || null,
+          reason: reason || open?.writeoffRequest?.reason || null,
+        };
+
+        if (open.source === "table" && open.row?.id) {
+          await tx.palletDiscrepancy.update({
+            where: { id: open.row.id },
+            data:
+              decision === "APPROVE"
+                ? {
+                    status: "CLOSED",
+                    closedAt: now,
+                    closedByUserId: req.user?.id || null,
+                    lastCheckedAt: now,
+                    note: serializePalletDiscrepancyNote({
+                      legacyText: open?.noteParsed?.legacyText || "",
+                      writeoffRequest,
+                    }),
+                  }
+                : {
+                    lastCheckedAt: now,
+                    note: serializePalletDiscrepancyNote({
+                      legacyText: open?.noteParsed?.legacyText || "",
+                      writeoffRequest,
+                    }),
+                  },
+          });
+        }
+
+        if (decision === "APPROVE") {
+          await tx.pallet.update({
+            where: { id: pallet.id },
+            data: {
+              status: "CANCELLED",
+              currentLocationId: null,
+            },
+          });
+
+          await createPalletEventTx(tx, {
+            orgId,
+            palletId: pallet.id,
+            type: "CANCEL",
+            fromStatus: pallet.status,
+            toStatus: "CANCELLED",
+            userId: req.user.id,
+            metaJson: {
+              source: "DISCREPANCIES_TAB",
+              action: "WRITEOFF_APPROVE",
+              locationCode,
+              locationName,
+              writeoffRequestStatus: "APPROVED",
+              writeoffRequestedAt: open?.writeoffRequest?.requestedAt || null,
+              writeoffRequestedByUserId: open?.writeoffRequest?.requestedByUserId || null,
+              writeoffRequestedByName: open?.writeoffRequest?.requestedByName || null,
+              writeoffDecidedAt: writeoffRequest.decidedAt,
+              writeoffDecidedByUserId: writeoffRequest.decidedByUserId,
+              writeoffDecidedByName: writeoffRequest.decidedByName,
+              writeoffReason: writeoffRequest.reason,
+            },
+          });
+
+          await createPalletEventTx(tx, {
+            orgId,
+            palletId: pallet.id,
+            type: "DISCREPANCY_CLOSE",
+            fromStatus: pallet.status,
+            toStatus: "CANCELLED",
+            userId: req.user.id,
+            metaJson: {
+              source: "DISCREPANCIES_TAB",
+              result: "WRITEOFF",
+              discrepancyStatus: "CLOSED",
+              locationCode,
+              locationName,
+              writeoffRequestStatus: "APPROVED",
+              writeoffRequestedAt: open?.writeoffRequest?.requestedAt || null,
+              writeoffRequestedByUserId: open?.writeoffRequest?.requestedByUserId || null,
+              writeoffRequestedByName: open?.writeoffRequest?.requestedByName || null,
+              writeoffDecidedAt: writeoffRequest.decidedAt,
+              writeoffDecidedByUserId: writeoffRequest.decidedByUserId,
+              writeoffDecidedByName: writeoffRequest.decidedByName,
+              writeoffReason: writeoffRequest.reason,
+            },
+          });
+        } else {
+          await createPalletEventTx(tx, {
+            orgId,
+            palletId: pallet.id,
+            type: "MOVE",
+            fromStatus: pallet.status,
+            toStatus: pallet.status,
+            userId: req.user.id,
+            metaJson: {
+              source: "DISCREPANCIES_TAB",
+              action: "WRITEOFF_REJECT",
+              discrepancyStatus: "OPEN",
+              locationCode,
+              locationName,
+              writeoffRequestStatus: "REJECTED",
+              writeoffRequestedAt: open?.writeoffRequest?.requestedAt || null,
+              writeoffRequestedByUserId: open?.writeoffRequest?.requestedByUserId || null,
+              writeoffRequestedByName: open?.writeoffRequest?.requestedByName || null,
+              writeoffDecidedAt: writeoffRequest.decidedAt,
+              writeoffDecidedByUserId: writeoffRequest.decidedByUserId,
+              writeoffDecidedByName: writeoffRequest.decidedByName,
+              writeoffReason: writeoffRequest.reason,
+            },
+          });
+        }
+
+        return {
+          ok: true,
+          decision,
+          requestedByUserId: Number(open?.writeoffRequest?.requestedByUserId || 0) || null,
+          palletCode: String(pallet?.palletCode || "").trim() || null,
+          reason: writeoffRequest.reason,
+        };
+      });
+
+      if (txResult?.error) {
+        const code = String(txResult.error || "");
+        if (code === "PALLET_DISCREPANCY_NOT_FOUND" || code === "PALLET_NOT_FOUND") {
+          return res.status(404).json({ message: code });
+        }
+        if (code === "PALLET_DISCREPANCY_WRITEOFF_NOT_PENDING") {
+          return res.status(409).json({ message: code });
+        }
+        return res.status(400).json({ message: code });
+      }
+
+      await notifyCrossdockWriteoffDecision({
+        orgId,
+        targetUserId: txResult?.requestedByUserId || null,
+        decision: txResult?.decision || "",
+        palletCode: txResult?.palletCode || "",
+        actorName: req.user?.name || "",
+        reason: txResult?.reason || "",
+      }).catch(() => null);
+
+      return res.json({
+        ok: true,
+        decision: txResult?.decision || null,
+        palletCode: txResult?.palletCode || null,
+      });
+    } catch (err) {
+      console.error("pallet discrepancy owner-decision error:", err);
+      return res.status(500).json({ message: "PALLET_DISCREPANCY_WRITEOFF_DECISION_ERROR" });
     }
   });
 
@@ -7836,7 +9762,7 @@ app.get("/api/settings/org-profile", auth, async (req, res) => {
     if (req.user?.role != "ADMIN") {
       return res.status(403).json({ message: "NO_ACCESS" });
     }
-    if (!hasPermission(req.user, PERMISSION_KEYS.APP_WAREHOUSE)) {
+    if (!hasPermission(req.user, PERMISSION_KEYS.ADMIN_WAREHOUSE)) {
       return res.status(403).json({ message: "NO_ACCESS" });
     }
     const targetOrgId = req.user.isSystemOwner
@@ -7860,7 +9786,7 @@ app.put("/api/settings/org-profile", auth, async (req, res) => {
     if (req.user?.role != "ADMIN") {
       return res.status(403).json({ message: "NO_ACCESS" });
     }
-    if (!hasPermission(req.user, PERMISSION_KEYS.APP_WAREHOUSE)) {
+    if (!hasPermission(req.user, PERMISSION_KEYS.ADMIN_WAREHOUSE)) {
       return res.status(403).json({ message: "NO_ACCESS" });
     }
     const {
@@ -9645,25 +11571,7 @@ app.post("/api/auth/forgot-password", async (req, res) => {
     resetEmailRate.set(normalized, now);
     resetGlobalRate.push(now);
 
-    let user = await prisma.user.findUnique({ where: { email: normalized } });
-    if (!user) {
-      const legacyRows = await prisma.$queryRaw`
-        SELECT "id" FROM "User"
-        WHERE LOWER(TRIM("email")) = LOWER(${normalized})
-        LIMIT 1
-      `;
-      const legacyId = Number(legacyRows?.[0]?.id || 0);
-      if (legacyId) {
-        user = await prisma.user.findUnique({ where: { id: legacyId } });
-        if (user && user.email !== normalized) {
-          await prisma.user.update({
-            where: { id: user.id },
-            data: { email: normalized },
-          });
-          user.email = normalized;
-        }
-      }
-    }
+    const user = await findUserByEmailInsensitive(normalized);
     if (!user || user.isActive === false) {
       return res.json({ message: responseMessage });
     }
@@ -9874,7 +11782,7 @@ app.post("/api/warehouse/requests", auth, async (req, res) => {
       },
     });
 
-    // 4. Создаём задачу и шлём в Telegram
+    // 4. Создаём задачу (уведомления только внутри приложения)
     try {
       await createWarehouseTaskFromRequest(created, req.user.id);
     } catch (err) {
@@ -11242,10 +13150,13 @@ app.post("/api/warehouse/locations/:id/qr", auth, async (req, res) => {
     if (!location) {
       return res.status(404).json({ message: "Локация не найдена" });
     }
-    if (location.qrCode && !force) {
-      return res.json({ id: location.id, qrCode: location.qrCode });
+    const qrCode = buildLocationQrCode(location);
+    if (!qrCode) {
+      return res.status(400).json({ message: "Ошибка генерации QR локации" });
     }
-    const qrCode = `BP:LOC:${location.id}`;
+    if (location.qrCode && !force && !isLegacyLocationQrCode(location.qrCode)) {
+      return res.json({ id: location.id, qrCode: normalizePalletCode(location.qrCode) });
+    }
     await ensureUniqueLocationCodes({ qrCode }, id);
     const updated = await prisma.warehouseLocation.update({
       where: { id },
@@ -11269,14 +13180,14 @@ app.get("/api/warehouse/scan/resolve", auth, async (req, res) => {
     const hasRawId = Number.isFinite(rawId) && rawId > 0;
     const rawNormalized = normalizeLocationLookupToken(raw);
 
-    const isLoc = raw.startsWith("BP:LOC:") || raw.startsWith("BP:LOCATION:");
+    const isLoc = /^BP:(LOC|LOCATION):/i.test(raw);
     const isItem =
       raw.startsWith("BP:ITEM:") ||
       raw.startsWith("BP:ARTICLE:") ||
       raw.startsWith("BP:PRODUCT:");
 
     if (isLoc) {
-      const payload = raw.replace(/^BP:(LOC|LOCATION):/, "");
+      const payload = raw.replace(/^BP:(LOC|LOCATION):/i, "");
       const id = Number(payload);
       const hasId = Number.isFinite(id) && id > 0;
       const payloadNormalized = normalizeLocationLookupToken(payload);
@@ -13212,23 +15123,17 @@ app.post("/api/warehouse/print/labels", auth, async (req, res) => {
       } else {
         const location = await prisma.warehouseLocation.findUnique({ where: { id } });
         if (!location) continue;
-        let qrValue = location.qrCode;
-        if (!qrValue) {
-          qrValue = `BP:LOC:${location.id}`;
-          await ensureUniqueLocationCodes({ qrCode: qrValue }, location.id);
-          await prisma.warehouseLocation.update({
-            where: { id: location.id },
-            data: { qrCode: qrValue },
-          });
-        }
+        const qrValue = await ensureBusinessLocationQrCode(location);
         const meta = [location.code, location.zone, location.aisle, location.rack, location.level]
           .filter(Boolean)
           .join(" / ");
+        const displayCode = normalizePalletCode(location.code || location.name || "");
         labels.push({
           kind: "location",
           title: location.name || `LOCATION ${location.id}`,
           subtitle: meta,
           qrValue,
+          displayCode: displayCode || qrValue,
         });
       }
     }
@@ -13302,7 +15207,7 @@ app.post("/api/warehouse/print/labels", auth, async (req, res) => {
                   <div class="title">${escapeHtml(r.title)}</div>
                   ${r.subtitle ? `<div class="subtitle">${escapeHtml(r.subtitle)}</div>` : ""}
                   <img class="qr" src="${r.qrImg}" />
-                  <div class="code">${escapeHtml(r.qrValue)}</div>
+                  <div class="code">${escapeHtml(r.displayCode || r.qrValue)}</div>
                 </div>
               `;
               })
@@ -13385,18 +15290,21 @@ app.post("/api/warehouse/qr/print", auth, async (req, res) => {
     let title = "";
     let subtitle = "";
     let qrValue = "";
+    let visibleCode = "";
     if (kind === "product") {
       const item = await prisma.item.findUnique({ where: { id: Number(id) } });
       if (!item) return res.status(404).json({ message: "Товар не найден" });
       title = item.name;
       subtitle = item.sku ? `Артикул: ${item.sku}` : "";
       qrValue = item.qrCode || `BP:PRODUCT:${item.id}`;
+      visibleCode = qrValue;
     } else {
       const location = await prisma.warehouseLocation.findUnique({ where: { id: Number(id) } });
       if (!location) return res.status(404).json({ message: "Локация не найдена" });
       title = `ЛОКАЦИЯ: ${location.name}`;
       subtitle = [location.zone, location.aisle, location.rack, location.level].filter(Boolean).join(" / ");
-      qrValue = location.qrCode || `BP:LOCATION:${location.id}`;
+      qrValue = await ensureBusinessLocationQrCode(location);
+      visibleCode = normalizePalletCode(location.code || location.name || "") || qrValue;
     }
 
     const qrBuf = await renderQrPng(qrValue);
@@ -13432,7 +15340,7 @@ app.post("/api/warehouse/qr/print", auth, async (req, res) => {
                 <div class="title">${title}</div>
                 ${subtitle ? `<div class="subtitle">${subtitle}</div>` : ""}
                 <img class="qr" src="${qrImg}" />
-                <div class="code">${qrValue}</div>
+                <div class="code">${visibleCode || qrValue}</div>
               </div>
             `
               )
@@ -13597,15 +15505,7 @@ app.post("/api/warehouse/labels/print", auth, async (req, res) => {
         const location = await prisma.warehouseLocation.findUnique({ where: { id: Number(entry.id) } });
         if (!location) continue;
         const codeValue = location.code || buildLocationCode(location);
-        let qrValue = location.qrCode;
-        if (!qrValue) {
-          qrValue = `BP:LOC:${location.id}`;
-          await ensureUniqueLocationCodes({ qrCode: qrValue }, location.id);
-          await prisma.warehouseLocation.update({
-            where: { id: location.id },
-            data: { qrCode: qrValue },
-          });
-        }
+        const qrValue = await ensureBusinessLocationQrCode(location);
         const meta = [location.zone, location.aisle, location.rack, location.level].filter(Boolean).join(" / ");
         for (let i = 0; i < qty; i += 1) {
           labels.push({
@@ -18899,16 +20799,11 @@ async function ensureOwnerAdminAccount() {
     "Владелец платформы"
   );
 
-  const rows = await prisma.$queryRaw`
-    SELECT "id", "email" FROM "User"
-    WHERE LOWER(TRIM("email")) = LOWER(${normalizedEmail})
-    LIMIT 1
-  `;
-  const ownerId = Number(rows?.[0]?.id || 0);
+  const owner = await findUserByEmailInsensitive(normalizedEmail);
 
-  if (ownerId) {
+  if (owner?.id) {
     await prisma.user.update({
-      where: { id: ownerId },
+      where: { id: owner.id },
       data: {
         email: normalizedEmail,
         password: ownerHash,
@@ -19020,12 +20915,52 @@ async function ensureLegacyTenantBackfill() {
   }
 }
 
-async function ensureEmailVerificationStorageReady() {
+function isPostgresDatabaseUrl() {
   const normalizedUrl = String(DATABASE_URL || "").trim().toLowerCase();
-  if (
-    !normalizedUrl.startsWith("postgresql://") &&
-    !normalizedUrl.startsWith("postgres://")
-  ) {
+  return normalizedUrl.startsWith("postgresql://") || normalizedUrl.startsWith("postgres://");
+}
+
+async function isPalletDiscrepancyStorageReady(tx = prismaBase) {
+  if (!isPostgresDatabaseUrl()) return true;
+  try {
+    const rows = await tx.$queryRawUnsafe(`
+      SELECT
+        to_regclass('public."PalletDiscrepancy"') AS "tableRegclass",
+        EXISTS (SELECT 1 FROM pg_type WHERE typname = 'PalletDiscrepancyStatus') AS "hasStatusType"
+    `);
+    const row = Array.isArray(rows) && rows.length ? rows[0] : null;
+    return Boolean(row?.tableRegclass) && Boolean(row?.hasStatusType);
+  } catch (err) {
+    return false;
+  }
+}
+
+let palletDiscrepancyStorageEnsurePromise = null;
+
+async function ensurePalletDiscrepancyStorageReadyForRuntime() {
+  if (!isPostgresDatabaseUrl()) return true;
+
+  const alreadyReady = await isPalletDiscrepancyStorageReady(prisma);
+  if (alreadyReady) return true;
+
+  if (!palletDiscrepancyStorageEnsurePromise) {
+    palletDiscrepancyStorageEnsurePromise = (async () => {
+      try {
+        await ensurePalletDiscrepancyStorageReady();
+      } catch (err) {
+        console.warn("[PALLET_DISCREPANCY_BOOTSTRAP] runtime ensure failed:", err);
+      } finally {
+        palletDiscrepancyStorageEnsurePromise = null;
+      }
+    })();
+  }
+
+  await palletDiscrepancyStorageEnsurePromise;
+  return isPalletDiscrepancyStorageReady(prisma);
+}
+
+async function ensureEmailVerificationStorageReady() {
+  if (!isPostgresDatabaseUrl()) {
     console.log(
       "[EMAIL_VERIFY_BOOTSTRAP] skipped: DATABASE_URL не PostgreSQL, runtime-инициализация не требуется."
     );
@@ -19076,6 +21011,195 @@ async function ensureEmailVerificationStorageReady() {
   `);
 
   console.log("[EMAIL_VERIFY_BOOTSTRAP] EmailVerificationCode table is ready.");
+}
+
+async function ensurePalletDiscrepancyStorageReady() {
+  if (!isPostgresDatabaseUrl()) {
+    return;
+  }
+
+  await prismaBase.$executeRawUnsafe(`
+    DO $$
+    BEGIN
+      IF NOT EXISTS (SELECT 1 FROM pg_type WHERE typname = 'PalletDiscrepancyStatus') THEN
+        CREATE TYPE "PalletDiscrepancyStatus" AS ENUM ('OPEN', 'CLOSED');
+      END IF;
+    END $$;
+  `);
+
+  await prismaBase.$executeRawUnsafe(`
+    DO $$
+    BEGIN
+      BEGIN
+        ALTER TYPE "PalletEventType" ADD VALUE IF NOT EXISTS 'DISCREPANCY_OPEN';
+      EXCEPTION
+        WHEN insufficient_privilege THEN
+          RAISE NOTICE 'skip enum alter DISCREPANCY_OPEN: insufficient privilege';
+      END;
+    END $$;
+  `);
+  await prismaBase.$executeRawUnsafe(`
+    DO $$
+    BEGIN
+      BEGIN
+        ALTER TYPE "PalletEventType" ADD VALUE IF NOT EXISTS 'DISCREPANCY_CLOSE';
+      EXCEPTION
+        WHEN insufficient_privilege THEN
+          RAISE NOTICE 'skip enum alter DISCREPANCY_CLOSE: insufficient privilege';
+      END;
+    END $$;
+  `);
+
+  await prismaBase.$executeRawUnsafe(`
+    CREATE TABLE IF NOT EXISTS "PalletDiscrepancy" (
+      "id" SERIAL NOT NULL,
+      "orgId" INTEGER,
+      "palletId" INTEGER NOT NULL,
+      "locationId" INTEGER,
+      "status" "PalletDiscrepancyStatus" NOT NULL DEFAULT 'OPEN',
+      "detectedAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+      "detectedByUserId" INTEGER,
+      "lastCheckedAt" TIMESTAMP(3),
+      "closedAt" TIMESTAMP(3),
+      "closedByUserId" INTEGER,
+      "note" TEXT,
+      "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+      "updatedAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+      CONSTRAINT "PalletDiscrepancy_pkey" PRIMARY KEY ("id")
+    );
+  `);
+
+  await prismaBase.$executeRawUnsafe(`
+    CREATE INDEX IF NOT EXISTS "PalletDiscrepancy_orgId_status_detectedAt_idx"
+      ON "PalletDiscrepancy" ("orgId", "status", "detectedAt");
+  `);
+  await prismaBase.$executeRawUnsafe(`
+    CREATE INDEX IF NOT EXISTS "PalletDiscrepancy_orgId_palletId_status_idx"
+      ON "PalletDiscrepancy" ("orgId", "palletId", "status");
+  `);
+  await prismaBase.$executeRawUnsafe(`
+    CREATE INDEX IF NOT EXISTS "PalletDiscrepancy_orgId_locationId_status_idx"
+      ON "PalletDiscrepancy" ("orgId", "locationId", "status");
+  `);
+
+  await prismaBase.$executeRawUnsafe(`
+    DO $$
+    BEGIN
+      IF NOT EXISTS (
+        SELECT 1 FROM pg_constraint WHERE conname = 'PalletDiscrepancy_palletId_fkey'
+      ) THEN
+        ALTER TABLE "PalletDiscrepancy"
+          ADD CONSTRAINT "PalletDiscrepancy_palletId_fkey"
+          FOREIGN KEY ("palletId") REFERENCES "Pallet"("id") ON DELETE CASCADE ON UPDATE CASCADE;
+      END IF;
+
+      IF NOT EXISTS (
+        SELECT 1 FROM pg_constraint WHERE conname = 'PalletDiscrepancy_locationId_fkey'
+      ) THEN
+        ALTER TABLE "PalletDiscrepancy"
+          ADD CONSTRAINT "PalletDiscrepancy_locationId_fkey"
+          FOREIGN KEY ("locationId") REFERENCES "PalletLocation"("id") ON DELETE SET NULL ON UPDATE CASCADE;
+      END IF;
+
+      IF NOT EXISTS (
+        SELECT 1 FROM pg_constraint WHERE conname = 'PalletDiscrepancy_detectedByUserId_fkey'
+      ) THEN
+        ALTER TABLE "PalletDiscrepancy"
+          ADD CONSTRAINT "PalletDiscrepancy_detectedByUserId_fkey"
+          FOREIGN KEY ("detectedByUserId") REFERENCES "User"("id") ON DELETE SET NULL ON UPDATE CASCADE;
+      END IF;
+
+      IF NOT EXISTS (
+        SELECT 1 FROM pg_constraint WHERE conname = 'PalletDiscrepancy_closedByUserId_fkey'
+      ) THEN
+        ALTER TABLE "PalletDiscrepancy"
+          ADD CONSTRAINT "PalletDiscrepancy_closedByUserId_fkey"
+          FOREIGN KEY ("closedByUserId") REFERENCES "User"("id") ON DELETE SET NULL ON UPDATE CASCADE;
+      END IF;
+    END $$;
+  `);
+
+  console.log("[PALLET_DISCREPANCY_BOOTSTRAP] PalletDiscrepancy table is ready.");
+}
+
+async function ensureAuthDbPermissions() {
+  if (!isPostgresDatabaseUrl()) {
+    return;
+  }
+
+  const loadPrivileges = async () => {
+    const rows = await prismaBase.$queryRawUnsafe(`
+      SELECT
+        current_user AS "currentUser",
+        has_table_privilege(current_user, 'public."User"', 'SELECT') AS "userSelect",
+        has_table_privilege(current_user, 'public."User"', 'INSERT') AS "userInsert",
+        has_table_privilege(current_user, 'public."User"', 'UPDATE') AS "userUpdate",
+        has_table_privilege(current_user, 'public."User"', 'DELETE') AS "userDelete",
+        has_table_privilege(current_user, 'public."Organization"', 'SELECT') AS "orgSelect",
+        has_table_privilege(current_user, 'public."Item"', 'SELECT') AS "itemSelect",
+        has_table_privilege(current_user, 'public."WarehouseNotification"', 'SELECT') AS "notificationSelect",
+        has_table_privilege(current_user, 'public."Pallet"', 'SELECT') AS "palletSelect",
+        has_table_privilege(current_user, 'public."PalletLocation"', 'SELECT') AS "palletLocationSelect"
+    `);
+    return Array.isArray(rows) && rows.length ? rows[0] : null;
+  };
+
+  try {
+    const before = await loadPrivileges();
+    const hasUserRead = Boolean(before?.userSelect);
+    const hasOrgRead = Boolean(before?.orgSelect);
+    const hasItemRead = Boolean(before?.itemSelect);
+    const hasNotificationRead = Boolean(before?.notificationSelect);
+    const hasPalletRead = Boolean(before?.palletSelect);
+    const hasPalletLocationRead = Boolean(before?.palletLocationSelect);
+    if (
+      hasUserRead &&
+      hasOrgRead &&
+      hasItemRead &&
+      hasNotificationRead &&
+      hasPalletRead &&
+      hasPalletLocationRead
+    ) {
+      return;
+    }
+
+    await prismaBase.$executeRawUnsafe(`
+      DO $$
+      DECLARE
+        v_user text := current_user;
+      BEGIN
+        BEGIN
+          EXECUTE format('GRANT USAGE, CREATE ON SCHEMA public TO %I', v_user);
+        EXCEPTION
+          WHEN insufficient_privilege THEN
+            EXECUTE format('GRANT USAGE ON SCHEMA public TO %I', v_user);
+        END;
+        EXECUTE format('GRANT SELECT, INSERT, UPDATE, DELETE ON ALL TABLES IN SCHEMA public TO %I', v_user);
+        EXECUTE format('GRANT USAGE, SELECT, UPDATE ON ALL SEQUENCES IN SCHEMA public TO %I', v_user);
+      END
+      $$;
+    `);
+
+    const after = await loadPrivileges();
+    if (!after?.userSelect) {
+      console.warn("[DB_AUTH_PERMS] missing SELECT privilege on public.\"User\" for current_user.");
+    }
+    if (!after?.orgSelect) {
+      console.warn(
+        "[DB_AUTH_PERMS] missing SELECT privilege on public.\"Organization\" for current_user."
+      );
+    }
+    if (!after?.itemSelect) {
+      console.warn("[DB_AUTH_PERMS] missing SELECT privilege on public.\"Item\" for current_user.");
+    }
+    if (!after?.notificationSelect) {
+      console.warn(
+        "[DB_AUTH_PERMS] missing SELECT privilege on public.\"WarehouseNotification\" for current_user."
+      );
+    }
+  } catch (err) {
+    console.error("[DB_AUTH_PERMS] check/grant error:", err);
+  }
 }
 
 function logMailConfigStatus() {
@@ -19616,20 +21740,6 @@ app.post("/api/warehouse/stock/adjustment", requireAdmin, async (req, res) => {
   }
 });
 
-// запуск long polling Telegram (только при явном включении)
-const TELEGRAM_POLLING_ENABLED =
-  String(process.env.TELEGRAM_POLLING_ENABLED || "").toLowerCase() === "true";
-
-if (TELEGRAM_POLLING_ENABLED) {
-  startTelegramPolling().catch((err) =>
-    console.error("Ошибка при запуске startTelegramPolling:", err)
-  );
-} else {
-  console.log(
-    "[Telegram] long polling отключен (установите TELEGRAM_POLLING_ENABLED=true для включения)."
-  );
-}
-
 // ================== ЗАПУСК СЕРВЕРА ==================
 
 const PORT = Number(process.env.PORT || 3000);
@@ -19641,6 +21751,18 @@ async function bootstrapServer() {
     await ensureEmailVerificationStorageReady();
   } catch (err) {
     console.error("[EMAIL_VERIFY_BOOTSTRAP] error:", err);
+  }
+
+  try {
+    await ensurePalletDiscrepancyStorageReady();
+  } catch (err) {
+    console.error("[PALLET_DISCREPANCY_BOOTSTRAP] error:", err);
+  }
+
+  try {
+    await ensureAuthDbPermissions();
+  } catch (err) {
+    console.error("[DB_AUTH_PERMS] bootstrap error:", err);
   }
 
   try {

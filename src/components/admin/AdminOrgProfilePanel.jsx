@@ -148,7 +148,7 @@ export default function AdminOrgProfilePanel() {
   };
 
   return (
-    <div className="admin-console__card">
+    <div className="admin-console__card admin-panel">
       <div className="admin-console__card-title">Реквизиты организации</div>
       <div className="admin-console__card-text">
         Эти данные автоматически подставляются в акт расхождений при приемке.
@@ -238,7 +238,7 @@ export default function AdminOrgProfilePanel() {
             </div>
           </div>
 
-          <div style={{ display: "flex", gap: 10, alignItems: "center" }}>
+          <div className="admin-panel__toolbar">
             <button
               type="button"
               className="admin-btn admin-btn--primary"

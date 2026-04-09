@@ -688,6 +688,22 @@ export default function UserManagement() {
     });
   }, [users, userSearch]);
 
+  const permissionGroups = useMemo(
+    () =>
+      Array.isArray(permissionCatalog?.groups)
+        ? permissionCatalog.groups
+        : FALLBACK_PERMISSION_CATALOG.groups,
+    [permissionCatalog]
+  );
+
+  const permissionTemplates = useMemo(
+    () =>
+      Array.isArray(permissionCatalog?.templates)
+        ? permissionCatalog.templates
+        : FALLBACK_PERMISSION_CATALOG.templates,
+    [permissionCatalog]
+  );
+
   if (user?.role !== "ADMIN") {
     return (
       <div style={{ padding: 24 }}>
@@ -697,17 +713,19 @@ export default function UserManagement() {
   }
 
   return (
-    <div className="admin-page" style={{ padding: 24 }}>
-      <h1>Управление пользователями</h1>
-      <p>
-        Администратор создаёт сотрудников напрямую: задаёт логин, пароль, роль и права.
-      </p>
+    <div className="admin-page admin-users-page" style={{ padding: 24 }}>
+      <div className="admin-users-page__intro">
+        <h1>Управление пользователями</h1>
+        <p>
+          Администратор создаёт сотрудников напрямую: задаёт логин, пароль, роль и права.
+        </p>
+      </div>
 
       <div
-        className="admin-console__card"
+        className="admin-console__card admin-users-create-card"
         style={{ marginTop: 16, marginBottom: 16 }}
       >
-        <div style={{ fontWeight: 600, marginBottom: 8 }}>
+        <div className="admin-users-create-card__title">
           Создать сотрудника
         </div>
         <div className="admin-invite-grid">
@@ -732,7 +750,7 @@ export default function UserManagement() {
             }
             className="admin-input"
           />
-          <div style={{ display: "flex", gap: 8 }}>
+          <div className="admin-users-password-row">
             <input
               type="text"
               placeholder="Пароль"
@@ -766,49 +784,26 @@ export default function UserManagement() {
             value={newUser.template}
             onChange={(e) => handleCreateTemplateChange(e.target.value)}
           >
-            {(Array.isArray(permissionCatalog.templates)
-              ? permissionCatalog.templates
-              : FALLBACK_PERMISSION_CATALOG.templates
-            ).map((tpl) => (
+            {permissionTemplates.map((tpl) => (
               <option key={tpl.id} value={tpl.id}>
                 {tpl.label || tpl.id}
               </option>
             ))}
           </select>
-          <button
-            type="button"
-            onClick={handleCreateUser}
-            disabled={createSaving}
-            className="admin-btn admin-btn--primary"
-          >
-            {createSaving ? "Создание..." : "Создать сотрудника"}
-          </button>
         </div>
 
-        <div style={{ marginTop: 12, display: "grid", gap: 8 }}>
-          {(Array.isArray(permissionCatalog.groups)
-            ? permissionCatalog.groups
-            : FALLBACK_PERMISSION_CATALOG.groups
-          ).map((group) => (
-            <div key={group.id} style={{ display: "grid", gap: 6 }}>
-              <div style={{ fontWeight: 600 }}>{group.label}</div>
-              <div
-                style={{
-                  display: "grid",
-                  gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))",
-                  gap: 6,
-                }}
-              >
+        <div className="admin-users-permission-grid">
+          {permissionGroups.map((group) => (
+            <div key={group.id} className="admin-users-permission-group">
+              <div className="admin-users-permission-group__title">{group.label}</div>
+              <div className="admin-users-permission-group__items">
                 {(Array.isArray(group.keys) ? group.keys : []).map((key) => (
                   <label
                     key={key}
-                    style={{
-                      display: "flex",
-                      alignItems: "center",
-                      gap: 8,
-                      fontSize: 13,
-                      color: "#334155",
-                    }}
+                    className={
+                      "admin-users-permission-item" +
+                      ((newUser.permissions || []).includes(key) ? " is-checked" : "")
+                    }
                   >
                     <input
                       type="checkbox"
@@ -823,51 +818,36 @@ export default function UserManagement() {
           ))}
         </div>
 
-        {createError && (
-          <div
-            ref={createErrorRef}
-            style={{
-              marginTop: 10,
-              padding: 8,
-              borderRadius: 4,
-              background: "#ffe6e6",
-              color: "#b00020",
-            }}
+        <div className="admin-users-create-actions">
+          <button
+            type="button"
+            onClick={handleCreateUser}
+            disabled={createSaving}
+            className="admin-btn admin-btn--primary"
           >
+            {createSaving ? "Создание..." : "Создать сотрудника"}
+          </button>
+        </div>
+
+        {createError && (
+          <div ref={createErrorRef} className="admin-alert admin-alert--error">
             {createError}
           </div>
         )}
         {createSuccess && (
-          <div
-            style={{
-              marginTop: 10,
-              padding: 8,
-              borderRadius: 4,
-              background: "#e8f7e8",
-              color: "#1f7a1f",
-            }}
-          >
+          <div className="admin-alert admin-alert--success">
             {createSuccess}
           </div>
         )}
       </div>
 
       {error && (
-        <div
-          style={{
-            marginTop: 12,
-            marginBottom: 12,
-            padding: 8,
-            borderRadius: 4,
-            background: "#ffe6e6",
-            color: "#b00020",
-          }}
-        >
+        <div className="admin-alert admin-alert--error admin-users-page__alert">
           {error}
         </div>
       )}
 
-      <div style={{ marginBottom: 12 }}>
+      <div className="admin-users-search">
         <input
           className="admin-input"
           type="text"
@@ -1023,15 +1003,8 @@ export default function UserManagement() {
                     {isExpanded && (
                       <tr>
                         <td style={{ ...tdStyle, background: "#fafcff" }} colSpan={8}>
-                          <div style={{ display: "grid", gap: 12 }}>
-                            <div
-                              style={{
-                                display: "flex",
-                                flexWrap: "wrap",
-                                gap: 8,
-                                alignItems: "center",
-                              }}
-                            >
+                          <div className="admin-users-expanded-permissions">
+                            <div className="admin-users-expanded-permissions__toolbar">
                               <select
                                 className="admin-select"
                                 value={draft.template || "ROLE_DEFAULT"}
@@ -1039,10 +1012,7 @@ export default function UserManagement() {
                                   handleTemplateChangeLocal(u.id, e.target.value)
                                 }
                               >
-                                {(Array.isArray(permissionCatalog.templates)
-                                  ? permissionCatalog.templates
-                                  : FALLBACK_PERMISSION_CATALOG.templates
-                                ).map((tpl) => (
+                                {permissionTemplates.map((tpl) => (
                                   <option key={tpl.id} value={tpl.id}>
                                     {tpl.label || tpl.id}
                                   </option>
@@ -1058,35 +1028,25 @@ export default function UserManagement() {
                                   ? "Сохранение..."
                                   : "Сохранить права"}
                               </button>
-                              <span style={{ color: "#64748b", fontSize: 12 }}>
+                              <span className="admin-users-expanded-permissions__counter">
                                 Активных прав: {selectedPermissions.length}
                               </span>
                             </div>
 
-                            {(Array.isArray(permissionCatalog.groups)
-                              ? permissionCatalog.groups
-                              : FALLBACK_PERMISSION_CATALOG.groups
-                            ).map((group) => (
-                              <div key={group.id} style={{ display: "grid", gap: 6 }}>
-                                <div style={{ fontWeight: 600 }}>{group.label}</div>
-                                <div
-                                  style={{
-                                    display: "grid",
-                                    gridTemplateColumns:
-                                      "repeat(auto-fit, minmax(220px, 1fr))",
-                                    gap: 6,
-                                  }}
-                                >
+                            <div className="admin-users-permission-grid admin-users-permission-grid--compact">
+                              {permissionGroups.map((group) => (
+                                <div key={group.id} className="admin-users-permission-group">
+                                  <div className="admin-users-permission-group__title">
+                                    {group.label}
+                                  </div>
+                                  <div className="admin-users-permission-group__items">
                                   {(Array.isArray(group.keys) ? group.keys : []).map((key) => (
                                     <label
                                       key={key}
-                                      style={{
-                                        display: "flex",
-                                        alignItems: "center",
-                                        gap: 8,
-                                        fontSize: 13,
-                                        color: "#334155",
-                                      }}
+                                      className={
+                                        "admin-users-permission-item" +
+                                        (selectedPermissions.includes(key) ? " is-checked" : "")
+                                      }
                                     >
                                       <input
                                         type="checkbox"
@@ -1096,9 +1056,10 @@ export default function UserManagement() {
                                       <span>{PERMISSION_LABELS[key] || key}</span>
                                     </label>
                                   ))}
+                                  </div>
                                 </div>
-                              </div>
-                            ))}
+                              ))}
+                            </div>
                           </div>
                         </td>
                       </tr>

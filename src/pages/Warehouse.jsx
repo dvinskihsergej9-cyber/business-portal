@@ -75,6 +75,16 @@ const WAREHOUSE_ICON_FALLBACK = {
   revision: "REV",
 };
 
+const CROSSDOCK_TAB_IDS = new Set([
+  "receive",
+  "store",
+  "planning",
+  "dispatch",
+  "locationControl",
+  "discrepancies",
+  "search",
+]);
+
 const WAREHOUSE_IMAGE = {
   tasks: WAREHOUSE_EMBEDDED_ICONS.tasks,
   inventory: WAREHOUSE_EMBEDDED_ICONS.inventory,
@@ -341,6 +351,7 @@ export default function Warehouse({
   const canSuppliers = sectionSet.has("suppliers");
 
   const [section, setSection] = useState("");
+  const [crossdockTab, setCrossdockTab] = useState("");
 
   useEffect(() => {
     if (!sections || sections.length === 0) {
@@ -434,9 +445,16 @@ export default function Warehouse({
     const params = new URLSearchParams(location.search || "");
     const sectionParam = params.get("section");
     const taskViewParam = params.get("taskView");
+    const crossdockTabParam = String(params.get("crossdockTab") || "").trim();
 
     if (sectionParam && sectionSet.has(sectionParam)) {
       setSection(sectionParam);
+    }
+
+    if (sectionParam === "crossdock" && CROSSDOCK_TAB_IDS.has(crossdockTabParam)) {
+      setCrossdockTab(crossdockTabParam);
+    } else {
+      setCrossdockTab("");
     }
 
     if (
@@ -2666,6 +2684,9 @@ export default function Warehouse({
     setSection(sectionKey);
     const params = new URLSearchParams(location.search || "");
     params.set("section", sectionKey);
+    if (sectionKey !== "crossdock") {
+      params.delete("crossdockTab");
+    }
     navigate(
       {
         pathname: location.pathname,
@@ -2678,9 +2699,11 @@ export default function Warehouse({
 
   const closeSection = useCallback(() => {
     setSection("");
+    setCrossdockTab("");
     const params = new URLSearchParams(location.search || "");
     params.delete("section");
     params.delete("taskView");
+    params.delete("crossdockTab");
     const search = params.toString();
     navigate(
       {
@@ -2691,6 +2714,30 @@ export default function Warehouse({
     );
     window.scrollTo({ top: 0, left: 0, behavior: "auto" });
   }, [location.pathname, location.search, navigate]);
+
+  const handleCrossdockTabChange = useCallback(
+    (tabId) => {
+      if (!CROSSDOCK_TAB_IDS.has(tabId)) return;
+      const params = new URLSearchParams(location.search || "");
+      const currentSection = String(params.get("section") || "").trim();
+      const currentTab = String(params.get("crossdockTab") || "").trim();
+      if (currentSection === "crossdock" && currentTab === tabId) {
+        setCrossdockTab(tabId);
+        return;
+      }
+      params.set("section", "crossdock");
+      params.set("crossdockTab", tabId);
+      navigate(
+        {
+          pathname: location.pathname,
+          search: `?${params.toString()}`,
+        },
+        { replace: true }
+      );
+      setCrossdockTab(tabId);
+    },
+    [location.pathname, location.search, navigate]
+  );
 
   useEffect(() => {
     const handleTopBack = (event) => {
@@ -4152,6 +4199,8 @@ export default function Warehouse({
             authHeaders={authHeaders}
             onBack={closeSection}
             showInternalBack={false}
+            initialTab={crossdockTab}
+            onTabChange={handleCrossdockTabChange}
           />
         </div>
       )}

@@ -555,7 +555,7 @@ export default function WarehouseLocationsPanel({ mode = "both" }) {
           <div className="card">
             <h3 className="card__title">{`QR для ячейки`}</h3>
             <p className="card__subtitle">
-              {`Формат QR: BP:LOC:<id>`}
+              {`Формат QR: BP:LOCATION:<код ячейки>`}
             </p>
 
             <div className="warehouse-locations__form">

@@ -5,6 +5,30 @@ import {
 } from "html5-qrcode";
 import TsdErrorAlert from "./TsdErrorAlert";
 
+const CAMERA_MISSING_SUPPRESS_KEY = "tsd:scanner:no-camera:auto-suppressed";
+
+function readNoCameraAutoSuppressFlag() {
+  try {
+    if (typeof window === "undefined" || !window.sessionStorage) return false;
+    return window.sessionStorage.getItem(CAMERA_MISSING_SUPPRESS_KEY) === "1";
+  } catch {
+    return false;
+  }
+}
+
+function writeNoCameraAutoSuppressFlag(value) {
+  try {
+    if (typeof window === "undefined" || !window.sessionStorage) return;
+    if (value) {
+      window.sessionStorage.setItem(CAMERA_MISSING_SUPPRESS_KEY, "1");
+    } else {
+      window.sessionStorage.removeItem(CAMERA_MISSING_SUPPRESS_KEY);
+    }
+  } catch {
+    // ignore storage errors
+  }
+}
+
 export default function Scanner({
   label,
   hint,
@@ -25,6 +49,7 @@ export default function Scanner({
   const [manualValue, setManualValue] = useState("");
   const [cameraActive, setCameraActive] = useState(false);
   const [cameraError, setCameraError] = useState("");
+  const [suppressAutoNoCamera, setSuppressAutoNoCamera] = useState(readNoCameraAutoSuppressFlag);
   const autoStartAttemptedRef = useRef(false);
 
   const getHtml5QrcodeClass = useCallback(() => {
@@ -136,7 +161,8 @@ export default function Scanner({
     setCameraActive(false);
   }, []);
 
-  const startScanner = useCallback(async () => {
+  const startScanner = useCallback(async ({ manual = false } = {}) => {
+    if (!manual && suppressAutoNoCamera) return;
     if (scannerRef.current) return;
     setCameraError("");
     try {
@@ -235,11 +261,26 @@ export default function Scanner({
         throw lastError || new Error("CAMERA_START_FAILED");
       }
 
+      if (suppressAutoNoCamera) {
+        writeNoCameraAutoSuppressFlag(false);
+        setSuppressAutoNoCamera(false);
+      }
       await applyContinuousAutofocus();
     } catch (err) {
       console.error(err);
       const errCode = String(err?.message || err?.name || "").toLowerCase();
-      if (errCode.includes("camera_unsupported")) {
+      const noCameraDetected =
+        errCode.includes("notfound") ||
+        errCode.includes("device not found") ||
+        errCode.includes("devicesnotfound") ||
+        errCode.includes("no camera");
+      if (noCameraDetected) {
+        writeNoCameraAutoSuppressFlag(true);
+        setSuppressAutoNoCamera(true);
+        if (manual || !suppressAutoNoCamera) {
+          setCameraError("Камера не найдена на устройстве.");
+        }
+      } else if (errCode.includes("camera_unsupported")) {
         setCameraError("Камера не поддерживается в этом браузере.");
       } else if (errCode.includes("notallowed")) {
         setCameraError("Нет доступа к камере. Разрешите доступ в настройках браузера.");
@@ -257,6 +298,7 @@ export default function Scanner({
     normalizeDecodedText,
     onScan,
     scannerId,
+    suppressAutoNoCamera,
     stopScanner,
   ]);
 
@@ -274,7 +316,7 @@ export default function Scanner({
     if (disabled || cameraActive || scannerRef.current) return;
     if (autoStartAttemptedRef.current) return;
     autoStartAttemptedRef.current = true;
-    startScanner();
+    startScanner({ manual: false });
   }, [autoStart, disabled, cameraActive, startScanner]);
 
   const handleManualSubmit = (event) => {
@@ -301,7 +343,7 @@ export default function Scanner({
             if (cameraActive) {
               stopScanner();
             } else {
-              startScanner();
+              startScanner({ manual: true });
             }
           }}
           disabled={disabled}

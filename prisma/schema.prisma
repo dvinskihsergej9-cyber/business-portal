@@ -75,6 +75,8 @@ model User {
   supportMessagesAuthored      SupportMessage[]         @relation("SupportMessageAuthor")
   palletsCreated               Pallet[]                 @relation("PalletCreatedBy")
   palletEvents                 PalletEvent[]            @relation("PalletEventUser")
+  palletDiscrepanciesDetected  PalletDiscrepancy[]      @relation("PalletDiscrepancyDetectedBy")
+  palletDiscrepanciesClosed    PalletDiscrepancy[]      @relation("PalletDiscrepancyClosedBy")
   palletDispatches             PalletDispatch[]         @relation("PalletDispatchBy")
   palletRouteSheetsCreated     PalletRouteSheet[]       @relation("PalletRouteSheetCreatedBy")
   palletRouteSheetsPublished   PalletRouteSheet[]       @relation("PalletRouteSheetPublishedBy")
@@ -393,6 +395,7 @@ model Pallet {
   events          PalletEvent[]
   dispatch        PalletDispatch?
   routeSheetItems PalletRouteSheetItem[]
+  discrepancies   PalletDiscrepancy[]
 
   @@unique([orgId, palletCode])
   @@unique([orgId, externalCode])
@@ -408,7 +411,8 @@ model PalletLocation {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  pallets Pallet[]
+  pallets       Pallet[]
+  discrepancies PalletDiscrepancy[]
 
   @@unique([orgId, code])
 }
@@ -526,6 +530,30 @@ model PalletRouteSheetEvent {
   @@index([orgId, itemId, createdAt])
 }
 
+model PalletDiscrepancy {
+  id               Int                     @id @default(autoincrement())
+  orgId            Int?
+  palletId         Int
+  pallet           Pallet                  @relation(fields: [palletId], references: [id], onDelete: Cascade)
+  locationId       Int?
+  location         PalletLocation?         @relation(fields: [locationId], references: [id], onDelete: SetNull)
+  status           PalletDiscrepancyStatus @default(OPEN)
+  detectedAt       DateTime                @default(now())
+  detectedByUserId Int?
+  detectedByUser   User?                   @relation("PalletDiscrepancyDetectedBy", fields: [detectedByUserId], references: [id], onDelete: SetNull)
+  lastCheckedAt    DateTime?
+  closedAt         DateTime?
+  closedByUserId   Int?
+  closedByUser     User?                   @relation("PalletDiscrepancyClosedBy", fields: [closedByUserId], references: [id], onDelete: SetNull)
+  note             String?
+  createdAt        DateTime                @default(now())
+  updatedAt        DateTime                @updatedAt
+
+  @@index([orgId, status, detectedAt])
+  @@index([orgId, palletId, status])
+  @@index([orgId, locationId, status])
+}
+
 model PushSubscription {
   id               Int       @id @default(autoincrement())
   orgId            Int?
@@ -595,6 +623,13 @@ enum PalletEventType {
   MOVE
   DISPATCH
   CANCEL
+  DISCREPANCY_OPEN
+  DISCREPANCY_CLOSE
+}
+
+enum PalletDiscrepancyStatus {
+  OPEN
+  CLOSED
 }
 
 enum RouteSheetStatus {

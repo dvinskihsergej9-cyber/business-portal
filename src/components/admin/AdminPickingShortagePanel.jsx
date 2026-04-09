@@ -131,7 +131,7 @@ export default function AdminPickingShortagePanel() {
   };
 
   return (
-    <div className="admin-console__card">
+    <div className="admin-console__card admin-panel">
       <div className="admin-console__card-title">Отбор: недостачи</div>
       <div className="admin-console__card-text">
         Админ может закрыть задание с недостачей, если у заказа есть пропущенные позиции и замен нет.
@@ -143,7 +143,7 @@ export default function AdminPickingShortagePanel() {
 
       {!loading && (
         <>
-          <div style={{ marginTop: 16, fontWeight: 700 }}>Активные задания с пропусками</div>
+          <div className="admin-panel__section-title">Активные задания с пропусками</div>
           <div className="admin-table-wrapper">
             <table className="admin-table">
               <thead>
@@ -192,9 +192,7 @@ export default function AdminPickingShortagePanel() {
             </table>
           </div>
 
-          <div style={{ marginTop: 18, fontWeight: 700 }}>
-            Общий журнал отбора
-          </div>
+          <div className="admin-panel__section-title">Общий журнал отбора</div>
           <div className="admin-table-wrapper">
             <table className="admin-table">
               <thead>
