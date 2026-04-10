@@ -633,7 +633,7 @@ const stockService = createWarehouseStockService(prisma, {
   },
 });
 
-let mailTransport = null;
+const mailTransportCache = new Map();
 const MAIL_SEND_TIMEOUT_MS = Number(process.env.MAIL_SEND_TIMEOUT_MS || 12000);
 const WEB_PUSH_PUBLIC_KEY = String(process.env.WEB_PUSH_PUBLIC_KEY || "").trim();
 const WEB_PUSH_PRIVATE_KEY = String(process.env.WEB_PUSH_PRIVATE_KEY || "").trim();
@@ -652,6 +652,73 @@ function parseEnvBoolean(value, fallback = false) {
   return fallback;
 }
 
+function parsePortList(value) {
+  return String(value || "")
+    .split(",")
+    .map((item) => Number(String(item || "").trim()))
+    .filter((port) => Number.isFinite(port) && port > 0);
+}
+
+function dedupeMailTransportConfigs(configs) {
+  const seen = new Set();
+  const unique = [];
+  for (const config of configs) {
+    if (!config?.host || !config?.user || !config?.pass || !config?.port) continue;
+    const key = `${config.host}|${config.port}|${config.secure ? "1" : "0"}|${config.user}`;
+    if (seen.has(key)) continue;
+    seen.add(key);
+    unique.push(config);
+  }
+  return unique;
+}
+
+function buildMailTransportConfigs() {
+  const host = String(process.env.MAIL_HOST || "").trim();
+  const user = String(process.env.MAIL_USER || "").trim();
+  const pass = String(process.env.MAIL_PASS || "").trim();
+  if (!host || !user || !pass) return [];
+
+  const parsedPrimaryPort = Number(process.env.MAIL_PORT || 465);
+  const primaryPort =
+    Number.isFinite(parsedPrimaryPort) && parsedPrimaryPort > 0 ? parsedPrimaryPort : 465;
+  const primarySecure = parseEnvBoolean(
+    process.env.MAIL_SECURE,
+    primaryPort === 465
+  );
+  const configs = [{ host, user, pass, port: primaryPort, secure: primarySecure }];
+
+  const failoverPorts = parsePortList(process.env.MAIL_FAILOVER_PORTS);
+  for (const port of failoverPorts) {
+    configs.push({
+      host,
+      user,
+      pass,
+      port,
+      secure: parseEnvBoolean("", port === 465),
+    });
+  }
+
+  return dedupeMailTransportConfigs(configs);
+}
+
+function getOrCreateMailTransport(config) {
+  const key = `${config.host}|${config.port}|${config.secure ? "1" : "0"}|${config.user}`;
+  if (mailTransportCache.has(key)) {
+    return mailTransportCache.get(key);
+  }
+  const transport = nodemailer.createTransport({
+    host: config.host,
+    port: config.port,
+    secure: config.secure,
+    connectionTimeout: MAIL_SEND_TIMEOUT_MS,
+    greetingTimeout: MAIL_SEND_TIMEOUT_MS,
+    socketTimeout: MAIL_SEND_TIMEOUT_MS,
+    auth: { user: config.user, pass: config.pass },
+  });
+  mailTransportCache.set(key, transport);
+  return transport;
+}
+
 if (WEB_PUSH_ENABLED) {
   try {
     webpush.setVapidDetails(
@@ -665,35 +732,68 @@ if (WEB_PUSH_ENABLED) {
 }
 
 function getMailTransport() {
-  if (mailTransport) return mailTransport;
-  const host = String(process.env.MAIL_HOST || "").trim();
-  const user = String(process.env.MAIL_USER || "").trim();
-  const pass = String(process.env.MAIL_PASS || "").trim();
-  if (!host || !user || !pass) return null;
+  const configs = buildMailTransportConfigs();
+  if (!configs.length) return null;
+  return getOrCreateMailTransport(configs[0]);
+}
 
-  const parsedPort = Number(process.env.MAIL_PORT || 465);
-  const port = Number.isFinite(parsedPort) && parsedPort > 0 ? parsedPort : 465;
-  const secureFallback = port === 465;
-  const secure = parseEnvBoolean(process.env.MAIL_SECURE, secureFallback);
-  mailTransport = nodemailer.createTransport({
-    host,
-    port,
-    secure,
-    connectionTimeout: MAIL_SEND_TIMEOUT_MS,
-    greetingTimeout: MAIL_SEND_TIMEOUT_MS,
-    socketTimeout: MAIL_SEND_TIMEOUT_MS,
-    auth: { user, pass },
-  });
-  return mailTransport;
+function getMailTransportAttemptPlan(primaryTransport = null) {
+  const configs = buildMailTransportConfigs();
+  const attempts = [];
+
+  if (primaryTransport) {
+    attempts.push({
+      transport: primaryTransport,
+      label: "primary",
+    });
+  }
+
+  for (const config of configs) {
+    attempts.push({
+      transport: getOrCreateMailTransport(config),
+      label: `${config.host}:${config.port} secure=${config.secure ? "true" : "false"}`,
+    });
+  }
+
+  const unique = [];
+  const seen = new Set();
+  for (const attempt of attempts) {
+    if (!attempt?.transport) continue;
+    if (seen.has(attempt.transport)) continue;
+    seen.add(attempt.transport);
+    unique.push(attempt);
+  }
+  return unique;
 }
 
 async function sendMailWithTimeout(transport, payload) {
-  return Promise.race([
-    transport.sendMail(payload),
-    new Promise((_, reject) =>
-      setTimeout(() => reject(new Error("MAIL_TIMEOUT")), MAIL_SEND_TIMEOUT_MS)
-    ),
-  ]);
+  const attempts = getMailTransportAttemptPlan(transport);
+  if (!attempts.length) {
+    throw new Error("MAIL_NOT_CONFIGURED");
+  }
+
+  let lastError = null;
+  for (let index = 0; index < attempts.length; index += 1) {
+    const attempt = attempts[index];
+    try {
+      return await Promise.race([
+        attempt.transport.sendMail(payload),
+        new Promise((_, reject) =>
+          setTimeout(() => reject(new Error("MAIL_TIMEOUT")), MAIL_SEND_TIMEOUT_MS)
+        ),
+      ]);
+    } catch (err) {
+      lastError = err;
+      if (attempts.length > 1) {
+        console.error(
+          `[MAIL_SEND] attempt ${index + 1}/${attempts.length} failed (${attempt.label}):`,
+          err?.message || err
+        );
+      }
+    }
+  }
+
+  throw lastError || new Error("MAIL_TIMEOUT");
 }
 
 function parsePushSubscription(input) {
