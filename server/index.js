@@ -3124,6 +3124,31 @@ async function getOrgSubscription(orgId, fallbackUserId = null) {
   return prisma.subscription.findFirst({ where: { userId: fallbackUserId } });
 }
 
+function hasStartPlanInMetadata(metadata) {
+  return String(metadata?.planId || "").trim().toLowerCase() === "start-30";
+}
+
+async function hasUsedStartPlanForBillingScope({ orgId = null, userId = null }) {
+  const where = orgId
+    ? {
+        status: "succeeded",
+        user: { orgId },
+      }
+    : {
+        status: "succeeded",
+        userId: Number(userId || 0),
+      };
+
+  const payments = await prisma.payment.findMany({
+    where,
+    select: {
+      metadata: true,
+    },
+  });
+
+  return payments.some((entry) => hasStartPlanInMetadata(entry?.metadata));
+}
+
 async function applyPaymentSuccess({ paymentRecord, providerPayment, plan }) {
   const userId = paymentRecord.userId;
   const now = new Date();
@@ -9710,18 +9735,10 @@ app.get("/api/profile", auth, async (req, res) => {
         }
       }
       if (plan.id === "start-30") {
-        const payments = await prisma.payment.findMany({
-          where: {
-            userId: billingUserId,
-            status: "succeeded",
-          },
-          select: {
-            metadata: true,
-          },
+        const alreadyUsedStartPlan = await hasUsedStartPlanForBillingScope({
+          orgId: req.user.isSystemOwner ? null : targetOrgId,
+          userId: billingUserId,
         });
-        const alreadyUsedStartPlan = payments.some(
-          (entry) => entry?.metadata?.planId === "start-30"
-        );
         if (alreadyUsedStartPlan) {
           return res.status(400).json({ message: "START_PLAN_ALREADY_USED" });
         }
