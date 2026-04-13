@@ -13,7 +13,7 @@ const PLAN_CARDS = [
   {
     id: "start-30",
     title: "Старт",
-    amount: 1,
+    amount: 990,
     currency: "RUB",
     description:
       "Полный доступ на первый месяц для теста и запуска команды.",
@@ -29,7 +29,7 @@ const PLAN_CARDS = [
   {
     id: "basic-30",
     title: "Базовый",
-    amount: 1000,
+    amount: 2990,
     currency: "RUB",
     description:
       "Основной тариф для ежедневной работы без функциональных ограничений.",
@@ -45,7 +45,7 @@ const PLAN_CARDS = [
   {
     id: "pro-30",
     title: "Проф",
-    amount: 2600,
+    amount: 6990,
     currency: "RUB",
     description:
       "Расширенный тариф для высокой нагрузки и роста складской команды.",
