@@ -9,6 +9,19 @@ const PERIOD_OPTIONS = [
   { id: "12m", label: "1 год", discountPct: 30 },
 ];
 
+const PAYMENT_METHOD_OPTIONS = [
+  {
+    id: "default",
+    label: "Карта и другие",
+    hint: "Переход в ЮKassa с выбором доступного способа оплаты.",
+  },
+  {
+    id: "sbp",
+    label: "СБП",
+    hint: "Оплата через СБП (QR-код/банковское приложение).",
+  },
+];
+
 const PLAN_CARDS = [
   {
     id: "start-30",
@@ -85,6 +98,13 @@ function getPeriodLabel(periodId) {
   return "30 дней";
 }
 
+function getPaymentMethodHint(paymentMethod) {
+  if (paymentMethod === "sbp") {
+    return "Платеж пройдет через YooKassa (СБП).";
+  }
+  return "Платеж пройдет через YooKassa (карта/СБП и другие доступные способы).";
+}
+
 export default function Pricing() {
   const { user, refreshUser, logout } = useAuth();
   const navigate = useNavigate();
@@ -94,6 +114,7 @@ export default function Pricing() {
   const [billingReady, setBillingReady] = useState(false);
   const [billingLoading, setBillingLoading] = useState(true);
   const [periodId, setPeriodId] = useState("1m");
+  const [paymentMethod, setPaymentMethod] = useState("default");
 
   const canManageBilling =
     user?.isSystemOwner === true ||
@@ -125,7 +146,7 @@ export default function Pricing() {
           "Content-Type": "application/json",
           Authorization: `Bearer ${token}`,
         },
-        body: JSON.stringify({ planId, periodId, paymentMethod: "sbp" }),
+        body: JSON.stringify({ planId, periodId, paymentMethod }),
       });
 
       const data = await res.json();
@@ -247,6 +268,30 @@ export default function Pricing() {
           Один платеж на организацию. Все сотрудники работают в единой системе
           по назначенным правам.
         </p>
+
+        <div className="pricing-modern__periods" role="tablist" aria-label="Способ оплаты">
+          {PAYMENT_METHOD_OPTIONS.map((option) => (
+            <div
+              key={option.id}
+              role="button"
+              tabIndex={0}
+              aria-pressed={option.id === paymentMethod}
+              className={`pricing-modern__period-btn ${
+                option.id === paymentMethod ? "is-active" : ""
+              }`}
+              onClick={() => setPaymentMethod(option.id)}
+              onKeyDown={(event) => {
+                if (event.key === "Enter" || event.key === " ") {
+                  event.preventDefault();
+                  setPaymentMethod(option.id);
+                }
+              }}
+              title={option.hint}
+            >
+              <span>{option.label}</span>
+            </div>
+          ))}
+        </div>
       </section>
 
       {!canManageBilling && (
@@ -334,7 +379,9 @@ export default function Pricing() {
               )}
 
               {plan.available && canPayCurrentPlan && (
-                <div className="pricing-modern__hint">Платеж пройдет через YooKassa.</div>
+                <div className="pricing-modern__hint">
+                  {getPaymentMethodHint(paymentMethod)}
+                </div>
               )}
             </article>
           );
