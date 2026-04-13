@@ -109,11 +109,6 @@ export default function Pricing() {
       return;
     }
 
-    if (extendedPeriodSelected) {
-      setError("Онлайн-оплата пока доступна только для периода 1 месяц.");
-      return;
-    }
-
     if (!canManageBilling) {
       setError("Оплату выполняет администратор вашей компании.");
       return;
@@ -130,7 +125,7 @@ export default function Pricing() {
           "Content-Type": "application/json",
           Authorization: `Bearer ${token}`,
         },
-        body: JSON.stringify({ planId, paymentMethod: "sbp" }),
+        body: JSON.stringify({ planId, periodId, paymentMethod: "sbp" }),
       });
 
       const data = await res.json();
@@ -286,7 +281,7 @@ export default function Pricing() {
             ? getPeriodAmount(plan.amount, periodId)
             : 0;
           const canPayCurrentPlan =
-            plan.available && !extendedPeriodSelected && billingReady && canManageBilling;
+            plan.available && billingReady && canManageBilling;
 
           return (
             <article
@@ -322,7 +317,6 @@ export default function Pricing() {
                   className="btn pricing-modern__cta pricing-modern__cta--dark"
                   onClick={() => handlePay(plan.id)}
                   disabled={
-                    extendedPeriodSelected ||
                     loading ||
                     billingLoading ||
                     !billingReady ||
@@ -336,12 +330,6 @@ export default function Pricing() {
               {plan.available && !billingReady && (
                 <div className="pricing-modern__hint">
                   Платежи будут доступны после подключения YooKassa.
-                </div>
-              )}
-
-              {plan.available && extendedPeriodSelected && (
-                <div className="pricing-modern__hint">
-                  Оплата за 6 месяцев и 1 год будет подключена следующим этапом.
                 </div>
               )}
 

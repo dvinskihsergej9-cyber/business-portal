@@ -2966,6 +2966,54 @@ function getPlan(planId) {
   return PLANS[planId] || null;
 }
 
+const BILLING_PERIODS = {
+  "1m": { id: "1m", months: 1, discountPct: 0 },
+  "6m": { id: "6m", months: 6, discountPct: 10 },
+  "12m": { id: "12m", months: 12, discountPct: 30 },
+};
+
+function getBillingPeriod(periodId) {
+  const normalized = String(periodId || "1m").trim().toLowerCase();
+  return BILLING_PERIODS[normalized] || null;
+}
+
+function resolveBillingPeriodIdByDays(plan, days, fallbackPeriodId = "1m") {
+  const normalizedDays = Number(days || 0);
+  if (!plan || !Number.isFinite(normalizedDays) || normalizedDays <= 0) {
+    return fallbackPeriodId;
+  }
+  if (normalizedDays === Number(plan.days || 0) * 12) return "12m";
+  if (normalizedDays === Number(plan.days || 0) * 6) return "6m";
+  return fallbackPeriodId;
+}
+
+function getResolvedPlanCharge(plan, periodIdInput = "1m") {
+  if (!plan) return null;
+  const period = getBillingPeriod(periodIdInput);
+  if (!period) return null;
+  if (plan.id === "start-30" && period.id !== "1m") return null;
+
+  const monthlyAmount = Number(plan.amount || 0);
+  if (!Number.isFinite(monthlyAmount) || monthlyAmount < 0) return null;
+  const grossAmount = monthlyAmount * period.months;
+  const discountMultiplier = Math.max(0, 1 - Number(period.discountPct || 0) / 100);
+  const amount = Math.round(grossAmount * discountMultiplier);
+  const days = Number(plan.days || 0) * period.months;
+  if (!Number.isFinite(days) || days <= 0) return null;
+
+  return {
+    id: plan.id,
+    planId: plan.id,
+    title: plan.title,
+    currency: plan.currency,
+    amount,
+    days,
+    periodId: period.id,
+    months: period.months,
+    discountPct: period.discountPct,
+  };
+}
+
 function addDays(date, days) {
   const base = new Date(date);
   const value = Number(days || 0);
@@ -3022,19 +3070,32 @@ async function fetchYookassaPayment(providerPaymentId) {
 function parseYookassaMetadata(metadata) {
   const userId = Number(metadata?.userId || 0);
   const planId = metadata?.planId ? String(metadata.planId) : null;
+  const periodId = metadata?.periodId ? String(metadata.periodId).trim().toLowerCase() : null;
   const days = Number(metadata?.days || 0);
+  const amount = Number(metadata?.amount || 0);
+  const currency = metadata?.currency ? String(metadata.currency).trim().toUpperCase() : null;
   const localPaymentId = Number(metadata?.localPaymentId || 0) || null;
   return {
     userId: Number.isFinite(userId) && userId > 0 ? userId : null,
     planId,
+    periodId,
     days: Number.isFinite(days) && days > 0 ? days : null,
+    amount: Number.isFinite(amount) && amount >= 0 ? amount : null,
+    currency,
     localPaymentId,
   };
 }
 
-function validatePlanMetadata(plan, metadata) {
-  if (!plan || !metadata.planId || !metadata.days) return false;
-  return plan.id === metadata.planId && Number(plan.days) === Number(metadata.days);
+function validatePlanMetadata(resolvedPlan, metadata) {
+  if (!resolvedPlan || !metadata.planId || !metadata.days) return false;
+  if (resolvedPlan.planId !== metadata.planId) return false;
+  if (Number(resolvedPlan.days) !== Number(metadata.days)) return false;
+  if (metadata.periodId && resolvedPlan.periodId !== metadata.periodId) return false;
+  if (metadata.amount !== null && Number(resolvedPlan.amount) !== Number(metadata.amount)) return false;
+  if (metadata.currency && String(resolvedPlan.currency).toUpperCase() !== String(metadata.currency).toUpperCase()) {
+    return false;
+  }
+  return true;
 }
 
 async function getBillingUserIdForOrg(orgId, fallbackUserId = null) {
@@ -9626,10 +9687,14 @@ app.get("/api/profile", auth, async (req, res) => {
         return res.status(400).json({ message: "BILLING_USER_REQUIRED" });
       }
 
-      const { planId, paymentMethod } = req.body || {};
+      const { planId, periodId, paymentMethod } = req.body || {};
       const plan = getPlan(planId);
       if (!plan) {
         return res.status(400).json({ message: "PLAN_NOT_FOUND" });
+      }
+      const resolvedPlan = getResolvedPlanCharge(plan, periodId || "1m");
+      if (!resolvedPlan) {
+        return res.status(400).json({ message: "PLAN_PERIOD_NOT_SUPPORTED" });
       }
       if (plan.id === "trial-1") {
         const existing = req.user.isSystemOwner
@@ -9671,12 +9736,15 @@ app.get("/api/profile", auth, async (req, res) => {
           userId: billingUserId,
           provider: "yookassa",
           providerPaymentId: tempProviderId,
-          amount: plan.amount,
-          currency: plan.currency,
+          amount: resolvedPlan.amount,
+          currency: resolvedPlan.currency,
           status: "pending",
           metadata: {
-            planId: plan.id,
-            days: plan.days,
+            planId: resolvedPlan.planId,
+            periodId: resolvedPlan.periodId,
+            days: resolvedPlan.days,
+            amount: resolvedPlan.amount,
+            currency: resolvedPlan.currency,
             paymentMethod: resolvedPaymentMethod,
           },
         },
@@ -9684,19 +9752,22 @@ app.get("/api/profile", auth, async (req, res) => {
 
       const payload = {
         amount: {
-          value: formatAmount(plan.amount),
-          currency: plan.currency,
+          value: formatAmount(resolvedPlan.amount),
+          currency: resolvedPlan.currency,
         },
         capture: true,
         confirmation: {
           type: "redirect",
           return_url: `${APP_URL}/subscribe/return?paymentId=${localPayment.id}`,
         },
-        description: `Subscription ${plan.id}`,
+        description: `Subscription ${resolvedPlan.planId} ${resolvedPlan.periodId}`,
         metadata: {
           userId: String(billingUserId),
-          planId: plan.id,
-          days: String(plan.days),
+          planId: resolvedPlan.planId,
+          periodId: resolvedPlan.periodId,
+          days: String(resolvedPlan.days),
+          amount: String(resolvedPlan.amount),
+          currency: resolvedPlan.currency,
           localPaymentId: String(localPayment.id),
         },
       };
@@ -9776,10 +9847,33 @@ app.get("/api/profile", auth, async (req, res) => {
       if (!plan) {
         return res.status(400).json({ message: "PLAN_NOT_FOUND" });
       }
+      const resolvedPeriodId =
+        metadata.periodId ||
+        paymentRecord.metadata?.periodId ||
+        resolveBillingPeriodIdByDays(
+          plan,
+          metadata.days || paymentRecord.metadata?.days,
+          "1m"
+        );
+      const resolvedPlan = getResolvedPlanCharge(plan, resolvedPeriodId);
+      if (!resolvedPlan) {
+        return res.status(400).json({ message: "PLAN_PERIOD_NOT_SUPPORTED" });
+      }
+      const expectedAmount = formatAmount(resolvedPlan.amount);
+      if (
+        providerPayment.amount?.currency !== resolvedPlan.currency ||
+        providerPayment.amount?.value !== expectedAmount
+      ) {
+        return res.status(400).json({ message: "PAYMENT_AMOUNT_MISMATCH" });
+      }
 
       if (providerPayment.status === "succeeded" && providerPayment.paid) {
         if (paymentRecord.status !== "succeeded") {
-          await applyPaymentSuccess({ paymentRecord, providerPayment, plan });
+          await applyPaymentSuccess({
+            paymentRecord,
+            providerPayment,
+            plan: resolvedPlan,
+          });
         }
       } else if (providerPayment.status === "canceled") {
         await prisma.payment.update({
@@ -9796,6 +9890,7 @@ app.get("/api/profile", auth, async (req, res) => {
       return res.json({
         status: providerPayment.status,
         paid: providerPayment.paid || false,
+        periodId: resolvedPlan.periodId,
       });
     } catch (err) {
       console.error("payment status error:", err);
@@ -9817,12 +9912,28 @@ app.get("/api/profile", auth, async (req, res) => {
       if (!plan) {
         return res.status(400).json({ message: "PLAN_NOT_FOUND" });
       }
-      if (!validatePlanMetadata(plan, metadata) || !metadata.userId) {
+      const resolvedPeriodId =
+        metadata.periodId ||
+        resolveBillingPeriodIdByDays(plan, metadata.days, "1m");
+      const resolvedPlan = getResolvedPlanCharge(plan, resolvedPeriodId);
+      if (!resolvedPlan) {
+        return res.status(400).json({ message: "PLAN_PERIOD_NOT_SUPPORTED" });
+      }
+      const metadataForValidation = {
+        ...metadata,
+        planId: metadata.planId || resolvedPlan.planId,
+        periodId: metadata.periodId || resolvedPlan.periodId,
+        days: metadata.days || resolvedPlan.days,
+      };
+      if (!validatePlanMetadata(resolvedPlan, metadataForValidation) || !metadata.userId) {
         return res.status(400).json({ message: "PAYMENT_METADATA_MISMATCH" });
       }
 
-      const expectedAmount = formatAmount(plan.amount);
-      if (providerPayment.amount?.currency !== plan.currency || providerPayment.amount?.value !== expectedAmount) {
+      const expectedAmount = formatAmount(resolvedPlan.amount);
+      if (
+        providerPayment.amount?.currency !== resolvedPlan.currency ||
+        providerPayment.amount?.value !== expectedAmount
+      ) {
         return res.status(400).json({ message: "PAYMENT_AMOUNT_MISMATCH" });
       }
 
@@ -9844,12 +9955,15 @@ app.get("/api/profile", auth, async (req, res) => {
             userId: metadata.userId,
             provider: "yookassa",
             providerPaymentId,
-            amount: Number(providerPayment.amount?.value || plan.amount),
-            currency: providerPayment.amount?.currency || plan.currency,
+            amount: Number(providerPayment.amount?.value || resolvedPlan.amount),
+            currency: providerPayment.amount?.currency || resolvedPlan.currency,
             status: providerPayment.status || "pending",
             metadata: {
-              planId: plan.id,
-              days: plan.days,
+              planId: resolvedPlan.planId,
+              periodId: resolvedPlan.periodId,
+              days: resolvedPlan.days,
+              amount: resolvedPlan.amount,
+              currency: resolvedPlan.currency,
               providerStatus: providerPayment.status,
               providerPaid: providerPayment.paid,
             },
@@ -9873,7 +9987,11 @@ app.get("/api/profile", auth, async (req, res) => {
       }
 
       if (providerPayment.status === "succeeded" && providerPayment.paid) {
-        await applyPaymentSuccess({ paymentRecord, providerPayment, plan });
+        await applyPaymentSuccess({
+          paymentRecord,
+          providerPayment,
+          plan: resolvedPlan,
+        });
       } else if (providerPayment.status === "canceled") {
         await prisma.payment.update({
           where: { id: paymentRecord.id },

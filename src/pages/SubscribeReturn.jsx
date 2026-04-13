@@ -1,13 +1,24 @@
 import { useEffect, useState } from "react";
 import { useNavigate, useSearchParams } from "react-router-dom";
-import { apiFetch } from "../apiConfig";
+import { apiFetch, normalizeErrorMessage } from "../apiConfig";
 import { useAuth } from "../context/AuthContext";
+
+function getPaymentStatusLabel(status, paid) {
+  if (paid || status === "succeeded") return "Оплата прошла успешно.";
+  if (status === "pending") return "Платеж ожидает подтверждения.";
+  if (status === "waiting_for_capture") {
+    return "Платеж авторизован, ожидается подтверждение.";
+  }
+  if (status === "canceled") return "Платеж отменен.";
+  return `Статус платежа: ${status || "unknown"}`;
+}
 
 export default function SubscribeReturn() {
   const [params] = useSearchParams();
   const paymentId = params.get("paymentId") || "";
   const [loading, setLoading] = useState(true);
   const [status, setStatus] = useState("");
+  const [paid, setPaid] = useState(false);
   const [error, setError] = useState("");
   const { refreshUser } = useAuth();
   const navigate = useNavigate();
@@ -15,10 +26,11 @@ export default function SubscribeReturn() {
   useEffect(() => {
     const checkStatus = async () => {
       if (!paymentId) {
-        setError("Не указан платеж.");
+        setError("Не указан идентификатор платежа.");
         setLoading(false);
         return;
       }
+
       try {
         const token = localStorage.getItem("token");
         const res = await apiFetch(
@@ -31,11 +43,15 @@ export default function SubscribeReturn() {
         );
         const data = await res.json();
         if (!res.ok) {
-          setError(data.message || "Не удалось проверить оплату.");
+          setError(
+            normalizeErrorMessage(data?.message || "", "Не удалось проверить статус оплаты.")
+          );
           setLoading(false);
           return;
         }
+
         setStatus(data.status || "pending");
+        setPaid(Boolean(data.paid));
         await refreshUser();
         setLoading(false);
       } catch (err) {
@@ -69,7 +85,7 @@ export default function SubscribeReturn() {
 
       {!loading && !error && (
         <div className="card" style={{ display: "grid", gap: 8 }}>
-          <div>Статус: {status}</div>
+          <div>{getPaymentStatusLabel(status, paid)}</div>
           <button className="btn primary" onClick={handleContinue}>
             Продолжить
           </button>

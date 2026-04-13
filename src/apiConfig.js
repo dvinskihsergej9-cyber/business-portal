@@ -352,6 +352,9 @@ export const normalizeErrorMessage = (err, fallback = "Не удалось вы�
   if (message === "PLAN_NOT_FOUND") {
     return "Выбранный тариф не найден.";
   }
+  if (message === "PLAN_PERIOD_NOT_SUPPORTED") {
+    return "Выбранный период оплаты недоступен для этого тарифа.";
+  }
   if (message === "BILLING_USER_REQUIRED") {
     return "Не найден плательщик для этой организации.";
   }
