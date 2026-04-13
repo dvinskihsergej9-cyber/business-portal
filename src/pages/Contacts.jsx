@@ -29,7 +29,7 @@ export default function Contacts() {
           <p>Email: sergeydvin0998@mail.ru</p>
           <p>Телефон: +7-909-084-03-43</p>
           <p>Адрес: г. Куса, ул. Розы Люксембург, д. 34, кв. 1</p>
-          <p>Сайт: https://business-portal-weld.vercel.app</p>
+          <p>Сайт: https://skladonline.ru</p>
         </div>
       </div>
     </div>
