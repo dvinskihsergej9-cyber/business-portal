@@ -9746,7 +9746,7 @@ app.get("/api/profile", auth, async (req, res) => {
       if (paymentMethod && paymentMethod !== "sbp" && paymentMethod !== "default") {
         return res.status(400).json({ message: "PAYMENT_METHOD_INVALID" });
       }
-      const resolvedPaymentMethod = paymentMethod === "default" ? "default" : "sbp";
+      const resolvedPaymentMethod = paymentMethod === "sbp" ? "sbp" : "default";
       const tempProviderId = `pending_${crypto.randomUUID()}`;
       const localPayment = await prisma.payment.create({
         data: {
