@@ -21359,6 +21359,21 @@ function logMailConfigStatus() {
     console.log("[MAIL_CONFIG] почтовые переменные заполнены.");
   }
 
+  const transportConfigs = buildMailTransportConfigs();
+  if (!transportConfigs.length) {
+    console.warn("[MAIL_CONFIG] SMTP-план не собран: отсутствуют обязательные переменные.");
+  } else {
+    const transportPlan = transportConfigs
+      .map((config, index) => {
+        const host = String(config.host || "").trim() || "-";
+        const port = Number(config.port || 0) || 0;
+        const secure = config.secure ? "true" : "false";
+        return `${index + 1}) ${host}:${port} secure=${secure}`;
+      })
+      .join("; ");
+    console.log(`[MAIL_CONFIG] SMTP-план отправки: ${transportPlan}`);
+  }
+
   const notifyEmail = String(
     process.env.NEW_CLIENT_NOTIFY_EMAILS ||
       process.env.NEW_CLIENT_NOTIFY_EMAIL ||
