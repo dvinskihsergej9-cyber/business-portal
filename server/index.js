@@ -2942,7 +2942,7 @@ const PLANS = {
   "start-30": {
     id: "start-30",
     title: "Start 30 days",
-    amount: 990,
+    amount: 1,
     currency: "RUB",
     days: 30,
   },

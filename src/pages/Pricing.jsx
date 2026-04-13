@@ -13,7 +13,7 @@ const PLAN_CARDS = [
   {
     id: "start-30",
     title: "Старт",
-    amount: 990,
+    amount: 1,
     currency: "RUB",
     description:
       "Полный доступ на первый месяц для теста и запуска команды.",
