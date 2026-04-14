@@ -44,6 +44,9 @@ export default function Landing() {
           <p>
             Рекомендуем сохранять электронные чеки и иные документы, подтверждающие оплату.
           </p>
+          <p>
+            Платежи обрабатываются через <a href="https://yookassa.ru/payments/" target="_blank" rel="noreferrer" className="legal-link">ЮKassa</a>.
+          </p>
           <div className="legal-links">
             <Link to="/offer" className="legal-link">Оферта</Link>
             <Link to="/privacy" className="legal-link">Политика</Link>
