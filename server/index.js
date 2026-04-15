@@ -4509,6 +4509,19 @@ async function applyActiveHoldsToBalances(tx, itemId, balances = []) {
     })
     .filter((row) => row.qty > 0);
 }
+
+async function loadPickBalancesSafe(label, loader) {
+  try {
+    const rows = await loader();
+    return Array.isArray(rows) ? rows : [];
+  } catch (err) {
+    console.error("pick plan source error:", {
+      source: label,
+      error: String(err?.message || err || "unknown"),
+    });
+    return [];
+  }
+}
 async function buildOrderPickPlan(orderId) {
   const order = await prisma.salesOrder.findUnique({
     where: { id: orderId },
@@ -4565,14 +4578,31 @@ async function buildOrderPickPlan(orderId) {
         continue;
       }
 
-      const movementBalances = await getItemLocationBalances(resolvedItemId);
-      const receivingBalances = await getReceivingLineLocationBalances(resolvedItemId);
-      const placementBalances = await getPlacementLocationBalances(resolvedItemId);
+      const movementBalances = await loadPickBalancesSafe("movements", () =>
+        getItemLocationBalances(resolvedItemId)
+      );
+      const receivingBalances = await loadPickBalancesSafe("receiving-lines", () =>
+        getReceivingLineLocationBalances(resolvedItemId)
+      );
+      const placementBalances = await loadPickBalancesSafe("placements", () =>
+        getPlacementLocationBalances(resolvedItemId)
+      );
       const balancesBase = mergeLocationBalances(
         mergeLocationBalances(movementBalances, receivingBalances),
         placementBalances
       );
-      const balances = await applyActiveHoldsToBalances(prisma, resolvedItemId, balancesBase);
+      let balances = [];
+      let holdsApplyFailed = false;
+      try {
+        balances = await applyActiveHoldsToBalances(prisma, resolvedItemId, balancesBase);
+      } catch (holdErr) {
+        holdsApplyFailed = true;
+        console.error("pick plan holds apply error:", {
+          itemId: resolvedItemId,
+          error: String(holdErr?.message || holdErr || "unknown"),
+        });
+        balances = (balancesBase || []).filter((row) => Number(row?.qty) > 0);
+      }
       const onHandQty = balancesBase.reduce(
         (sum, row) => sum + Math.max(0, Number(row?.qty) || 0),
         0
@@ -4615,11 +4645,17 @@ async function buildOrderPickPlan(orderId) {
         shortageReason:
           need <= 0
             ? null
-            : availableQty <= 0 && onHandQty > 0 && heldQty > 0
-              ? "HELD_STOCK"
-              : onHandQty <= 0
-                ? "NO_STOCK_ON_HAND"
-                : "INSUFFICIENT_AVAILABLE",
+            : holdsApplyFailed
+              ? "HOLDS_CALC_ERROR"
+              : movementBalances.length === 0 &&
+                  receivingBalances.length === 0 &&
+                  placementBalances.length === 0
+                ? "BALANCE_SOURCE_ERROR"
+                : availableQty <= 0 && onHandQty > 0 && heldQty > 0
+                  ? "HELD_STOCK"
+                  : onHandQty <= 0
+                    ? "NO_STOCK_ON_HAND"
+                    : "INSUFFICIENT_AVAILABLE",
       });
     } catch (lineErr) {
       const totalQty = Number(line?.qty) || 0;

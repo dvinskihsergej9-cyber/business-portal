@@ -135,6 +135,8 @@ const getShortageReasonLabel = (row) => {
       ? `остаток заблокирован (${held} шт.)`
       : "остаток заблокирован";
   }
+  if (reason === "HOLDS_CALC_ERROR") return "временная ошибка расчета блокировок";
+  if (reason === "BALANCE_SOURCE_ERROR") return "ошибка чтения остатков";
   if (reason === "ITEM_NOT_LINKED") return "позиция не связана с номенклатурой";
   if (reason === "NO_STOCK_ON_HAND") return "на складе нет остатка";
   if (reason === "PLAN_BUILD_ERROR") return "ошибка расчета маршрута";
