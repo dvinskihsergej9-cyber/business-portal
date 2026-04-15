@@ -3153,9 +3153,12 @@ async function applyPaymentSuccess({ paymentRecord, providerPayment, plan }) {
   const userId = paymentRecord.userId;
   const now = new Date();
   const current = await prisma.subscription.findFirst({ where: { userId } });
-  const baseDate = current?.paidUntil && new Date(current.paidUntil) > now
-    ? new Date(current.paidUntil)
-    : now;
+  const canExtendFromCurrent =
+    Boolean(current) &&
+    ["active", "trialing"].includes(String(current?.status || "").toLowerCase()) &&
+    current?.paidUntil &&
+    new Date(current.paidUntil) > now;
+  const baseDate = canExtendFromCurrent ? new Date(current.paidUntil) : now;
   const nextPaidUntil = addDays(baseDate, plan.days);
 
   const existingMetadata = paymentRecord.metadata || {};
@@ -11112,10 +11115,12 @@ app.post(
       const current = await prisma.subscription.findFirst({
         where: { userId: billingUserId },
       });
-      const baseDate =
-        current?.paidUntil && new Date(current.paidUntil) > now
-          ? new Date(current.paidUntil)
-          : now;
+      const canExtendFromCurrent =
+        Boolean(current) &&
+        ["active", "trialing"].includes(String(current?.status || "").toLowerCase()) &&
+        current?.paidUntil &&
+        new Date(current.paidUntil) > now;
+      const baseDate = canExtendFromCurrent ? new Date(current.paidUntil) : now;
       const paidUntil = addDays(baseDate, days);
 
       const next = await prisma.subscription.upsert({
@@ -11209,7 +11214,9 @@ app.post(
       const subscriptionIds = orgSubscriptions.map((row) => row.id);
       await prisma.subscription.updateMany({
         where: { id: { in: subscriptionIds } },
-        data: { status: enabled ? "active" : "paused" },
+        data: enabled
+          ? { status: "active" }
+          : { status: "paused", paidUntil: new Date() },
       });
 
       const subscription = await getOrgSubscription(tenant.id, null);
