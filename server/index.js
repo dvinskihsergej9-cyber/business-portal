@@ -481,10 +481,14 @@ const TENANT_SCOPED_MODELS = new Set([
   "OrderStatusHistory",
   "SupportTicket",
   "SupportMessage",
+  "PalletRouteSheet",
+  "PalletRouteSheetItem",
+  "PalletRouteSheetEvent",
   "Pallet",
   "PalletLocation",
   "PalletEvent",
   "PalletDispatch",
+  "PalletDiscrepancy",
 ]);
 
 function withTenantWhere(where, orgId) {

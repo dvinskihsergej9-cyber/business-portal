@@ -9,6 +9,7 @@ const DATE_INPUT_SELECTOR =
   'input[type="date"], input[type="datetime-local"], input[type="month"]';
 const APP_LOGO_SRC = APP_LOGO_DATA_URL;
 const WAREHOUSE_SECTION_TITLE_MAP = {
+  requests: "Заявки на склад",
   tasks: "\u0417\u0430\u0434\u0430\u0447\u0438 \u0441\u043a\u043b\u0430\u0434\u0430",
   inventory: "\u041e\u0441\u0442\u0430\u0442\u043a\u0438",
   holds: "\u0411\u043b\u043e\u043a\u0438\u0440\u043e\u0432\u043a\u0430 \u043e\u0441\u0442\u0430\u0442\u043a\u043e\u0432",
