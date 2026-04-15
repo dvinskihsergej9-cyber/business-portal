@@ -17206,7 +17206,7 @@ app.get("/api/inventory/movements", auth, async (req, res) => {
     const limit = Number(req.query.limit) || 100;
 
     const movements = await prisma.stockMovement.findMany({
-      orderBy: { createdAt: "desc" },
+      orderBy: [{ createdAt: "asc" }, { id: "asc" }],
       take: limit,
       include: {
         item: true,
