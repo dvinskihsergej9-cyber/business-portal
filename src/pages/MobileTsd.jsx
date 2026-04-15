@@ -753,15 +753,18 @@ export default function MobileTsd() {
     if (!res.ok) {
       throw new Error(stockData?.message || "Не удалось загрузить остатки");
     }
+    const expectedItems = (stockData?.items || []).filter(
+      (row) => Number(row?.expectedQty || 0) !== 0
+    );
     const counts = {};
-    (stockData?.items || []).forEach((row) => {
+    expectedItems.forEach((row) => {
       counts[row.item.id] = row.expectedQty;
     });
     setBinState((prev) => ({
       ...prev,
       step: 1,
       location: stockData?.location || location,
-      items: stockData?.items || [],
+      items: expectedItems,
       counts,
       loading: false,
       error: "",

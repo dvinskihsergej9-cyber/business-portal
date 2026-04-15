@@ -138,17 +138,19 @@ export function createWarehouseStockService(prisma, options = {}) {
       byItem.set(id, entry);
     }
 
-    return Array.from(byItem.values()).map((row) => ({
-      item: {
-        id: row.item.id,
-        name: row.item.name,
-        sku: row.item.sku,
-        barcode: row.item.barcode,
-        unit: row.item.unit,
-        imageUrl: row.item.imageUrl || null,
-      },
-      qty: Math.round(row.qty),
-    }));
+    return Array.from(byItem.values())
+      .map((row) => ({
+        item: {
+          id: row.item.id,
+          name: row.item.name,
+          sku: row.item.sku,
+          barcode: row.item.barcode,
+          unit: row.item.unit,
+          imageUrl: row.item.imageUrl || null,
+        },
+        qty: Math.round(row.qty),
+      }))
+      .filter((row) => Number(row.qty) !== 0);
   };
 
   return {
