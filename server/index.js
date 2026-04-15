@@ -4587,14 +4587,16 @@ async function buildOrderPickPlan(orderId) {
       const placementBalances = await loadPickBalancesSafe("placements", () =>
         getPlacementLocationBalances(resolvedItemId)
       );
-      const primaryBalances = mergeLocationBalances(
-        movementBalances,
-        receivingBalances
-      );
-      // NOTE: placements can be stale after manual/legacy operations.
-      // Use them only as a fallback when there are no primary balances.
+      // Source priority for pick-plan:
+      // 1) stock movements (authoritative actual stock state)
+      // 2) receiving lines fallback (legacy/in-flight data)
+      // 3) placements fallback (can be stale after old/manual operations)
       const balancesBase =
-        primaryBalances.length > 0 ? primaryBalances : placementBalances;
+        movementBalances.length > 0
+          ? movementBalances
+          : receivingBalances.length > 0
+            ? receivingBalances
+            : placementBalances;
       let balances = [];
       let holdsApplyFailed = false;
       try {
