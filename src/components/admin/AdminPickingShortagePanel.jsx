@@ -11,6 +11,9 @@ const STATUS_LABELS = {
   CANCELLED: "Закрыт",
 };
 
+const PICKING_MODE_SCAN_EACH = "SCAN_EACH";
+const PICKING_MODE_MANUAL_QTY = "MANUAL_QTY";
+
 function statusLabel(status) {
   const key = String(status || "").trim();
   return STATUS_LABELS[key] || key || "-";
@@ -29,14 +32,22 @@ function userLabel(user) {
 }
 
 export default function AdminPickingShortagePanel() {
-  const [loading, setLoading] = useState(true);
-  const [saving, setSaving] = useState(false);
-  const [error, setError] = useState("");
-  const [success, setSuccess] = useState("");
+  const [activeSubtab, setActiveSubtab] = useState("mode");
+
+  const [loadingJournal, setLoadingJournal] = useState(true);
+  const [savingJournal, setSavingJournal] = useState(false);
+  const [journalError, setJournalError] = useState("");
+  const [journalSuccess, setJournalSuccess] = useState("");
   const [candidates, setCandidates] = useState([]);
   const [allJournal, setAllJournal] = useState([]);
   const [modalOrder, setModalOrder] = useState(null);
   const [closeReason, setCloseReason] = useState("");
+
+  const [loadingMode, setLoadingMode] = useState(true);
+  const [savingMode, setSavingMode] = useState(false);
+  const [modeError, setModeError] = useState("");
+  const [modeSuccess, setModeSuccess] = useState("");
+  const [pickingMode, setPickingMode] = useState(PICKING_MODE_SCAN_EACH);
 
   const authHeaders = useMemo(() => {
     const token = localStorage.getItem("token");
@@ -46,10 +57,10 @@ export default function AdminPickingShortagePanel() {
     };
   }, []);
 
-  const loadData = async () => {
+  const loadJournalData = async () => {
     try {
-      setLoading(true);
-      setError("");
+      setLoadingJournal(true);
+      setJournalError("");
       const [candRes, allJournalRes] = await Promise.all([
         fetch(`${API_BASE}/orders/admin-shortage-candidates`, {
           headers: authHeaders,
@@ -59,53 +70,76 @@ export default function AdminPickingShortagePanel() {
         }),
       ]);
 
-      const candData = await candRes.json();
-      const allJournalData = await allJournalRes.json();
+      const candData = await candRes.json().catch(() => null);
+      const allJournalData = await allJournalRes.json().catch(() => null);
 
       if (!candRes.ok) {
         throw new Error(candData?.message || "ORDER_SHORTAGE_CANDIDATES_ERROR");
       }
       if (!allJournalRes.ok) {
-        throw new Error(
-          allJournalData?.message || "ORDER_PICKING_JOURNAL_ERROR"
-        );
+        throw new Error(allJournalData?.message || "ORDER_PICKING_JOURNAL_ERROR");
       }
 
       setCandidates(Array.isArray(candData?.items) ? candData.items : []);
-      setAllJournal(
-        Array.isArray(allJournalData?.items) ? allJournalData.items : []
+      setAllJournal(Array.isArray(allJournalData?.items) ? allJournalData.items : []);
+    } catch (err) {
+      setJournalError(
+        normalizeErrorMessage(err, "Не удалось загрузить данные по отбору.")
+      );
+    } finally {
+      setLoadingJournal(false);
+    }
+  };
+
+  const loadPickingMode = async () => {
+    try {
+      setLoadingMode(true);
+      setModeError("");
+      const res = await fetch(`${API_BASE}/settings/picking-mode`, {
+        headers: authHeaders,
+      });
+      const data = await res.json().catch(() => null);
+      if (!res.ok) {
+        throw new Error(data?.message || "PICKING_MODE_GET_ERROR");
+      }
+      const mode = String(data?.mode || "").trim().toUpperCase();
+      setPickingMode(
+        mode === PICKING_MODE_MANUAL_QTY
+          ? PICKING_MODE_MANUAL_QTY
+          : PICKING_MODE_SCAN_EACH
       );
     } catch (err) {
-      setError(normalizeErrorMessage(err, "Не удалось загрузить данные по отбору."));
+      setModeError(normalizeErrorMessage(err, "Не удалось загрузить режим отбора."));
     } finally {
-      setLoading(false);
+      setLoadingMode(false);
     }
   };
 
   useEffect(() => {
-    loadData();
+    loadJournalData();
+    loadPickingMode();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   const openCloseModal = (order) => {
     setModalOrder(order);
     setCloseReason("");
-    setSuccess("");
-    setError("");
+    setJournalSuccess("");
+    setJournalError("");
   };
 
   const closeOrderByAdmin = async () => {
     if (!modalOrder) return;
     const reason = String(closeReason || "").trim();
     if (!reason) {
-      setError("Укажите причину закрытия.");
+      setJournalError("Укажите причину закрытия.");
       return;
     }
 
     try {
-      setSaving(true);
-      setError("");
-      setSuccess("");
+      setSavingJournal(true);
+      setJournalError("");
+      setJournalSuccess("");
       const res = await fetch(
         `${API_BASE}/orders/${modalOrder.id}/admin-close-shortage`,
         {
@@ -114,136 +148,232 @@ export default function AdminPickingShortagePanel() {
           body: JSON.stringify({ reason }),
         }
       );
-      const data = await res.json();
+      const data = await res.json().catch(() => null);
       if (!res.ok) {
         throw new Error(data?.message || "ORDER_ADMIN_CLOSE_ERROR");
       }
 
-      setSuccess(`Заказ ${modalOrder.orderNumber} закрыт администратором.`);
+      setJournalSuccess(`Заказ ${modalOrder.orderNumber} закрыт администратором.`);
       setModalOrder(null);
       setCloseReason("");
-      await loadData();
+      await loadJournalData();
     } catch (err) {
-      setError(normalizeErrorMessage(err, "Не удалось закрыть заказ с недостачей."));
+      setJournalError(
+        normalizeErrorMessage(err, "Не удалось закрыть заказ с недостачей.")
+      );
     } finally {
-      setSaving(false);
+      setSavingJournal(false);
+    }
+  };
+
+  const savePickingMode = async () => {
+    try {
+      setSavingMode(true);
+      setModeError("");
+      setModeSuccess("");
+
+      const res = await fetch(`${API_BASE}/settings/picking-mode`, {
+        method: "PUT",
+        headers: authHeaders,
+        body: JSON.stringify({ mode: pickingMode }),
+      });
+      const data = await res.json().catch(() => null);
+      if (!res.ok) {
+        throw new Error(data?.message || "PICKING_MODE_SAVE_ERROR");
+      }
+
+      const mode = String(data?.mode || "").trim().toUpperCase();
+      setPickingMode(
+        mode === PICKING_MODE_MANUAL_QTY
+          ? PICKING_MODE_MANUAL_QTY
+          : PICKING_MODE_SCAN_EACH
+      );
+      setModeSuccess("Режим отбора сохранен.");
+    } catch (err) {
+      setModeError(normalizeErrorMessage(err, "Не удалось сохранить режим отбора."));
+    } finally {
+      setSavingMode(false);
     }
   };
 
   return (
     <div className="admin-console__card admin-panel">
-      <div className="admin-console__card-title">Отбор: недостачи</div>
+      <div className="admin-console__card-title">Отбор</div>
       <div className="admin-console__card-text">
-        Админ может закрыть задание с недостачей, если у заказа есть пропущенные позиции и замен нет.
+        Настройки режима отбора и общий журнал работы с заданиями.
       </div>
 
-      {loading ? <div className="admin-muted">Загрузка...</div> : null}
-      {error ? <div className="admin-alert admin-alert--error">{error}</div> : null}
-      {success ? <div className="admin-muted">{success}</div> : null}
+      <div className="admin-console__tabs" style={{ marginTop: 12, marginBottom: 12 }}>
+        <button
+          type="button"
+          className={
+            "admin-console__tab" +
+            (activeSubtab === "mode" ? " admin-console__tab--active" : "")
+          }
+          onClick={() => setActiveSubtab("mode")}
+        >
+          Режим отбора
+        </button>
+        <button
+          type="button"
+          className={
+            "admin-console__tab" +
+            (activeSubtab === "journal" ? " admin-console__tab--active" : "")
+          }
+          onClick={() => setActiveSubtab("journal")}
+        >
+          Журнал
+        </button>
+      </div>
 
-      {!loading && (
+      {activeSubtab === "mode" && (
+        <div className="admin-form">
+          {loadingMode ? <div className="admin-muted">Загрузка...</div> : null}
+          {modeError ? <div className="admin-alert admin-alert--error">{modeError}</div> : null}
+          {modeSuccess ? <div className="admin-muted">{modeSuccess}</div> : null}
+
+          {!loadingMode ? (
+            <>
+              <div>
+                <label className="admin-label">Режим отбора заказов (ТСД)</label>
+                <select
+                  className="admin-input"
+                  value={pickingMode}
+                  onChange={(event) => setPickingMode(event.target.value)}
+                  disabled={savingMode}
+                >
+                  <option value={PICKING_MODE_SCAN_EACH}>Сканировать каждую штуку</option>
+                  <option value={PICKING_MODE_MANUAL_QTY}>Вводить количество вручную</option>
+                </select>
+                <div className="admin-muted" style={{ marginTop: 6 }}>
+                  В режиме ручного ввода после скана ячейки сотрудник подтверждает количество
+                  одной операцией.
+                </div>
+              </div>
+
+              <div className="admin-panel__toolbar">
+                <button
+                  type="button"
+                  className="admin-btn admin-btn--primary"
+                  onClick={savePickingMode}
+                  disabled={savingMode}
+                >
+                  {savingMode ? "Сохранение..." : "Сохранить режим"}
+                </button>
+              </div>
+            </>
+          ) : null}
+        </div>
+      )}
+
+      {activeSubtab === "journal" && (
         <>
-          <div className="admin-panel__section-title">Активные задания с пропусками</div>
-          <div className="admin-table-wrapper">
-            <table className="admin-table">
-              <thead>
-                <tr>
-                  <th>ID</th>
-                  <th>Заказ</th>
-                  <th>Статус</th>
-                  <th>Исполнитель</th>
-                  <th>Пропуски</th>
-                  <th>Осталось шт.</th>
-                  <th>Действие</th>
-                </tr>
-              </thead>
-              <tbody>
-                {candidates.map((order) => (
-                  <tr key={order.id}>
-                    <td data-label="id">{order.id}</td>
-                    <td data-label="order">
-                      <div className="admin-table__title">{order.orderNumber || "-"}</div>
-                      <div className="admin-table__meta">{order.customerName || "-"}</div>
-                    </td>
-                    <td data-label="status">{statusLabel(order.status)}</td>
-                    <td data-label="assignee">{userLabel(order.assignedToUser)}</td>
-                    <td data-label="skips">{order.activeSkipCount || 0}</td>
-                    <td data-label="remaining">{order.remainingQty || 0}</td>
-                    <td data-label="action" className="admin-table__actions">
-                      <button
-                        type="button"
-                        className="admin-btn admin-btn--danger"
-                        onClick={() => openCloseModal(order)}
-                        disabled={saving}
-                      >
-                        Закрыть с недостачей
-                      </button>
-                    </td>
-                  </tr>
-                ))}
-                {candidates.length === 0 ? (
-                  <tr>
-                    <td colSpan={7} className="admin-muted">
-                      Нет активных заданий с пропущенными позициями.
-                    </td>
-                  </tr>
-                ) : null}
-              </tbody>
-            </table>
-          </div>
+          {loadingJournal ? <div className="admin-muted">Загрузка...</div> : null}
+          {journalError ? <div className="admin-alert admin-alert--error">{journalError}</div> : null}
+          {journalSuccess ? <div className="admin-muted">{journalSuccess}</div> : null}
 
-          <div className="admin-panel__section-title">Общий журнал отбора</div>
-          <div className="admin-table-wrapper">
-            <table className="admin-table">
-              <thead>
-                <tr>
-                  <th>Дата</th>
-                  <th>Заказ</th>
-                  <th>Статус</th>
-                  <th>Исполнитель</th>
-                  <th>Отобрано</th>
-                  <th>Комментарий закрытия</th>
-                </tr>
-              </thead>
-              <tbody>
-                {allJournal.map((row) => (
-                  <tr key={row.id}>
-                    <td data-label="date">
-                      {formatDate(
-                        row.completedAt ||
-                          row.packedAt ||
-                          row.pickedAt ||
-                          row.updatedAt ||
-                          row.createdAt
-                      )}
-                    </td>
-                    <td data-label="order">
-                      <div className="admin-table__title">{row.orderNumber || "-"}</div>
-                      <div className="admin-table__meta">{row.customerName || "-"}</div>
-                    </td>
-                    <td data-label="status">{statusLabel(row.status)}</td>
-                    <td data-label="assignee">{userLabel(row.assignedToUser)}</td>
-                    <td data-label="picked">
-                      {(row.pickedQty || 0)} / {(row.totalQty || 0)}
-                    </td>
-                    <td data-label="close">
-                      {row?.closeMeta?.reason
-                        ? `Недостача: ${row.closeMeta.reason}`
-                        : "-"}
-                    </td>
-                  </tr>
-                ))}
-                {allJournal.length === 0 ? (
-                  <tr>
-                    <td colSpan={6} className="admin-muted">
-                      Записей пока нет.
-                    </td>
-                  </tr>
-                ) : null}
-              </tbody>
-            </table>
-          </div>
+          {!loadingJournal && (
+            <>
+              <div className="admin-panel__section-title">Активные задания с пропусками</div>
+              <div className="admin-table-wrapper">
+                <table className="admin-table">
+                  <thead>
+                    <tr>
+                      <th>ID</th>
+                      <th>Заказ</th>
+                      <th>Статус</th>
+                      <th>Исполнитель</th>
+                      <th>Пропуски</th>
+                      <th>Осталось шт.</th>
+                      <th>Действие</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {candidates.map((order) => (
+                      <tr key={order.id}>
+                        <td data-label="id">{order.id}</td>
+                        <td data-label="order">
+                          <div className="admin-table__title">{order.orderNumber || "-"}</div>
+                          <div className="admin-table__meta">{order.customerName || "-"}</div>
+                        </td>
+                        <td data-label="status">{statusLabel(order.status)}</td>
+                        <td data-label="assignee">{userLabel(order.assignedToUser)}</td>
+                        <td data-label="skips">{order.activeSkipCount || 0}</td>
+                        <td data-label="remaining">{order.remainingQty || 0}</td>
+                        <td data-label="action" className="admin-table__actions">
+                          <button
+                            type="button"
+                            className="admin-btn admin-btn--danger"
+                            onClick={() => openCloseModal(order)}
+                            disabled={savingJournal}
+                          >
+                            Закрыть с недостачей
+                          </button>
+                        </td>
+                      </tr>
+                    ))}
+                    {candidates.length === 0 ? (
+                      <tr>
+                        <td colSpan={7} className="admin-muted">
+                          Нет активных заданий с пропущенными позициями.
+                        </td>
+                      </tr>
+                    ) : null}
+                  </tbody>
+                </table>
+              </div>
 
+              <div className="admin-panel__section-title">Общий журнал отбора</div>
+              <div className="admin-table-wrapper">
+                <table className="admin-table">
+                  <thead>
+                    <tr>
+                      <th>Дата</th>
+                      <th>Заказ</th>
+                      <th>Статус</th>
+                      <th>Исполнитель</th>
+                      <th>Отобрано</th>
+                      <th>Комментарий закрытия</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {allJournal.map((row) => (
+                      <tr key={row.id}>
+                        <td data-label="date">
+                          {formatDate(
+                            row.completedAt ||
+                              row.packedAt ||
+                              row.pickedAt ||
+                              row.updatedAt ||
+                              row.createdAt
+                          )}
+                        </td>
+                        <td data-label="order">
+                          <div className="admin-table__title">{row.orderNumber || "-"}</div>
+                          <div className="admin-table__meta">{row.customerName || "-"}</div>
+                        </td>
+                        <td data-label="status">{statusLabel(row.status)}</td>
+                        <td data-label="assignee">{userLabel(row.assignedToUser)}</td>
+                        <td data-label="picked">
+                          {(row.pickedQty || 0)} / {(row.totalQty || 0)}
+                        </td>
+                        <td data-label="close">
+                          {row?.closeMeta?.reason ? `Недостача: ${row.closeMeta.reason}` : "-"}
+                        </td>
+                      </tr>
+                    ))}
+                    {allJournal.length === 0 ? (
+                      <tr>
+                        <td colSpan={6} className="admin-muted">
+                          Записей пока нет.
+                        </td>
+                      </tr>
+                    ) : null}
+                  </tbody>
+                </table>
+              </div>
+            </>
+          )}
         </>
       )}
 
@@ -277,7 +407,7 @@ export default function AdminPickingShortagePanel() {
                 type="button"
                 className="admin-btn admin-btn--ghost"
                 onClick={() => setModalOrder(null)}
-                disabled={saving}
+                disabled={savingJournal}
               >
                 Отмена
               </button>
@@ -285,9 +415,9 @@ export default function AdminPickingShortagePanel() {
                 type="button"
                 className="admin-btn admin-btn--danger"
                 onClick={closeOrderByAdmin}
-                disabled={saving}
+                disabled={savingJournal}
               >
-                {saving ? "Закрытие..." : "Подтвердить закрытие"}
+                {savingJournal ? "Закрытие..." : "Подтвердить закрытие"}
               </button>
             </div>
           </div>
