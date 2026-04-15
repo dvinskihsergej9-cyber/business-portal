@@ -18,10 +18,15 @@ const EMPTY_FORM = {
   purchaseOrderEmailTemplate: DEFAULT_PURCHASE_ORDER_EMAIL_TEMPLATE,
 };
 
+const PICKING_MODE_SCAN_EACH = "SCAN_EACH";
+const PICKING_MODE_MANUAL_QTY = "MANUAL_QTY";
+
 export default function AdminOrgProfilePanel() {
   const [form, setForm] = useState(EMPTY_FORM);
+  const [pickingMode, setPickingMode] = useState(PICKING_MODE_SCAN_EACH);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
+  const [savingPickingMode, setSavingPickingMode] = useState(false);
   const [error, setError] = useState("");
   const [success, setSuccess] = useState("");
 
@@ -35,23 +40,21 @@ export default function AdminOrgProfilePanel() {
 
   useEffect(() => {
     let active = true;
+
     const loadProfile = async () => {
       try {
         setLoading(true);
         setError("");
-        const res = await fetch(`${API_BASE}/settings/org-profile`, {
+
+        const profileRes = await fetch(`${API_BASE}/settings/org-profile`, {
           headers: authHeaders,
         });
-        let data = null;
-        try {
-          data = await res.json();
-        } catch {
-          data = null;
+        const profileData = await profileRes.json().catch(() => null);
+        if (!profileRes.ok) {
+          throw new Error(profileData?.message || "ORG_PROFILE_GET_ERROR");
         }
-        if (!res.ok) {
-          throw new Error(data?.message || "ORG_PROFILE_GET_ERROR");
-        }
-        const profile = data?.profile || null;
+
+        const profile = profileData?.profile || null;
         if (!active) return;
         setForm({
           orgName: profile?.orgName || "",
@@ -64,6 +67,22 @@ export default function AdminOrgProfilePanel() {
             profile?.purchaseOrderEmailTemplate ||
             DEFAULT_PURCHASE_ORDER_EMAIL_TEMPLATE,
         });
+
+        try {
+          const modeRes = await fetch(`${API_BASE}/settings/picking-mode`, {
+            headers: authHeaders,
+          });
+          const modeData = await modeRes.json().catch(() => null);
+          if (!active || !modeRes.ok) return;
+          const mode = String(modeData?.mode || "").trim().toUpperCase();
+          setPickingMode(
+            mode === PICKING_MODE_MANUAL_QTY
+              ? PICKING_MODE_MANUAL_QTY
+              : PICKING_MODE_SCAN_EACH
+          );
+        } catch {
+          // Fallback: default picking mode remains SCAN_EACH.
+        }
       } catch (err) {
         if (!active) return;
         setError(
@@ -93,9 +112,7 @@ export default function AdminOrgProfilePanel() {
       inn: String(form.inn || "").trim(),
       kpp: String(form.kpp || "").trim(),
       phone: String(form.phone || "").trim(),
-      purchaseOrderEmailTemplate: String(
-        form.purchaseOrderEmailTemplate || ""
-      ),
+      purchaseOrderEmailTemplate: String(form.purchaseOrderEmailTemplate || ""),
     };
 
     if (
@@ -121,7 +138,7 @@ export default function AdminOrgProfilePanel() {
         headers: authHeaders,
         body: JSON.stringify(payload),
       });
-      const data = await res.json();
+      const data = await res.json().catch(() => null);
       if (!res.ok) {
         throw new Error(data?.message || "ORG_PROFILE_SAVE_ERROR");
       }
@@ -144,6 +161,36 @@ export default function AdminOrgProfilePanel() {
       );
     } finally {
       setSaving(false);
+    }
+  };
+
+  const handleSavePickingMode = async () => {
+    try {
+      setSavingPickingMode(true);
+      setError("");
+      setSuccess("");
+
+      const res = await fetch(`${API_BASE}/settings/picking-mode`, {
+        method: "PUT",
+        headers: authHeaders,
+        body: JSON.stringify({ mode: pickingMode }),
+      });
+      const data = await res.json().catch(() => null);
+      if (!res.ok) {
+        throw new Error(data?.message || "PICKING_MODE_SAVE_ERROR");
+      }
+
+      const mode = String(data?.mode || "").trim().toUpperCase();
+      setPickingMode(
+        mode === PICKING_MODE_MANUAL_QTY
+          ? PICKING_MODE_MANUAL_QTY
+          : PICKING_MODE_SCAN_EACH
+      );
+      setSuccess("Режим отбора сохранен.");
+    } catch (err) {
+      setError(normalizeErrorMessage(err, "Не удалось сохранить режим отбора."));
+    } finally {
+      setSavingPickingMode(false);
     }
   };
 
@@ -218,7 +265,9 @@ export default function AdminOrgProfilePanel() {
           </div>
 
           <div>
-            <label className="admin-label">Шаблон письма поставщику (необязательно)</label>
+            <label className="admin-label">
+              Шаблон письма поставщику (необязательно)
+            </label>
             <textarea
               className="admin-input"
               value={form.purchaseOrderEmailTemplate}
@@ -234,7 +283,8 @@ export default function AdminOrgProfilePanel() {
               style={{ resize: "vertical", minHeight: 180 }}
             />
             <div className="admin-muted" style={{ marginTop: 6 }}>
-              Переменные: {"{{поставщик}}"}, {"{{номерЗаказа}}"}, {"{{датаЗаказа}}"}, {"{{позиции}}"}, {"{{итого}}"}.
+              Переменные: {"{{поставщик}}"}, {"{{номерЗаказа}}"}, {"{{датаЗаказа}}"},{" "}
+              {"{{позиции}}"}, {"{{итого}}"}.
             </div>
           </div>
 
@@ -249,6 +299,42 @@ export default function AdminOrgProfilePanel() {
             </button>
           </div>
 
+          <div
+            className="admin-form__row"
+            style={{ marginTop: 12, paddingTop: 12, borderTop: "1px solid #e5e7eb" }}
+          >
+            <div>
+              <label className="admin-label">Режим отбора заказов (ТСД)</label>
+              <select
+                className="admin-input"
+                value={pickingMode}
+                onChange={(event) => setPickingMode(event.target.value)}
+                disabled={savingPickingMode}
+              >
+                <option value={PICKING_MODE_SCAN_EACH}>
+                  Сканировать каждую штуку
+                </option>
+                <option value={PICKING_MODE_MANUAL_QTY}>
+                  Вводить количество вручную
+                </option>
+              </select>
+              <div className="admin-muted" style={{ marginTop: 6 }}>
+                Влияет на экран отбора: либо поштучное сканирование, либо одно
+                подтверждение количеством.
+              </div>
+            </div>
+            <div className="admin-panel__toolbar" style={{ alignSelf: "end" }}>
+              <button
+                type="button"
+                className="admin-btn admin-btn--secondary"
+                onClick={handleSavePickingMode}
+                disabled={savingPickingMode}
+              >
+                {savingPickingMode ? "Сохранение..." : "Сохранить режим"}
+              </button>
+            </div>
+          </div>
+
           {error ? <div className="admin-alert admin-alert--error">{error}</div> : null}
           {success ? <div className="admin-muted">{success}</div> : null}
         </div>
@@ -256,4 +342,3 @@ export default function AdminOrgProfilePanel() {
     </div>
   );
 }
-

@@ -207,6 +207,66 @@ function requireAnyPermission(permissionKeys = []) {
   };
 }
 
+const PICKING_MODE_SCAN_EACH = "SCAN_EACH";
+const PICKING_MODE_MANUAL_QTY = "MANUAL_QTY";
+const PICKING_MODE_VALUES = new Set([
+  PICKING_MODE_SCAN_EACH,
+  PICKING_MODE_MANUAL_QTY,
+]);
+
+function normalizePickingMode(value) {
+  const mode = String(value || "").trim().toUpperCase();
+  return PICKING_MODE_VALUES.has(mode) ? mode : PICKING_MODE_SCAN_EACH;
+}
+
+let orgRuntimeSettingsReadyPromise = null;
+async function ensureOrgRuntimeSettingsTable() {
+  if (!orgRuntimeSettingsReadyPromise) {
+    orgRuntimeSettingsReadyPromise = prisma.$executeRawUnsafe(`
+      CREATE TABLE IF NOT EXISTS "OrgRuntimeSetting" (
+        "orgId" INTEGER PRIMARY KEY,
+        "pickingMode" TEXT NOT NULL DEFAULT 'SCAN_EACH',
+        "updatedAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP
+      );
+    `);
+  }
+  return orgRuntimeSettingsReadyPromise;
+}
+
+async function getOrgPickingMode(orgIdInput) {
+  const orgId = Number(orgIdInput);
+  if (!orgId || Number.isNaN(orgId)) return PICKING_MODE_SCAN_EACH;
+  await ensureOrgRuntimeSettingsTable();
+  const rows = await prisma.$queryRawUnsafe(
+    `SELECT "pickingMode" FROM "OrgRuntimeSetting" WHERE "orgId" = $1 LIMIT 1`,
+    orgId
+  );
+  const mode = Array.isArray(rows) && rows[0] ? rows[0].pickingMode : null;
+  return normalizePickingMode(mode);
+}
+
+async function setOrgPickingMode(orgIdInput, modeInput) {
+  const orgId = Number(orgIdInput);
+  if (!orgId || Number.isNaN(orgId)) {
+    const err = new Error("ORG_REQUIRED");
+    err.code = "ORG_REQUIRED";
+    throw err;
+  }
+  const mode = normalizePickingMode(modeInput);
+  await ensureOrgRuntimeSettingsTable();
+  await prisma.$executeRawUnsafe(
+    `
+      INSERT INTO "OrgRuntimeSetting" ("orgId", "pickingMode", "updatedAt")
+      VALUES ($1, $2, NOW())
+      ON CONFLICT ("orgId")
+      DO UPDATE SET "pickingMode" = EXCLUDED."pickingMode", "updatedAt" = NOW()
+    `,
+    orgId,
+    mode
+  );
+  return mode;
+}
+
 
 
 const INVITE_TTL_MS = 24 * 60 * 60 * 1000;
@@ -10315,6 +10375,55 @@ app.put("/api/settings/org-profile", auth, async (req, res) => {
   } catch (err) {
     console.error("org profile put error:", err);
     res.status(500).json({ message: "ORG_PROFILE_SAVE_ERROR" });
+  }
+});
+
+app.get("/api/settings/picking-mode", auth, async (req, res) => {
+  try {
+    const targetOrgId = req.user.isSystemOwner
+      ? Number(req.query.orgId || req.user.orgId || 0)
+      : Number(req.user.orgId || 0);
+    if (!targetOrgId || Number.isNaN(targetOrgId)) {
+      return res.status(400).json({ message: "ORG_REQUIRED" });
+    }
+    const mode = await getOrgPickingMode(targetOrgId);
+    return res.json({
+      mode,
+      options: [PICKING_MODE_SCAN_EACH, PICKING_MODE_MANUAL_QTY],
+    });
+  } catch (err) {
+    console.error("picking mode get error:", err);
+    return res.status(500).json({ message: "PICKING_MODE_GET_ERROR" });
+  }
+});
+
+app.put("/api/settings/picking-mode", auth, async (req, res) => {
+  try {
+    if (req.user?.role !== "ADMIN") {
+      return res.status(403).json({ message: "NO_ACCESS" });
+    }
+    if (!hasPermission(req.user, PERMISSION_KEYS.ADMIN_WAREHOUSE)) {
+      return res.status(403).json({ message: "NO_ACCESS" });
+    }
+
+    const targetOrgId = req.user.isSystemOwner
+      ? Number(req.body?.orgId || req.user.orgId || 0)
+      : Number(req.user.orgId || 0);
+    if (!targetOrgId || Number.isNaN(targetOrgId)) {
+      return res.status(400).json({ message: "ORG_REQUIRED" });
+    }
+
+    const rawMode = String(req.body?.mode || "").trim().toUpperCase();
+    if (!PICKING_MODE_VALUES.has(rawMode)) {
+      return res.status(400).json({ message: "BAD_PICKING_MODE" });
+    }
+    const mode = normalizePickingMode(rawMode);
+
+    const savedMode = await setOrgPickingMode(targetOrgId, mode);
+    return res.json({ mode: savedMode });
+  } catch (err) {
+    console.error("picking mode put error:", err);
+    return res.status(500).json({ message: "PICKING_MODE_SAVE_ERROR" });
   }
 });
 

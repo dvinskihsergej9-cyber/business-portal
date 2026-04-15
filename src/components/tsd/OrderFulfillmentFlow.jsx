@@ -68,6 +68,8 @@ const SKIP_REASON_OPTIONS = [
   "Нужна проверка администратора",
   "Другое",
 ];
+const PICKING_MODE_SCAN_EACH = "SCAN_EACH";
+const PICKING_MODE_MANUAL_QTY = "MANUAL_QTY";
 
 const makeStepKey = (step) =>
   [
@@ -157,6 +159,8 @@ export default function OrderFulfillmentFlow({
   const [currentIndex, setCurrentIndex] = useState(0);
   const [locationScanned, setLocationScanned] = useState(false);
   const [scannedQty, setScannedQty] = useState(0);
+  const [manualPickQty, setManualPickQty] = useState("");
+  const [pickingMode, setPickingMode] = useState(PICKING_MODE_SCAN_EACH);
   const [skipModalOpen, setSkipModalOpen] = useState(false);
   const [skipReason, setSkipReason] = useState(SKIP_REASON_OPTIONS[0]);
   const [skipComment, setSkipComment] = useState("");
@@ -224,6 +228,25 @@ export default function OrderFulfillmentFlow({
     !isClosed &&
     activePickPlan.length === 0 &&
     skippedSteps.length === 0;
+  const isManualPickingMode = pickingMode === PICKING_MODE_MANUAL_QTY;
+
+  const loadPickingMode = async () => {
+    try {
+      const res = await fetch(`${API_BASE}/settings/picking-mode`, {
+        headers: authHeaders,
+      });
+      const data = await readJsonSafe(res);
+      if (!res.ok) return;
+      const mode = String(data?.mode || "").trim().toUpperCase();
+      setPickingMode(
+        mode === PICKING_MODE_MANUAL_QTY
+          ? PICKING_MODE_MANUAL_QTY
+          : PICKING_MODE_SCAN_EACH
+      );
+    } catch {
+      setPickingMode(PICKING_MODE_SCAN_EACH);
+    }
+  };
 
   const loadQueue = async () => {
     setLoading(true);
@@ -271,6 +294,7 @@ export default function OrderFulfillmentFlow({
     setCurrentIndex(0);
     setLocationScanned(false);
     setScannedQty(0);
+    setManualPickQty("");
     try {
       const res = await fetch(`${API_BASE}/orders/${orderId}/pick-plan`, {
         headers: authHeaders,
@@ -306,6 +330,7 @@ export default function OrderFulfillmentFlow({
       setCurrentIndex(0);
       setLocationScanned(false);
       setScannedQty(0);
+      setManualPickQty("");
       try {
         await loadPickSkips(orderId, flat);
       } catch (skipErr) {
@@ -350,6 +375,11 @@ export default function OrderFulfillmentFlow({
   }, [mineOnly]);
 
   useEffect(() => {
+    loadPickingMode();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  useEffect(() => {
     if (!selectedOrder?.id) {
       setStatusHistory([]);
       return;
@@ -363,14 +393,32 @@ export default function OrderFulfillmentFlow({
       if (currentIndex !== 0) setCurrentIndex(0);
       setLocationScanned(false);
       setScannedQty(0);
+      setManualPickQty("");
       return;
     }
     if (currentIndex > activePickPlan.length - 1) {
       setCurrentIndex(activePickPlan.length - 1);
       setLocationScanned(false);
       setScannedQty(0);
+      setManualPickQty("");
     }
   }, [activePickPlan.length, currentIndex]);
+
+  useEffect(() => {
+    if (!locationScanned || !isManualPickingMode) return;
+    const planned = Number(currentStep?.qty || 0);
+    if (planned <= 0) {
+      setManualPickQty("");
+      return;
+    }
+    setManualPickQty((prev) => {
+      const normalizedPrev = String(prev || "").trim();
+      if (!normalizedPrev) return String(planned);
+      const parsed = Number(normalizedPrev);
+      if (!Number.isFinite(parsed) || parsed <= 0) return String(planned);
+      return String(Math.min(Math.floor(parsed), planned));
+    });
+  }, [locationScanned, isManualPickingMode, currentStep?.lineId, currentStep?.locationId, currentStep?.itemId, currentStep?.qty]);
 
   const takeOrder = async (orderId) => {
     setLoading(true);
@@ -419,6 +467,7 @@ export default function OrderFulfillmentFlow({
     setCurrentIndex(0);
     setLocationScanned(false);
     setScannedQty(0);
+    setManualPickQty("");
     setSkipModalOpen(false);
     setSkipReason(SKIP_REASON_OPTIONS[0]);
     setSkipComment("");
@@ -490,6 +539,10 @@ export default function OrderFulfillmentFlow({
       (locPayloadId && locPayloadId === idValue)
     ) {
       setLocationScanned(true);
+      if (isManualPickingMode) {
+        const planned = Number(currentStep.qty || 0);
+        setManualPickQty(planned > 0 ? String(planned) : "");
+      }
       setError("");
       return;
     }
@@ -506,11 +559,45 @@ export default function OrderFulfillmentFlow({
         (resolvedName && resolvedName === name))
     ) {
       setLocationScanned(true);
+      if (isManualPickingMode) {
+        const planned = Number(currentStep.qty || 0);
+        setManualPickQty(planned > 0 ? String(planned) : "");
+      }
       setError("");
       return;
     }
 
     setError("Скан не совпадает с ячейкой текущего шага.");
+  };
+
+  const handleManualPickConfirm = async () => {
+    if (!currentStep) return;
+    const plannedQty = Number(currentStep.qty || 0);
+    if (!Number.isFinite(plannedQty) || plannedQty <= 0) {
+      setError("Для шага отбора не задано количество.");
+      return;
+    }
+
+    const qtyRaw = String(manualPickQty || "").trim();
+    const qty = Number(qtyRaw);
+    if (!Number.isFinite(qty) || !Number.isInteger(qty) || qty <= 0) {
+      setError("Введите целое количество больше 0.");
+      return;
+    }
+    if (qty > plannedQty) {
+      setError(`Нельзя подтвердить больше, чем в шаге: ${plannedQty} шт.`);
+      return;
+    }
+
+    await confirmPick({
+      lineId: currentStep.lineId,
+      locationId: currentStep.locationId,
+      qty,
+    });
+    setLocationScanned(false);
+    setScannedQty(0);
+    setManualPickQty("");
+    setCurrentIndex(0);
   };
 
   const handleItemScan = async (value) => {
@@ -1126,6 +1213,9 @@ export default function OrderFulfillmentFlow({
                   <div className="tsd-card__meta">Товар: {currentStep.itemName}</div>
                   <div className="tsd-card__meta">Артикул: {currentStep.sku || "-"}</div>
                   <div className="tsd-card__meta">К отбору: {currentStep.qty}</div>
+                  <div className="tsd-card__meta">
+                    Режим: {isManualPickingMode ? "ручной ввод количества" : "поштучное сканирование"}
+                  </div>
                   <div className="tsd-card__meta">Сканировано: {scannedQty}</div>
                 </div>
                 <div className="tsd-action-inline">
@@ -1211,13 +1301,51 @@ export default function OrderFulfillmentFlow({
               />
             )}
 
-            {currentStep && locationScanned && (
+            {currentStep && locationScanned && !isManualPickingMode && (
               <Scanner
                 label="Сканируй товар"
                 hint={`Нужно: ${currentStep.qty} шт. Сканировано: ${scannedQty}`}
                 onScan={handleItemScan}
                 disabled={loading}
               />
+            )}
+
+            {currentStep && locationScanned && isManualPickingMode && (
+              <div className="tsd-card">
+                <div className="tsd-card__body">
+                  <div className="tsd-card__title">Подтверждение количества</div>
+                  <div className="tsd-card__meta">
+                    Введите, сколько фактически берете из ячейки.
+                  </div>
+                </div>
+                <form
+                  className="tsd-manual"
+                  onSubmit={(event) => {
+                    event.preventDefault();
+                    handleManualPickConfirm();
+                  }}
+                >
+                  <input
+                    type="number"
+                    min="1"
+                    max={String(Number(currentStep.qty || 0) || 1)}
+                    step="1"
+                    inputMode="numeric"
+                    className="tsd-input"
+                    value={manualPickQty}
+                    onChange={(event) => setManualPickQty(event.target.value)}
+                    placeholder={`Количество (макс. ${currentStep.qty})`}
+                    disabled={loading}
+                  />
+                  <button
+                    type="submit"
+                    className="tsd-btn tsd-btn--primary"
+                    disabled={loading}
+                  >
+                    Подтвердить
+                  </button>
+                </form>
+              </div>
             )}
 
             {canPrintPassport && (
