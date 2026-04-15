@@ -34,6 +34,53 @@ const actorLabel = (actor) => {
   return actor.name || actor.email || `#${actor.id}`;
 };
 
+const META_KEY_LABELS = {
+  method: "Способ",
+  carrier: "Перевозчик",
+  trackingnumber: "Трек-номер",
+  tracking: "Трек-номер",
+  note: "Комментарий",
+  notes: "Комментарий",
+  comment: "Комментарий",
+};
+
+const META_VALUE_LABELS = {
+  CONFIRM: "Подтверждение",
+  MANUAL: "Вручную",
+  AUTO: "Автоматически",
+  TRUE: "Да",
+  FALSE: "Нет",
+};
+
+const formatMetaKey = (key) => {
+  const normalized = String(key || "").trim().toLowerCase();
+  if (!normalized) return "Деталь";
+  return META_KEY_LABELS[normalized] || String(key);
+};
+
+const formatMetaValue = (value) => {
+  if (value == null) return "";
+  if (typeof value === "boolean") return value ? "Да" : "Нет";
+  if (typeof value === "number") return String(value);
+  if (Array.isArray(value)) {
+    return value
+      .map((entry) => formatMetaValue(entry))
+      .filter(Boolean)
+      .join(", ");
+  }
+  if (typeof value === "object") {
+    return Object.entries(value)
+      .map(([k, v]) => `${formatMetaKey(k)}: ${formatMetaValue(v)}`)
+      .filter((entry) => !entry.endsWith(": "))
+      .join("; ");
+  }
+
+  const text = String(value).trim();
+  if (!text) return "";
+  const translated = META_VALUE_LABELS[text.toUpperCase()];
+  return translated || text;
+};
+
 const compactMeta = (meta) => {
   if (!meta || typeof meta !== "object") return "-";
   const entries = Object.entries(meta).filter(([, value]) => {
@@ -42,7 +89,8 @@ const compactMeta = (meta) => {
   });
   if (!entries.length) return "-";
   return entries
-    .map(([key, value]) => `${key}: ${value}`)
+    .map(([key, value]) => `${formatMetaKey(key)}: ${formatMetaValue(value)}`)
+    .filter((entry) => !entry.endsWith(": "))
     .join(" | ");
 };
 
@@ -220,7 +268,7 @@ export default function AdminOrderStatusHistoryPanel() {
               <th>Переход</th>
               <th>Событие</th>
               <th>Кто</th>
-              <th>Meta</th>
+                  <th>Детали</th>
             </tr>
           </thead>
           <tbody>
