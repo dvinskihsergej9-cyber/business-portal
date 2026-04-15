@@ -14393,9 +14393,24 @@ app.get("/api/warehouse/transactions", auth, async (req, res) => {
       comment: d.closeNote || null,
     }));
 
+    const compareByDateDesc = (a, b) => {
+      const at = a?.createdAt ? new Date(a.createdAt).getTime() : 0;
+      const bt = b?.createdAt ? new Date(b.createdAt).getTime() : 0;
+      if (at !== bt) return bt - at;
+      return String(b?.id || "").localeCompare(String(a?.id || ""));
+    };
+
+    const compareByDateAsc = (a, b) => {
+      const at = a?.createdAt ? new Date(a.createdAt).getTime() : 0;
+      const bt = b?.createdAt ? new Date(b.createdAt).getTime() : 0;
+      if (at !== bt) return at - bt;
+      return String(a?.id || "").localeCompare(String(b?.id || ""));
+    };
+
     let combined = [...movementItems, ...auditItems, ...discrepancyItems]
-      .sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt))
-      .slice(0, limit);
+      .sort(compareByDateDesc)
+      .slice(0, limit)
+      .sort(compareByDateAsc);
 
     if (q) {
       const qLower = q.toLowerCase();
@@ -19744,7 +19759,7 @@ app.get("/api/orders/status-history", auth, async (req, res) => {
       prisma.orderStatusHistory.count({ where }),
       prisma.orderStatusHistory.findMany({
         where,
-        orderBy: [{ createdAt: "desc" }, { id: "desc" }],
+        orderBy: [{ createdAt: "asc" }, { id: "asc" }],
         skip,
         take: limit,
         include: {
@@ -20006,7 +20021,7 @@ app.get("/api/orders/admin-shortage-journal", auth, async (req, res) => {
       where: {
         status: "CANCELLED",
       },
-      orderBy: [{ completedAt: "desc" }, { updatedAt: "desc" }, { id: "desc" }],
+      orderBy: [{ completedAt: "asc" }, { updatedAt: "asc" }, { id: "asc" }],
       include: {
         assignedToUser: { select: { id: true, name: true, email: true } },
         lines: {
@@ -20092,7 +20107,7 @@ app.get("/api/orders/admin-picking-journal", auth, async (req, res) => {
       where: {
         status: { in: statusFilter },
       },
-      orderBy: [{ updatedAt: "desc" }, { id: "desc" }],
+      orderBy: [{ updatedAt: "asc" }, { id: "asc" }],
       include: {
         assignedToUser: { select: { id: true, name: true, email: true } },
         lines: {

@@ -416,6 +416,12 @@
   border: 1px solid rgba(248, 113, 113, 0.4);
 }
 
+.admin-alert--warning {
+  background: rgba(251, 191, 36, 0.14);
+  color: #92400e;
+  border: 1px solid rgba(245, 158, 11, 0.45);
+}
+
 .admin-muted {
   margin-top: 12px;
   color: #64748b;
@@ -756,6 +762,11 @@
 .admin-alert--error {
   background: #ffe6e6;
   color: #b00020;
+}
+
+.admin-alert--warning {
+  background: #fff7e6;
+  color: #975a16;
 }
 
 .admin-alert--success {

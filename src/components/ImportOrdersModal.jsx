@@ -287,8 +287,14 @@ export default function ImportOrdersModal({ onClose, onImportSuccess }) {
             </div>
 
             {errors.length > 0 && (
-              <div className="admin-alert admin-alert--error" style={{ marginTop: 12 }}>
-                Ошибки: {errors.length}
+              <div
+                className={
+                  "admin-alert " +
+                  (orders.length > 0 ? "admin-alert--warning" : "admin-alert--error")
+                }
+                style={{ marginTop: 12 }}
+              >
+                Ошибки строк: {errors.length}
               </div>
             )}
 
@@ -324,8 +330,16 @@ export default function ImportOrdersModal({ onClose, onImportSuccess }) {
             <div>Создано: {result.created}</div>
             <div>Обновлено: {result.updated}</div>
             {result.errors && result.errors.length > 0 && (
-              <div className="admin-alert admin-alert--error" style={{ marginTop: 12 }}>
-                Ошибки: {result.errors.length}
+              <div
+                className={
+                  "admin-alert " +
+                  ((Number(result.created) || 0) + (Number(result.updated) || 0) > 0
+                    ? "admin-alert--warning"
+                    : "admin-alert--error")
+                }
+                style={{ marginTop: 12 }}
+              >
+                Необработанных строк: {result.errors.length}
               </div>
             )}
           </div>
