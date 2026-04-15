@@ -2995,15 +2995,8 @@ const START_PLAN_ALLOWED_PERMISSIONS = Object.freeze([
   PERMISSION_KEYS.TSD_PALLETS,
 ]);
 
-const BASIC_PLAN_ALLOWED_PERMISSIONS = Object.freeze([
-  ...START_PLAN_ALLOWED_PERMISSIONS,
-  PERMISSION_KEYS.WAREHOUSE_SUPPLIERS,
-  PERMISSION_KEYS.WAREHOUSE_QUEUE,
-]);
-
 const PLAN_PERMISSION_CAPS = Object.freeze({
   "start-30": START_PLAN_ALLOWED_PERMISSIONS,
-  "basic-30": BASIC_PLAN_ALLOWED_PERMISSIONS,
 });
 
 const PLAN_PERMISSION_CAP_SETS = Object.freeze(
@@ -3068,9 +3061,9 @@ function filterPermissionCatalogByPlan(catalog, planId = null) {
 const PLAN_ACTIVE_USER_LIMITS = Object.freeze({
   "start-30": 2,
   "basic-30": 5,
-  "pro-30": 20,
+  "pro-30": 30,
 });
-const DEFAULT_ACTIVE_USER_LIMIT = 20;
+const DEFAULT_ACTIVE_USER_LIMIT = 30;
 
 function getPlanActiveUserLimit(planId) {
   const normalizedPlanId = String(planId || "").trim().toLowerCase();
