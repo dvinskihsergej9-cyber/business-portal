@@ -3591,7 +3591,16 @@ app.use("/api/warehouse", (req, res, next) => {
   });
 });
 
-app.use("/api/admin", adminRoutes({ prisma, auth, requireAdmin }));
+app.use(
+  "/api/admin",
+  adminRoutes({
+    prisma,
+    auth,
+    requireAdmin,
+    enforceOperationalTenantScope,
+    getOrgPlanAndUserLimit,
+  })
+);
 
 function calcAccruedLeaveDays(hiredAt) {
   if (!hiredAt) return 0;
@@ -3945,7 +3954,9 @@ async function normalizeSafetyAssignments() {
 }
 
 // ---------- ОХРАНА ТРУДА (инструкции) ----------
-app.get("/api/safety/instructions", auth, requireHr, async (req, res) => {
+app.use("/api/safety", auth, enforceOperationalTenantScope, requireHr);
+
+app.get("/api/safety/instructions", async (req, res) => {
   try {
     await ensureSafetyInstructions();
     const instructions = await prisma.safetyInstruction.findMany({
@@ -3966,7 +3977,7 @@ app.get("/api/safety/instructions", auth, requireHr, async (req, res) => {
   }
 });
 
-app.get("/api/safety/assignments", auth, requireHr, async (req, res) => {
+app.get("/api/safety/assignments", async (req, res) => {
   try {
     await normalizeSafetyAssignments();
     const items = await prisma.safetyAssignment.findMany({
@@ -3986,7 +3997,7 @@ app.get("/api/safety/assignments", auth, requireHr, async (req, res) => {
   }
 });
 
-app.get("/api/safety/resources", auth, requireHr, async (req, res) => {
+app.get("/api/safety/resources", async (req, res) => {
   try {
     res.json(SAFETY_RESOURCES);
   } catch (err) {
@@ -3997,8 +4008,6 @@ app.get("/api/safety/resources", auth, requireHr, async (req, res) => {
 
 app.put(
   "/api/safety/assignments/:id/complete",
-  auth,
-  requireHr,
   async (req, res) => {
     try {
       const id = Number(req.params.id);
@@ -4046,7 +4055,7 @@ app.put(
 );
 
 
-app.post("/api/safety/assignments/:id/remind", auth, requireHr, async (req, res) => {
+app.post("/api/safety/assignments/:id/remind", async (req, res) => {
   try {
     const id = Number(req.params.id);
     if (!id || Number.isNaN(id)) {
@@ -22055,8 +22064,17 @@ async function startBackgroundTasks() {
   }, 60 * 1000);
 }
 
-app.post("/api/warehouse/stock/adjustment", requireAdmin, async (req, res) => {
+app.post(
+  "/api/warehouse/stock/adjustment",
+  auth,
+  enforceOperationalTenantScope,
+  requireAdmin,
+  async (req, res) => {
   try {
+    if (!hasPermission(req.user, PERMISSION_KEYS.ADMIN_WAREHOUSE)) {
+      return res.status(403).json({ message: "Нет доступа к разделу." });
+    }
+
     const itemId = Number(req.body?.itemId);
     const delta = Math.trunc(Number(req.body?.delta));
     const reason = String(req.body?.reason || "").trim();

@@ -2,10 +2,20 @@ import express from "express";
 import bcrypt from "bcryptjs";
 import { hasPermission, PERMISSION_KEYS } from "./permissions.js";
 
-export function adminRoutes({ prisma, auth, requireAdmin }) {
+export function adminRoutes({
+  prisma,
+  auth,
+  requireAdmin,
+  enforceOperationalTenantScope = null,
+  getOrgPlanAndUserLimit = null,
+}) {
   const router = express.Router();
 
-  router.use(auth, requireAdmin);
+  if (typeof enforceOperationalTenantScope === "function") {
+    router.use(auth, enforceOperationalTenantScope, requireAdmin);
+  } else {
+    router.use(auth, requireAdmin);
+  }
   const MAX_ITEM_IMAGE_BYTES = 3 * 1024 * 1024;
 
   const normalizeItemImageDataUrl = (value) => {
@@ -44,6 +54,28 @@ export function adminRoutes({ prisma, auth, requireAdmin }) {
 
   router.post("/create-employee", requireUsersAdmin, async (req, res) => {
     try {
+      const targetOrgId = Number(req.user?.orgId || 0);
+      if (!targetOrgId) {
+        return res.status(400).json({ message: "ORG_REQUIRED" });
+      }
+
+      if (typeof getOrgPlanAndUserLimit === "function") {
+        const { currentPlanId, maxActiveUsers } = await getOrgPlanAndUserLimit(
+          targetOrgId,
+          req.user?.id || null
+        );
+        const activeUsersCount = await prisma.user.count({
+          where: { orgId: targetOrgId, isActive: true },
+        });
+        if (activeUsersCount >= maxActiveUsers) {
+          return res.status(409).json({
+            message: "PLAN_USER_LIMIT_REACHED",
+            limit: maxActiveUsers,
+            plan: currentPlanId,
+          });
+        }
+      }
+
       const email = String(req.body?.email || "employee@test.local").trim();
       const password = String(req.body?.password || "Test12345!").trim();
       if (!email || !password) {
@@ -61,6 +93,7 @@ export function adminRoutes({ prisma, auth, requireAdmin }) {
             passwordHash: hash,
             role: "EMPLOYEE",
             isActive: true,
+            orgId: targetOrgId,
           },
         });
       } else {
@@ -72,6 +105,7 @@ export function adminRoutes({ prisma, auth, requireAdmin }) {
             name: "Test Employee",
             role: "EMPLOYEE",
             isActive: true,
+            orgId: targetOrgId,
           },
         });
       }
