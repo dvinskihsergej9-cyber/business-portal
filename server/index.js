@@ -20652,6 +20652,75 @@ app.get("/api/orders/:id/pick-plan", auth, async (req, res) => {
   }
 });
 
+app.get("/api/orders/:id/current", auth, async (req, res) => {
+  try {
+    const id = Number(req.params.id);
+    if (!id || Number.isNaN(id)) {
+      return res.status(400).json({ message: "Некорректный ID заказа." });
+    }
+
+    const order = await prisma.$transaction(async (tx) => {
+      const current = await tx.salesOrder.findUnique({
+        where: { id },
+        include: {
+          assignedToUser: { select: { id: true, name: true, email: true } },
+          lines: { include: { item: true }, orderBy: { id: "asc" } },
+        },
+      });
+      if (!current) {
+        const err = new Error("ORDER_NOT_FOUND");
+        err.code = "ORDER_NOT_FOUND";
+        throw err;
+      }
+      if (
+        current.assignedToUserId &&
+        current.assignedToUserId !== req.user.id &&
+        !isWarehouseManager(req.user)
+      ) {
+        const err = new Error("NOT_ASSIGNED_TO_YOU");
+        err.code = "NOT_ASSIGNED_TO_YOU";
+        throw err;
+      }
+
+      const hasLines = Array.isArray(current.lines) && current.lines.length > 0;
+      const fullyPicked =
+        hasLines &&
+        current.lines.every(
+          (row) => Number(row.pickedQty) >= Number(row.qty)
+        );
+
+      if (current.status === "IN_PICKING" && fullyPicked) {
+        return tx.salesOrder.update({
+          where: { id },
+          data: {
+            status: "PICKED",
+            pickedAt: current.pickedAt || new Date(),
+          },
+          include: {
+            assignedToUser: { select: { id: true, name: true, email: true } },
+            lines: { include: { item: true }, orderBy: { id: "asc" } },
+          },
+        });
+      }
+
+      return current;
+    });
+
+    return res.json({ order });
+  } catch (err) {
+    if (err.code === "ORDER_NOT_FOUND") {
+      return res.status(404).json({ message: "Заказ не найден." });
+    }
+    if (err.code === "NOT_ASSIGNED_TO_YOU") {
+      return res
+        .status(403)
+        .json({ message: "Заказ закреплен за другим сотрудником." });
+    }
+    console.error("orders current error:", err);
+    return res.status(500).json({ message: "ORDER_CURRENT_ERROR" });
+  }
+});
+
 app.post("/api/orders/:id/pick-confirm", auth, async (req, res) => {
   try {
     const orderId = Number(req.params.id);

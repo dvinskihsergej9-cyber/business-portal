@@ -286,6 +286,18 @@ export default function OrderFulfillmentFlow({
     }
   };
 
+  const loadCurrentOrder = async (orderId) => {
+    if (!orderId) return null;
+    const res = await fetch(`${API_BASE}/orders/${orderId}/current`, {
+      headers: authHeaders,
+    });
+    const data = await readJsonSafe(res);
+    if (!res.ok) {
+      throw new Error(data?.message || "Не удалось обновить данные заказа.");
+    }
+    return data?.order || null;
+  };
+
   const loadPickPlan = async (orderId) => {
     setLoading(true);
     setError("");
@@ -495,7 +507,8 @@ export default function OrderFulfillmentFlow({
   };
 
   const confirmPick = async ({ lineId, locationId, qty }) => {
-    if (!selectedOrder) return;
+    const orderId = Number(selectedOrder?.id || 0);
+    if (!orderId) return;
     if (!qty || qty <= 0) {
       setError("Укажите количество больше 0");
       return;
@@ -503,15 +516,25 @@ export default function OrderFulfillmentFlow({
     setLoading(true);
     setError("");
     try {
-      const res = await fetch(`${API_BASE}/orders/${selectedOrder.id}/pick-confirm`, {
+      const res = await fetch(`${API_BASE}/orders/${orderId}/pick-confirm`, {
         method: "POST",
         headers: authHeaders,
         body: JSON.stringify({ lineId, locationId, qty }),
       });
       const data = await readJsonSafe(res);
       if (!res.ok) throw new Error(data?.message || "Ошибка подтверждения отбора");
-      setSelectedOrder(data.order);
-      await loadPickPlan(selectedOrder.id);
+      if (data?.order) {
+        setSelectedOrder(data.order);
+      }
+      await loadPickPlan(orderId);
+      try {
+        const freshOrder = await loadCurrentOrder(orderId);
+        if (freshOrder) {
+          setSelectedOrder(freshOrder);
+        }
+      } catch {
+        // Keep optimistic state from pick-confirm if refresh call failed.
+      }
       await loadQueue();
     } catch (err) {
       setError(normalizeErrorMessage(err, "Ошибка подтверждения отбора."));
