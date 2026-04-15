@@ -108,18 +108,26 @@ async function auth(req, res, next) {
     if (!user.orgId) {
       user.orgId = await ensureUserOrg(user.id, user.name || user.email);
     }
+    const isSystemOwner =
+      String(user.email || "").trim().toLowerCase() === OWNER_PRIMARY_EMAIL;
+    const subscription = isSystemOwner
+      ? null
+      : await getOrgSubscription(user.orgId || null, user.id);
+    const subscriptionPlan = subscription?.plan ? String(subscription.plan) : null;
+    const basePermissions = resolveUserPermissions({
+      role: user.role,
+      permissionsJson: user.permissionsJson,
+      isSystemOwner,
+    });
+
     req.user = {
       id: user.id,
       email: user.email,
       role: user.role,
       orgId: user.orgId || null,
-      isSystemOwner: String(user.email || "").trim().toLowerCase() === OWNER_PRIMARY_EMAIL,
-      permissions: resolveUserPermissions({
-        role: user.role,
-        permissionsJson: user.permissionsJson,
-        isSystemOwner:
-          String(user.email || "").trim().toLowerCase() === OWNER_PRIMARY_EMAIL,
-      }),
+      isSystemOwner,
+      subscriptionPlan,
+      permissions: applyPlanPermissionCap(basePermissions, subscriptionPlan),
     };
     const store = requestContext.getStore();
     if (store) {
@@ -2962,6 +2970,120 @@ const PLANS = {
   },
 };
 
+const START_PLAN_ALLOWED_PERMISSIONS = Object.freeze([
+  PERMISSION_KEYS.APP_WAREHOUSE,
+  PERMISSION_KEYS.APP_ADMIN,
+  PERMISSION_KEYS.ADMIN_USERS,
+  PERMISSION_KEYS.ADMIN_WAREHOUSE,
+  PERMISSION_KEYS.WAREHOUSE_REQUESTS,
+  PERMISSION_KEYS.WAREHOUSE_TASKS,
+  PERMISSION_KEYS.WAREHOUSE_INVENTORY,
+  PERMISSION_KEYS.WAREHOUSE_MOVEMENT,
+  PERMISSION_KEYS.WAREHOUSE_TRANSACTIONS,
+  PERMISSION_KEYS.WAREHOUSE_REVISION,
+  PERMISSION_KEYS.WAREHOUSE_LOCATIONS,
+  PERMISSION_KEYS.WAREHOUSE_TSD,
+  PERMISSION_KEYS.WAREHOUSE_ORDERS,
+  PERMISSION_KEYS.TSD_RECEIVING,
+  PERMISSION_KEYS.TSD_PUTAWAY,
+  PERMISSION_KEYS.TSD_MOVE,
+  PERMISSION_KEYS.TSD_COUNT,
+  PERMISSION_KEYS.TSD_BIN,
+  PERMISSION_KEYS.TSD_REPLENISH,
+  PERMISSION_KEYS.TSD_PICK,
+  PERMISSION_KEYS.TSD_SHIP,
+  PERMISSION_KEYS.TSD_PALLETS,
+]);
+
+const BASIC_PLAN_ALLOWED_PERMISSIONS = Object.freeze([
+  ...START_PLAN_ALLOWED_PERMISSIONS,
+  PERMISSION_KEYS.WAREHOUSE_SUPPLIERS,
+  PERMISSION_KEYS.WAREHOUSE_QUEUE,
+]);
+
+const PLAN_PERMISSION_CAPS = Object.freeze({
+  "start-30": START_PLAN_ALLOWED_PERMISSIONS,
+  "basic-30": BASIC_PLAN_ALLOWED_PERMISSIONS,
+});
+
+const PLAN_PERMISSION_CAP_SETS = Object.freeze(
+  Object.fromEntries(
+    Object.entries(PLAN_PERMISSION_CAPS).map(([planId, keys]) => [planId, new Set(keys)])
+  )
+);
+
+function getPlanPermissionCapSet(planId) {
+  const normalizedPlanId = String(planId || "").trim().toLowerCase();
+  return PLAN_PERMISSION_CAP_SETS[normalizedPlanId] || null;
+}
+
+function applyPlanPermissionCap(permissionKeys = [], planId = null) {
+  const normalized = Array.from(
+    new Set(
+      (Array.isArray(permissionKeys) ? permissionKeys : [])
+        .map((key) => String(key || "").trim())
+        .filter(Boolean)
+    )
+  );
+  const capSet = getPlanPermissionCapSet(planId);
+  if (!capSet) return normalized;
+  return normalized.filter((key) => capSet.has(key));
+}
+
+function filterPermissionCatalogByPlan(catalog, planId = null) {
+  const capSet = getPlanPermissionCapSet(planId);
+  if (!capSet || !catalog || typeof catalog !== "object") return catalog;
+
+  const filterKeys = (keys) =>
+    (Array.isArray(keys) ? keys : []).filter((key) => capSet.has(key));
+
+  const roleDefaults = Object.fromEntries(
+    Object.entries(catalog.roleDefaults || {}).map(([role, keys]) => [
+      role,
+      filterKeys(keys),
+    ])
+  );
+
+  const groups = (Array.isArray(catalog.groups) ? catalog.groups : []).map((group) => ({
+    ...group,
+    keys: filterKeys(group.keys),
+  }));
+
+  const templates = (Array.isArray(catalog.templates) ? catalog.templates : []).map(
+    (template) => ({
+      ...template,
+      permissions: filterKeys(template.permissions),
+    })
+  );
+
+  return {
+    ...catalog,
+    permissions: filterKeys(catalog.permissions),
+    roleDefaults,
+    groups,
+    templates,
+  };
+}
+
+const PLAN_ACTIVE_USER_LIMITS = Object.freeze({
+  "start-30": 2,
+  "basic-30": 5,
+  "pro-30": 20,
+});
+const DEFAULT_ACTIVE_USER_LIMIT = 20;
+
+function getPlanActiveUserLimit(planId) {
+  const normalizedPlanId = String(planId || "").trim().toLowerCase();
+  return Number(PLAN_ACTIVE_USER_LIMITS[normalizedPlanId] || DEFAULT_ACTIVE_USER_LIMIT);
+}
+
+async function getOrgPlanAndUserLimit(orgId, fallbackUserId = null) {
+  const orgSubscription = await getOrgSubscription(orgId, fallbackUserId);
+  const currentPlanId = String(orgSubscription?.plan || "start-30");
+  const maxActiveUsers = getPlanActiveUserLimit(currentPlanId);
+  return { currentPlanId, maxActiveUsers };
+}
+
 function getPlan(planId) {
   return PLANS[planId] || null;
 }
@@ -3232,15 +3354,18 @@ async function getUserPayload(userId) {
   if (!user) return null;
   const isSystemOwner = isOwnerEmail(user.email);
   const permissionConfig = normalizePermissionConfig(user.permissionsJson);
-  const permissions = resolveUserPermissions({
-    role: user.role,
-    permissionsJson: user.permissionsJson,
-    isSystemOwner,
-  });
-
   const subscription = isSystemOwner
     ? null
     : await getOrgSubscription(user.orgId || null, userId);
+  const subscriptionPlan = subscription?.plan ? String(subscription.plan) : null;
+  const permissions = applyPlanPermissionCap(
+    resolveUserPermissions({
+      role: user.role,
+      permissionsJson: user.permissionsJson,
+      isSystemOwner,
+    }),
+    subscriptionPlan
+  );
   const now = new Date();
   const isActive =
     isSystemOwner ||
@@ -10228,14 +10353,17 @@ app.post("/api/dev/make-me-admin", auth, async (req, res) => {
 
 // ================== АДМИНКА ПОЛЬЗОВАТЕЛЕЙ ==================
 
-function toManagedUserPayload(user) {
+function toManagedUserPayload(user, planId = null) {
   const isSystemOwner = isOwnerEmail(user.email);
   const config = normalizePermissionConfig(user.permissionsJson);
-  const permissions = resolveUserPermissions({
-    role: user.role,
-    permissionsJson: user.permissionsJson,
-    isSystemOwner,
-  });
+  const permissions = applyPlanPermissionCap(
+    resolveUserPermissions({
+      role: user.role,
+      permissionsJson: user.permissionsJson,
+      isSystemOwner,
+    }),
+    isSystemOwner ? null : planId
+  );
   return {
     id: user.id,
     email: user.email,
@@ -10290,7 +10418,9 @@ app.get("/api/users", auth, requireAdmin, async (req, res) => {
       },
     });
 
-    res.json(users.map((item) => toManagedUserPayload(item)));
+    res.json(
+      users.map((item) => toManagedUserPayload(item, req.user?.subscriptionPlan || null))
+    );
   } catch (err) {
     console.error("users list error:", err);
     res
@@ -10353,15 +10483,10 @@ app.post("/api/users", auth, requireAdmin, async (req, res) => {
       return res.status(404).json({ message: "ORG_NOT_FOUND" });
     }
 
-    
-    const orgSubscription = await getOrgSubscription(targetOrgId, req.user.id);
-    const currentPlanId = String(orgSubscription?.plan || "start-30");
-    const planUserLimits = {
-      "start-30": 2,
-      "basic-30": 5,
-      "pro-30": 20,
-    };
-    const maxActiveUsers = Number(planUserLimits[currentPlanId] || 20);
+    const { currentPlanId, maxActiveUsers } = await getOrgPlanAndUserLimit(
+      targetOrgId,
+      req.user.id
+    );
     const activeUsersCount = await prisma.user.count({
       where: {
         orgId: targetOrgId,
@@ -10437,7 +10562,7 @@ app.post("/api/users", auth, requireAdmin, async (req, res) => {
     res.status(201).json({
       ok: true,
       user: {
-        ...toManagedUserPayload(created),
+        ...toManagedUserPayload(created, req.user?.subscriptionPlan || null),
         initialPassword: normalizedPassword,
       },
     });
@@ -10452,7 +10577,17 @@ app.post("/api/users", auth, requireAdmin, async (req, res) => {
 
 app.get("/api/users/permissions/catalog", auth, requireAdmin, async (req, res) => {
   try {
-    res.json(getPermissionCatalog({ isSystemOwner: req.user?.isSystemOwner === true }));
+    const baseCatalog = getPermissionCatalog({
+      isSystemOwner: req.user?.isSystemOwner === true,
+    });
+    if (req.user?.isSystemOwner) {
+      return res.json(baseCatalog);
+    }
+
+    const scopedPlan = req.user?.subscriptionPlan
+      ? String(req.user.subscriptionPlan)
+      : null;
+    return res.json(filterPermissionCatalogByPlan(baseCatalog, scopedPlan));
   } catch (err) {
     console.error("permissions catalog error:", err);
     res.status(500).json({ message: "Ошибка загрузки каталога прав." });
@@ -10690,7 +10825,7 @@ app.put("/api/users/:id/role", auth, requireAdmin, async (req, res) => {
       return res.status(404).json({ message: "Пользователь не найден" });
     }
 
-    res.json({ user: toManagedUserPayload(fresh) });
+    res.json({ user: toManagedUserPayload(fresh, req.user?.subscriptionPlan || null) });
   } catch (err) {
     console.error("change role error:", err);
     res.status(500).json({ message: "Ошибка сервера при смене роли" });
@@ -10756,7 +10891,7 @@ app.put("/api/users/:id/permissions", auth, requireAdmin, async (req, res) => {
       return res.status(404).json({ message: "Пользователь не найден" });
     }
 
-    res.json({ user: toManagedUserPayload(fresh) });
+    res.json({ user: toManagedUserPayload(fresh, req.user?.subscriptionPlan || null) });
   } catch (err) {
     console.error("change permissions error:", err);
     res.status(500).json({ message: "Ошибка сервера при смене прав доступа" });
@@ -11555,6 +11690,24 @@ app.post("/api/admin/invites", auth, requireAdmin, async (req, res) => {
       return res.status(404).json({ message: "ORG_NOT_FOUND" });
     }
 
+    const { currentPlanId, maxActiveUsers } = await getOrgPlanAndUserLimit(
+      targetOrgId,
+      req.user.id
+    );
+    const activeUsersCount = await prisma.user.count({
+      where: {
+        orgId: targetOrgId,
+        isActive: true,
+      },
+    });
+    if (activeUsersCount >= maxActiveUsers) {
+      return res.status(409).json({
+        message: "PLAN_USER_LIMIT_REACHED",
+        limit: maxActiveUsers,
+        plan: currentPlanId,
+      });
+    }
+
     const existingUser = await prisma.user.findUnique({ where: { email: normalizedEmail } });
     if (existingUser) {
       return res.status(400).json({ message: "EMAIL_ALREADY_EXISTS" });
@@ -11777,6 +11930,28 @@ app.post("/api/auth/accept-invite", async (req, res) => {
     const existingUser = await prisma.user.findUnique({
       where: { email: invite.email },
     });
+    const targetOrgIdForActivation = Number(
+      inviteOrgId || existingUser?.orgId || 0
+    );
+    if (targetOrgIdForActivation) {
+      const { currentPlanId, maxActiveUsers } = await getOrgPlanAndUserLimit(
+        targetOrgIdForActivation,
+        invite.createdByUserId || null
+      );
+      const activeUsersCount = await prisma.user.count({
+        where: {
+          orgId: targetOrgIdForActivation,
+          isActive: true,
+        },
+      });
+      if (activeUsersCount >= maxActiveUsers) {
+        return res.status(409).json({
+          message: "PLAN_USER_LIMIT_REACHED",
+          limit: maxActiveUsers,
+          plan: currentPlanId,
+        });
+      }
+    }
 
     if (existingUser) {
       if (existingUser.isActive) {
