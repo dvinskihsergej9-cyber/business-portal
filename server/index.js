@@ -4587,10 +4587,14 @@ async function buildOrderPickPlan(orderId) {
       const placementBalances = await loadPickBalancesSafe("placements", () =>
         getPlacementLocationBalances(resolvedItemId)
       );
-      const balancesBase = mergeLocationBalances(
-        mergeLocationBalances(movementBalances, receivingBalances),
-        placementBalances
+      const primaryBalances = mergeLocationBalances(
+        movementBalances,
+        receivingBalances
       );
+      // NOTE: placements can be stale after manual/legacy operations.
+      // Use them only as a fallback when there are no primary balances.
+      const balancesBase =
+        primaryBalances.length > 0 ? primaryBalances : placementBalances;
       let balances = [];
       let holdsApplyFailed = false;
       try {
