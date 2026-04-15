@@ -69,6 +69,14 @@ function AppRoutesWithBackground() {
     );
   }, [user]);
 
+  const mainWarehouseSections = useMemo(
+    () =>
+      allowedWarehouseSections.filter(
+        (section) => section !== "requests"
+      ),
+    [allowedWarehouseSections]
+  );
+
   const defaultPrivateRoute = useMemo(() => {
     if (hasPermission(user, PERMISSION_KEYS.APP_WAREHOUSE)) return "/warehouse";
     if (hasPermission(user, PERMISSION_KEYS.APP_ADMIN)) return "/admin";
@@ -157,7 +165,7 @@ function AppRoutesWithBackground() {
               path="warehouse"
               element={
                 <ProtectedRoute permissionsAny={[PERMISSION_KEYS.APP_WAREHOUSE]}>
-                  <Warehouse allowedSections={allowedWarehouseSections} />
+                  <Warehouse allowedSections={mainWarehouseSections} />
                 </ProtectedRoute>
               }
             />

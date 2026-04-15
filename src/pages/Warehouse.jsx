@@ -303,7 +303,6 @@ export default function Warehouse({
 
 
   const defaultSections = [
-    "requests",
     "tasks",
     "inventory",
     "holds",
@@ -2660,7 +2659,6 @@ export default function Warehouse({
 
   const sectionCards = useMemo(
     () => [
-      { key: "requests", title: "Заявки на склад", subtitle: "Заявки сотрудников на выдачу и возврат со статусами и журналом." },
       { key: "tasks", title: "Задачи склада", subtitle: "Постановка задач сотрудникам, сроки и журнал выполнения." },
       { key: "inventory", title: "\u041e\u0441\u0442\u0430\u0442\u043a\u0438", subtitle: "\u0422\u0435\u043a\u0443\u0449\u0438\u0435 \u043e\u0441\u0442\u0430\u0442\u043a\u0438 \u043f\u043e \u0441\u043a\u043b\u0430\u0434\u0443." },
       { key: "holds", title: "Блокировка остатков", subtitle: "Фиксация и снятие блокировок по товарам и ячейкам." },
