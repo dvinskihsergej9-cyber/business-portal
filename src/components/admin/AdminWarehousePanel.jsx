@@ -5,20 +5,6 @@ import ImportItemsModal from "../ImportItemsModal";
 
 const API = API_BASE;
 
-const REQUEST_STATUS_OPTIONS = [
-  { value: "NEW", label: "Новая" },
-  { value: "IN_PROGRESS", label: "В работе" },
-  { value: "DONE", label: "Завершена" },
-  { value: "REJECTED", label: "Отклонена" },
-];
-
-function toDateInput(value) {
-  if (!value) return "";
-  const d = new Date(value);
-  if (Number.isNaN(d.getTime())) return "";
-  return d.toISOString().slice(0, 10);
-}
-
 const ITEM_IMAGE_MAX_BYTES = 3 * 1024 * 1024;
 const ITEM_IMAGE_MAX_SIDE = 1200;
 const CARD_REFRESH_BTN_STYLE = {
@@ -82,7 +68,6 @@ export default function AdminWarehousePanel() {
   const [activeTab, setActiveTab] = useState("items");
   const [items, setItems] = useState([]);
   const [locations, setLocations] = useState([]);
-  const [requests, setRequests] = useState([]);
   const [suppliers, setSuppliers] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
@@ -90,7 +75,6 @@ export default function AdminWarehousePanel() {
 
   const [editItem, setEditItem] = useState(null);
   const [editLocation, setEditLocation] = useState(null);
-  const [editRequest, setEditRequest] = useState(null);
   const [deleteItem, setDeleteItem] = useState(null);
   const [deleteLocation, setDeleteLocation] = useState(null);
 
@@ -137,13 +121,6 @@ export default function AdminWarehousePanel() {
     level: "",
   });
 
-  const [requestForm, setRequestForm] = useState({
-    status: "NEW",
-    statusComment: "",
-    comment: "",
-    desiredDate: "",
-  });
-
   const authHeaders = useMemo(() => {
     const token = localStorage.getItem("token");
     return {
@@ -156,17 +133,15 @@ export default function AdminWarehousePanel() {
     try {
       setLoading(true);
       setError("");
-      const [itemsRes, locationsRes, requestsRes] = await Promise.all([
+      const [itemsRes, locationsRes] = await Promise.all([
         fetch(`${API}/admin/warehouse/items`, { headers: authHeaders }),
         fetch(`${API}/admin/warehouse/locations`, { headers: authHeaders }),
-        fetch(`${API}/admin/warehouse/requests`, { headers: authHeaders }),
       ]);
       const suppliersRes = await fetch(`${API}/suppliers`, {
         headers: authHeaders,
       });
       const itemsData = await itemsRes.json();
       const locationsData = await locationsRes.json();
-      const requestsData = await requestsRes.json();
       const suppliersData = await suppliersRes.json();
       if (!itemsRes.ok) {
         throw new Error(
@@ -180,15 +155,8 @@ export default function AdminWarehousePanel() {
             "Ошибка загрузки ячеек"
         );
       }
-      if (!requestsRes.ok) {
-        throw new Error(
-          requestsData.message ||
-            "Ошибка загрузки заявок"
-        );
-      }
       setItems(itemsData);
       setLocations(locationsData);
-      setRequests(requestsData);
       if (suppliersRes.ok && Array.isArray(suppliersData)) {
         setSuppliers(suppliersData);
       }
@@ -235,16 +203,6 @@ export default function AdminWarehousePanel() {
       level: editLocation.level || "",
     });
   }, [editLocation]);
-
-  useEffect(() => {
-    if (!editRequest) return;
-    setRequestForm({
-      status: editRequest.status || "NEW",
-      statusComment: editRequest.statusComment || "",
-      comment: editRequest.comment || "",
-      desiredDate: toDateInput(editRequest.desiredDate),
-    });
-  }, [editRequest]);
 
   useEffect(() => {
     if (!error) return;
@@ -391,43 +349,6 @@ export default function AdminWarehousePanel() {
     }
   };
 
-  const handleSaveRequest = async () => {
-    if (!editRequest) return;
-    try {
-      setSaving(true);
-      setError("");
-      const payload = {
-        status: requestForm.status,
-        statusComment: requestForm.statusComment,
-        comment: requestForm.comment,
-        desiredDate: requestForm.desiredDate
-          ? new Date(requestForm.desiredDate).toISOString()
-          : null,
-      };
-      const res = await fetch(
-        `${API}/admin/warehouse/requests/${editRequest.id}`,
-        {
-          method: "PUT",
-          headers: authHeaders,
-          body: JSON.stringify(payload),
-        }
-      );
-      const data = await res.json();
-      if (!res.ok) {
-        throw new Error(
-          data.message ||
-            "Ошибка обновления заявки"
-        );
-      }
-      setEditRequest(null);
-      await loadAll();
-    } catch (err) {
-      setError(normalizeErrorMessage(err, "Ошибка обновления заявки."));
-    } finally {
-      setSaving(false);
-    }
-  };
-
   const handleDeleteItem = async () => {
     if (!deleteItem) return;
     try {
@@ -545,7 +466,7 @@ export default function AdminWarehousePanel() {
     <div className="admin-console__card admin-panel admin-panel--warehouse" style={{ position: "relative" }}>
       <div className="admin-console__card-title">Склад</div>
       <div className="admin-console__card-text">
-        Редактирование товаров, ячеек и заявок.
+        Редактирование товаров, ячеек и заказов.
       </div>
       <button
         type="button"
@@ -578,16 +499,6 @@ export default function AdminWarehousePanel() {
           onClick={() => setActiveTab("locations")}
         >
           Ячейки
-        </button>
-        <button
-          type="button"
-          className={
-            "admin-console__tab" +
-            (activeTab === "requests" ? " admin-console__tab--active" : "")
-          }
-          onClick={() => setActiveTab("requests")}
-        >
-          Заявки
         </button>
         <button
           type="button"
@@ -885,56 +796,6 @@ export default function AdminWarehousePanel() {
                   <tr>
                     <td colSpan="5" className="admin-muted">
                       Нет ячеек.
-                    </td>
-                  </tr>
-                )}
-              </tbody>
-            </table>
-          </div>
-        </div>
-      )}
-
-      {!loading && activeTab === "requests" && (
-        <div className="admin-form">
-          <div className="admin-label" style={{ fontWeight: 700 }}>
-            Заявки
-          </div>
-          <div className="admin-table-wrapper">
-            <table className="admin-table">
-              <thead>
-                <tr>
-                  <th>Заявка</th>
-                  <th>Тип</th>
-                  <th>Статус</th>
-                  <th>Автор</th>
-                  <th></th>
-                </tr>
-              </thead>
-              <tbody>
-                {requests.map((req) => (
-                  <tr key={req.id}>
-                    <td data-label="Заявка">
-                      <div className="admin-table__title">{req.title}</div>
-                      <div className="admin-table__meta">ID: {req.id}</div>
-                    </td>
-                    <td data-label="Тип">{req.type}</td>
-                    <td data-label="Статус">{req.status}</td>
-                    <td data-label="Автор">{req.createdBy?.name || "-"}</td>
-                    <td data-label="Действия" className="admin-table__actions">
-                      <button
-                        type="button"
-                        className="admin-btn admin-btn--secondary"
-                        onClick={() => setEditRequest(req)}
-                      >
-                        Открыть
-                      </button>
-                    </td>
-                  </tr>
-                ))}
-                {!requests.length && (
-                  <tr>
-                    <td colSpan="5" className="admin-muted">
-                      Нет заявок.
                     </td>
                   </tr>
                 )}
@@ -1479,237 +1340,6 @@ export default function AdminWarehousePanel() {
                 type="button"
                 className="admin-btn admin-btn--primary"
                 onClick={handleSaveLocation}
-                disabled={saving}
-              >
-                {saving
-                  ? "Сохранение..."
-                  : "Сохранить"}
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {editRequest && (
-        <div className="admin-modal">
-          <div className="admin-modal__panel">
-            <div className="admin-modal__header">
-              <div>
-                <div className="admin-modal__title">
-                  Редактировать заявку
-                </div>
-                <div className="admin-modal__subtitle">{editRequest.title}</div>
-              </div>
-              <button
-                type="button"
-                className="admin-btn admin-btn--ghost"
-                onClick={() => setEditRequest(null)}
-              >
-                ?
-              </button>
-            </div>
-            <div className="admin-form">
-              <div className="admin-form__row">
-                <div>
-                  <label className="admin-label">Статус</label>
-                  <select
-                    className="admin-select"
-                    value={requestForm.status}
-                    onChange={(event) =>
-                      setRequestForm((prev) => ({
-                        ...prev,
-                        status: event.target.value,
-                      }))
-                    }
-                  >
-                    {REQUEST_STATUS_OPTIONS.map((opt) => (
-                      <option key={opt.value} value={opt.value}>
-                        {opt.label}
-                      </option>
-                    ))}
-                  </select>
-                </div>
-                <div>
-                  <label className="admin-label">Желаемая дата</label>
-                  <input
-                    className="admin-input"
-                    type="date"
-                    value={requestForm.desiredDate}
-                    onChange={(event) =>
-                      setRequestForm((prev) => ({
-                        ...prev,
-                        desiredDate: event.target.value,
-                      }))
-                    }
-                  />
-                </div>
-              </div>
-              <div>
-                <label className="admin-label">Комментарий к статусу</label>
-                <input
-                  className="admin-input"
-                  value={requestForm.statusComment}
-                  onChange={(event) =>
-                    setRequestForm((prev) => ({
-                      ...prev,
-                      statusComment: event.target.value,
-                    }))
-                  }
-                />
-              </div>
-              <div>
-                <label className="admin-label">Комментарий</label>
-                <input
-                  className="admin-input"
-                  value={requestForm.comment}
-                  onChange={(event) =>
-                    setRequestForm((prev) => ({
-                      ...prev,
-                      comment: event.target.value,
-                    }))
-                  }
-                />
-              </div>
-              <div className="admin-divider" />
-              <div>
-                <div className="admin-label" style={{ fontWeight: 600 }}>
-                  {"Автозаказ"}
-                </div>
-                <label className="admin-checkbox">
-                  <input
-                    type="checkbox"
-                    checked={itemForm.autoReorderEnabled}
-                    onChange={(event) =>
-                      setItemForm((prev) => ({
-                        ...prev,
-                        autoReorderEnabled: event.target.checked,
-                      }))
-                    }
-                  />
-                  {"Включить автозаказ"}
-                </label>
-                {editItem.autoReorderActive && (
-                  <div className="admin-muted" style={{ marginTop: 6 }}>
-                    {"Автозаказ активен"}
-                  </div>
-                )}
-              </div>
-              <div className="admin-form__row">
-                <div>
-                  <label className="admin-label">
-                    {"Мин. остаток для автозаказа"}
-                  </label>
-                  <input
-                    className="admin-input"
-                    type="number"
-                    value={itemForm.autoReorderMin}
-                    onChange={(event) =>
-                      setItemForm((prev) => ({
-                        ...prev,
-                        autoReorderMin: event.target.value,
-                      }))
-                    }
-                  />
-                </div>
-                <div>
-                  <label className="admin-label">
-                    {"Поставщик"}
-                  </label>
-                  <select
-                    className="admin-select"
-                    value={itemForm.autoReorderSupplierId}
-                    onChange={(event) =>
-                      setItemForm((prev) => ({
-                        ...prev,
-                        autoReorderSupplierId: event.target.value,
-                      }))
-                    }
-                  >
-                    <option value="">{"Выберите поставщика"}</option>
-                    {suppliers.map((s) => (
-                      <option key={s.id} value={s.id}>
-                        {s.name}
-                      </option>
-                    ))}
-                  </select>
-                </div>
-              </div>
-              <div className="admin-form__row">
-                <div>
-                  <label className="admin-label">
-                    {"Контактное лицо"}
-                  </label>
-                  <input
-                    className="admin-input"
-                    value={itemForm.autoReorderContactName}
-                    onChange={(event) =>
-                      setItemForm((prev) => ({
-                        ...prev,
-                        autoReorderContactName: event.target.value,
-                      }))
-                    }
-                  />
-                </div>
-                <div>
-                  <label className="admin-label">
-                    {"Email для автозаказа"}
-                  </label>
-                  <input
-                    className="admin-input"
-                    value={itemForm.autoReorderContactEmail}
-                    onChange={(event) =>
-                      setItemForm((prev) => ({
-                        ...prev,
-                        autoReorderContactEmail: event.target.value,
-                      }))
-                    }
-                  />
-                </div>
-              </div>
-              <div>
-                <label className="admin-label">
-                  {"Текст сообщения поставщику"}
-                </label>
-                <textarea
-                  className="admin-input"
-                  rows={3}
-                  value={itemForm.autoReorderMessage}
-                  onChange={(event) =>
-                    setItemForm((prev) => ({
-                      ...prev,
-                      autoReorderMessage: event.target.value,
-                    }))
-                  }
-                />
-              </div>
-              {editItem.autoReorderActive && (
-                <label className="admin-checkbox" style={{ marginTop: 6 }}>
-                  <input
-                    type="checkbox"
-                    checked={itemForm.autoReorderReset}
-                    onChange={(event) =>
-                      setItemForm((prev) => ({
-                        ...prev,
-                        autoReorderReset: event.target.checked,
-                      }))
-                    }
-                  />
-                  {"Сбросить флаг автозаказа"}
-                </label>
-              )}
-            </div>
-            <div className="admin-modal__actions">
-              <button
-                type="button"
-                className="admin-btn admin-btn--ghost"
-                onClick={() => setEditRequest(null)}
-              >
-                Отмена
-              </button>
-              <button
-                type="button"
-                className="admin-btn admin-btn--primary"
-                onClick={handleSaveRequest}
                 disabled={saving}
               >
                 {saving
