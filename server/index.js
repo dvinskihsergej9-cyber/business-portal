@@ -4557,6 +4557,10 @@ async function buildOrderPickPlan(orderId) {
           remainingQty: remaining,
           steps: [],
           shortageQty: remaining,
+          availableQty: 0,
+          onHandQty: 0,
+          heldQty: 0,
+          shortageReason: "ITEM_NOT_LINKED",
         });
         continue;
       }
@@ -4569,6 +4573,15 @@ async function buildOrderPickPlan(orderId) {
         placementBalances
       );
       const balances = await applyActiveHoldsToBalances(prisma, resolvedItemId, balancesBase);
+      const onHandQty = balancesBase.reduce(
+        (sum, row) => sum + Math.max(0, Number(row?.qty) || 0),
+        0
+      );
+      const availableQty = balances.reduce(
+        (sum, row) => sum + Math.max(0, Number(row?.qty) || 0),
+        0
+      );
+      const heldQty = Math.max(0, onHandQty - availableQty);
       let need = remaining;
       const steps = [];
 
@@ -4596,6 +4609,17 @@ async function buildOrderPickPlan(orderId) {
         remainingQty: remaining,
         steps,
         shortageQty: Math.max(0, need),
+        availableQty: Math.max(0, Math.trunc(availableQty)),
+        onHandQty: Math.max(0, Math.trunc(onHandQty)),
+        heldQty: Math.max(0, Math.trunc(heldQty)),
+        shortageReason:
+          need <= 0
+            ? null
+            : availableQty <= 0 && onHandQty > 0 && heldQty > 0
+              ? "HELD_STOCK"
+              : onHandQty <= 0
+                ? "NO_STOCK_ON_HAND"
+                : "INSUFFICIENT_AVAILABLE",
       });
     } catch (lineErr) {
       const totalQty = Number(line?.qty) || 0;
@@ -4618,6 +4642,10 @@ async function buildOrderPickPlan(orderId) {
         remainingQty,
         steps: [],
         shortageQty: remainingQty,
+        availableQty: 0,
+        onHandQty: 0,
+        heldQty: 0,
+        shortageReason: "PLAN_BUILD_ERROR",
       });
     }
   }

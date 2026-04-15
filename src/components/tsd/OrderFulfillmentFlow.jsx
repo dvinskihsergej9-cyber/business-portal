@@ -127,6 +127,20 @@ const buildSkippedStepList = (items, planSteps) => {
   });
 };
 
+const getShortageReasonLabel = (row) => {
+  const reason = String(row?.shortageReason || "").trim().toUpperCase();
+  if (reason === "HELD_STOCK") {
+    const held = toNum(row?.heldQty);
+    return held > 0
+      ? `остаток заблокирован (${held} шт.)`
+      : "остаток заблокирован";
+  }
+  if (reason === "ITEM_NOT_LINKED") return "позиция не связана с номенклатурой";
+  if (reason === "NO_STOCK_ON_HAND") return "на складе нет остатка";
+  if (reason === "PLAN_BUILD_ERROR") return "ошибка расчета маршрута";
+  return "не хватает доступного остатка";
+};
+
 export default function OrderFulfillmentFlow({
   authHeaders,
   onBack,
@@ -1177,7 +1191,10 @@ export default function OrderFulfillmentFlow({
                 Не хватает остатков по позициям:{" "}
                 {unresolvedItems
                   .slice(0, 3)
-                  .map((row) => row.itemName || row.sku || `Строка ${row.lineId}`)
+                  .map(
+                    (row) =>
+                      `${row.itemName || row.sku || `Строка ${row.lineId}`} (${getShortageReasonLabel(row)})`
+                  )
                   .join(", ")}
                 {unresolvedItems.length > 3 ? " и др." : ""}.
               </div>
