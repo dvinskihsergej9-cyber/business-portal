@@ -48,6 +48,8 @@ const ensurePdfFont = async (pdf) => {
 
 export default function StockTransactionsTab() {
   const [query, setQuery] = useState("");
+  const [fromDateTime, setFromDateTime] = useState("");
+  const [toDateTime, setToDateTime] = useState("");
   const [loading, setLoading] = useState(true);
   const [items, setItems] = useState([]);
   const [error, setError] = useState("");
@@ -61,12 +63,14 @@ export default function StockTransactionsTab() {
     };
   }, []);
 
-  const load = async (searchValue) => {
+  const load = async (searchValue, fromValue = "", toValue = "") => {
     try {
       setLoading(true);
       setError("");
       const params = new URLSearchParams();
       if (searchValue) params.set("q", searchValue);
+      if (fromValue) params.set("fromDateTime", fromValue);
+      if (toValue) params.set("toDateTime", toValue);
       params.set("limit", "300");
       const res = await fetch(
         `${API_BASE}/warehouse/transactions?${params.toString()}`,
@@ -148,7 +152,7 @@ export default function StockTransactionsTab() {
   };
 
   useEffect(() => {
-    load("");
+    load("", "", "");
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
@@ -156,6 +160,20 @@ export default function StockTransactionsTab() {
     <div className="card" style={{ padding: 16 }}>
       <div style={{ display: "grid", gap: 12, marginBottom: 12 }}>
         <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+          <input
+            type="datetime-local"
+            className="form__input"
+            value={fromDateTime}
+            onChange={(event) => setFromDateTime(event.target.value)}
+            title="С даты и времени"
+          />
+          <input
+            type="datetime-local"
+            className="form__input"
+            value={toDateTime}
+            onChange={(event) => setToDateTime(event.target.value)}
+            title="По дату и время"
+          />
           <input
             className="form__input"
             placeholder="Поиск по товару, артикулу, штрих-коду, ячейке"
@@ -165,10 +183,23 @@ export default function StockTransactionsTab() {
           <button
             type="button"
             className="btn btn--primary"
-            onClick={() => load(query.trim())}
+            onClick={() => load(query.trim(), fromDateTime, toDateTime)}
             disabled={loading}
           >
             {loading ? "Поиск..." : "Найти"}
+          </button>
+          <button
+            type="button"
+            className="btn btn--ghost"
+            onClick={() => {
+              setQuery("");
+              setFromDateTime("");
+              setToDateTime("");
+              load("", "", "");
+            }}
+            disabled={loading}
+          >
+            Сбросить
           </button>
           <button
             type="button"

@@ -21,38 +21,39 @@ export default function StockMovementsHistoryTab() {
   const [error, setError] = useState("");
   const [typeFilter, setTypeFilter] = useState("ALL");
   const [search, setSearch] = useState("");
+  const [fromDateTime, setFromDateTime] = useState("");
+  const [toDateTime, setToDateTime] = useState("");
+
+  const load = async (fromValue = "", toValue = "") => {
+    try {
+      setLoading(true);
+      setError("");
+
+      const params = new URLSearchParams();
+      params.set("limit", "200");
+      if (fromValue) params.set("fromDateTime", fromValue);
+      if (toValue) params.set("toDateTime", toValue);
+
+      const res = await fetch(`${API}/inventory/movements?${params.toString()}`, {
+        headers: authHeaders,
+      });
+
+      const data = await res.json().catch(() => null);
+      if (!res.ok) {
+        throw new Error(data?.message || "Ошибка загрузки истории движений.");
+      }
+
+      setRows(Array.isArray(data) ? data : []);
+    } catch (e) {
+      console.error(e);
+      setError(e?.message || "Ошибка загрузки истории движений.");
+    } finally {
+      setLoading(false);
+    }
+  };
 
   useEffect(() => {
-    const load = async () => {
-      try {
-        setLoading(true);
-        setError("");
-
-        const res = await fetch(`${API}/inventory/movements?limit=200`, {
-          headers: authHeaders,
-        });
-
-        let data;
-        try {
-          data = await res.json();
-        } catch {
-          throw new Error("Ответ сервера при загрузке движений имеет неверный формат.");
-        }
-
-        if (!res.ok) {
-          throw new Error(data?.message || "Ошибка загрузки истории движений.");
-        }
-
-        setRows(Array.isArray(data) ? data : []);
-      } catch (e) {
-        console.error(e);
-        setError(e.message);
-      } finally {
-        setLoading(false);
-      }
-    };
-
-    load();
+    load("", "");
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
@@ -102,6 +103,45 @@ export default function StockMovementsHistoryTab() {
             onChange={(e) => setSearch(e.target.value)}
             placeholder="Товар, комментарий, автор..."
           />
+
+          <span className="movements-history-filters__label">Период:</span>
+          <input
+            type="datetime-local"
+            className="form__input movements-history-filters__control"
+            style={{ width: 190 }}
+            value={fromDateTime}
+            onChange={(e) => setFromDateTime(e.target.value)}
+            title="С даты и времени"
+          />
+          <input
+            type="datetime-local"
+            className="form__input movements-history-filters__control"
+            style={{ width: 190 }}
+            value={toDateTime}
+            onChange={(e) => setToDateTime(e.target.value)}
+            title="По дату и время"
+          />
+
+          <button
+            type="button"
+            className="btn btn--primary"
+            onClick={() => load(fromDateTime, toDateTime)}
+            disabled={loading}
+          >
+            {loading ? "Загрузка..." : "Применить"}
+          </button>
+          <button
+            type="button"
+            className="btn btn--ghost"
+            onClick={() => {
+              setFromDateTime("");
+              setToDateTime("");
+              load("", "");
+            }}
+            disabled={loading}
+          >
+            Сбросить
+          </button>
         </div>
 
         {error && (
@@ -303,7 +343,7 @@ export default function StockMovementsHistoryTab() {
                         padding: "3px 4px",
                       }}
                     >
-                      {m.comment}
+                      {m.comment || "-"}
                     </td>
                   </tr>
                 ))}

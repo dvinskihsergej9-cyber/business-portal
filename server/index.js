@@ -14287,20 +14287,51 @@ app.get("/api/warehouse/transactions", auth, async (req, res) => {
   try {
     const q = String(req.query.q || "").trim();
     const limit = Math.min(Number(req.query.limit) || 300, 1000);
+    const fromDateTime = parseDateInput(
+      req.query.fromDateTime || req.query.fromDate
+    );
+    const toDateTime = parseDateInput(
+      req.query.toDateTime || req.query.toDate
+    );
+    const hasDateRange = Boolean(fromDateTime || toDateTime);
+
+    const movementWhere = {};
+    if (fromDateTime || toDateTime) {
+      movementWhere.createdAt = {};
+      if (fromDateTime) movementWhere.createdAt.gte = fromDateTime;
+      if (toDateTime) movementWhere.createdAt.lte = toDateTime;
+    }
+
+    const auditWhere = {};
+    if (fromDateTime || toDateTime) {
+      auditWhere.checkedAt = {};
+      if (fromDateTime) auditWhere.checkedAt.gte = fromDateTime;
+      if (toDateTime) auditWhere.checkedAt.lte = toDateTime;
+    }
+
+    const discrepancyWhere = {};
+    if (fromDateTime || toDateTime) {
+      discrepancyWhere.createdAt = {};
+      if (fromDateTime) discrepancyWhere.createdAt.gte = fromDateTime;
+      if (toDateTime) discrepancyWhere.createdAt.lte = toDateTime;
+    }
 
     const [movements, audits, discrepancies] = await Promise.all([
       prisma.stockMovement.findMany({
-        orderBy: { createdAt: "desc" },
+        where: movementWhere,
+        orderBy: hasDateRange ? { createdAt: "asc" } : { createdAt: "desc" },
         take: limit,
         include: { item: true, createdBy: true },
       }),
       prisma.binAuditEvent.findMany({
-        orderBy: { checkedAt: "desc" },
+        where: auditWhere,
+        orderBy: hasDateRange ? { checkedAt: "asc" } : { checkedAt: "desc" },
         take: limit,
         include: { location: true, session: { include: { startedBy: true } } },
       }),
       prisma.stockDiscrepancy.findMany({
-        orderBy: { createdAt: "desc" },
+        where: discrepancyWhere,
+        orderBy: hasDateRange ? { createdAt: "asc" } : { createdAt: "desc" },
         take: limit,
         include: {
           item: true,
@@ -14407,10 +14438,15 @@ app.get("/api/warehouse/transactions", auth, async (req, res) => {
       return String(a?.id || "").localeCompare(String(b?.id || ""));
     };
 
-    let combined = [...movementItems, ...auditItems, ...discrepancyItems]
-      .sort(compareByDateDesc)
-      .slice(0, limit)
-      .sort(compareByDateAsc);
+    let combined = [...movementItems, ...auditItems, ...discrepancyItems];
+    if (hasDateRange) {
+      combined = combined.sort(compareByDateAsc).slice(0, limit);
+    } else {
+      combined = combined
+        .sort(compareByDateDesc)
+        .slice(0, limit)
+        .sort(compareByDateAsc);
+    }
 
     if (q) {
       const qLower = q.toLowerCase();
@@ -17204,8 +17240,21 @@ app.post("/api/inventory/movements", auth, async (req, res) => {
 app.get("/api/inventory/movements", auth, async (req, res) => {
   try {
     const limit = Number(req.query.limit) || 100;
+    const fromDateTime = parseDateInput(
+      req.query.fromDateTime || req.query.fromDate
+    );
+    const toDateTime = parseDateInput(
+      req.query.toDateTime || req.query.toDate
+    );
+    const where = {};
+    if (fromDateTime || toDateTime) {
+      where.createdAt = {};
+      if (fromDateTime) where.createdAt.gte = fromDateTime;
+      if (toDateTime) where.createdAt.lte = toDateTime;
+    }
 
     const movements = await prisma.stockMovement.findMany({
+      where,
       orderBy: [{ createdAt: "asc" }, { id: "asc" }],
       take: limit,
       include: {
