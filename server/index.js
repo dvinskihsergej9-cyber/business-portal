@@ -14372,6 +14372,12 @@ app.get("/api/warehouse/transactions", auth, async (req, res) => {
       if (toDateTime) discrepancyWhere.createdAt.lte = toDateTime;
     }
 
+    const receivingLocationIds = await getReceivingLocationIds(
+      prisma,
+      req.user?.orgId || null
+    );
+    const receivingLocationSet = new Set(receivingLocationIds);
+
     const [movements, audits, discrepancies] = await Promise.all([
       prisma.stockMovement.findMany({
         where: movementWhere,
@@ -14397,7 +14403,11 @@ app.get("/api/warehouse/transactions", auth, async (req, res) => {
       }),
     ]);
 
-    let movementItems = movements.map((m) => {
+    const filteredMovements = (movements || []).filter(
+      (movement) => !receivingLocationSet.has(Number(movement?.locationId || 0))
+    );
+
+    let movementItems = filteredMovements.map((m) => {
       const qty = m.type === "ISSUE" ? -Number(m.quantity) : Number(m.quantity);
       return {
         id: `mov-${m.id}`,
@@ -14421,7 +14431,7 @@ app.get("/api/warehouse/transactions", auth, async (req, res) => {
     });
 
     const locationIds = Array.from(
-      new Set(movements.map((m) => m.locationId).filter(Boolean))
+      new Set(filteredMovements.map((m) => m.locationId).filter(Boolean))
     );
     if (locationIds.length) {
       const locs = await prisma.warehouseLocation.findMany({
@@ -17337,6 +17347,12 @@ app.get("/api/inventory/movements", auth, async (req, res) => {
       if (toDateTime) where.createdAt.lte = toDateTime;
     }
 
+    const receivingLocationIds = await getReceivingLocationIds(
+      prisma,
+      req.user?.orgId || null
+    );
+    const receivingLocationSet = new Set(receivingLocationIds);
+
     const movements = await prisma.stockMovement.findMany({
       where,
       orderBy: [{ createdAt: "asc" }, { id: "asc" }],
@@ -17349,7 +17365,11 @@ app.get("/api/inventory/movements", auth, async (req, res) => {
       },
     });
 
-    res.json(movements);
+    const filteredMovements = (movements || []).filter(
+      (movement) => !receivingLocationSet.has(Number(movement?.locationId || 0))
+    );
+
+    res.json(filteredMovements);
   } catch (err) {
     console.error("list movements error:", err);
     res
