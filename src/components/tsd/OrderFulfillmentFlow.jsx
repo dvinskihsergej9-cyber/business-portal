@@ -553,15 +553,15 @@ export default function OrderFulfillmentFlow({
     const code = normalizeScan(currentStep.locationCode);
     const name = normalizeScan(currentStep.locationName);
     const idValue = String(currentStep.locationId || "");
+    const hasCode = Boolean(code);
+    const expectedToken = hasCode ? code : name;
     const locMatch = scanned.match(/^bp:(loc|location):(.*)$/i);
     const locPayload = locMatch ? normalizeScan(locMatch[2]) : "";
     const locPayloadId = locPayload && /^\d+$/.test(locPayload) ? locPayload : "";
 
     if (
-      scanned === code ||
-      scanned === name ||
-      scanned === idValue ||
-      (locPayload && (locPayload === code || locPayload === name)) ||
+      (expectedToken && scanned === expectedToken) ||
+      (locPayload && expectedToken && locPayload === expectedToken) ||
       (locPayloadId && locPayloadId === idValue)
     ) {
       setLocationScanned(true);
@@ -580,9 +580,10 @@ export default function OrderFulfillmentFlow({
     const resolvedName = normalizeScan(entity.name);
     if (
       resolved?.type === "location" &&
-      (resolvedId === idValue ||
-        (resolvedCode && resolvedCode === code) ||
-        (resolvedName && resolvedName === name))
+      ((locPayloadId && resolvedId === idValue) ||
+        (hasCode
+          ? resolvedCode && resolvedCode === code
+          : resolvedName && resolvedName === name))
     ) {
       setLocationScanned(true);
       if (isManualPickingMode) {
