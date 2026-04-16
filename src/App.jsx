@@ -40,6 +40,21 @@ import {
   WAREHOUSE_SECTION_PERMISSION_MAP,
 } from "./utils/permissions";
 
+const BUNDLE_SYNC_RELOAD_KEY = "app:bundle-sync:reload-at";
+
+function extractIndexBundlePathFromHtml(html) {
+  const text = String(html || "");
+  const match = text.match(
+    /<script[^>]+type=["']module["'][^>]+src=["']([^"']*\/assets\/index-[^"']+\.js)["']/i
+  );
+  if (!match?.[1]) return "";
+  try {
+    return new URL(match[1], window.location.origin).pathname;
+  } catch {
+    return "";
+  }
+}
+
 function AppRoutesWithBackground() {
   const { user } = useAuth();
   const location = useLocation();
@@ -53,6 +68,77 @@ function AppRoutesWithBackground() {
       if (startupTimerRef.current) {
         clearTimeout(startupTimerRef.current);
       }
+    };
+  }, []);
+
+  useEffect(() => {
+    let cancelled = false;
+
+    const checkFreshBundle = async () => {
+      try {
+        if (typeof window === "undefined" || typeof document === "undefined") return;
+        const currentScript = document.querySelector(
+          "script[type='module'][src*='/assets/index-']"
+        );
+        const currentSrc = String(currentScript?.getAttribute("src") || "").trim();
+        if (!currentSrc) return;
+
+        const currentPath = new URL(currentSrc, window.location.origin).pathname;
+        const probeUrl = new URL(window.location.href);
+        probeUrl.searchParams.set("__bundle_probe", String(Date.now()));
+
+        const res = await fetch(probeUrl.toString(), {
+          cache: "no-store",
+          credentials: "same-origin",
+          headers: { "Cache-Control": "no-cache" },
+        });
+        if (!res.ok) return;
+
+        const html = await res.text();
+        if (cancelled) return;
+        const latestPath = extractIndexBundlePathFromHtml(html);
+        if (!latestPath || latestPath === currentPath) {
+          try {
+            window.sessionStorage?.removeItem(BUNDLE_SYNC_RELOAD_KEY);
+          } catch {
+            // ignore
+          }
+          return;
+        }
+
+        const now = Date.now();
+        let lastReloadAt = 0;
+        try {
+          lastReloadAt = Number(window.sessionStorage?.getItem(BUNDLE_SYNC_RELOAD_KEY) || 0);
+        } catch {
+          lastReloadAt = 0;
+        }
+        if (now - lastReloadAt < 15000) return;
+
+        try {
+          window.sessionStorage?.setItem(BUNDLE_SYNC_RELOAD_KEY, String(now));
+        } catch {
+          // ignore
+        }
+
+        if ("serviceWorker" in navigator) {
+          navigator.serviceWorker.getRegistrations().then((regs) => {
+            regs.forEach((reg) => reg.update().catch(() => {}));
+          });
+        }
+
+        const nextUrl = new URL(window.location.href);
+        nextUrl.searchParams.set("__bundle_reload", String(now));
+        window.location.replace(nextUrl.toString());
+      } catch {
+        // ignore bundle freshness check failures
+      }
+    };
+
+    const timer = setTimeout(checkFreshBundle, 900);
+    return () => {
+      cancelled = true;
+      clearTimeout(timer);
     };
   }, []);
 
