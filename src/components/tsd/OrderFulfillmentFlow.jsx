@@ -573,27 +573,6 @@ export default function OrderFulfillmentFlow({
       return;
     }
 
-    const resolved = await resolveScanEntity(raw, { strict: true });
-    const entity = resolved?.entity || {};
-    const resolvedId = String(entity.id || "");
-    const resolvedCode = normalizeScan(entity.code);
-    const resolvedName = normalizeScan(entity.name);
-    if (
-      resolved?.type === "location" &&
-      ((locPayloadId && resolvedId === idValue) ||
-        (hasCode
-          ? resolvedCode && resolvedCode === code
-          : resolvedName && resolvedName === name))
-    ) {
-      setLocationScanned(true);
-      if (isManualPickingMode) {
-        const planned = Number(currentStep.qty || 0);
-        setManualPickQty(planned > 0 ? String(planned) : "");
-      }
-      setError("");
-      return;
-    }
-
     setError("Скан не совпадает с ячейкой текущего шага.");
   };
 
