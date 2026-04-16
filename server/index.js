@@ -2984,19 +2984,38 @@ const APP_URL = process.env.APP_URL || FRONTEND_URL;
 const YOOKASSA_SHOP_ID = process.env.YOOKASSA_SHOP_ID;
 const YOOKASSA_SECRET_KEY = process.env.YOOKASSA_SECRET_KEY;
 
+const RECEIVING_LOCATION_MARKERS = [
+  { code: "RECEIVING" },
+  { name: "RECEIVING" },
+  { name: "\u0417\u043e\u043d\u0430 \u043f\u0440\u0438\u0435\u043c\u043a\u0438" },
+  { name: "\u041f\u0440\u0438\u0435\u043c\u043a\u0430" },
+];
+
+function buildReceivingLocationWhere(orgIdInput = null) {
+  const normalizedOrgId = Number.isFinite(Number(orgIdInput))
+    ? Number(orgIdInput)
+    : null;
+  return {
+    orgId: normalizedOrgId,
+    OR: RECEIVING_LOCATION_MARKERS,
+  };
+}
+
+async function getReceivingLocationIds(tx, orgIdInput = null) {
+  const rows = await tx.warehouseLocation.findMany({
+    where: buildReceivingLocationWhere(orgIdInput),
+    select: { id: true },
+  });
+  return rows
+    .map((row) => Number(row?.id || 0))
+    .filter((id) => Number.isFinite(id) && id > 0);
+}
+
 async function getReceivingLocationId(tx, orgIdInput = null) {
   const normalizedOrgId = Number.isFinite(Number(orgIdInput))
     ? Number(orgIdInput)
     : null;
-  const where = {
-    orgId: normalizedOrgId,
-    OR: [
-      { code: "RECEIVING" },
-      { name: "RECEIVING" },
-      { name: "\u0417\u043e\u043d\u0430 \u043f\u0440\u0438\u0435\u043c\u043a\u0438" },
-      { name: "\u041f\u0440\u0438\u0435\u043c\u043a\u0430" },
-    ],
-  };
+  const where = buildReceivingLocationWhere(orgIdInput);
 
   const existing = await tx.warehouseLocation.findFirst({ where });
   if (existing) return existing.id;
@@ -4321,7 +4340,7 @@ async function getOrCreateReceivingLocation(orgIdInput = null) {
     : null;
   const where = {
     orgId: normalizedOrgId,
-    OR: [{ code }, { name: "\u0417\u043e\u043d\u0430 \u043f\u0440\u0438\u0435\u043c\u043a\u0438" }, { name: "RECEIVING" }],
+    OR: RECEIVING_LOCATION_MARKERS,
   };
 
   let location = await prisma.warehouseLocation.findFirst({ where });
@@ -5295,6 +5314,8 @@ async function checkWarehouseTaskNotifications() {
 
 // 1. Получить товары, где текущий остаток < minStock
 async function getLowStockItems() {
+  const receivingLocationIds = await getReceivingLocationIds(prisma, null);
+  const receivingLocationSet = new Set(receivingLocationIds);
   const items = await prisma.item.findMany({
     where: {
       minStock: { not: null },
@@ -5313,6 +5334,7 @@ async function getLowStockItems() {
 
     for (const m of item.movements) {
       if (!m.locationId) continue;
+      if (receivingLocationSet.has(Number(m.locationId))) continue;
       if (m.type === "INCOME" || m.type === "ADJUSTMENT") {
         qty += Number(m.quantity);
       } else if (m.type === "ISSUE") {
@@ -13556,6 +13578,11 @@ app.delete("/api/inventory/items/:id", auth, async (req, res) => {
 app.get("/api/warehouse/locations", auth, async (req, res) => {
   try {
     const locations = await prisma.warehouseLocation.findMany({
+      where: {
+        NOT: {
+          OR: RECEIVING_LOCATION_MARKERS,
+        },
+      },
       orderBy: { id: "asc" },
     });
     res.json(locations);
@@ -16380,6 +16407,8 @@ app.post("/api/warehouse/labels/print", auth, async (req, res) => {
 // Список товаров с текущими остатками
 app.get("/api/inventory/stock", auth, async (req, res) => {
   try {
+    const receivingLocationIds = await getReceivingLocationIds(prisma, req.user?.orgId || null);
+    const receivingLocationSet = new Set(receivingLocationIds);
     const items = await prisma.item.findMany({
       where: { category: "STOCK" },
       orderBy: { name: "asc" },
@@ -16393,6 +16422,7 @@ app.get("/api/inventory/stock", auth, async (req, res) => {
       let qty = 0;
       for (const m of item.movements) {
         if (!m.locationId) continue;
+        if (receivingLocationSet.has(Number(m.locationId))) continue;
         if (m.type === "INCOME" || m.type === "ADJUSTMENT") {
           qty += Number(m.quantity);
         } else if (m.type === "ISSUE") {
@@ -16401,7 +16431,10 @@ app.get("/api/inventory/stock", auth, async (req, res) => {
       }
 
       const heldQty = (item.stockHolds || []).reduce(
-        (sum, hold) => sum + (Number(hold?.qty) || 0),
+        (sum, hold) =>
+          receivingLocationSet.has(Number(hold?.locationId || 0))
+            ? sum
+            : sum + (Number(hold?.qty) || 0),
         0
       );
       const availableQty = Math.max(0, qty - heldQty);
@@ -16432,6 +16465,11 @@ app.get("/api/inventory/stock", auth, async (req, res) => {
 // ===== WAREHOUSE: STOCK SUMMARY =====
 app.get("/api/warehouse/stock/summary", auth, async (req, res) => {
   try {
+    const receivingLocationIds = await getReceivingLocationIds(
+      prisma,
+      req.user?.orgId || null
+    );
+    const receivingLocationSet = new Set(receivingLocationIds);
     const items = await prisma.item.findMany({
       where: { category: "STOCK" },
       orderBy: { name: "asc" },
@@ -16442,6 +16480,7 @@ app.get("/api/warehouse/stock/summary", auth, async (req, res) => {
       let qty = 0;
       for (const m of item.movements) {
         if (!m.locationId) continue;
+        if (receivingLocationSet.has(Number(m.locationId))) continue;
         if (m.type === "INCOME" || m.type === "ADJUSTMENT") {
           qty += Number(m.quantity);
         } else if (m.type === "ISSUE") {
@@ -16450,7 +16489,10 @@ app.get("/api/warehouse/stock/summary", auth, async (req, res) => {
       }
 
       const heldQty = (item.stockHolds || []).reduce(
-        (sum, hold) => sum + (Number(hold?.qty) || 0),
+        (sum, hold) =>
+          receivingLocationSet.has(Number(hold?.locationId || 0))
+            ? sum
+            : sum + (Number(hold?.qty) || 0),
         0
       );
       const availableQty = Math.max(0, qty - heldQty);
@@ -16683,6 +16725,11 @@ app.get("/api/warehouse/stock/item/:id", auth, async (req, res) => {
 // Готовый заказ по товарам ниже минимального остатка (Excel .xlsx)
 app.get("/api/inventory/low-stock-order-file", auth, async (req, res) => {
   try {
+    const receivingLocationIds = await getReceivingLocationIds(
+      prisma,
+      req.user?.orgId || null
+    );
+    const receivingLocationSet = new Set(receivingLocationIds);
     // 1. Берём все товары с движениями
     const items = await prisma.item.findMany({
       where: { category: "STOCK" },
@@ -16697,6 +16744,7 @@ app.get("/api/inventory/low-stock-order-file", auth, async (req, res) => {
       let qty = 0;
       for (const m of item.movements) {
         if (!m.locationId) continue;
+        if (receivingLocationSet.has(Number(m.locationId))) continue;
         if (m.type === "INCOME" || m.type === "ADJUSTMENT") {
           qty += Number(m.quantity);
         } else if (m.type === "ISSUE") {
@@ -17100,6 +17148,12 @@ async function getCurrentStockForItem(itemId) {
 
   if (!item) return null;
 
+  const receivingLocationIds = await getReceivingLocationIds(
+    prisma,
+    item.orgId || null
+  );
+  const receivingLocationSet = new Set(receivingLocationIds);
+
   const movements = await prisma.stockMovement.findMany({
     where: { itemId: id, locationId: { not: null } },
   });
@@ -17107,6 +17161,7 @@ async function getCurrentStockForItem(itemId) {
   let total = 0;
 
   for (const m of movements) {
+    if (receivingLocationSet.has(Number(m.locationId))) continue;
     const q = Number(m.quantity) || 0;
 
     if (m.type === "INCOME") {
