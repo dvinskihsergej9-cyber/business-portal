@@ -22117,6 +22117,35 @@ async function ensurePalletDiscrepancyStorageReady() {
   console.log("[PALLET_DISCREPANCY_BOOTSTRAP] PalletDiscrepancy table is ready.");
 }
 
+async function ensureSystemOwnerStorageReady() {
+  if (!isPostgresDatabaseUrl()) {
+    return;
+  }
+
+  await prismaBase.$executeRawUnsafe(`
+    ALTER TABLE "User"
+    ADD COLUMN IF NOT EXISTS "isSystemOwner" BOOLEAN NOT NULL DEFAULT false;
+  `);
+
+  await prismaBase.$executeRawUnsafe(`
+    UPDATE "User" AS u
+    SET "isSystemOwner" = true
+    FROM "Organization" AS o
+    WHERE
+      u."orgId" = o."id"
+      AND o."code" = 'platform-owner'
+      AND u."role" = 'ADMIN'
+      AND u."isActive" = true;
+  `);
+
+  await prismaBase.$executeRawUnsafe(`
+    CREATE INDEX IF NOT EXISTS "User_isSystemOwner_idx"
+    ON "User" ("isSystemOwner");
+  `);
+
+  console.log("[OWNER_BOOTSTRAP] User.isSystemOwner storage is ready.");
+}
+
 async function ensureAuthDbPermissions() {
   if (!isPostgresDatabaseUrl()) {
     return;
@@ -22776,6 +22805,12 @@ async function bootstrapServer() {
     await ensurePalletDiscrepancyStorageReady();
   } catch (err) {
     console.error("[PALLET_DISCREPANCY_BOOTSTRAP] error:", err);
+  }
+
+  try {
+    await ensureSystemOwnerStorageReady();
+  } catch (err) {
+    console.error("[OWNER_BOOTSTRAP] storage ensure error:", err);
   }
 
   try {
