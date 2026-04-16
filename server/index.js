@@ -20815,12 +20815,12 @@ app.get("/api/orders/:id/current", auth, async (req, res) => {
 });
 
 app.post("/api/orders/:id/pick-confirm", auth, async (req, res) => {
+  const orderId = Number(req.params.id);
+  const { lineId, locationId, qty } = req.body || {};
+  const line = Number(lineId);
+  const location = Number(locationId);
+  const amount = Math.trunc(Number(qty));
   try {
-    const orderId = Number(req.params.id);
-    const { lineId, locationId, qty } = req.body || {};
-    const line = Number(lineId);
-    const location = Number(locationId);
-    const amount = Math.trunc(Number(qty));
 
     if (!orderId || !line || !location || !Number.isFinite(amount) || amount <= 0) {
       return res.status(400).json({ message: "Некорректные параметры подтверждения." });
@@ -21006,10 +21006,40 @@ app.post("/api/orders/:id/pick-confirm", auth, async (req, res) => {
     if (err.code === "BAD_STATUS") return res.status(400).json({ message: "Заказ не в статусе подбора." });
     if (err.code === "QTY_EXCEEDS_REMAINING") return res.status(400).json({ message: "Количество превышает остаток по строке." });
     if (err.code === "LINE_ITEM_NOT_LINKED") return res.status(400).json({ message: "Строка заказа не связана с товаром." });
-    if (err.code === "HOLD_QTY_BLOCKED") return res.status(409).json({ message: "\u041a\u043e\u043b\u0438\u0447\u0435\u0441\u0442\u0432\u043e \u0432 \u044f\u0447\u0435\u0439\u043a\u0435 \u0437\u0430\u0431\u043b\u043e\u043a\u0438\u0440\u043e\u0432\u0430\u043d\u043e (Hold).", detail: err.detail || null });
+    if (err.code === "HOLD_QTY_BLOCKED") {
+      return res
+        .status(409)
+        .json({ message: "Количество в ячейке заблокировано (Hold).", detail: err.detail || null });
+    }
     if (err.code === "INSUFFICIENT_QTY") return res.status(400).json({ message: "Недостаточно товара в ячейке." });
-    console.error("orders pick confirm error:", err);
-    res.status(500).json({ message: "Ошибка подтверждения подбора." });
+    if (err?.code === "P2003") {
+      return res
+        .status(409)
+        .json({ message: "Ячейка или товар в шаге отбора устарели. Обновите маршрут." });
+    }
+    if (err?.code === "P2025") {
+      return res
+        .status(409)
+        .json({ message: "Данные заказа изменились. Обновите экран и повторите." });
+    }
+    if (err?.code === "P2002") {
+      return res
+        .status(409)
+        .json({ message: "Дублирующая операция отбора. Обновите экран и повторите." });
+    }
+
+    const runtimeCode = String(err?.code || "UNKNOWN");
+    console.error("orders pick confirm error:", {
+      orderId,
+      lineId: line,
+      locationId: location,
+      qty: amount,
+      userId: req.user?.id || null,
+      code: runtimeCode,
+      message: String(err?.message || ""),
+      detail: err?.detail || null,
+    });
+    res.status(500).json({ message: `Ошибка подтверждения подбора (${runtimeCode}).` });
   }
 });
 
