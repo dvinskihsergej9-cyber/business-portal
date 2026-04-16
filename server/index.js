@@ -72,6 +72,7 @@ function createToken(user) {
       email: user.email,
       role: user.role,
       orgId: user.orgId || null,
+      isSystemOwner: user.isSystemOwner === true,
       tokenVersion: user.tokenVersion || 0,
     },
     JWT_SECRET,
@@ -108,8 +109,7 @@ async function auth(req, res, next) {
     if (!user.orgId) {
       user.orgId = await ensureUserOrg(user.id, user.name || user.email);
     }
-    const isSystemOwner =
-      String(user.email || "").trim().toLowerCase() === OWNER_PRIMARY_EMAIL;
+    const isSystemOwner = user.isSystemOwner === true;
     const subscription = isSystemOwner
       ? null
       : await getOrgSubscription(user.orgId || null, user.id);
@@ -287,8 +287,14 @@ const emailVerifyResendRate = new Map();
 const emailVerifyGlobalRate = [];
 
 const FRONTEND_URL = process.env.FRONTEND_URL || "http://localhost:5173";
-const OWNER_PRIMARY_EMAIL = "dvinskihsergej9@gmail.com";
-const OWNER_PRIMARY_PASSWORD = "Sergo0998";
+const OWNER_BOOTSTRAP_EMAIL = String(
+  process.env.OWNER_BOOTSTRAP_EMAIL || "dvinskihsergej9@gmail.com"
+)
+  .trim()
+  .toLowerCase();
+const OWNER_BOOTSTRAP_PASSWORD = String(
+  process.env.OWNER_BOOTSTRAP_PASSWORD || ""
+).trim();
 const PORTAL_ALLOWED_ROLES = Object.freeze(["EMPLOYEE", "ADMIN"]);
 const OWNER_PRIMARY_NAME = "Сергей Двинских";
 
@@ -433,8 +439,10 @@ function buildTechnicalEmailByUsername(username) {
   return `user-${hex || "unknown"}@users.local`;
 }
 
-function isOwnerEmail(email) {
-  return normalizeEmail(email) === OWNER_PRIMARY_EMAIL;
+function isReservedOwnerBootstrapEmail(email) {
+  const normalizedEmail = normalizeEmail(email);
+  if (!normalizedEmail || !OWNER_BOOTSTRAP_EMAIL) return false;
+  return normalizedEmail === OWNER_BOOTSTRAP_EMAIL;
 }
 
 async function isCompanyOwnerAccount(userId, orgId) {
@@ -486,13 +494,13 @@ async function getOrCreateOrganizationByCode(code, name) {
 async function ensureUserOrg(userId, fallbackName = "Организация") {
   const user = await prisma.user.findUnique({
     where: { id: userId },
-    select: { id: true, orgId: true, email: true, name: true },
+    select: { id: true, orgId: true, isSystemOwner: true, email: true, name: true },
   });
   if (!user) return null;
   if (user.orgId) return user.orgId;
 
-  const code = isOwnerEmail(user.email) ? "platform-owner" : "legacy-tenant";
-  const orgName = isOwnerEmail(user.email)
+  const code = user.isSystemOwner === true ? "platform-owner" : "legacy-tenant";
+  const orgName = user.isSystemOwner === true
     ? "Владелец платформы"
     : String(fallbackName || "Организация по умолчанию").trim();
   const org = await getOrCreateOrganizationByCode(code, orgName);
@@ -2348,10 +2356,12 @@ async function notifySupportOperators(actorUserId, payload) {
       isActive: true,
       id: actorUserId ? { not: actorUserId } : undefined,
     },
-    select: { id: true, orgId: true, email: true },
+    select: { id: true, orgId: true, isSystemOwner: true },
     take: 20,
   });
-  const supportOperators = admins.filter((admin) => isOwnerEmail(admin.email));
+  const supportOperators = admins.filter(
+    (admin) => admin.isSystemOwner === true
+  );
   for (const admin of supportOperators) {
     await createWarehouseNotification({
       orgId: admin.orgId || null,
@@ -2611,7 +2621,7 @@ function getNewClientNotificationRecipients() {
   const raw = String(
     process.env.NEW_CLIENT_NOTIFY_EMAILS ||
       process.env.NEW_CLIENT_NOTIFY_EMAIL ||
-      OWNER_PRIMARY_EMAIL
+      OWNER_BOOTSTRAP_EMAIL
   );
   return Array.from(
     new Set(
@@ -3414,6 +3424,7 @@ async function getUserPayload(userId) {
       username: true,
       name: true,
       role: true,
+      isSystemOwner: true,
       permissionsJson: true,
       orgId: true,
       createdAt: true,
@@ -3428,7 +3439,7 @@ async function getUserPayload(userId) {
   });
 
   if (!user) return null;
-  const isSystemOwner = isOwnerEmail(user.email);
+  const isSystemOwner = user.isSystemOwner === true;
   const permissionConfig = normalizePermissionConfig(user.permissionsJson);
   const subscription = isSystemOwner
     ? null
@@ -5484,7 +5495,7 @@ app.post("/api/register", async (req, res) => {
       return res.status(400).json({ message: "WEAK_PASSWORD" });
     }
 
-    if (isOwnerEmail(normalizedEmail)) {
+    if (isReservedOwnerBootstrapEmail(normalizedEmail)) {
       return res.status(400).json({ message: "OWNER_EMAIL_RESERVED" });
     }
 
@@ -5601,15 +5612,6 @@ app.post("/api/login", async (req, res) => {
       return res
         .status(400)
         .json({ message: "Логин и пароль обязательны" });
-    }
-
-    if (normalizedLogin === OWNER_PRIMARY_EMAIL) {
-      try {
-        await ensureOwnerAdminAccount();
-      } catch (ownerRecoveryError) {
-        console.error("[OWNER_RECOVERY] login-time ensure failed:", ownerRecoveryError);
-        // Не блокируем вход, если автопочинка owner-аккаунта временно недоступна.
-      }
     }
 
     let user = null;
@@ -10560,7 +10562,10 @@ app.put("/api/settings/marketing-preferences", auth, async (req, res) => {
 // DEV: сделать текущего пользователя админом по email
 app.post("/api/dev/make-me-admin", auth, async (req, res) => {
   try {
-    if (!isOwnerEmail(req.user.email)) {
+    if (IS_PRODUCTION_RUNTIME) {
+      return res.status(404).json({ message: "NOT_FOUND" });
+    }
+    if (!req.user?.isSystemOwner) {
       return res.status(403).json({ message: "Нет прав" });
     }
 
@@ -10582,7 +10587,7 @@ app.post("/api/dev/make-me-admin", auth, async (req, res) => {
 // ================== АДМИНКА ПОЛЬЗОВАТЕЛЕЙ ==================
 
 function toManagedUserPayload(user, planId = null) {
-  const isSystemOwner = isOwnerEmail(user.email);
+  const isSystemOwner = user.isSystemOwner === true;
   const config = normalizePermissionConfig(user.permissionsJson);
   const permissions = applyPlanPermissionCap(
     resolveUserPermissions({
@@ -10633,6 +10638,7 @@ app.get("/api/users", auth, requireAdmin, async (req, res) => {
         name: true,
         passwordVisible: true,
         role: true,
+        isSystemOwner: true,
         permissionsJson: true,
         orgId: true,
         organization: {
@@ -10774,6 +10780,7 @@ app.post("/api/users", auth, requireAdmin, async (req, res) => {
         name: true,
         passwordVisible: true,
         role: true,
+        isSystemOwner: true,
         permissionsJson: true,
         orgId: true,
         organization: {
@@ -11012,12 +11019,12 @@ app.put("/api/users/:id/role", auth, requireAdmin, async (req, res) => {
 
     const target = await prisma.user.findUnique({
       where: { id },
-      select: { email: true, orgId: true },
+      select: { email: true, orgId: true, isSystemOwner: true },
     });
     if (!target) {
       return res.status(404).json({ message: "Пользователь не найден" });
     }
-    if (String(target.email || "").trim().toLowerCase() === OWNER_PRIMARY_EMAIL) {
+    if (target.isSystemOwner === true) {
       return res.status(403).json({ message: "Системного владельца нельзя изменять" });
     }
     if (!req.user.isSystemOwner && target.orgId !== req.user.orgId) {
@@ -11037,6 +11044,7 @@ app.put("/api/users/:id/role", auth, requireAdmin, async (req, res) => {
         name: true,
         passwordVisible: true,
         role: true,
+        isSystemOwner: true,
         permissionsJson: true,
         orgId: true,
         organization: {
@@ -11069,12 +11077,12 @@ app.put("/api/users/:id/permissions", auth, requireAdmin, async (req, res) => {
 
     const target = await prisma.user.findUnique({
       where: { id },
-      select: { email: true, orgId: true },
+      select: { email: true, orgId: true, isSystemOwner: true },
     });
     if (!target) {
       return res.status(404).json({ message: "Пользователь не найден" });
     }
-    if (String(target.email || "").trim().toLowerCase() === OWNER_PRIMARY_EMAIL) {
+    if (target.isSystemOwner === true) {
       return res.status(403).json({ message: "Системного владельца нельзя изменять" });
     }
     if (!req.user.isSystemOwner && target.orgId !== req.user.orgId) {
@@ -11103,6 +11111,7 @@ app.put("/api/users/:id/permissions", auth, requireAdmin, async (req, res) => {
         name: true,
         passwordVisible: true,
         role: true,
+        isSystemOwner: true,
         permissionsJson: true,
         orgId: true,
         organization: {
@@ -11137,14 +11146,21 @@ app.delete("/api/users/:id", auth, requireAdmin, async (req, res) => {
 
     const target = await prisma.user.findUnique({
       where: { id },
-      select: { id: true, email: true, username: true, orgId: true, isActive: true },
+      select: {
+        id: true,
+        email: true,
+        username: true,
+        orgId: true,
+        isActive: true,
+        isSystemOwner: true,
+      },
     });
     if (!target) {
       return res.status(404).json({
         message: "\u041f\u043e\u043b\u044c\u0437\u043e\u0432\u0430\u0442\u0435\u043b\u044c \u043d\u0435 \u043d\u0430\u0439\u0434\u0435\u043d",
       });
     }
-    if (String(target.email || "").trim().toLowerCase() === OWNER_PRIMARY_EMAIL) {
+    if (target.isSystemOwner === true) {
       return res.status(403).json({
         message:
           "\u0421\u0438\u0441\u0442\u0435\u043c\u043d\u043e\u0433\u043e \u0432\u043b\u0430\u0434\u0435\u043b\u044c\u0446\u0430 \u043d\u0435\u043b\u044c\u0437\u044f \u0438\u0437\u043c\u0435\u043d\u044f\u0442\u044c",
@@ -11203,7 +11219,7 @@ app.get("/api/admin/tenants", auth, requireAdmin, requireSystemOwner, async (req
           select: { users: true, invites: true },
         },
         users: {
-          where: { role: "ADMIN", isActive: true },
+          where: { role: "ADMIN", isActive: true, isSystemOwner: false },
           orderBy: { id: "asc" },
           take: 1,
           select: {
@@ -11291,13 +11307,13 @@ app.delete("/api/admin/tenants/:id", auth, requireAdmin, requireSystemOwner, asy
 
     const users = await prisma.user.findMany({
       where: { orgId: tenant.id },
-      select: { id: true, email: true },
+      select: { id: true, isSystemOwner: true },
       orderBy: { id: "asc" },
     });
 
     await prisma.$transaction(async (tx) => {
       for (const account of users) {
-        if (isOwnerEmail(account.email)) {
+        if (account.isSystemOwner === true) {
           continue;
         }
         const suffix =
@@ -11372,7 +11388,7 @@ app.post("/api/admin/tenants", auth, requireAdmin, requireSystemOwner, async (re
     }
 
     const technicalEmail = buildTechnicalEmailByUsername(normalizedLogin);
-    if (isOwnerEmail(technicalEmail)) {
+    if (isReservedOwnerBootstrapEmail(technicalEmail)) {
       return res.status(400).json({ message: "OWNER_EMAIL_RESERVED" });
     }
 
@@ -11701,14 +11717,14 @@ app.post("/api/admin/platform-news/publish", auth, requireAdmin, requireSystemOw
       select: {
         id: true,
         orgId: true,
-        email: true,
+        isSystemOwner: true,
       },
     });
 
     const orgSeen = new Set();
     const recipients = [];
     for (const user of admins) {
-      if (isOwnerEmail(user.email)) continue;
+      if (user.isSystemOwner === true) continue;
       const orgId = Number(user.orgId || 0);
       if (!orgId || orgSeen.has(orgId)) continue;
       orgSeen.add(orgId);
@@ -21708,48 +21724,110 @@ async function getItemTotalQty(itemId, options = {}) {
 }
 
 async function ensureOwnerAdminAccount() {
-  const normalizedEmail = OWNER_PRIMARY_EMAIL.trim().toLowerCase();
-  const ownerName = OWNER_PRIMARY_NAME;
-  const ownerHash = await bcrypt.hash(OWNER_PRIMARY_PASSWORD, 10);
   const ownerOrg = await getOrCreateOrganizationByCode(
     "platform-owner",
     "Владелец платформы"
   );
 
-  const owner = await findUserByEmailInsensitive(normalizedEmail);
+  const existingSystemOwner = await prisma.user.findFirst({
+    where: { isSystemOwner: true },
+    orderBy: [{ createdAt: "asc" }, { id: "asc" }],
+    select: { id: true, email: true },
+  });
 
+  if (existingSystemOwner?.id) {
+    await prisma.user.update({
+      where: { id: existingSystemOwner.id },
+      data: {
+        role: "ADMIN",
+        isSystemOwner: true,
+        isActive: true,
+        orgId: ownerOrg.id,
+        passwordVisible: null,
+      },
+    });
+    await prisma.user.updateMany({
+      where: {
+        isSystemOwner: true,
+        id: { not: existingSystemOwner.id },
+      },
+      data: {
+        isSystemOwner: false,
+      },
+    });
+    console.log(
+      `[OWNER_RECOVERY] owner account ensured by flag: ${normalizeEmail(
+        existingSystemOwner.email
+      )}`
+    );
+    return;
+  }
+
+  const normalizedEmail = normalizeEmail(OWNER_BOOTSTRAP_EMAIL);
+  if (!normalizedEmail) {
+    console.warn("[OWNER_RECOVERY] skipped: OWNER_BOOTSTRAP_EMAIL is not configured.");
+    return;
+  }
+
+  const owner = await findUserByEmailInsensitive(normalizedEmail);
   if (owner?.id) {
     await prisma.user.update({
       where: { id: owner.id },
       data: {
         email: normalizedEmail,
-        password: ownerHash,
-        passwordHash: ownerHash,
-        passwordVisible: OWNER_PRIMARY_PASSWORD,
-        name: ownerName,
+        name: owner.name || OWNER_PRIMARY_NAME,
         role: "ADMIN",
+        isSystemOwner: true,
         isActive: true,
         orgId: ownerOrg.id,
-        emailVerifiedAt: new Date(),
+        emailVerifiedAt: owner.emailVerifiedAt || new Date(),
+        passwordVisible: null,
+      },
+    });
+    await prisma.user.updateMany({
+      where: {
+        isSystemOwner: true,
+        id: { not: owner.id },
+      },
+      data: {
+        isSystemOwner: false,
       },
     });
     console.log(
-      `[OWNER_RECOVERY] owner account ensured: ${normalizedEmail} (fixed credentials applied)`
+      `[OWNER_RECOVERY] owner account ensured by bootstrap email: ${normalizedEmail}`
     );
     return;
   }
 
-  await prisma.user.create({
+  if (OWNER_BOOTSTRAP_PASSWORD.length < 8) {
+    console.error(
+      "[OWNER_RECOVERY] owner account is missing and cannot be created: set OWNER_BOOTSTRAP_PASSWORD (>=8)."
+    );
+    return;
+  }
+
+  const ownerHash = await bcrypt.hash(OWNER_BOOTSTRAP_PASSWORD, 10);
+  const createdOwner = await prisma.user.create({
     data: {
       email: normalizedEmail,
       password: ownerHash,
       passwordHash: ownerHash,
-      passwordVisible: OWNER_PRIMARY_PASSWORD,
-      name: ownerName,
+      passwordVisible: null,
+      name: OWNER_PRIMARY_NAME,
       role: "ADMIN",
+      isSystemOwner: true,
       isActive: true,
       orgId: ownerOrg.id,
       emailVerifiedAt: new Date(),
+    },
+  });
+  await prisma.user.updateMany({
+    where: {
+      isSystemOwner: true,
+      id: { not: createdOwner.id },
+    },
+    data: {
+      isSystemOwner: false,
     },
   });
   console.warn(`[OWNER_RECOVERY] created owner account ${normalizedEmail}`);
@@ -21764,7 +21842,7 @@ async function ensureLegacyTenantBackfill() {
   await prisma.user.updateMany({
     where: {
       orgId: null,
-      email: { not: OWNER_PRIMARY_EMAIL },
+      isSystemOwner: false,
     },
     data: { orgId: legacyOrg.id },
   });
@@ -22157,7 +22235,7 @@ function logMailConfigStatus() {
   const notifyEmail = String(
     process.env.NEW_CLIENT_NOTIFY_EMAILS ||
       process.env.NEW_CLIENT_NOTIFY_EMAIL ||
-      OWNER_PRIMARY_EMAIL
+      OWNER_BOOTSTRAP_EMAIL
   ).trim();
   console.log(
     `[MAIL_CONFIG] получатели уведомлений о новых клиентах: ${notifyEmail || "-"}`

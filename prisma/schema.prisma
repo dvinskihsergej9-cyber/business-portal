@@ -33,6 +33,7 @@ model User {
   permissionsJson         String?
   tokenVersion            Int           @default(0)
   isActive                Boolean       @default(true)
+  isSystemOwner           Boolean       @default(false)
   orgId                   Int?
   organization            Organization? @relation(fields: [orgId], references: [id])
   emailVerifiedAt         DateTime?

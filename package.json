@@ -8,6 +8,7 @@
     "start": "node server/index.js",
     "api": "node server/index.js",
     "seed": "node tools/seed-employee.mjs",
+    "owner:grant": "node tools/owner-grant.mjs",
     "build": "prisma generate && vite build",
     "preview": "vite preview",
     "db:deploy": "node dbDeployWithRetry.mjs",
