@@ -21029,6 +21029,10 @@ app.post("/api/orders/:id/pick-confirm", auth, async (req, res) => {
     }
 
     const runtimeCode = String(err?.code || "UNKNOWN");
+    const runtimeMessageRaw = String(err?.message || "").trim();
+    const runtimeMessageSafe = runtimeMessageRaw
+      .replace(/\s+/g, " ")
+      .slice(0, 220);
     console.error("orders pick confirm error:", {
       orderId,
       lineId: line,
@@ -21036,10 +21040,13 @@ app.post("/api/orders/:id/pick-confirm", auth, async (req, res) => {
       qty: amount,
       userId: req.user?.id || null,
       code: runtimeCode,
-      message: String(err?.message || ""),
+      message: runtimeMessageRaw,
       detail: err?.detail || null,
     });
-    res.status(500).json({ message: `Ошибка подтверждения подбора (${runtimeCode}).` });
+    const runtimeSuffix = runtimeMessageSafe ? `: ${runtimeMessageSafe}` : "";
+    res
+      .status(500)
+      .json({ message: `Ошибка подтверждения подбора (${runtimeCode}${runtimeSuffix}).` });
   }
 });
 
