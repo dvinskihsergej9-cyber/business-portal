@@ -4346,6 +4346,18 @@ async function getOrCreateReceivingLocation(orgIdInput = null) {
   }
   return location;
 }
+
+function isReceivingWarehouseLocation(location) {
+  const normalizedCode = normalizePalletCode(location?.code || "");
+  const normalizedName = normalizePalletCode(location?.name || "");
+  return (
+    normalizedCode === "RECEIVING" ||
+    normalizedName === "RECEIVING" ||
+    normalizedName === "ЗОНАПРИЕМКИ" ||
+    normalizedName === "ЗОНАПРИЁМКИ"
+  );
+}
+
 function escapeHtml(value) {
   return String(value ?? "")
     .replaceAll("&", "&amp;")
@@ -4647,16 +4659,25 @@ async function buildOrderPickPlan(orderId) {
       const placementBalances = await loadPickBalancesSafe("placements", () =>
         getPlacementLocationBalances(resolvedItemId)
       );
+      const movementPickBalances = movementBalances.filter(
+        (row) => !isReceivingWarehouseLocation(row?.location)
+      );
+      const receivingPickBalances = receivingBalances.filter(
+        (row) => !isReceivingWarehouseLocation(row?.location)
+      );
+      const placementPickBalances = placementBalances.filter(
+        (row) => !isReceivingWarehouseLocation(row?.location)
+      );
       // Source priority for pick-plan:
       // 1) stock movements (authoritative actual stock state)
       // 2) receiving lines fallback (legacy/in-flight data)
       // 3) placements fallback (can be stale after old/manual operations)
       const balancesBase =
-        movementBalances.length > 0
-          ? movementBalances
-          : receivingBalances.length > 0
-            ? receivingBalances
-            : placementBalances;
+        movementPickBalances.length > 0
+          ? movementPickBalances
+          : receivingPickBalances.length > 0
+            ? receivingPickBalances
+            : placementPickBalances;
       let balances = [];
       let holdsApplyFailed = false;
       try {
