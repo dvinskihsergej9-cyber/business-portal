@@ -1,17 +1,17 @@
-import { useMemo, useState } from "react";
+﻿import { useMemo, useState } from "react";
 import { API_BASE, normalizeErrorMessage } from "../../apiConfig";
 import Scanner from "./Scanner";
 import TsdErrorAlert from "./TsdErrorAlert";
 import TsdHeader from "./TsdHeader";
 
 const STATUS_LABELS = {
-  NEW: "Новый",
-  IN_PICKING: "В отборе",
-  PICKED: "Отобран",
-  PACKED: "Упакован",
-  READY_TO_SHIP: "Готов к отгрузке",
-  SHIPPED: "Отгружен",
-  CANCELLED: "Отменен",
+  NEW: "РќРѕРІС‹Р№",
+  IN_PICKING: "Р’ РѕС‚Р±РѕСЂРµ",
+  PICKED: "РћС‚РѕР±СЂР°РЅ",
+  PACKED: "РЈРїР°РєРѕРІР°РЅ",
+  READY_TO_SHIP: "Р“РѕС‚РѕРІ Рє РѕС‚РіСЂСѓР·РєРµ",
+  SHIPPED: "РћС‚РіСЂСѓР¶РµРЅ",
+  CANCELLED: "РћС‚РјРµРЅРµРЅ",
 };
 
 const getStatusLabel = (status) =>
@@ -66,7 +66,7 @@ export default function ShipmentByPassport({
   const loadOrderByScan = async (scanValue) => {
     const orderId = parseOrderIdFromScan(scanValue);
     if (!orderId || Number.isNaN(orderId)) {
-      throw new Error("Неверный код. Используйте QR паспорта или ID заказа.");
+      throw new Error("РќРµРІРµСЂРЅС‹Р№ РєРѕРґ. РСЃРїРѕР»СЊР·СѓР№С‚Рµ QR РїР°СЃРїРѕСЂС‚Р° РёР»Рё ID Р·Р°РєР°Р·Р°.");
     }
 
     const res = await fetch(`${API_BASE}/orders/${orderId}`, {
@@ -75,9 +75,9 @@ export default function ShipmentByPassport({
     const data = await readJsonSafe(res);
     if (!res.ok) {
       if (data?.message === "ORDER_NOT_FOUND") {
-        throw new Error("Заказ не найден.");
+        throw new Error("Р—Р°РєР°Р· РЅРµ РЅР°Р№РґРµРЅ.");
       }
-      throw new Error(data?.message || "Не удалось загрузить заказ.");
+      throw new Error(data?.message || "РќРµ СѓРґР°Р»РѕСЃСЊ Р·Р°РіСЂСѓР·РёС‚СЊ Р·Р°РєР°Р·.");
     }
     return data?.order || null;
   };
@@ -89,7 +89,7 @@ export default function ShipmentByPassport({
       setSuccess("");
       const nextOrder = await loadOrderByScan(scanValue);
       if (!nextOrder) {
-        throw new Error("Заказ не найден.");
+        throw new Error("Р—Р°РєР°Р· РЅРµ РЅР°Р№РґРµРЅ.");
       }
       setOrder(nextOrder);
 
@@ -101,14 +101,14 @@ export default function ShipmentByPassport({
       }
       setModalOpen(false);
       if (status === "SHIPPED") {
-        setSuccess(`Заказ ${nextOrder.orderNumber || `#${nextOrder.id}`} уже отгружен.`);
+        setSuccess(`Р—Р°РєР°Р· ${nextOrder.orderNumber || `#${nextOrder.id}`} СѓР¶Рµ РѕС‚РіСЂСѓР¶РµРЅ.`);
       } else {
         setError(
-          `Заказ ${nextOrder.orderNumber || `#${nextOrder.id}`} не в статусе «Готов к отгрузке».`
+          `Р—Р°РєР°Р· ${nextOrder.orderNumber || `#${nextOrder.id}`} РЅРµ РІ СЃС‚Р°С‚СѓСЃРµ В«Р“РѕС‚РѕРІ Рє РѕС‚РіСЂСѓР·РєРµВ».`
         );
       }
     } catch (err) {
-      setError(normalizeErrorMessage(err, "Ошибка обработки скана."));
+      setError(normalizeErrorMessage(err, "РћС€РёР±РєР° РѕР±СЂР°Р±РѕС‚РєРё СЃРєР°РЅР°."));
       setModalOpen(false);
     } finally {
       setLoading(false);
@@ -135,24 +135,24 @@ export default function ShipmentByPassport({
       const data = await readJsonSafe(res);
       if (!res.ok) {
         if (data?.message === "ORDER_ALREADY_SHIPPED") {
-          throw new Error("Заказ уже отгружен.");
+          throw new Error("Р—Р°РєР°Р· СѓР¶Рµ РѕС‚РіСЂСѓР¶РµРЅ.");
         }
         if (data?.message === "ORDER_BAD_STATUS") {
-          throw new Error("Заказ не в статусе «Готов к отгрузке».");
+          throw new Error("Р—Р°РєР°Р· РЅРµ РІ СЃС‚Р°С‚СѓСЃРµ В«Р“РѕС‚РѕРІ Рє РѕС‚РіСЂСѓР·РєРµВ».");
         }
         if (data?.message === "ORDER_NOT_FOUND") {
-          throw new Error("Заказ не найден.");
+          throw new Error("Р—Р°РєР°Р· РЅРµ РЅР°Р№РґРµРЅ.");
         }
-        throw new Error(data?.message || "Не удалось подтвердить отгрузку.");
+        throw new Error(data?.message || "РќРµ СѓРґР°Р»РѕСЃСЊ РїРѕРґС‚РІРµСЂРґРёС‚СЊ РѕС‚РіСЂСѓР·РєСѓ.");
       }
 
       const shippedOrder = data?.order || null;
       setOrder(shippedOrder);
       setModalOpen(false);
-      setSuccess(`Отгружено: ${shippedOrder?.orderNumber || `#${order.id}`}.`);
+      setSuccess(`РћС‚РіСЂСѓР¶РµРЅРѕ: ${shippedOrder?.orderNumber || `#${order.id}`}.`);
       resetForm();
     } catch (err) {
-      setError(normalizeErrorMessage(err, "Ошибка подтверждения отгрузки."));
+      setError(normalizeErrorMessage(err, "РћС€РёР±РєР° РїРѕРґС‚РІРµСЂР¶РґРµРЅРёСЏ РѕС‚РіСЂСѓР·РєРё."));
     } finally {
       setLoading(false);
     }
@@ -161,10 +161,10 @@ export default function ShipmentByPassport({
   return (
     <>
       <TsdHeader
-        title="Отгрузка"
-        subtitle="Скан паспорта и подтверждение"
-        contextLabel="Статус"
-        contextValue={order ? getStatusLabel(order.status) : "Ожидание скана"}
+        title="РћС‚РіСЂСѓР·РєР°"
+        subtitle="РЎРєР°РЅ РїР°СЃРїРѕСЂС‚Р° Рё РїРѕРґС‚РІРµСЂР¶РґРµРЅРёРµ"
+        contextLabel="РЎС‚Р°С‚СѓСЃ"
+        contextValue={order ? getStatusLabel(order.status) : "РћР¶РёРґР°РЅРёРµ СЃРєР°РЅР°"}
         onBack={onBack}
         showBackButton={showInternalBack}
       />
@@ -174,9 +174,9 @@ export default function ShipmentByPassport({
         {success ? <div className="tsd-alert tsd-alert--success">{success}</div> : null}
 
         <Scanner
-          label="Сканируй QR паспорта"
-          hint="Ожидается код формата bp:order:<id>"
-          manualPlaceholder="bp:order:123 или ID заказа"
+          label="РЎРєР°РЅРёСЂСѓР№ QR РїР°СЃРїРѕСЂС‚Р°"
+          hint="РћР¶РёРґР°РµС‚СЃСЏ РєРѕРґ С„РѕСЂРјР°С‚Р° bp:order:<id>"
+          manualPlaceholder="bp:order:123 РёР»Рё ID Р·Р°РєР°Р·Р°"
           onScan={handleScan}
           disabled={loading}
           scanKind="qr"
@@ -185,31 +185,15 @@ export default function ShipmentByPassport({
         {order ? (
           <div className="tsd-card">
             <div className="tsd-card__body">
-              <div className="tsd-card__title">{order.orderNumber || `Заказ #${order.id}`}</div>
-              <div className="tsd-card__meta">Статус: {getStatusLabel(order.status)}</div>
-              <div className="tsd-card__meta">Получатель: {order.customerName || "-"}</div>
-              <div className="tsd-card__meta">Адрес: {order.shippingAddress || "-"}</div>
+              <div className="tsd-card__title">{order.orderNumber || `Р—Р°РєР°Р· #${order.id}`}</div>
+              <div className="tsd-card__meta">РЎС‚Р°С‚СѓСЃ: {getStatusLabel(order.status)}</div>
+              <div className="tsd-card__meta">РџРѕР»СѓС‡Р°С‚РµР»СЊ: {order.customerName || "-"}</div>
+              <div className="tsd-card__meta">РђРґСЂРµСЃ: {order.shippingAddress || "-"}</div>
               {order.shippedAt ? (
                 <div className="tsd-card__meta">
-                  Уже отгружен: {new Date(order.shippedAt).toLocaleString("ru-RU")}
+                  РЈР¶Рµ РѕС‚РіСЂСѓР¶РµРЅ: {new Date(order.shippedAt).toLocaleString("ru-RU")}
                 </div>
               ) : null}
-            </div>
-            <div className="tsd-action-inline">
-              <button
-                type="button"
-                className="tsd-btn tsd-btn--ghost"
-                onClick={() => {
-                  setOrder(null);
-                  setModalOpen(false);
-                  setError("");
-                  setSuccess("");
-                  resetForm();
-                }}
-                disabled={loading}
-              >
-                Очистить
-              </button>
             </div>
           </div>
         ) : null}
@@ -218,39 +202,39 @@ export default function ShipmentByPassport({
       {modalOpen ? (
         <div className="tsd-modal" role="dialog" aria-modal="true">
           <div className="tsd-modal__card">
-            <div className="tsd-modal__title">Подтверждение отгрузки</div>
+            <div className="tsd-modal__title">РџРѕРґС‚РІРµСЂР¶РґРµРЅРёРµ РѕС‚РіСЂСѓР·РєРё</div>
             <div className="tsd-modal__text">
-              Подтвердить или пропустить ввод данных. В обоих вариантах заказ будет отгружен.
+              РџРѕРґС‚РІРµСЂРґРёС‚СЊ РёР»Рё РїСЂРѕРїСѓСЃС‚РёС‚СЊ РІРІРѕРґ РґР°РЅРЅС‹С…. Р’ РѕР±РѕРёС… РІР°СЂРёР°РЅС‚Р°С… Р·Р°РєР°Р· Р±СѓРґРµС‚ РѕС‚РіСЂСѓР¶РµРЅ.
             </div>
 
             <div className="tsd-modal__row">
-              <label className="tsd-modal__label">Перевозчик (необязательно)</label>
+              <label className="tsd-modal__label">РџРµСЂРµРІРѕР·С‡РёРє (РЅРµРѕР±СЏР·Р°С‚РµР»СЊРЅРѕ)</label>
               <input
                 className="tsd-input"
                 value={carrier}
                 onChange={(event) => setCarrier(event.target.value)}
-                placeholder="Например: СДЭК"
+                placeholder="РќР°РїСЂРёРјРµСЂ: РЎР”Р­Рљ"
                 disabled={loading}
               />
             </div>
             <div className="tsd-modal__row">
-              <label className="tsd-modal__label">Трек-номер (необязательно)</label>
+              <label className="tsd-modal__label">РўСЂРµРє-РЅРѕРјРµСЂ (РЅРµРѕР±СЏР·Р°С‚РµР»СЊРЅРѕ)</label>
               <input
                 className="tsd-input"
                 value={trackingNumber}
                 onChange={(event) => setTrackingNumber(event.target.value)}
-                placeholder="Например: 123456789"
+                placeholder="РќР°РїСЂРёРјРµСЂ: 123456789"
                 disabled={loading}
               />
             </div>
             <div className="tsd-modal__row">
-              <label className="tsd-modal__label">Комментарий (необязательно)</label>
+              <label className="tsd-modal__label">РљРѕРјРјРµРЅС‚Р°СЂРёР№ (РЅРµРѕР±СЏР·Р°С‚РµР»СЊРЅРѕ)</label>
               <textarea
                 className="tsd-input"
                 rows={3}
                 value={notes}
                 onChange={(event) => setNotes(event.target.value)}
-                placeholder="Комментарий к отгрузке"
+                placeholder="РљРѕРјРјРµРЅС‚Р°СЂРёР№ Рє РѕС‚РіСЂСѓР·РєРµ"
                 disabled={loading}
               />
             </div>
@@ -262,7 +246,7 @@ export default function ShipmentByPassport({
                 onClick={() => setModalOpen(false)}
                 disabled={loading}
               >
-                Отмена
+                РћС‚РјРµРЅР°
               </button>
               <button
                 type="button"
@@ -270,7 +254,7 @@ export default function ShipmentByPassport({
                 onClick={() => submitShip("SKIP")}
                 disabled={loading || !canSubmit}
               >
-                Пропустить
+                РџСЂРѕРїСѓСЃС‚РёС‚СЊ
               </button>
               <button
                 type="button"
@@ -278,7 +262,7 @@ export default function ShipmentByPassport({
                 onClick={() => submitShip("CONFIRM")}
                 disabled={loading || !canSubmit}
               >
-                Подтвердить
+                РџРѕРґС‚РІРµСЂРґРёС‚СЊ
               </button>
             </div>
           </div>
