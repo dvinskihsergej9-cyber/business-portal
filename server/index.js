@@ -20896,8 +20896,12 @@ app.post("/api/orders/:id/pick-confirm", auth, async (req, res) => {
           _sum: { remainingQty: true },
         });
         const lotsQty = Number(lotsAgg?._sum?.remainingQty) || 0;
-        const placement = await tx.warehousePlacement.findUnique({
-          where: { itemId_locationId: { itemId: actualItemId, locationId: location } },
+        const placement = await tx.warehousePlacement.findFirst({
+          where: {
+            itemId: actualItemId,
+            locationId: location,
+            ...(Number(order?.orgId || 0) ? { orgId: Number(order.orgId) } : {}),
+          },
           select: { qty: true },
         });
         const placementQty = Number(placement?.qty) || 0;
