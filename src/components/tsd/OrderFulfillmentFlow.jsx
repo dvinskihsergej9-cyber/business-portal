@@ -367,10 +367,13 @@ export default function OrderFulfillmentFlow({
     setSkippedSteps(buildSkippedStepList(data?.items || [], planSteps || pickPlan));
   };
 
-  const resolveScanEntity = async (code) => {
+  const resolveScanEntity = async (code, options = {}) => {
+    const strict = Boolean(options?.strict);
     try {
+      const qs = new URLSearchParams({ code: String(code || "") });
+      if (strict) qs.set("strict", "1");
       const res = await fetch(
-        `${API_BASE}/warehouse/scan/resolve?code=${encodeURIComponent(code)}`,
+        `${API_BASE}/warehouse/scan/resolve?${qs.toString()}`,
         { headers: authHeaders }
       );
       const data = await res.json().catch(() => null);
@@ -570,7 +573,7 @@ export default function OrderFulfillmentFlow({
       return;
     }
 
-    const resolved = await resolveScanEntity(raw);
+    const resolved = await resolveScanEntity(raw, { strict: true });
     const entity = resolved?.entity || {};
     const resolvedId = String(entity.id || "");
     const resolvedCode = normalizeScan(entity.code);

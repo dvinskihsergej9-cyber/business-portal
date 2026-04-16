@@ -13833,6 +13833,11 @@ app.post("/api/warehouse/locations/:id/qr", auth, async (req, res) => {
 app.get("/api/warehouse/scan/resolve", auth, async (req, res) => {
   try {
     const raw = String(req.query.code || "").trim();
+    const strictLookup = ["1", "true", "yes", "on"].includes(
+      String(req.query.strict || "")
+        .trim()
+        .toLowerCase()
+    );
     if (!raw) {
       return res.status(400).json({ message: "CODE_REQUIRED" });
     }
@@ -13963,8 +13968,7 @@ app.get("/api/warehouse/scan/resolve", auth, async (req, res) => {
           { code: raw },
           { qrCode: raw },
           { name: raw },
-          { code: { contains: raw } },
-          { name: { contains: raw } },
+          ...(!strictLookup ? [{ code: { contains: raw } }, { name: { contains: raw } }] : []),
         ],
       },
     });
@@ -13976,16 +13980,20 @@ app.get("/api/warehouse/scan/resolve", auth, async (req, res) => {
         },
         take: 500,
       });
-      const normalizedMatch = candidates.find((entry) => {
-        const codeToken = normalizeLocationLookupToken(entry.code);
-        const nameToken = normalizeLocationLookupToken(entry.name);
-        const qrToken = normalizeLocationLookupToken(entry.qrCode);
-        return (
-          (codeToken && (codeToken === rawNormalized || codeToken.includes(rawNormalized))) ||
-          (nameToken && (nameToken === rawNormalized || nameToken.includes(rawNormalized))) ||
-          (qrToken && qrToken === rawNormalized)
-        );
-      });
+        const normalizedMatch = candidates.find((entry) => {
+          const codeToken = normalizeLocationLookupToken(entry.code);
+          const nameToken = normalizeLocationLookupToken(entry.name);
+          const qrToken = normalizeLocationLookupToken(entry.qrCode);
+          return (
+            (codeToken &&
+              (codeToken === rawNormalized ||
+                (!strictLookup && codeToken.includes(rawNormalized)))) ||
+            (nameToken &&
+              (nameToken === rawNormalized ||
+                (!strictLookup && nameToken.includes(rawNormalized)))) ||
+            (qrToken && qrToken === rawNormalized)
+          );
+        });
       if (normalizedMatch) {
         return res.json({
           type: "location",
