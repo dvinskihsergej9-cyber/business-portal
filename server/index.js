@@ -887,18 +887,41 @@ function parsePushSubscription(input) {
 }
 
 async function sendWebPushToUser(orgId, userId, payload) {
-  if (!WEB_PUSH_ENABLED) return;
-  if (!userId) return;
+  const report = {
+    enabled: WEB_PUSH_ENABLED,
+    userId: userId || null,
+    subscriptionsFound: 0,
+    attempted: 0,
+    delivered: 0,
+    removed: 0,
+    failed: 0,
+    reason: null,
+    errors: [],
+  };
+
+  if (!WEB_PUSH_ENABLED) {
+    report.reason = "PUSH_DISABLED";
+    return report;
+  }
+  if (!userId) {
+    report.reason = "NO_USER";
+    return report;
+  }
 
   const subscriptions = await prisma.pushSubscription.findMany({
     where: { userId },
     select: { id: true, endpoint: true, p256dh: true, auth: true },
     take: 20,
   });
-  if (!subscriptions.length) return;
+  report.subscriptionsFound = subscriptions.length;
+  if (!subscriptions.length) {
+    report.reason = "NO_SUBSCRIPTIONS";
+    return report;
+  }
 
   const message = JSON.stringify(payload || {});
   for (const sub of subscriptions) {
+    report.attempted += 1;
     try {
       await webpush.sendNotification(
         {
@@ -911,6 +934,7 @@ async function sendWebPushToUser(orgId, userId, payload) {
         message,
         { TTL: 60 * 60 }
       );
+      report.delivered += 1;
       await prisma.pushSubscription.update({
         where: { id: sub.id },
         data: {
@@ -923,8 +947,17 @@ async function sendWebPushToUser(orgId, userId, payload) {
       const statusCode = Number(err?.statusCode || 0);
       const messageText = String(err?.message || "PUSH_SEND_FAILED");
       if (statusCode === 404 || statusCode === 410) {
+        report.removed += 1;
         await prisma.pushSubscription.delete({ where: { id: sub.id } }).catch(() => null);
       } else {
+        report.failed += 1;
+        if (report.errors.length < 3) {
+          report.errors.push({
+            subscriptionId: sub.id,
+            statusCode: statusCode || null,
+            message: messageText.slice(0, 200),
+          });
+        }
         await prisma.pushSubscription.update({
           where: { id: sub.id },
           data: {
@@ -935,6 +968,18 @@ async function sendWebPushToUser(orgId, userId, payload) {
       }
     }
   }
+
+  if (report.delivered > 0) {
+    report.reason = "DELIVERED";
+  } else if (report.failed > 0) {
+    report.reason = "SEND_ERRORS";
+  } else if (report.removed === report.subscriptionsFound) {
+    report.reason = "SUBSCRIPTIONS_EXPIRED";
+  } else {
+    report.reason = "NOT_DELIVERED";
+  }
+
+  return report;
 }
 
 async function createWarehouseNotification({
@@ -946,6 +991,7 @@ async function createWarehouseNotification({
   linkUrl = null,
   payloadJson = null,
   sendWebPush = true,
+  onPushReport = null,
 }) {
   if (!userId || !title || !message) return null;
   const normalizedOrgId = orgId || null;
@@ -963,8 +1009,9 @@ async function createWarehouseNotification({
     },
   });
 
+  let pushReport = null;
   if (sendWebPush) {
-    await sendWebPushToUser(normalizedOrgId, userId, {
+    pushReport = await sendWebPushToUser(normalizedOrgId, userId, {
       title,
       body: message,
       url: linkUrl || "/warehouse",
@@ -972,7 +1019,25 @@ async function createWarehouseNotification({
       type,
     }).catch((err) => {
       console.error("[PUSH] Ошибка отправки:", err);
+      return {
+        enabled: WEB_PUSH_ENABLED,
+        userId,
+        subscriptionsFound: 0,
+        attempted: 0,
+        delivered: 0,
+        removed: 0,
+        failed: 1,
+        reason: "SEND_FATAL",
+        errors: [{ message: String(err?.message || err || "PUSH_SEND_FATAL").slice(0, 200) }],
+      };
     });
+  }
+  if (typeof onPushReport === "function") {
+    try {
+      onPushReport(pushReport);
+    } catch {
+      // no-op
+    }
   }
 
   return notification;
@@ -12913,6 +12978,7 @@ app.post("/api/warehouse/tasks", auth, async (req, res) => {
       include: WAREHOUSE_TASK_INCLUDE,
     });
 
+    let pushDelivery = null;
     if (task.executorUserId) {
       await createWarehouseNotification({
         orgId: req.user.orgId || null,
@@ -12922,10 +12988,36 @@ app.post("/api/warehouse/tasks", auth, async (req, res) => {
         message: `Вам назначена задача: "${task.title}".`,
         linkUrl: TASKS_JOURNAL_LINK,
         payloadJson: { taskId: task.id },
+        onPushReport: (report) => {
+          if (!report) return;
+          pushDelivery = {
+            enabled: Boolean(report.enabled),
+            subscriptionsFound: Number(report.subscriptionsFound || 0),
+            attempted: Number(report.attempted || 0),
+            delivered: Number(report.delivered || 0),
+            removed: Number(report.removed || 0),
+            failed: Number(report.failed || 0),
+            reason: report.reason || null,
+          };
+        },
       });
+
+      if (pushDelivery && pushDelivery.delivered < 1) {
+        console.warn("[PUSH][TASK_ASSIGNED] not delivered:", {
+          orgId: req.user.orgId || null,
+          taskId: task.id,
+          assignerId: req.user.id,
+          executorUserId: task.executorUserId,
+          pushDelivery,
+        });
+      }
     }
 
-    res.status(201).json(mapWarehouseTaskForResponse(task));
+    const taskResponse = mapWarehouseTaskForResponse(task);
+    if (pushDelivery) {
+      taskResponse.pushDelivery = pushDelivery;
+    }
+    res.status(201).json(taskResponse);
   } catch (err) {
     console.error("warehouse task create error:", err);
     const message = String(err?.message || "");

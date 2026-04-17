@@ -479,6 +479,7 @@ export default function Warehouse({
   const [taskResponseSavingId, setTaskResponseSavingId] = useState(null);
 
   const [taskError, setTaskError] = useState("");
+  const [taskInfo, setTaskInfo] = useState("");
   const [taskPhotoFiles, setTaskPhotoFiles] = useState([]);
   const [taskResponseDrafts, setTaskResponseDrafts] = useState({});
   const [taskResponsePhotoFiles, setTaskResponsePhotoFiles] = useState({});
@@ -1618,6 +1619,7 @@ export default function Warehouse({
     setTaskSaving(true);
 
     setTaskError("");
+    setTaskInfo("");
 
 
 
@@ -1668,6 +1670,26 @@ export default function Warehouse({
 
       }
 
+      const pushDelivery = data?.pushDelivery || null;
+      if (pushDelivery && Number(pushDelivery.delivered || 0) < 1) {
+        if (pushDelivery.enabled === false) {
+          setTaskInfo(
+            "Задача создана, но push на сервере отключены. Проверьте WEB_PUSH_PUBLIC_KEY и WEB_PUSH_PRIVATE_KEY."
+          );
+        } else if (pushDelivery.reason === "NO_SUBSCRIPTIONS") {
+          setTaskInfo(
+            "Задача создана, но push не отправлен: у исполнителя нет активной push-подписки (нужно открыть приложение на телефоне и разрешить уведомления)."
+          );
+        } else if (pushDelivery.reason === "SUBSCRIPTIONS_EXPIRED") {
+          setTaskInfo(
+            "Задача создана, но push-подписка исполнителя устарела. Исполнителю нужно заново открыть приложение и разрешить уведомления."
+          );
+        } else {
+          setTaskInfo(
+            "Задача создана, но push не доставлен. Проверьте у сотрудника разрешение уведомлений и откройте приложение заново."
+          );
+        }
+      }
 
 
       setTaskForm({
@@ -3378,6 +3400,15 @@ export default function Warehouse({
 
                   </div>
 
+                )}
+
+                {taskInfo && (
+                  <div
+                    className="alert alert--warning"
+                    style={{ marginBottom: 8 }}
+                  >
+                    {taskInfo}
+                  </div>
                 )}
 
 
