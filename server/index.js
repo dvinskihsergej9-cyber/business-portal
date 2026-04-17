@@ -11786,19 +11786,62 @@ app.post("/api/admin/platform-news/publish", auth, requireAdmin, requireSystemOw
       },
     });
 
-    const orgSeen = new Set();
-    const recipients = [];
-    for (const user of admins) {
-      if (user.isSystemOwner === true) continue;
-      const orgId = Number(user.orgId || 0);
-      if (!orgId || orgSeen.has(orgId)) continue;
-      orgSeen.add(orgId);
-      recipients.push({ orgId, userId: user.id });
+    const orgIds = Array.from(
+      new Set(
+        admins
+          .filter((user) => user.isSystemOwner !== true)
+          .map((user) => Number(user.orgId || 0))
+          .filter((orgId) => Number.isFinite(orgId) && orgId > 0)
+      )
+    );
+
+    const now = new Date();
+    const orgSubscriptions = orgIds.length
+      ? await prisma.subscription.findMany({
+          where: {
+            status: { in: ["active", "trialing"] },
+            paidUntil: { gt: now },
+            user: {
+              orgId: { in: orgIds },
+              role: "ADMIN",
+              isActive: true,
+              isSystemOwner: false,
+              organization: {
+                is: {
+                  isActive: true,
+                },
+              },
+            },
+          },
+          orderBy: [{ paidUntil: "desc" }, { id: "desc" }],
+          select: {
+            userId: true,
+            user: {
+              select: {
+                orgId: true,
+              },
+            },
+          },
+        })
+      : [];
+
+    // Новости платформы отправляем строго плательщику подписки в организации.
+    const recipientsByOrg = new Map();
+    for (const row of orgSubscriptions) {
+      const orgId = Number(row?.user?.orgId || 0);
+      const userId = Number(row?.userId || 0);
+      if (!orgId || !userId) continue;
+      if (recipientsByOrg.has(orgId)) continue;
+      recipientsByOrg.set(orgId, { orgId, userId });
     }
 
+    const recipients = Array.from(recipientsByOrg.values());
+    const orgsWithoutPayerCount = Math.max(0, orgIds.length - recipients.length);
+
     const sendResults = await Promise.allSettled(
-      recipients.map((recipient) =>
-        createWarehouseNotification({
+      recipients.map(async (recipient) => {
+        let pushReport = null;
+        await createWarehouseNotification({
           orgId: recipient.orgId,
           userId: recipient.userId,
           type: PLATFORM_NEWS_TYPE,
@@ -11810,24 +11853,51 @@ app.post("/api/admin/platform-news/publish", auth, requireAdmin, requireSystemOw
             priority,
             publishedAt: new Date().toISOString(),
           },
-        })
-      )
+          onPushReport: (report) => {
+            pushReport = report || null;
+          },
+        });
+        return { recipient, pushReport };
+      })
     );
 
     let sentCount = 0;
     let failedCount = 0;
+    let pushDeliveredCount = 0;
+    let pushNoSubscriptionsCount = 0;
+    let pushDisabledCount = 0;
+    let pushFailedCount = 0;
     for (const result of sendResults) {
       if (result.status === "fulfilled") {
         sentCount += 1;
+        const report = result.value?.pushReport || null;
+        if (!report) {
+          continue;
+        }
+        if (Number(report.delivered || 0) > 0) {
+          pushDeliveredCount += 1;
+        } else if (report.enabled === false) {
+          pushDisabledCount += 1;
+        } else if (report.reason === "NO_SUBSCRIPTIONS") {
+          pushNoSubscriptionsCount += 1;
+        } else {
+          pushFailedCount += 1;
+          console.warn("[PUSH][PLATFORM_NEWS] not delivered:", {
+            orgId: result.value?.recipient?.orgId || null,
+            userId: result.value?.recipient?.userId || null,
+            pushReport: report,
+          });
+        }
       } else {
         failedCount += 1;
+        console.error("[PLATFORM_NEWS] delivery error:", result.reason);
       }
     }
 
     const summaryMessage =
       failedCount > 0
-        ? `Отправлено ${sentCount} из ${recipients.length}. Ошибок: ${failedCount}.`
-        : `Отправлено ${sentCount} из ${recipients.length}.`;
+        ? `Отправлено плательщикам ${sentCount} из ${orgIds.length}. Без активного плательщика: ${orgsWithoutPayerCount}. Ошибок: ${failedCount}. Push доставлено: ${pushDeliveredCount}.`
+        : `Отправлено плательщикам ${sentCount} из ${orgIds.length}. Без активного плательщика: ${orgsWithoutPayerCount}. Push доставлено: ${pushDeliveredCount}.`;
 
     const historyEntry = await prisma.warehouseNotification.create({
       data: {
@@ -11844,6 +11914,11 @@ app.post("/api/admin/platform-news/publish", auth, requireAdmin, requireSystemOw
           sentCount,
           failedCount,
           totalRecipients: recipients.length,
+          pushDeliveredCount,
+          pushNoSubscriptionsCount,
+          pushDisabledCount,
+          pushFailedCount,
+          orgsWithoutPayerCount,
           publishedAt: new Date().toISOString(),
         },
       },
@@ -11854,6 +11929,11 @@ app.post("/api/admin/platform-news/publish", auth, requireAdmin, requireSystemOw
       sentCount,
       failedCount,
       totalRecipients: recipients.length,
+      pushDeliveredCount,
+      pushNoSubscriptionsCount,
+      pushDisabledCount,
+      pushFailedCount,
+      orgsWithoutPayerCount,
       historyItem: {
         id: historyEntry.id,
         createdAt: historyEntry.createdAt,
@@ -11863,13 +11943,24 @@ app.post("/api/admin/platform-news/publish", auth, requireAdmin, requireSystemOw
         sentCount,
         failedCount,
         totalRecipients: recipients.length,
+        pushDeliveredCount,
+        pushNoSubscriptionsCount,
+        pushDisabledCount,
+        pushFailedCount,
+        orgsWithoutPayerCount,
       },
       warning:
         recipients.length === 0
-          ? "Нет владельцев компаний для рассылки."
-          : failedCount > 0
+          ? "Нет активных плательщиков подписки для рассылки."
+          : pushDisabledCount > 0
+            ? "Push на сервере отключен. Проверьте WEB_PUSH_PUBLIC_KEY и WEB_PUSH_PRIVATE_KEY."
+            : failedCount > 0
             ? "Часть уведомлений не отправлена. Повторите попытку позже."
-            : "",
+            : pushDeliveredCount < sentCount
+              ? "Новость опубликована, но push доставлен не всем получателям. Проверьте подписки в аккаунтах получателей."
+              : orgsWithoutPayerCount > 0
+                ? `Новость отправлена только плательщикам подписки. Организаций без активного плательщика: ${orgsWithoutPayerCount}.`
+              : "",
     });
   } catch (err) {
     console.error("platform news publish error:", err);
