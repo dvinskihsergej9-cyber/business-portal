@@ -11767,11 +11767,12 @@ app.post("/api/admin/platform-news/publish", auth, requireAdmin, requireSystemOw
     const message = rawMessage.slice(0, 4000);
     const priority = ["LOW", "NORMAL", "HIGH"].includes(rawPriority) ? rawPriority : "NORMAL";
 
-    const admins = await runWithoutTenantScope(() =>
+    const activeAdminOrgRows = await runWithoutTenantScope(() =>
       prismaBase.user.findMany({
         where: {
           role: "ADMIN",
           isActive: true,
+          isSystemOwner: false,
           orgId: { not: null },
           organization: {
             is: {
@@ -11779,55 +11780,46 @@ app.post("/api/admin/platform-news/publish", auth, requireAdmin, requireSystemOw
             },
           },
         },
-        orderBy: [{ orgId: "asc" }, { id: "asc" }],
+        distinct: ["orgId"],
+        orderBy: [{ orgId: "asc" }],
         select: {
-          id: true,
           orgId: true,
-          isSystemOwner: true,
         },
       })
     );
-
-    const orgIds = Array.from(
-      new Set(
-        admins
-          .filter((user) => user.isSystemOwner !== true)
-          .map((user) => Number(user.orgId || 0))
-          .filter((orgId) => Number.isFinite(orgId) && orgId > 0)
-      )
-    );
+    const orgIds = activeAdminOrgRows
+      .map((row) => Number(row?.orgId || 0))
+      .filter((orgId) => Number.isFinite(orgId) && orgId > 0);
 
     const now = new Date();
-    const orgSubscriptions = orgIds.length
-      ? await runWithoutTenantScope(() =>
-          prismaBase.subscription.findMany({
-            where: {
-              status: { in: ["active", "trialing"] },
-              paidUntil: { gt: now },
-              user: {
-                orgId: { in: orgIds },
-                role: "ADMIN",
+    const orgSubscriptions = await runWithoutTenantScope(() =>
+      prismaBase.subscription.findMany({
+        where: {
+          status: { in: ["active", "trialing"] },
+          paidUntil: { gt: now },
+          user: {
+            role: "ADMIN",
+            isActive: true,
+            isSystemOwner: false,
+            orgId: { not: null },
+            organization: {
+              is: {
                 isActive: true,
-                isSystemOwner: false,
-                organization: {
-                  is: {
-                    isActive: true,
-                  },
-                },
               },
             },
-            orderBy: [{ paidUntil: "desc" }, { id: "desc" }],
+          },
+        },
+        orderBy: [{ paidUntil: "desc" }, { id: "desc" }],
+        select: {
+          userId: true,
+          user: {
             select: {
-              userId: true,
-              user: {
-                select: {
-                  orgId: true,
-                },
-              },
+              orgId: true,
             },
-          })
-        )
-      : [];
+          },
+        },
+      })
+    );
 
     // Новости платформы отправляем строго плательщику подписки в организации.
     const recipientsByOrg = new Map();
@@ -11840,7 +11832,8 @@ app.post("/api/admin/platform-news/publish", auth, requireAdmin, requireSystemOw
     }
 
     const recipients = Array.from(recipientsByOrg.values());
-    const orgsWithoutPayerCount = Math.max(0, orgIds.length - recipients.length);
+    const totalOrgCandidates = Math.max(orgIds.length, recipients.length);
+    const orgsWithoutPayerCount = Math.max(0, totalOrgCandidates - recipients.length);
 
     const sendResults = await Promise.allSettled(
       recipients.map(async (recipient) => {
@@ -11900,8 +11893,8 @@ app.post("/api/admin/platform-news/publish", auth, requireAdmin, requireSystemOw
 
     const summaryMessage =
       failedCount > 0
-        ? `Отправлено плательщикам ${sentCount} из ${orgIds.length}. Без активного плательщика: ${orgsWithoutPayerCount}. Ошибок: ${failedCount}. Push доставлено: ${pushDeliveredCount}.`
-        : `Отправлено плательщикам ${sentCount} из ${orgIds.length}. Без активного плательщика: ${orgsWithoutPayerCount}. Push доставлено: ${pushDeliveredCount}.`;
+        ? `Отправлено плательщикам ${sentCount} из ${totalOrgCandidates}. Без активного плательщика: ${orgsWithoutPayerCount}. Ошибок: ${failedCount}. Push доставлено: ${pushDeliveredCount}.`
+        : `Отправлено плательщикам ${sentCount} из ${totalOrgCandidates}. Без активного плательщика: ${orgsWithoutPayerCount}. Push доставлено: ${pushDeliveredCount}.`;
 
     const historyEntry = await prisma.warehouseNotification.create({
       data: {
@@ -11938,6 +11931,11 @@ app.post("/api/admin/platform-news/publish", auth, requireAdmin, requireSystemOw
       pushDisabledCount,
       pushFailedCount,
       orgsWithoutPayerCount,
+      diagnostics: {
+        activeAdminOrgCount: orgIds.length,
+        payerSubscriptionRows: orgSubscriptions.length,
+        selectedRecipients: recipients.length,
+      },
       historyItem: {
         id: historyEntry.id,
         createdAt: historyEntry.createdAt,
