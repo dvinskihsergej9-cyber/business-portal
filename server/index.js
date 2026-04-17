@@ -11767,24 +11767,26 @@ app.post("/api/admin/platform-news/publish", auth, requireAdmin, requireSystemOw
     const message = rawMessage.slice(0, 4000);
     const priority = ["LOW", "NORMAL", "HIGH"].includes(rawPriority) ? rawPriority : "NORMAL";
 
-    const admins = await prisma.user.findMany({
-      where: {
-        role: "ADMIN",
-        isActive: true,
-        orgId: { not: null },
-        organization: {
-          is: {
-            isActive: true,
+    const admins = await runWithoutTenantScope(() =>
+      prismaBase.user.findMany({
+        where: {
+          role: "ADMIN",
+          isActive: true,
+          orgId: { not: null },
+          organization: {
+            is: {
+              isActive: true,
+            },
           },
         },
-      },
-      orderBy: [{ orgId: "asc" }, { id: "asc" }],
-      select: {
-        id: true,
-        orgId: true,
-        isSystemOwner: true,
-      },
-    });
+        orderBy: [{ orgId: "asc" }, { id: "asc" }],
+        select: {
+          id: true,
+          orgId: true,
+          isSystemOwner: true,
+        },
+      })
+    );
 
     const orgIds = Array.from(
       new Set(
@@ -11797,32 +11799,34 @@ app.post("/api/admin/platform-news/publish", auth, requireAdmin, requireSystemOw
 
     const now = new Date();
     const orgSubscriptions = orgIds.length
-      ? await prisma.subscription.findMany({
-          where: {
-            status: { in: ["active", "trialing"] },
-            paidUntil: { gt: now },
-            user: {
-              orgId: { in: orgIds },
-              role: "ADMIN",
-              isActive: true,
-              isSystemOwner: false,
-              organization: {
-                is: {
-                  isActive: true,
+      ? await runWithoutTenantScope(() =>
+          prismaBase.subscription.findMany({
+            where: {
+              status: { in: ["active", "trialing"] },
+              paidUntil: { gt: now },
+              user: {
+                orgId: { in: orgIds },
+                role: "ADMIN",
+                isActive: true,
+                isSystemOwner: false,
+                organization: {
+                  is: {
+                    isActive: true,
+                  },
                 },
               },
             },
-          },
-          orderBy: [{ paidUntil: "desc" }, { id: "desc" }],
-          select: {
-            userId: true,
-            user: {
-              select: {
-                orgId: true,
+            orderBy: [{ paidUntil: "desc" }, { id: "desc" }],
+            select: {
+              userId: true,
+              user: {
+                select: {
+                  orgId: true,
+                },
               },
             },
-          },
-        })
+          })
+        )
       : [];
 
     // Новости платформы отправляем строго плательщику подписки в организации.
