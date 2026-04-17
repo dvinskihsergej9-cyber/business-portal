@@ -908,11 +908,14 @@ async function sendWebPushToUser(orgId, userId, payload) {
     return report;
   }
 
-  const subscriptions = await prisma.pushSubscription.findMany({
-    where: { userId },
-    select: { id: true, endpoint: true, p256dh: true, auth: true },
-    take: 20,
-  });
+  const normalizedOrgId = Number(orgId || 0) || null;
+  const subscriptions = await runWithoutTenantScope(() =>
+    prismaBase.pushSubscription.findMany({
+      where: normalizedOrgId ? { userId, orgId: normalizedOrgId } : { userId },
+      select: { id: true, endpoint: true, p256dh: true, auth: true },
+      take: 20,
+    })
+  );
   report.subscriptionsFound = subscriptions.length;
   if (!subscriptions.length) {
     report.reason = "NO_SUBSCRIPTIONS";
@@ -935,20 +938,24 @@ async function sendWebPushToUser(orgId, userId, payload) {
         { TTL: 60 * 60 }
       );
       report.delivered += 1;
-      await prisma.pushSubscription.update({
-        where: { id: sub.id },
-        data: {
-          lastSuccessAt: new Date(),
-          lastErrorAt: null,
-          lastErrorMessage: null,
-        },
-      });
+      await runWithoutTenantScope(() =>
+        prismaBase.pushSubscription.update({
+          where: { id: sub.id },
+          data: {
+            lastSuccessAt: new Date(),
+            lastErrorAt: null,
+            lastErrorMessage: null,
+          },
+        })
+      );
     } catch (err) {
       const statusCode = Number(err?.statusCode || 0);
       const messageText = String(err?.message || "PUSH_SEND_FAILED");
       if (statusCode === 404 || statusCode === 410) {
         report.removed += 1;
-        await prisma.pushSubscription.delete({ where: { id: sub.id } }).catch(() => null);
+        await runWithoutTenantScope(() =>
+          prismaBase.pushSubscription.delete({ where: { id: sub.id } })
+        ).catch(() => null);
       } else {
         report.failed += 1;
         if (report.errors.length < 3) {
@@ -958,13 +965,15 @@ async function sendWebPushToUser(orgId, userId, payload) {
             message: messageText.slice(0, 200),
           });
         }
-        await prisma.pushSubscription.update({
-          where: { id: sub.id },
-          data: {
-            lastErrorAt: new Date(),
-            lastErrorMessage: messageText.slice(0, 500),
-          },
-        }).catch(() => null);
+        await runWithoutTenantScope(() =>
+          prismaBase.pushSubscription.update({
+            where: { id: sub.id },
+            data: {
+              lastErrorAt: new Date(),
+              lastErrorMessage: messageText.slice(0, 500),
+            },
+          })
+        ).catch(() => null);
       }
     }
   }
