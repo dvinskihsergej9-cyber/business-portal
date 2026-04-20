@@ -5771,9 +5771,15 @@ app.post("/api/login", async (req, res) => {
     });
   } catch (err) {
     if (isPermissionDeniedForTable(err, "User")) {
+      await ensureAuthDbPermissions().catch((bootstrapErr) => {
+        console.error("[LOGIN][DB_AUTH_PERMS] bootstrap retry failed:", bootstrapErr);
+      });
       return res.status(500).json({ message: "AUTH_DB_PERMISSION_USER_TABLE" });
     }
     if (isPermissionDeniedForTable(err, "Organization")) {
+      await ensureAuthDbPermissions().catch((bootstrapErr) => {
+        console.error("[LOGIN][DB_AUTH_PERMS] bootstrap retry failed:", bootstrapErr);
+      });
       return res.status(500).json({ message: "AUTH_DB_PERMISSION_ORG_TABLE" });
     }
     if (String(err?.name || "").includes("PrismaClientUnknownRequestError")) {
@@ -22109,6 +22115,15 @@ function isPostgresDatabaseUrl() {
   return normalizedUrl.startsWith("postgresql://") || normalizedUrl.startsWith("postgres://");
 }
 
+function parseRoleFromDatabaseUrl(urlValue = "") {
+  try {
+    const parsed = new URL(String(urlValue || "").trim());
+    return decodeURIComponent(String(parsed.username || "").trim());
+  } catch {
+    return "";
+  }
+}
+
 async function isPalletDiscrepancyStorageReady(tx = prismaBase) {
   if (!isPostgresDatabaseUrl()) return true;
   try {
@@ -22344,6 +22359,11 @@ async function ensureAuthDbPermissions() {
   if (!isPostgresDatabaseUrl()) {
     return;
   }
+  const strictMode = parseEnvBoolean(process.env.DB_PERMISSIONS_STRICT, false);
+  const runtimeRole =
+    String(process.env.DATABASE_RUNTIME_ROLE || "").trim() ||
+    parseRoleFromDatabaseUrl(DATABASE_URL);
+  const adminUrl = String(process.env.DATABASE_ADMIN_URL || "").trim();
 
   const loadPrivileges = async () => {
     const rows = await prismaBase.$queryRawUnsafe(`
@@ -22362,25 +22382,17 @@ async function ensureAuthDbPermissions() {
     return Array.isArray(rows) && rows.length ? rows[0] : null;
   };
 
-  try {
-    const before = await loadPrivileges();
-    const hasUserRead = Boolean(before?.userSelect);
-    const hasOrgRead = Boolean(before?.orgSelect);
-    const hasItemRead = Boolean(before?.itemSelect);
-    const hasNotificationRead = Boolean(before?.notificationSelect);
-    const hasPalletRead = Boolean(before?.palletSelect);
-    const hasPalletLocationRead = Boolean(before?.palletLocationSelect);
-    if (
-      hasUserRead &&
-      hasOrgRead &&
-      hasItemRead &&
-      hasNotificationRead &&
-      hasPalletRead &&
-      hasPalletLocationRead
-    ) {
-      return;
-    }
+  const hasAllRequiredPrivileges = (snapshot) =>
+    Boolean(
+      snapshot?.userSelect &&
+        snapshot?.orgSelect &&
+        snapshot?.itemSelect &&
+        snapshot?.notificationSelect &&
+        snapshot?.palletSelect &&
+        snapshot?.palletLocationSelect
+    );
 
+  const grantForCurrentUser = async () => {
     await prismaBase.$executeRawUnsafe(`
       DO $$
       DECLARE
@@ -22397,8 +22409,80 @@ async function ensureAuthDbPermissions() {
       END
       $$;
     `);
+  };
 
-    const after = await loadPrivileges();
+  const grantForRuntimeRoleByAdmin = async (targetRole, dbAdminUrl) => {
+    if (!targetRole || !dbAdminUrl) return;
+    const roleLiteral = `'${String(targetRole).replace(/'/g, "''")}'`;
+    const adminPrisma = new PrismaClient({
+      datasources: {
+        db: {
+          url: dbAdminUrl,
+        },
+      },
+    });
+    try {
+      await adminPrisma.$executeRawUnsafe(`
+        DO $$
+        DECLARE
+          v_target_role text := ${roleLiteral};
+          v_owner record;
+        BEGIN
+          IF NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = v_target_role) THEN
+            RAISE EXCEPTION 'Role "%" does not exist', v_target_role;
+          END IF;
+
+          EXECUTE format('GRANT USAGE ON SCHEMA public TO %I', v_target_role);
+          EXECUTE format(
+            'GRANT SELECT, INSERT, UPDATE, DELETE, REFERENCES, TRIGGER ON ALL TABLES IN SCHEMA public TO %I',
+            v_target_role
+          );
+          EXECUTE format(
+            'GRANT USAGE, SELECT, UPDATE ON ALL SEQUENCES IN SCHEMA public TO %I',
+            v_target_role
+          );
+
+          FOR v_owner IN
+            SELECT DISTINCT pg_get_userbyid(c.relowner) AS owner_name
+            FROM pg_class c
+            JOIN pg_namespace n ON n.oid = c.relnamespace
+            WHERE n.nspname = 'public'
+              AND c.relkind IN ('r', 'p', 'S', 'v', 'm', 'f')
+              AND pg_get_userbyid(c.relowner) IS NOT NULL
+          LOOP
+            EXECUTE format(
+              'ALTER DEFAULT PRIVILEGES FOR ROLE %I IN SCHEMA public GRANT SELECT, INSERT, UPDATE, DELETE, REFERENCES, TRIGGER ON TABLES TO %I',
+              v_owner.owner_name,
+              v_target_role
+            );
+            EXECUTE format(
+              'ALTER DEFAULT PRIVILEGES FOR ROLE %I IN SCHEMA public GRANT USAGE, SELECT, UPDATE ON SEQUENCES TO %I',
+              v_owner.owner_name,
+              v_target_role
+            );
+          END LOOP;
+        END
+        $$;
+      `);
+    } finally {
+      await adminPrisma.$disconnect().catch(() => null);
+    }
+  };
+
+  try {
+    const before = await loadPrivileges();
+    if (hasAllRequiredPrivileges(before)) {
+      return;
+    }
+
+    await grantForCurrentUser();
+    let after = await loadPrivileges();
+
+    if (!hasAllRequiredPrivileges(after) && adminUrl) {
+      await grantForRuntimeRoleByAdmin(runtimeRole, adminUrl);
+      after = await loadPrivileges();
+    }
+
     if (!after?.userSelect) {
       console.warn("[DB_AUTH_PERMS] missing SELECT privilege on public.\"User\" for current_user.");
     }
@@ -22415,8 +22499,25 @@ async function ensureAuthDbPermissions() {
         "[DB_AUTH_PERMS] missing SELECT privilege on public.\"WarehouseNotification\" for current_user."
       );
     }
+    if (!after?.palletSelect) {
+      console.warn("[DB_AUTH_PERMS] missing SELECT privilege on public.\"Pallet\" for current_user.");
+    }
+    if (!after?.palletLocationSelect) {
+      console.warn(
+        "[DB_AUTH_PERMS] missing SELECT privilege on public.\"PalletLocation\" for current_user."
+      );
+    }
+
+    if (!hasAllRequiredPrivileges(after) && strictMode) {
+      throw new Error(
+        "[DB_AUTH_PERMS] strict mode: required DB privileges are missing after bootstrap grants."
+      );
+    }
   } catch (err) {
     console.error("[DB_AUTH_PERMS] check/grant error:", err);
+    if (strictMode) {
+      throw err;
+    }
   }
 }
 

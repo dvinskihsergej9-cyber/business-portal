@@ -2,6 +2,7 @@ import { spawn } from "node:child_process";
 
 const IS_WIN = process.platform === "win32";
 const NPX = IS_WIN ? "npx.cmd" : "npx";
+const NODE = IS_WIN ? "node.exe" : "node";
 
 function sleep(ms) {
   return new Promise((resolve) => setTimeout(resolve, ms));
@@ -10,6 +11,47 @@ function sleep(ms) {
 function runStep(label, args) {
   return new Promise((resolve, reject) => {
     const child = spawn(NPX, args, {
+      stdio: ["ignore", "pipe", "pipe"],
+      shell: false,
+      env: process.env,
+    });
+
+    let stderr = "";
+    let stdout = "";
+
+    child.stdout.on("data", (chunk) => {
+      const text = String(chunk);
+      stdout += text;
+      process.stdout.write(text);
+    });
+
+    child.stderr.on("data", (chunk) => {
+      const text = String(chunk);
+      stderr += text;
+      process.stderr.write(text);
+    });
+
+    child.on("error", (error) => {
+      reject(error);
+    });
+
+    child.on("close", (code) => {
+      if (code === 0) {
+        resolve({ label, stdout, stderr });
+        return;
+      }
+      const error = new Error(`Step failed: ${label} (code ${code})`);
+      error.code = code;
+      error.stdout = stdout;
+      error.stderr = stderr;
+      reject(error);
+    });
+  });
+}
+
+function runNodeStep(label, args) {
+  return new Promise((resolve, reject) => {
+    const child = spawn(NODE, args, {
       stdio: ["ignore", "pipe", "pipe"],
       shell: false,
       env: process.env,
@@ -104,7 +146,12 @@ function isIgnorableCleanupError(text) {
 }
 
 async function main() {
-  console.log("[DB_DEPLOY] Step 1/3: cleanup legacy item category");
+  console.log("[DB_DEPLOY] Step 1/4: ensure runtime DB permissions");
+  await runNodeStep("grant_runtime_db_permissions", [
+    "tools/grant-runtime-db-permissions.mjs",
+  ]);
+
+  console.log("[DB_DEPLOY] Step 2/4: cleanup legacy item category");
   try {
     await runStepWithRetry("cleanup_sql", [
       "prisma",
@@ -126,7 +173,7 @@ async function main() {
     }
   }
 
-  console.log("[DB_DEPLOY] Step 2/3: prisma db push");
+  console.log("[DB_DEPLOY] Step 3/4: prisma db push");
   try {
     await runStepWithRetry("db_push", [
       "prisma",
@@ -145,7 +192,7 @@ async function main() {
     }
   }
 
-  console.log("[DB_DEPLOY] Step 3/3: prisma generate");
+  console.log("[DB_DEPLOY] Step 4/4: prisma generate");
   try {
     await runStepWithRetry("generate", ["prisma", "generate"]);
   } catch (error) {
