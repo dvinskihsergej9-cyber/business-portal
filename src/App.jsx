@@ -31,6 +31,7 @@ import MarketingUnsubscribe from "./pages/MarketingUnsubscribe";
 import Page403 from "./pages/Page403";
 import AdminConsole from "./pages/AdminConsole";
 import PlatformNews from "./pages/PlatformNews";
+import DesignPreview from "./pages/DesignPreview";
 
 import Warehouse from "./pages/Warehouse";
 import MobileTsd from "./pages/MobileTsd";
@@ -197,6 +198,7 @@ function AppRoutesWithBackground() {
           <Route path="/privacy" element={<Privacy />} />
           <Route path="/contacts" element={<Contacts />} />
           <Route path="/refund" element={<Refund />} />
+          <Route path="/design-preview" element={<DesignPreview />} />
 
           <Route path="/login" element={<Login />} />
           <Route
