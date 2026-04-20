@@ -15,9 +15,7 @@ export default function Stepper({ steps, activeIndex }) {
               (isDone ? " tsd-stepper__step--done" : "")
             }
           >
-            <div className="tsd-stepper__dot">
-              {isDone ? "✓" : index + 1}
-            </div>
+            <div className="tsd-stepper__dot">{isDone ? "OK" : index + 1}</div>
             <div className="tsd-stepper__label">{step}</div>
           </div>
         );
