@@ -22,7 +22,10 @@ const BASE_TABS = [
 ];
 
 const OWNER_TAB = { id: "tenants", label: "Клиенты" };
-const OWNER_PLATFORM_NEWS_TAB = { id: "platform-news", label: "Новости платформы" };
+const OWNER_PLATFORM_NEWS_TAB = {
+  id: "platform-news",
+  label: "Новости платформы",
+};
 const COMPANY_OWNER_MARKETING_TAB = { id: "marketing-settings", label: "Рассылка" };
 
 export default function AdminConsole({ initialTab = "users" }) {
@@ -31,8 +34,7 @@ export default function AdminConsole({ initialTab = "users" }) {
   const isSystemOwner = user?.isSystemOwner === true;
   const canUsers = hasPermission(user, PERMISSION_KEYS.ADMIN_USERS);
   const canWarehouse = hasPermission(user, PERMISSION_KEYS.ADMIN_WAREHOUSE);
-  const canTenants =
-    isSystemOwner && hasPermission(user, PERMISSION_KEYS.ADMIN_TENANTS);
+  const canTenants = isSystemOwner && hasPermission(user, PERMISSION_KEYS.ADMIN_TENANTS);
   const canCompanyOwnerMarketing = isAdmin && !isSystemOwner;
 
   const tabs = useMemo(
@@ -42,27 +44,22 @@ export default function AdminConsole({ initialTab = "users" }) {
         canTenants ? OWNER_PLATFORM_NEWS_TAB : null,
         canUsers ? BASE_TABS.find((item) => item.id === "users") : null,
         canWarehouse ? BASE_TABS.find((item) => item.id === "warehouse") : null,
-        canWarehouse
-          ? BASE_TABS.find((item) => item.id === "picking-shortage")
-          : null,
+        canWarehouse ? BASE_TABS.find((item) => item.id === "picking-shortage") : null,
         canWarehouse
           ? BASE_TABS.find((item) => item.id === "order-status-history")
           : null,
-        canWarehouse
-          ? BASE_TABS.find((item) => item.id === "org-profile")
-          : null,
+        canWarehouse ? BASE_TABS.find((item) => item.id === "org-profile") : null,
         canCompanyOwnerMarketing ? COMPANY_OWNER_MARKETING_TAB : null,
-        canWarehouse
-          ? BASE_TABS.find((item) => item.id === "picking-report")
-          : null,
+        canWarehouse ? BASE_TABS.find((item) => item.id === "picking-report") : null,
       ].filter(Boolean),
-    [canUsers, canWarehouse, canTenants, canCompanyOwnerMarketing, isSystemOwner]
+    [canUsers, canWarehouse, canTenants, canCompanyOwnerMarketing]
   );
 
   const initialTabId = tabs.some((tab) => tab.id === initialTab)
     ? initialTab
     : tabs[0]?.id || "users";
   const [activeTab, setActiveTab] = useState(initialTabId);
+  const activeTabLabel = tabs.find((tab) => tab.id === activeTab)?.label || "Раздел";
 
   useEffect(() => {
     if (tabs.some((tab) => tab.id === activeTab)) return;
@@ -72,13 +69,10 @@ export default function AdminConsole({ initialTab = "users" }) {
   if (!isAdmin) {
     return (
       <div className="admin-console">
-        <div className="admin-console__header">
-          <div>
-            <div className="admin-console__title">Управление</div>
-            <div className="admin-console__subtitle">
-              Нет доступа, нужна роль ADMIN.
-            </div>
-          </div>
+        <div className="admin-console__hero">
+          <span className="admin-console__chip">Admin Center</span>
+          <div className="admin-console__title">Управление</div>
+          <div className="admin-console__subtitle">Нет доступа, нужна роль ADMIN.</div>
         </div>
         <div className="admin-console__card admin-console__card--warn">
           <div className="admin-console__card-title">Нет доступа</div>
@@ -93,12 +87,11 @@ export default function AdminConsole({ initialTab = "users" }) {
   if (!tabs.length) {
     return (
       <div className="admin-console">
-        <div className="admin-console__header">
-          <div>
-            <div className="admin-console__title">Управление</div>
-            <div className="admin-console__subtitle">
-              Нет доступных разделов управления для этого пользователя.
-            </div>
+        <div className="admin-console__hero">
+          <span className="admin-console__chip">Admin Center</span>
+          <div className="admin-console__title">Управление</div>
+          <div className="admin-console__subtitle">
+            Нет доступных разделов управления для этого пользователя.
           </div>
         </div>
       </div>
@@ -107,20 +100,33 @@ export default function AdminConsole({ initialTab = "users" }) {
 
   return (
     <div className="admin-console">
-      <div className="admin-console__tabs">
-        {tabs.map((tab) => (
-          <button
-            key={tab.id}
-            type="button"
-            className={
-              "admin-console__tab" +
-              (activeTab === tab.id ? " admin-console__tab--active" : "")
-            }
-            onClick={() => setActiveTab(tab.id)}
-          >
-            {tab.label}
-          </button>
-        ))}
+      <div className="admin-console__hero">
+        <span className="admin-console__chip">Admin Center</span>
+        <div className="admin-console__title">Управление</div>
+        <div className="admin-console__subtitle">
+          Панель управления настройками и справочниками платформы.
+        </div>
+        <div className="admin-console__active-label">
+          Текущий раздел: <strong>{activeTabLabel}</strong>
+        </div>
+      </div>
+
+      <div className="admin-console__tabs-wrap">
+        <div className="admin-console__tabs">
+          {tabs.map((tab) => (
+            <button
+              key={tab.id}
+              type="button"
+              className={
+                "admin-console__tab" +
+                (activeTab === tab.id ? " admin-console__tab--active" : "")
+              }
+              onClick={() => setActiveTab(tab.id)}
+            >
+              {tab.label}
+            </button>
+          ))}
+        </div>
       </div>
 
       <div className="admin-console__body">
@@ -137,4 +143,3 @@ export default function AdminConsole({ initialTab = "users" }) {
     </div>
   );
 }
-
