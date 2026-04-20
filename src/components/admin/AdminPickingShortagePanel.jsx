@@ -33,6 +33,7 @@ function userLabel(user) {
 
 export default function AdminPickingShortagePanel() {
   const [activeSubtab, setActiveSubtab] = useState("mode");
+  const [journalLoaded, setJournalLoaded] = useState(false);
 
   const [loadingJournal, setLoadingJournal] = useState(true);
   const [savingJournal, setSavingJournal] = useState(false);
@@ -73,14 +74,17 @@ export default function AdminPickingShortagePanel() {
       const candData = await candRes.json().catch(() => null);
       const allJournalData = await allJournalRes.json().catch(() => null);
 
-      if (!candRes.ok) {
-        throw new Error(candData?.message || "ORDER_SHORTAGE_CANDIDATES_ERROR");
-      }
       if (!allJournalRes.ok) {
         throw new Error(allJournalData?.message || "ORDER_PICKING_JOURNAL_ERROR");
       }
 
-      setCandidates(Array.isArray(candData?.items) ? candData.items : []);
+      // Candidates are optional for rendering this screen. If this endpoint fails
+      // (for example on older DB schema), keep the journal available.
+      if (candRes.ok) {
+        setCandidates(Array.isArray(candData?.items) ? candData.items : []);
+      } else {
+        setCandidates([]);
+      }
       setAllJournal(Array.isArray(allJournalData?.items) ? allJournalData.items : []);
     } catch (err) {
       setJournalError(
@@ -116,10 +120,17 @@ export default function AdminPickingShortagePanel() {
   };
 
   useEffect(() => {
-    loadJournalData();
     loadPickingMode();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+  useEffect(() => {
+    if (activeSubtab !== "journal") return;
+    if (journalLoaded) return;
+
+    loadJournalData().finally(() => setJournalLoaded(true));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [activeSubtab, journalLoaded]);
 
   const openCloseModal = (order) => {
     setModalOrder(order);

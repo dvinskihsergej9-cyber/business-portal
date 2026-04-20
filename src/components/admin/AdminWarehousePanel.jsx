@@ -128,6 +128,14 @@ export default function AdminWarehousePanel() {
       "Content-Type": "application/json",
     };
   }, []);
+  const selectedAutoReorderSupplier = useMemo(() => {
+    const supplierId = String(itemForm.autoReorderSupplierId || "").trim();
+    if (!supplierId) return null;
+    return (
+      suppliers.find((supplier) => String(supplier?.id || "") === supplierId) ||
+      null
+    );
+  }, [suppliers, itemForm.autoReorderSupplierId]);
 
   const loadAll = async () => {
     try {
@@ -994,12 +1002,19 @@ export default function AdminWarehousePanel() {
                   <select
                     className="admin-select"
                     value={itemForm.autoReorderSupplierId}
-                    onChange={(event) =>
+                    onChange={(event) => {
+                      const supplierId = event.target.value;
+                      const supplier = suppliers.find(
+                        (entry) => String(entry?.id || "") === String(supplierId)
+                      );
                       setItemForm((prev) => ({
                         ...prev,
-                        autoReorderSupplierId: event.target.value,
-                      }))
-                    }
+                        autoReorderSupplierId: supplierId,
+                        autoReorderContactEmail:
+                          prev.autoReorderContactEmail ||
+                          String(supplier?.email || "").trim(),
+                      }));
+                    }}
                   >
                     <option value="">{"Выберите поставщика"}</option>
                     {suppliers.map((s) => (
@@ -1010,6 +1025,28 @@ export default function AdminWarehousePanel() {
                   </select>
                 </div>
               </div>
+              {selectedAutoReorderSupplier && (
+                <div className="admin-form__row">
+                  <div>
+                    <label className="admin-label">{"Телефон поставщика"}</label>
+                    <input
+                      className="admin-input"
+                      value={String(selectedAutoReorderSupplier.phone || "")}
+                      placeholder="Не указан"
+                      readOnly
+                    />
+                  </div>
+                  <div>
+                    <label className="admin-label">{"Email поставщика"}</label>
+                    <input
+                      className="admin-input"
+                      value={String(selectedAutoReorderSupplier.email || "")}
+                      placeholder="Не указан"
+                      readOnly
+                    />
+                  </div>
+                </div>
+              )}
               <div className="admin-form__row">
                 <div>
                   <label className="admin-label">
@@ -1028,7 +1065,7 @@ export default function AdminWarehousePanel() {
                 </div>
                 <div>
                   <label className="admin-label">
-                    {"Email для автозаказа"}
+                    {"Email получателя автозаказа"}
                   </label>
                   <input
                     className="admin-input"
@@ -1200,133 +1237,6 @@ export default function AdminWarehousePanel() {
                   />
                 </div>
               </div>
-              <div className="admin-divider" />
-              <div>
-                <div className="admin-label" style={{ fontWeight: 600 }}>
-                  {"Автозаказ"}
-                </div>
-                <label className="admin-checkbox">
-                  <input
-                    type="checkbox"
-                    checked={itemForm.autoReorderEnabled}
-                    onChange={(event) =>
-                      setItemForm((prev) => ({
-                        ...prev,
-                        autoReorderEnabled: event.target.checked,
-                      }))
-                    }
-                  />
-                  {"Включить автозаказ"}
-                </label>
-                {editItem.autoReorderActive && (
-                  <div className="admin-muted" style={{ marginTop: 6 }}>
-                    {"Автозаказ активен"}
-                  </div>
-                )}
-              </div>
-              <div className="admin-form__row">
-                <div>
-                  <label className="admin-label">
-                    {"Мин. остаток для автозаказа"}
-                  </label>
-                  <input
-                    className="admin-input"
-                    type="number"
-                    value={itemForm.autoReorderMin}
-                    onChange={(event) =>
-                      setItemForm((prev) => ({
-                        ...prev,
-                        autoReorderMin: event.target.value,
-                      }))
-                    }
-                  />
-                </div>
-                <div>
-                  <label className="admin-label">
-                    {"Поставщик"}
-                  </label>
-                  <select
-                    className="admin-select"
-                    value={itemForm.autoReorderSupplierId}
-                    onChange={(event) =>
-                      setItemForm((prev) => ({
-                        ...prev,
-                        autoReorderSupplierId: event.target.value,
-                      }))
-                    }
-                  >
-                    <option value="">{"Выберите поставщика"}</option>
-                    {suppliers.map((s) => (
-                      <option key={s.id} value={s.id}>
-                        {s.name}
-                      </option>
-                    ))}
-                  </select>
-                </div>
-              </div>
-              <div className="admin-form__row">
-                <div>
-                  <label className="admin-label">
-                    {"Контактное лицо"}
-                  </label>
-                  <input
-                    className="admin-input"
-                    value={itemForm.autoReorderContactName}
-                    onChange={(event) =>
-                      setItemForm((prev) => ({
-                        ...prev,
-                        autoReorderContactName: event.target.value,
-                      }))
-                    }
-                  />
-                </div>
-                <div>
-                  <label className="admin-label">
-                    {"Email для автозаказа"}
-                  </label>
-                  <input
-                    className="admin-input"
-                    value={itemForm.autoReorderContactEmail}
-                    onChange={(event) =>
-                      setItemForm((prev) => ({
-                        ...prev,
-                        autoReorderContactEmail: event.target.value,
-                      }))
-                    }
-                  />
-                </div>
-              </div>
-              <div>
-                <label className="admin-label">
-                  {"Текст сообщения поставщику"}
-                </label>
-                <textarea
-                  className="admin-input"
-                  rows={3}
-                  value={itemForm.autoReorderMessage}
-                  onChange={(event) =>
-                    setItemForm((prev) => ({
-                      ...prev,
-                      autoReorderMessage: event.target.value,
-                    }))
-                  }
-                />
-              </div>
-              {editItem.autoReorderActive && (
-                <label className="admin-checkbox" style={{ marginTop: 6 }}>
-                  <input
-                    type="checkbox"
-                    checked={itemForm.autoReorderReset}
-                    onChange={(event) =>
-                      setItemForm((prev) => ({
-                        ...prev,
-                        autoReorderReset: event.target.checked,
-                      }))
-                    }
-                  />
-                  {"Сбросить флаг автозаказа"}
-                </label>
-              )}
             </div>
             <div className="admin-modal__actions">
               <button

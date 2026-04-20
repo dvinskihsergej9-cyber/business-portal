@@ -220,15 +220,35 @@ function normalizePickingMode(value) {
 }
 
 let orgRuntimeSettingsReadyPromise = null;
+let orgRuntimeSettingsTableAvailable = true;
 async function ensureOrgRuntimeSettingsTable() {
+  if (!orgRuntimeSettingsTableAvailable) return false;
   if (!orgRuntimeSettingsReadyPromise) {
-    orgRuntimeSettingsReadyPromise = prisma.$executeRawUnsafe(`
-      CREATE TABLE IF NOT EXISTS "OrgRuntimeSetting" (
-        "orgId" INTEGER PRIMARY KEY,
-        "pickingMode" TEXT NOT NULL DEFAULT 'SCAN_EACH',
-        "updatedAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP
-      );
-    `);
+    orgRuntimeSettingsReadyPromise = (async () => {
+      try {
+        await prisma.$executeRawUnsafe(`
+          CREATE TABLE IF NOT EXISTS "OrgRuntimeSetting" (
+            "orgId" INTEGER PRIMARY KEY,
+            "pickingMode" TEXT NOT NULL DEFAULT 'SCAN_EACH',
+            "updatedAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP
+          );
+        `);
+        orgRuntimeSettingsTableAvailable = true;
+        return true;
+      } catch (err) {
+        if (
+          isPermissionDeniedForSchema(err, "public") ||
+          isPermissionDeniedForTable(err, "OrgRuntimeSetting")
+        ) {
+          orgRuntimeSettingsTableAvailable = false;
+          console.warn(
+            "[PICKING_MODE] OrgRuntimeSetting table unavailable for runtime role. Falling back to default mode."
+          );
+          return false;
+        }
+        throw err;
+      }
+    })();
   }
   return orgRuntimeSettingsReadyPromise;
 }
@@ -236,13 +256,26 @@ async function ensureOrgRuntimeSettingsTable() {
 async function getOrgPickingMode(orgIdInput) {
   const orgId = Number(orgIdInput);
   if (!orgId || Number.isNaN(orgId)) return PICKING_MODE_SCAN_EACH;
-  await ensureOrgRuntimeSettingsTable();
-  const rows = await prisma.$queryRawUnsafe(
-    `SELECT "pickingMode" FROM "OrgRuntimeSetting" WHERE "orgId" = $1 LIMIT 1`,
-    orgId
-  );
-  const mode = Array.isArray(rows) && rows[0] ? rows[0].pickingMode : null;
-  return normalizePickingMode(mode);
+  const tableReady = await ensureOrgRuntimeSettingsTable();
+  if (!tableReady) return PICKING_MODE_SCAN_EACH;
+  try {
+    const rows = await prisma.$queryRawUnsafe(
+      `SELECT "pickingMode" FROM "OrgRuntimeSetting" WHERE "orgId" = $1 LIMIT 1`,
+      orgId
+    );
+    const mode = Array.isArray(rows) && rows[0] ? rows[0].pickingMode : null;
+    return normalizePickingMode(mode);
+  } catch (err) {
+    if (
+      isMissingRelationError(err, "OrgRuntimeSetting") ||
+      isPermissionDeniedForSchema(err, "public") ||
+      isPermissionDeniedForTable(err, "OrgRuntimeSetting")
+    ) {
+      orgRuntimeSettingsTableAvailable = false;
+      return PICKING_MODE_SCAN_EACH;
+    }
+    throw err;
+  }
 }
 
 async function setOrgPickingMode(orgIdInput, modeInput) {
@@ -253,17 +286,36 @@ async function setOrgPickingMode(orgIdInput, modeInput) {
     throw err;
   }
   const mode = normalizePickingMode(modeInput);
-  await ensureOrgRuntimeSettingsTable();
-  await prisma.$executeRawUnsafe(
-    `
-      INSERT INTO "OrgRuntimeSetting" ("orgId", "pickingMode", "updatedAt")
-      VALUES ($1, $2, NOW())
-      ON CONFLICT ("orgId")
-      DO UPDATE SET "pickingMode" = EXCLUDED."pickingMode", "updatedAt" = NOW()
-    `,
-    orgId,
-    mode
-  );
+  const tableReady = await ensureOrgRuntimeSettingsTable();
+  if (!tableReady) {
+    const err = new Error("PICKING_MODE_UNAVAILABLE");
+    err.code = "PICKING_MODE_UNAVAILABLE";
+    throw err;
+  }
+  try {
+    await prisma.$executeRawUnsafe(
+      `
+        INSERT INTO "OrgRuntimeSetting" ("orgId", "pickingMode", "updatedAt")
+        VALUES ($1, $2, NOW())
+        ON CONFLICT ("orgId")
+        DO UPDATE SET "pickingMode" = EXCLUDED."pickingMode", "updatedAt" = NOW()
+      `,
+      orgId,
+      mode
+    );
+  } catch (err) {
+    if (
+      isMissingRelationError(err, "OrgRuntimeSetting") ||
+      isPermissionDeniedForSchema(err, "public") ||
+      isPermissionDeniedForTable(err, "OrgRuntimeSetting")
+    ) {
+      orgRuntimeSettingsTableAvailable = false;
+      const unavailable = new Error("PICKING_MODE_UNAVAILABLE");
+      unavailable.code = "PICKING_MODE_UNAVAILABLE";
+      throw unavailable;
+    }
+    throw err;
+  }
   return mode;
 }
 
@@ -1507,6 +1559,28 @@ function isPermissionDeniedForTable(err, tableName) {
   const table = String(tableName || "").trim().toLowerCase();
   if (!table) return joined.includes("permission denied for table");
   return joined.includes(`permission denied for table ${table}`);
+}
+
+function isPermissionDeniedForSchema(err, schemaName = "") {
+  const joined = [
+    String(err?.message || ""),
+    String(err?.stack || ""),
+    String(err?.cause?.message || ""),
+    String(err?.meta?.cause || ""),
+    (() => {
+      try {
+        return JSON.stringify(err || {});
+      } catch {
+        return "";
+      }
+    })(),
+  ]
+    .join(" ")
+    .toLowerCase();
+  if (!joined.includes("permission denied for schema")) return false;
+  const schema = String(schemaName || "").trim().toLowerCase();
+  if (!schema) return true;
+  return joined.includes(`permission denied for schema ${schema}`);
 }
 
 function isMissingRelationError(err, relationName = "") {
@@ -10547,6 +10621,9 @@ app.put("/api/settings/picking-mode", auth, async (req, res) => {
     const savedMode = await setOrgPickingMode(targetOrgId, mode);
     return res.json({ mode: savedMode });
   } catch (err) {
+    if (err?.code === "PICKING_MODE_UNAVAILABLE") {
+      return res.status(503).json({ message: "PICKING_MODE_UNAVAILABLE" });
+    }
     console.error("picking mode put error:", err);
     return res.status(500).json({ message: "PICKING_MODE_SAVE_ERROR" });
   }
