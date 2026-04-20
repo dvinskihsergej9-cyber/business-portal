@@ -52,6 +52,7 @@ export default function Landing() {
             <Link to="/privacy" className="legal-link">Политика</Link>
             <Link to="/contacts" className="legal-link">Контакты</Link>
             <Link to="/refund" className="legal-link">Возврат</Link>
+            <Link to="/design-preview" className="legal-link">Демо нового дизайна</Link>
           </div>
         </div>
       </div>

@@ -17,19 +17,26 @@ export default function TsdHeader({
           <button type="button" className="tsd-back" onClick={onBack}>
             Назад
           </button>
-        ) : null}
+        ) : (
+          <span />
+        )}
+
         <div className="tsd-header__titles">
+          <span className="tsd-header__chip">TSD Flow</span>
           <div className="tsd-header__title">{title}</div>
-          {subtitle && <div className="tsd-header__subtitle">{subtitle}</div>}
+          {subtitle ? <div className="tsd-header__subtitle">{subtitle}</div> : null}
         </div>
-        {rightSlot && <div className="tsd-header__slot">{rightSlot}</div>}
+
+        {rightSlot ? <div className="tsd-header__slot">{rightSlot}</div> : <span />}
       </div>
 
-      {contextValue && (
+      {contextValue ? (
         <div className="tsd-header__context">
-          <div className="tsd-header__context-label">{contextLabel}</div>
-          <div className="tsd-header__context-value">{contextValue}</div>
-          {onChangeContext && (
+          <div className="tsd-header__context-main">
+            <div className="tsd-header__context-label">{contextLabel}</div>
+            <div className="tsd-header__context-value">{contextValue}</div>
+          </div>
+          {onChangeContext ? (
             <button
               type="button"
               className="tsd-btn tsd-btn--ghost"
@@ -37,9 +44,9 @@ export default function TsdHeader({
             >
               Сменить
             </button>
-          )}
+          ) : null}
         </div>
-      )}
+      ) : null}
     </div>
   );
 }
