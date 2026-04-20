@@ -294,8 +294,12 @@ export default function Layout() {
                   : styles.navItem
               }
             >
-              <MenuIcon type={item.icon} active={false} />
-              <span>{item.label}</span>
+              {({ isActive }) => (
+                <>
+                  <MenuIcon type={item.icon} active={isActive} />
+                  <span>{item.label}</span>
+                </>
+              )}
             </NavLink>
           ))}
         </nav>
@@ -377,31 +381,36 @@ const styles = {
   root: {
     display: "flex",
     minHeight: "100vh",
+    background:
+      "radial-gradient(circle at 14% 6%, rgba(103, 168, 255, 0.16), transparent 33%), radial-gradient(circle at 86% 14%, rgba(176, 211, 255, 0.22), transparent 34%), linear-gradient(180deg, #f8fbff 0%, #eef4ff 42%, #e8f0ff 100%)",
   },
   rootMobile: {
     display: "block",
     minHeight: "100vh",
+    background:
+      "radial-gradient(circle at 14% 6%, rgba(103, 168, 255, 0.16), transparent 33%), radial-gradient(circle at 86% 14%, rgba(176, 211, 255, 0.22), transparent 34%), linear-gradient(180deg, #f8fbff 0%, #eef4ff 42%, #e8f0ff 100%)",
   },
   sidebar: {
-    width: 260,
-    background: "#ffffff",
-    color: "#111827",
+    width: 272,
+    background: "rgba(255, 255, 255, 0.82)",
+    color: "#0f172a",
     display: "flex",
     flexDirection: "column",
     padding: "20px 16px",
     boxSizing: "border-box",
-    borderRight: "1px solid #e5e7eb",
-    boxShadow: "2px 0 6px rgba(15, 23, 42, 0.04)",
-    backdropFilter: "blur(4px)",
+    borderRight: "1px solid rgba(157, 196, 252, 0.72)",
+    boxShadow: "8px 0 26px rgba(35, 83, 176, 0.1)",
+    backdropFilter: "blur(10px)",
   },
   logoBlock: {
     display: "flex",
     alignItems: "center",
     marginBottom: 24,
     padding: "8px 10px",
-    borderRadius: 12,
-    background: "#eff6ff",
-    border: "1px solid #dbeafe",
+    borderRadius: 14,
+    background: "linear-gradient(180deg, #f8fbff 0%, #ebf4ff 100%)",
+    border: "1px solid #b3d1ff",
+    boxShadow: "0 8px 22px rgba(47, 115, 255, 0.14)",
     gap: 14,
   },
   logoMarkImage: {
@@ -414,18 +423,20 @@ const styles = {
   },
   logoTitle: {
     fontSize: 18,
-    fontWeight: 600,
+    fontWeight: 700,
+    letterSpacing: 0.2,
   },
   logoSubtitle: {
     fontSize: 12,
-    color: "#6b7280",
+    color: "#64748b",
   },
   userCard: {
-    background: "#f9fafb",
-    borderRadius: 12,
+    background: "rgba(255, 255, 255, 0.86)",
+    borderRadius: 14,
     padding: "12px 14px",
     marginBottom: 20,
-    border: "1px solid #e5e7eb",
+    border: "1px solid #dbeafe",
+    boxShadow: "0 10px 22px rgba(35, 83, 176, 0.08)",
   },
   userName: {
     fontSize: 15,
@@ -433,14 +444,14 @@ const styles = {
   },
   userEmail: {
     fontSize: 12,
-    color: "#6b7280",
+    color: "#64748b",
     marginTop: 2,
   },
   userRole: {
     fontSize: 11,
     marginTop: 6,
     textTransform: "uppercase",
-    color: "#2563eb",
+    color: "#1754db",
     letterSpacing: 0.5,
   },
   nav: {
@@ -454,22 +465,22 @@ const styles = {
     display: "flex",
     alignItems: "center",
     padding: "9px 11px",
-    borderRadius: 10,
+    borderRadius: 12,
     textDecoration: "none",
-    color: "#334155",
+    color: "#1e293b",
     fontSize: 14,
     fontWeight: 600,
     gap: 8,
-    background: "transparent",
-    border: "1px solid #d1d5db",
+    background: "rgba(255, 255, 255, 0.72)",
+    border: "1px solid #dbeafe",
     transition:
       "background 0.15s ease, color 0.15s ease, border 0.15s ease, box-shadow 0.15s ease",
   },
   navItemActive: {
-    background: "#eff6ff",
-    color: "#0b67c0",
-    borderColor: "#bfdbfe",
-    boxShadow: "0 0 0 1px rgba(37, 99, 235, 0.12)",
+    background: "linear-gradient(180deg, #edf5ff 0%, #e3efff 100%)",
+    color: "#1754db",
+    borderColor: "#8ab8ff",
+    boxShadow: "0 8px 20px rgba(47, 115, 255, 0.16)",
   },
   main: {
     flex: 1,
@@ -486,9 +497,10 @@ const styles = {
     gridTemplateColumns: "auto minmax(0, 1fr) auto",
     alignItems: "center",
     padding: "6px 16px",
-    borderBottom: "1px solid rgba(15, 23, 42, 0.08)",
-    background: "rgba(248, 250, 252, 0.9)",
-    backdropFilter: "blur(8px)",
+    borderBottom: "1px solid rgba(157, 196, 252, 0.72)",
+    background: "rgba(255, 255, 255, 0.82)",
+    backdropFilter: "blur(10px)",
+    boxShadow: "0 10px 24px rgba(35, 83, 176, 0.08)",
   },
   topBarMobile: {
     position: "sticky",
@@ -499,23 +511,24 @@ const styles = {
     gridTemplateColumns: "auto minmax(0, 1fr) auto",
     alignItems: "flex-end",
     padding: "calc(env(safe-area-inset-top, 0px) + 6px) 10px 6px",
-    borderBottom: "1px solid rgba(15, 23, 42, 0.08)",
-    background: "rgba(248, 250, 252, 0.92)",
+    borderBottom: "1px solid rgba(157, 196, 252, 0.72)",
+    background: "rgba(255, 255, 255, 0.86)",
     backdropFilter: "blur(10px)",
+    boxShadow: "0 8px 20px rgba(35, 83, 176, 0.08)",
   },
   backBtn: {
     minHeight: 34,
     padding: "7px 10px",
-    borderRadius: 10,
-    border: "1px solid #d1d5db",
+    borderRadius: 12,
+    border: "1px solid #b3d1ff",
     background: "#ffffff",
-    color: "#334155",
+    color: "#1e293b",
     fontSize: 13,
     fontWeight: 600,
     display: "inline-flex",
     alignItems: "center",
     gap: 6,
-    boxShadow: "none",
+    boxShadow: "0 6px 16px rgba(47, 115, 255, 0.12)",
   },
   topBarLeft: {
     justifySelf: "start",
@@ -547,29 +560,29 @@ const styles = {
   },
   headerLogoutBtn: {
     padding: "7px 12px",
-    borderRadius: 10,
-    border: "1px solid #d1d5db",
+    borderRadius: 12,
+    border: "1px solid #b3d1ff",
     background: "#ffffff",
-    color: "#111827",
+    color: "#1e293b",
     fontSize: 13,
     fontWeight: 600,
     cursor: "pointer",
     textAlign: "center",
     whiteSpace: "nowrap",
-    boxShadow: "none",
+    boxShadow: "0 6px 16px rgba(47, 115, 255, 0.12)",
   },
   headerSupportBtn: {
     padding: "7px 12px",
-    borderRadius: 10,
-    border: "1px solid #d1d5db",
+    borderRadius: 12,
+    border: "1px solid #b3d1ff",
     background: "#ffffff",
-    color: "#111827",
+    color: "#1e293b",
     fontSize: 13,
     fontWeight: 600,
     cursor: "pointer",
     textAlign: "center",
     whiteSpace: "nowrap",
-    boxShadow: "none",
+    boxShadow: "0 6px 16px rgba(47, 115, 255, 0.12)",
   },
   headerTopBtnMobile: {
     minHeight: 34,
@@ -594,10 +607,10 @@ const styles = {
     gridTemplateColumns: "repeat(3, minmax(0, 1fr))",
     gap: 4,
     padding: "8px 8px calc(env(safe-area-inset-bottom, 0px) + 8px)",
-    borderTop: "1px solid rgba(191, 219, 254, 0.95)",
-    borderRadius: "16px 16px 0 0",
-    background: "rgba(255, 255, 255, 0.97)",
-    boxShadow: "0 -10px 24px rgba(15, 23, 42, 0.16)",
+    borderTop: "1px solid rgba(157, 196, 252, 0.88)",
+    borderRadius: "18px 18px 0 0",
+    background: "rgba(255, 255, 255, 0.9)",
+    boxShadow: "0 -10px 26px rgba(35, 83, 176, 0.18)",
     backdropFilter: "blur(12px)",
   },
   mobileBottomNavItem: {
@@ -614,8 +627,8 @@ const styles = {
     padding: "5px 2px",
   },
   mobileBottomNavItemActive: {
-    color: "#0b67c0",
-    background: "#eff6ff",
+    color: "#1754db",
+    background: "#edf5ff",
   },
   mobileBottomNavIconWrap: {
     height: 18,
