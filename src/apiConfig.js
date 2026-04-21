@@ -164,6 +164,8 @@ const EXTRA_ERROR_MESSAGES = {
     "ЮKassa отклонила запрос по правам магазина. Проверьте активацию магазина и доступ к API.",
   PAYMENT_PROVIDER_BAD_REQUEST:
     "ЮKassa не приняла параметры платежа. Проверьте настройки магазина и повторите.",
+  PAYMENT_RECEIPT_EMAIL_REQUIRED:
+    "Для оплаты нужен корректный e-mail администратора (для чека 54-ФЗ). Проверьте e-mail в аккаунте.",
 };
 
 const normalizeBackendCodeMessage = (value) => {

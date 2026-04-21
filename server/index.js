@@ -10156,6 +10156,19 @@ app.get("/api/profile", auth, async (req, res) => {
       if (!billingUserId) {
         return res.status(400).json({ message: "BILLING_USER_REQUIRED" });
       }
+      const billingUser = await prisma.user.findUnique({
+        where: { id: billingUserId },
+        select: { id: true, email: true, name: true },
+      });
+      if (!billingUser) {
+        return res.status(400).json({ message: "BILLING_USER_REQUIRED" });
+      }
+      const receiptEmail = [billingUser.email, req.user?.email]
+        .map((value) => normalizeEmail(value))
+        .find((value) => isValidRegistrationEmail(value) && !value.endsWith(".invalid"));
+      if (!receiptEmail) {
+        return res.status(400).json({ message: "PAYMENT_RECEIPT_EMAIL_REQUIRED" });
+      }
 
       const existing = req.user.isSystemOwner
         ? await prisma.subscription.findFirst({
@@ -10290,6 +10303,24 @@ app.get("/api/profile", auth, async (req, res) => {
           amount: String(resolvedPlan.amount),
           currency: resolvedPlan.currency,
           localPaymentId: String(localPayment.id),
+        },
+        receipt: {
+          customer: {
+            email: receiptEmail,
+          },
+          items: [
+            {
+              description: `Подписка ${resolvedPlan.title}`.slice(0, 128),
+              quantity: "1.00",
+              amount: {
+                value: formatAmount(resolvedPlan.amount),
+                currency: resolvedPlan.currency,
+              },
+              vat_code: 1,
+              payment_mode: "full_prepayment",
+              payment_subject: "service",
+            },
+          ],
         },
       };
 
