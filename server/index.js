@@ -10322,8 +10322,35 @@ app.get("/api/profile", auth, async (req, res) => {
         localPaymentId: localPayment.id,
       });
     } catch (err) {
-      console.error("create payment error:", err);
-      return res.status(500).json({ message: "PAYMENT_CREATE_ERROR" });
+      const providerStatus = Number(err?.status || 0) || null;
+      const providerCode = String(err?.payload?.code || "").trim() || null;
+      const providerDescription = String(
+        err?.payload?.description || err?.message || ""
+      ).trim() || null;
+
+      let message = "PAYMENT_CREATE_ERROR";
+      if (String(err?.message || "") === "YOOKASSA_CONFIG_MISSING") {
+        message = "YOOKASSA_CONFIG_MISSING";
+      } else if (providerStatus === 401) {
+        message = "YOOKASSA_AUTH_FAILED";
+      } else if (providerStatus === 403) {
+        message = "YOOKASSA_SHOP_FORBIDDEN";
+      } else if (providerStatus === 400) {
+        message = "PAYMENT_PROVIDER_BAD_REQUEST";
+      }
+
+      console.error("create payment error:", {
+        message,
+        providerStatus,
+        providerCode,
+        providerDescription,
+      });
+      return res.status(500).json({
+        message,
+        providerStatus,
+        providerCode,
+        providerDescription,
+      });
     }
   });
 

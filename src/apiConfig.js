@@ -158,6 +158,12 @@ const EXTRA_ERROR_MESSAGES = {
   UNSUBSCRIBE_ERROR: "Не удалось обработать отписку. Попробуйте позже.",
   WEAK_PASSWORD: "Пароль слишком короткий (минимум 8 символов).",
   YOOKASSA_CONFIG_MISSING: "Платежи не настроены. Заполните ключи ЮKassa в окружении.",
+  YOOKASSA_AUTH_FAILED:
+    "ЮKassa отклонила авторизацию API. Проверьте YOOKASSA_SHOP_ID и YOOKASSA_SECRET_KEY (боевые).",
+  YOOKASSA_SHOP_FORBIDDEN:
+    "ЮKassa отклонила запрос по правам магазина. Проверьте активацию магазина и доступ к API.",
+  PAYMENT_PROVIDER_BAD_REQUEST:
+    "ЮKassa не приняла параметры платежа. Проверьте настройки магазина и повторите.",
 };
 
 const normalizeBackendCodeMessage = (value) => {
