@@ -9603,7 +9603,7 @@ app.get("/api/profile", auth, async (req, res) => {
       }
 
       const now = new Date();
-      const created = await prisma.$transaction(async (tx) => {
+      const createdTicketId = await prisma.$transaction(async (tx) => {
         const ticket = await tx.supportTicket.create({
           data: {
             orgId,
@@ -9626,29 +9626,31 @@ app.get("/api/profile", auth, async (req, res) => {
           },
         });
 
-        return tx.supportTicket.findUnique({
-          where: { id: ticket.id },
-          include: {
-            createdBy: {
-              select: { id: true, name: true, email: true },
-            },
-            messages: {
-              orderBy: { createdAt: "desc" },
-              take: 1,
-              select: {
-                id: true,
-                body: true,
-                isStaff: true,
-                createdAt: true,
-                author: { select: { id: true, name: true, email: true } },
-              },
-            },
-            _count: { select: { messages: true } },
-          },
-        });
+        return ticket.id;
       });
 
-      if (!created) {
+      const created = await prisma.supportTicket.findUnique({
+        where: { id: createdTicketId },
+        include: {
+          createdBy: {
+            select: { id: true, name: true, email: true },
+          },
+          messages: {
+            orderBy: { createdAt: "desc" },
+            take: 1,
+            select: {
+              id: true,
+              body: true,
+              isStaff: true,
+              createdAt: true,
+              author: { select: { id: true, name: true, email: true } },
+            },
+          },
+          _count: { select: { messages: true } },
+        },
+      });
+
+      if (!created || !createdTicketId) {
         return res.status(500).json({ message: "SUPPORT_TICKET_CREATE_ERROR" });
       }
 
