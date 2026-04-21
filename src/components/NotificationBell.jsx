@@ -96,7 +96,11 @@ export default function NotificationBell() {
 
   const ensurePushSubscription = useCallback(
     async ({ interactive = false } = {}) => {
-      const result = await ensurePushSubscriptionShared({ token, interactive });
+      const result = await ensurePushSubscriptionShared({
+        token,
+        interactive,
+        forceRebind: Boolean(interactive),
+      });
       return Boolean(result?.subscribed);
     },
     [token]

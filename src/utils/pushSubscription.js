@@ -54,6 +54,8 @@ export async function ensurePushSubscription({
     return { enabled: true, subscribed: false };
   }
 
+  let shouldForceRebind = Boolean(forceRebind);
+
   for (const delayMs of RETRY_DELAYS_MS) {
     if (delayMs > 0) {
       await new Promise((resolve) => setTimeout(resolve, delayMs));
@@ -66,7 +68,7 @@ export async function ensurePushSubscription({
       let subscription = await readyRegistration.pushManager.getSubscription();
       // На входе под другим пользователем на том же устройстве принудительно
       // отвязываем старую локальную подписку и создаем новую для текущего аккаунта.
-      if (subscription && forceRebind) {
+      if (subscription && shouldForceRebind) {
         try {
           await fetch(`${API_BASE}/notifications/push/unsubscribe`, {
             method: "POST",
@@ -105,6 +107,11 @@ export async function ensurePushSubscription({
 
       if (saveRes.ok) {
         return { enabled: true, subscribed: true };
+      }
+
+      const saveData = await saveRes.json().catch(() => ({}));
+      if (saveData?.message === "TENANT_CONFLICT") {
+        shouldForceRebind = true;
       }
     } catch {
       // retry

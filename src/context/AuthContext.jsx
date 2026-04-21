@@ -23,10 +23,10 @@ export function AuthProvider({ children }) {
     ensurePushSubscription({ token, interactive, forceRebind }).then((result) => {
       if (result?.subscribed) return;
       setTimeout(() => {
-        ensurePushSubscription({ token, interactive: false, forceRebind: false }).catch(() => null);
+        ensurePushSubscription({ token, interactive: false, forceRebind }).catch(() => null);
       }, 1800);
       setTimeout(() => {
-        ensurePushSubscription({ token, interactive: false, forceRebind: false }).catch(() => null);
+        ensurePushSubscription({ token, interactive: false, forceRebind }).catch(() => null);
       }, 5000);
     }).catch(() => null);
   };
@@ -254,7 +254,7 @@ export function AuthProvider({ children }) {
       const data = await res.json();
       setUser(data);
       localStorage.setItem("user", JSON.stringify(data));
-      bindPushForSession(token, false, false);
+      bindPushForSession(token, false, true);
     } catch (err) {
       console.error("Refresh user error:", err);
     }
@@ -263,7 +263,7 @@ export function AuthProvider({ children }) {
   useEffect(() => {
     if (!user?.id) return;
     const token = localStorage.getItem("token");
-    bindPushForSession(token, false, false);
+    bindPushForSession(token, false, true);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [user?.id]);
 

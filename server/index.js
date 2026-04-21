@@ -13582,24 +13582,39 @@ app.post("/api/notifications/push/subscribe", auth, async (req, res) => {
       return res.status(400).json({ message: "Некорректные данные push-подписки." });
     }
 
-    await prisma.pushSubscription.upsert({
-      where: { endpoint: subscription.endpoint },
-      create: {
-        orgId: req.user.orgId || null,
-        userId: req.user.id,
-        endpoint: subscription.endpoint,
-        p256dh: subscription.p256dh,
-        auth: subscription.auth,
-        userAgent: String(req.headers["user-agent"] || "").slice(0, 255),
-      },
-      update: {
-        orgId: req.user.orgId || null,
-        userId: req.user.id,
-        p256dh: subscription.p256dh,
-        auth: subscription.auth,
-        userAgent: String(req.headers["user-agent"] || "").slice(0, 255),
-      },
-    });
+    const nextData = {
+      orgId: req.user.orgId || null,
+      userId: req.user.id,
+      p256dh: subscription.p256dh,
+      auth: subscription.auth,
+      userAgent: String(req.headers["user-agent"] || "").slice(0, 255),
+    };
+
+    try {
+      await prisma.pushSubscription.upsert({
+        where: { endpoint: subscription.endpoint },
+        create: {
+          ...nextData,
+          endpoint: subscription.endpoint,
+        },
+        update: nextData,
+      });
+    } catch (err) {
+      if (err?.code !== "TENANT_CONFLICT") {
+        throw err;
+      }
+
+      // Endpoint принадлежит другой организации: переносим подписку на текущего пользователя.
+      const moved = await runWithoutTenantScope(() =>
+        prismaBase.pushSubscription.updateMany({
+          where: { endpoint: subscription.endpoint },
+          data: nextData,
+        })
+      );
+      if (!moved?.count) {
+        throw err;
+      }
+    }
 
     res.json({ ok: true });
   } catch (err) {
