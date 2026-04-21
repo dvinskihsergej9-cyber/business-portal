@@ -5532,76 +5532,90 @@ async function getLowStockItems() {
 }
 
 // 2. Отправить сводку по низким остаткам во внутренние уведомления (админы/владелец)
-async function sendDailyLowStockSummary() {
-  try {
-    const lowItems = await getLowStockItems();
-    const now = new Date();
-    const dateStr = now.toLocaleDateString("ru-RU");
+async function sendDailyLowStockSummary(options = {}) {
+  const targetOrgId = Number(options?.orgId || 0) || null;
+  const lowItems = await getLowStockItems();
+  const now = new Date();
+  const dateStr = now.toLocaleDateString("ru-RU");
+  const summary = {
+    date: dateStr,
+    targetOrgId,
+    totalLowItems: lowItems.length,
+    orgsConsidered: 0,
+    orgsNotified: 0,
+    recipientsTotal: 0,
+    notificationsCreated: 0,
+  };
 
-    if (!lowItems.length) return;
+  if (!lowItems.length) return summary;
 
-    const byOrg = new Map();
-    for (const item of lowItems) {
-      const orgId = Number(item?.orgId || 0);
-      if (!orgId) continue;
-      if (!byOrg.has(orgId)) byOrg.set(orgId, []);
-      byOrg.get(orgId).push(item);
-    }
-    if (!byOrg.size) return;
+  const byOrg = new Map();
+  for (const item of lowItems) {
+    const orgId = Number(item?.orgId || 0);
+    if (!orgId) continue;
+    if (targetOrgId && orgId !== targetOrgId) continue;
+    if (!byOrg.has(orgId)) byOrg.set(orgId, []);
+    byOrg.get(orgId).push(item);
+  }
+  summary.orgsConsidered = byOrg.size;
+  if (!byOrg.size) return summary;
 
-    for (const [orgId, orgItems] of byOrg.entries()) {
-      const recipients = await getCrossdockDiscrepancyRecipients(orgId);
-      if (!recipients.length) continue;
+  for (const [orgId, orgItems] of byOrg.entries()) {
+    const recipients = await getCrossdockDiscrepancyRecipients(orgId);
+    if (!recipients.length) continue;
+    summary.orgsNotified += 1;
+    summary.recipientsTotal += recipients.length;
 
-      const preview = orgItems
-        .slice(0, 8)
-        .map((it) => `• ${it.name}: ${it.currentStock} ${it.unit || "шт."} (мин. ${it.minStock})`)
-        .join("; ");
-      const tail = orgItems.length > 8 ? `; +ещё ${orgItems.length - 8}` : "";
+    const preview = orgItems
+      .slice(0, 8)
+      .map((it) => `• ${it.name}: ${it.currentStock} ${it.unit || "шт."} (мин. ${it.minStock})`)
+      .join("; ");
+    const tail = orgItems.length > 8 ? `; +ещё ${orgItems.length - 8}` : "";
 
-      const title = "Низкий остаток товаров";
-      const message = `На ${dateStr} ниже минимума: ${orgItems.length}. ${preview}${tail}`;
-      const payloadJson = {
-        scope: "low_stock_summary",
-        date: dateStr,
-        total: orgItems.length,
-        items: orgItems.slice(0, 30).map((it) => ({
-          id: Number(it?.id || 0) || null,
-          name: String(it?.name || "").trim(),
-          currentStock: Number(it?.currentStock || 0),
-          minStock: Number(it?.minStock || 0),
-          unit: String(it?.unit || "").trim() || null,
-        })),
-      };
+    const title = "Низкий остаток товаров";
+    const message = `На ${dateStr} ниже минимума: ${orgItems.length}. ${preview}${tail}`;
+    const payloadJson = {
+      scope: "low_stock_summary",
+      date: dateStr,
+      total: orgItems.length,
+      items: orgItems.slice(0, 30).map((it) => ({
+        id: Number(it?.id || 0) || null,
+        name: String(it?.name || "").trim(),
+        currentStock: Number(it?.currentStock || 0),
+        minStock: Number(it?.minStock || 0),
+        unit: String(it?.unit || "").trim() || null,
+      })),
+    };
 
-      for (const recipient of recipients) {
-        await createWarehouseNotification({
-          orgId: recipient.orgId,
-          userId: recipient.id,
-          type: "LOW_STOCK_SUMMARY",
-          title,
-          message,
-          linkUrl: "/warehouse",
-          payloadJson,
-          sendWebPush: true,
-          onPushReport: (report) => {
-            if (!report || Number(report.delivered || 0) > 0) return;
-            console.warn("[PUSH][LOW_STOCK_SUMMARY] not delivered:", {
-              orgId: recipient.orgId || null,
-              userId: recipient.id,
-              reason: report.reason || null,
-              subscriptionsFound: Number(report.subscriptionsFound || 0),
-              usedOrgFallback: Boolean(report.usedOrgFallback),
-              failed: Number(report.failed || 0),
-              removed: Number(report.removed || 0),
-            });
-          },
-        }).catch(() => null);
+    for (const recipient of recipients) {
+      const notification = await createWarehouseNotification({
+        orgId: recipient.orgId,
+        userId: recipient.id,
+        type: "LOW_STOCK_SUMMARY",
+        title,
+        message,
+        linkUrl: "/warehouse",
+        payloadJson,
+        sendWebPush: true,
+        onPushReport: (report) => {
+          if (!report || Number(report.delivered || 0) > 0) return;
+          console.warn("[PUSH][LOW_STOCK_SUMMARY] not delivered:", {
+            orgId: recipient.orgId || null,
+            userId: recipient.id,
+            reason: report.reason || null,
+            subscriptionsFound: Number(report.subscriptionsFound || 0),
+            usedOrgFallback: Boolean(report.usedOrgFallback),
+            failed: Number(report.failed || 0),
+            removed: Number(report.removed || 0),
+          });
+        },
+      }).catch(() => null);
+      if (notification?.id) {
+        summary.notificationsCreated += 1;
       }
     }
-  } catch (err) {
-    console.error("[sendDailyLowStockSummary] Ошибка:", err);
   }
+  return summary;
 }
 
 // ================== АУТЕНТИФИКАЦИЯ ==================
@@ -13705,6 +13719,27 @@ app.post("/api/notifications/push/test", auth, async (req, res) => {
   } catch (err) {
     console.error("push test error:", err);
     return res.status(500).json({ message: "Ошибка отправки тестового push-уведомления." });
+  }
+});
+
+app.post("/api/admin/notifications/low-stock/dispatch", auth, requireAdmin, async (req, res) => {
+  try {
+    if (!hasPermission(req.user, PERMISSION_KEYS.ADMIN_WAREHOUSE)) {
+      return res.status(403).json({ message: "Нет доступа к разделу." });
+    }
+    const requestedOrgId = Number(req.body?.orgId || 0) || null;
+    const targetOrgId = req.user?.isSystemOwner
+      ? requestedOrgId
+      : Number(req.user?.orgId || 0) || null;
+
+    const summary = await sendDailyLowStockSummary({ orgId: targetOrgId });
+    return res.json({
+      ok: true,
+      summary,
+    });
+  } catch (err) {
+    console.error("admin low-stock dispatch error:", err);
+    return res.status(500).json({ message: "LOW_STOCK_DISPATCH_ERROR" });
   }
 });
 
