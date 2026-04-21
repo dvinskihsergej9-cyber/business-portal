@@ -943,6 +943,7 @@ async function sendWebPushToUser(orgId, userId, payload) {
     enabled: WEB_PUSH_ENABLED,
     userId: userId || null,
     subscriptionsFound: 0,
+    usedOrgFallback: false,
     attempted: 0,
     delivered: 0,
     removed: 0,
@@ -961,13 +962,25 @@ async function sendWebPushToUser(orgId, userId, payload) {
   }
 
   const normalizedOrgId = Number(orgId || 0) || null;
-  const subscriptions = await runWithoutTenantScope(() =>
+  let subscriptions = await runWithoutTenantScope(() =>
     prismaBase.pushSubscription.findMany({
       where: normalizedOrgId ? { userId, orgId: normalizedOrgId } : { userId },
       select: { id: true, endpoint: true, p256dh: true, auth: true },
       take: 20,
     })
   );
+  if (!subscriptions.length && normalizedOrgId) {
+    subscriptions = await runWithoutTenantScope(() =>
+      prismaBase.pushSubscription.findMany({
+        where: { userId },
+        select: { id: true, endpoint: true, p256dh: true, auth: true },
+        take: 20,
+      })
+    );
+    if (subscriptions.length) {
+      report.usedOrgFallback = true;
+    }
+  }
   report.subscriptionsFound = subscriptions.length;
   if (!subscriptions.length) {
     report.reason = "NO_SUBSCRIPTIONS";
@@ -2611,7 +2624,7 @@ async function notifyCrossdockDiscrepancies({
       message,
       linkUrl: CROSSDOCK_DISCREPANCIES_LINK,
       payloadJson,
-      sendWebPush: false,
+      sendWebPush: true,
     }).catch(() => null);
   }
 }
@@ -5571,6 +5584,18 @@ async function sendDailyLowStockSummary() {
           linkUrl: "/warehouse",
           payloadJson,
           sendWebPush: true,
+          onPushReport: (report) => {
+            if (!report || Number(report.delivered || 0) > 0) return;
+            console.warn("[PUSH][LOW_STOCK_SUMMARY] not delivered:", {
+              orgId: recipient.orgId || null,
+              userId: recipient.id,
+              reason: report.reason || null,
+              subscriptionsFound: Number(report.subscriptionsFound || 0),
+              usedOrgFallback: Boolean(report.usedOrgFallback),
+              failed: Number(report.failed || 0),
+              removed: Number(report.removed || 0),
+            });
+          },
         }).catch(() => null);
       }
     }
