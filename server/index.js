@@ -10156,19 +10156,6 @@ app.get("/api/profile", auth, async (req, res) => {
       if (!billingUserId) {
         return res.status(400).json({ message: "BILLING_USER_REQUIRED" });
       }
-      const billingUser = await prisma.user.findUnique({
-        where: { id: billingUserId },
-        select: { id: true, email: true, name: true },
-      });
-      if (!billingUser) {
-        return res.status(400).json({ message: "BILLING_USER_REQUIRED" });
-      }
-      const receiptEmail = [billingUser.email, req.user?.email]
-        .map((value) => normalizeEmail(value))
-        .find((value) => isValidRegistrationEmail(value) && !value.endsWith(".invalid"));
-      if (!receiptEmail) {
-        return res.status(400).json({ message: "PAYMENT_RECEIPT_EMAIL_REQUIRED" });
-      }
 
       const existing = req.user.isSystemOwner
         ? await prisma.subscription.findFirst({
@@ -10227,6 +10214,19 @@ app.get("/api/profile", auth, async (req, res) => {
         : await getBillingUserIdForOrg(targetOrgId, req.user.id);
       if (!billingUserId) {
         return res.status(400).json({ message: "BILLING_USER_REQUIRED" });
+      }
+      const billingUser = await prisma.user.findUnique({
+        where: { id: billingUserId },
+        select: { id: true, email: true, name: true },
+      });
+      if (!billingUser) {
+        return res.status(400).json({ message: "BILLING_USER_REQUIRED" });
+      }
+      const receiptEmail = [billingUser.email, req.user?.email]
+        .map((value) => normalizeEmail(value))
+        .find((value) => isValidRegistrationEmail(value) && !value.endsWith(".invalid"));
+      if (!receiptEmail) {
+        return res.status(400).json({ message: "PAYMENT_RECEIPT_EMAIL_REQUIRED" });
       }
 
       const { planId, periodId, paymentMethod } = req.body || {};
