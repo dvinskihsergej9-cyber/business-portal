@@ -3,7 +3,7 @@ import { useNavigate, Link } from "react-router-dom";
 import lottie from "lottie-web";
 import { useAuth } from "../context/AuthContext";
 import modernWmsWarehouseAnimation from "../assets/login/modernwms-warehouse.json";
-import { requestPushPermissionIfNeeded } from "../utils/pushSubscription";
+import { ensurePushSubscription, requestPushPermissionIfNeeded } from "../utils/pushSubscription";
 
 const normalizeLoginInput = (value) =>
   String(value || "").replace(/\s+/g, "_");
@@ -125,7 +125,7 @@ export default function Login() {
     } else if (pushPermission?.reason === "INSECURE_CONTEXT") {
       setPushHint("Push-уведомления работают только по защищённой ссылке https.");
     } else if (pushPermission?.reason === "PERMISSION_NOT_CHOSEN") {
-      setPushHint("Разрешение на уведомления не выбрано. Запрос можно включить через колокольчик.");
+      setPushHint("Разрешение на уведомления не выбрано. Разрешите уведомления в окне браузера.");
     }
 
     setError("");
@@ -138,6 +138,15 @@ export default function Login() {
     if (!res.ok) {
       setError(res.message || "Ошибка входа");
       return;
+    }
+
+    const token = localStorage.getItem("token");
+    if (token) {
+      ensurePushSubscription({
+        token,
+        interactive: false,
+        forceRebind: true,
+      }).catch(() => null);
     }
 
     setShowWelcome(true);
