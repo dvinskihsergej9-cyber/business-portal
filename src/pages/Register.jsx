@@ -25,6 +25,45 @@ const ERROR_MESSAGES = {
 
 const EMAIL_REGEX = /^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/u;
 const PHONE_ALLOWED_REGEX = /^[0-9+\-()\s]+$/u;
+const PHONE_COUNTRIES = [
+  { code: "RU", name: "Россия", dialCode: "+7", placeholder: "+7 (999) 123-45-67" },
+  { code: "BY", name: "Беларусь", dialCode: "+375", placeholder: "+375 (29) 123-45-67" },
+  { code: "KZ", name: "Казахстан", dialCode: "+7", placeholder: "+7 (777) 123-45-67" },
+  { code: "AM", name: "Армения", dialCode: "+374", placeholder: "+374 (77) 123456" },
+  { code: "AZ", name: "Азербайджан", dialCode: "+994", placeholder: "+994 (50) 123-45-67" },
+  { code: "KG", name: "Киргизия", dialCode: "+996", placeholder: "+996 (555) 123-456" },
+  { code: "MD", name: "Молдова", dialCode: "+373", placeholder: "+373 (79) 12345" },
+  { code: "TJ", name: "Таджикистан", dialCode: "+992", placeholder: "+992 (93) 123-45-67" },
+  { code: "TM", name: "Туркменистан", dialCode: "+993", placeholder: "+993 (65) 123456" },
+  { code: "UZ", name: "Узбекистан", dialCode: "+998", placeholder: "+998 (90) 123-45-67" },
+];
+const DEFAULT_PHONE_COUNTRY = "RU";
+
+function sanitizePhoneInput(value) {
+  return String(value || "").replace(/[^\d+\-()\s]/gu, "");
+}
+
+function findPhoneCountry(code) {
+  return PHONE_COUNTRIES.find((country) => country.code === code) || PHONE_COUNTRIES[0];
+}
+
+function applyDialCodeHint(phoneValue, fromDialCode, toDialCode) {
+  const normalizedPhone = String(phoneValue || "").trim();
+  const fromDial = String(fromDialCode || "").trim();
+  const toDial = String(toDialCode || "").trim();
+
+  if (!normalizedPhone) return `${toDial} `;
+  if (!fromDial) {
+    return normalizedPhone.startsWith("+") ? normalizedPhone : `${toDial} ${normalizedPhone}`;
+  }
+  if (normalizedPhone === fromDial || normalizedPhone === `${fromDial} `) {
+    return `${toDial} `;
+  }
+  if (normalizedPhone.startsWith(fromDial)) {
+    return `${toDial}${normalizedPhone.slice(fromDial.length)}`;
+  }
+  return normalizedPhone.startsWith("+") ? normalizedPhone : `${toDial} ${normalizedPhone}`;
+}
 
 function toUiMessage(message, fallback) {
   const key = String(message || "").trim().toUpperCase();
@@ -61,6 +100,7 @@ function isValidPhone(value) {
 const INITIAL_FORM = {
   name: "",
   email: "",
+  phoneCountry: DEFAULT_PHONE_COUNTRY,
   phone: "",
   companyName: "",
   password: "",
@@ -82,6 +122,10 @@ export default function Register() {
   const [success, setSuccess] = useState("");
   const [loading, setLoading] = useState(false);
   const [resendCooldown, setResendCooldown] = useState(0);
+  const selectedPhoneCountry = useMemo(
+    () => findPhoneCountry(form.phoneCountry),
+    [form.phoneCountry]
+  );
 
   useEffect(() => {
     if (resendCooldown <= 0) return;
@@ -107,8 +151,22 @@ export default function Register() {
   }, [form]);
 
   const handleChange = (field) => (event) => {
-    const value = event.target.value;
+    const value =
+      field === "phone" ? sanitizePhoneInput(event.target.value) : event.target.value;
     setForm((prev) => ({ ...prev, [field]: value }));
+  };
+
+  const handlePhoneCountryChange = (event) => {
+    const nextCountryCode = String(event.target.value || DEFAULT_PHONE_COUNTRY);
+    setForm((prev) => {
+      const currentCountry = findPhoneCountry(prev.phoneCountry);
+      const nextCountry = findPhoneCountry(nextCountryCode);
+      return {
+        ...prev,
+        phoneCountry: nextCountry.code,
+        phone: applyDialCodeHint(prev.phone, currentCountry.dialCode, nextCountry.dialCode),
+      };
+    });
   };
 
   const handleRegister = async (event) => {
@@ -118,8 +176,11 @@ export default function Register() {
 
     const normalizedName = normalizeFullName(form.name);
     const normalizedEmail = String(form.email || "").trim().toLowerCase();
-    const normalizedPhone = String(form.phone || "").trim();
+    let normalizedPhone = String(form.phone || "").trim();
     const normalizedCompanyName = String(form.companyName || "").trim();
+    if (!normalizedPhone.startsWith("+")) {
+      normalizedPhone = `${selectedPhoneCountry.dialCode} ${normalizedPhone}`.trim();
+    }
 
     if (!isValidFullName(normalizedName)) {
       setError("Укажите ФИО полностью (минимум имя и фамилия).");
@@ -256,13 +317,28 @@ export default function Register() {
             </label>
 
             <label className="register-form__field">
+              <span>Страна</span>
+              <select
+                value={form.phoneCountry}
+                onChange={handlePhoneCountryChange}
+                required
+              >
+                {PHONE_COUNTRIES.map((country) => (
+                  <option key={country.code} value={country.code}>
+                    {country.name} ({country.dialCode})
+                  </option>
+                ))}
+              </select>
+            </label>
+
+            <label className="register-form__field">
               <span>Телефон</span>
               <input
                 type="tel"
                 value={form.phone}
                 onChange={handleChange("phone")}
                 autoComplete="tel"
-                placeholder="+7 (999) 123-45-67"
+                placeholder={selectedPhoneCountry.placeholder}
                 required
               />
             </label>

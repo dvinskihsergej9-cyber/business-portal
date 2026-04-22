@@ -4202,7 +4202,8 @@ input[type="number"] {
 }
 
 .register-form__field input,
-.register-form__field textarea {
+.register-form__field textarea,
+.register-form__field select {
   width: 100%;
   min-height: 42px;
   padding: 9px 11px;
@@ -4219,7 +4220,8 @@ input[type="number"] {
 }
 
 .register-form__field input:focus,
-.register-form__field textarea:focus {
+.register-form__field textarea:focus,
+.register-form__field select:focus {
   outline: none;
   border-color: #2563eb;
   box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.14);
@@ -4465,6 +4467,7 @@ input[type="number"] {
 
   .register-form__field input,
   .register-form__field textarea,
+  .register-form__field select,
   .register-form__submit,
   .register-form__secondary {
     min-height: 46px;
