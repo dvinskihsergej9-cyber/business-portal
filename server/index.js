@@ -5879,6 +5879,21 @@ app.post("/api/register", async (req, res) => {
     if (err?.status && err?.message) {
       return res.status(err.status).json({ message: err.message });
     }
+    if (isPermissionDeniedForTable(err, '"User"') || isPermissionDeniedForTable(err, "user")) {
+      return res.status(500).json({ message: "AUTH_DB_PERMISSION_USER_TABLE" });
+    }
+    if (
+      isPermissionDeniedForTable(err, '"Organization"') ||
+      isPermissionDeniedForTable(err, "organization")
+    ) {
+      return res.status(500).json({ message: "AUTH_DB_PERMISSION_ORG_TABLE" });
+    }
+    if (
+      isPermissionDeniedForTable(err, '"EmailVerificationCode"') ||
+      isPermissionDeniedForTable(err, "emailverificationcode")
+    ) {
+      return res.status(500).json({ message: "AUTH_DB_PERMISSION_EMAIL_VERIFY_TABLE" });
+    }
     console.error("register error:", err);
     res.status(500).json({ message: "Ошибка сервера при регистрации" });
   }

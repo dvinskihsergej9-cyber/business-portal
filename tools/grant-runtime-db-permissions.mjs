@@ -30,7 +30,10 @@ function buildPrivilegeCheckSql() {
       has_table_privilege(current_user, 'public."User"', 'UPDATE') AS "userUpdate",
       has_table_privilege(current_user, 'public."User"', 'DELETE') AS "userDelete",
       has_table_privilege(current_user, 'public."Organization"', 'SELECT') AS "orgSelect",
-      has_table_privilege(current_user, 'public."WarehouseNotification"', 'SELECT') AS "notificationSelect"
+      has_table_privilege(current_user, 'public."WarehouseNotification"', 'SELECT') AS "notificationSelect",
+      has_table_privilege(current_user, 'public."EmailVerificationCode"', 'SELECT') AS "emailCodeSelect",
+      has_table_privilege(current_user, 'public."EmailVerificationCode"', 'INSERT') AS "emailCodeInsert",
+      has_table_privilege(current_user, 'public."EmailVerificationCode"', 'UPDATE') AS "emailCodeUpdate"
   `;
 }
 
@@ -42,7 +45,10 @@ function hasRequiredPrivileges(row) {
       row.userUpdate &&
       row.userDelete &&
       row.orgSelect &&
-      row.notificationSelect
+      row.notificationSelect &&
+      row.emailCodeSelect &&
+      row.emailCodeInsert &&
+      row.emailCodeUpdate
   );
 }
 
