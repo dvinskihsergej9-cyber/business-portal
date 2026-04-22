@@ -1077,7 +1077,7 @@ export default function OrderFulfillmentFlow({
           </button>
           <button
             type="button"
-            className="tsd-btn tsd-btn--secondary"
+            className="tsd-btn tsd-btn--ghost"
             onClick={loadQueue}
             disabled={loading}
           >
