@@ -3775,7 +3775,7 @@ const WAREHOUSE_ROUTE_RULES = [
   { prefix: "/transactions", key: PERMISSION_KEYS.WAREHOUSE_TRANSACTIONS },
   { prefix: "/revisions", key: PERMISSION_KEYS.WAREHOUSE_REVISION },
   { prefix: "/stock", key: PERMISSION_KEYS.WAREHOUSE_INVENTORY },
-  { prefix: "/placements", key: PERMISSION_KEYS.WAREHOUSE_ORDERS },
+  { prefix: "/placements", key: PERMISSION_KEYS.WAREHOUSE_MANAGE },
   { prefix: "/holds", key: PERMISSION_KEYS.WAREHOUSE_MANAGE },
   { prefix: "/discrepancies", key: PERMISSION_KEYS.TSD_DISCREPANCIES },
   { prefix: "/inventory/count", key: PERMISSION_KEYS.TSD_COUNT },
