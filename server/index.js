@@ -3218,13 +3218,13 @@ const PLANS = {
   "pro-30": {
     id: "pro-30",
     title: "Pro 30 days",
-    amount: 6990,
+    amount: 4990,
     currency: "RUB",
     days: 30,
   },
 };
 
-const START_PLAN_ALLOWED_PERMISSIONS = Object.freeze([
+const BASIC_PLAN_ALLOWED_PERMISSIONS = Object.freeze([
   PERMISSION_KEYS.APP_WAREHOUSE,
   PERMISSION_KEYS.APP_ADMIN,
   PERMISSION_KEYS.ADMIN_USERS,
@@ -3236,11 +3236,9 @@ const START_PLAN_ALLOWED_PERMISSIONS = Object.freeze([
   PERMISSION_KEYS.WAREHOUSE_TRANSACTIONS,
   PERMISSION_KEYS.WAREHOUSE_REVISION,
   PERMISSION_KEYS.WAREHOUSE_SUPPLIERS,
-  PERMISSION_KEYS.WAREHOUSE_QUEUE,
   PERMISSION_KEYS.WAREHOUSE_LOCATIONS,
   PERMISSION_KEYS.WAREHOUSE_TSD,
   PERMISSION_KEYS.WAREHOUSE_ORDERS,
-  PERMISSION_KEYS.WAREHOUSE_MANAGE,
   PERMISSION_KEYS.TSD_RECEIVING,
   PERMISSION_KEYS.TSD_PUTAWAY,
   PERMISSION_KEYS.TSD_MOVE,
@@ -3249,12 +3247,10 @@ const START_PLAN_ALLOWED_PERMISSIONS = Object.freeze([
   PERMISSION_KEYS.TSD_REPLENISH,
   PERMISSION_KEYS.TSD_PICK,
   PERMISSION_KEYS.TSD_SHIP,
-  PERMISSION_KEYS.TSD_PALLETS,
-  PERMISSION_KEYS.TSD_DISCREPANCIES,
 ]);
 
 const PLAN_PERMISSION_CAPS = Object.freeze({
-  "start-30": START_PLAN_ALLOWED_PERMISSIONS,
+  "basic-30": BASIC_PLAN_ALLOWED_PERMISSIONS,
 });
 
 const PLAN_PERMISSION_CAP_SETS = Object.freeze(
@@ -3322,10 +3318,94 @@ const PLAN_ACTIVE_USER_LIMITS = Object.freeze({
   "pro-30": 30,
 });
 const DEFAULT_ACTIVE_USER_LIMIT = 30;
+const PLAN_BASE_SKU_LIMITS = Object.freeze({
+  "start-30": 50,
+  "basic-30": 100,
+  "pro-30": 500,
+});
+const DEFAULT_SKU_LIMIT = 500;
+const BASIC_SKU_ADDON_PACKAGE_AMOUNTS = Object.freeze({
+  50: 500,
+  100: 900,
+  200: 1500,
+});
+const BASIC_SKU_ADDON_PACKAGE_SET = new Set(
+  Object.keys(BASIC_SKU_ADDON_PACKAGE_AMOUNTS).map((value) => Number(value))
+);
 
 function getPlanActiveUserLimit(planId) {
   const normalizedPlanId = String(planId || "").trim().toLowerCase();
   return Number(PLAN_ACTIVE_USER_LIMITS[normalizedPlanId] || DEFAULT_ACTIVE_USER_LIMIT);
+}
+
+function getPlanBaseSkuLimit(planId) {
+  const normalizedPlanId = String(planId || "").trim().toLowerCase();
+  return Number(PLAN_BASE_SKU_LIMITS[normalizedPlanId] || DEFAULT_SKU_LIMIT);
+}
+
+function parseBasicSkuAddons(rawValue) {
+  const normalizedInput = Array.isArray(rawValue)
+    ? rawValue
+    : typeof rawValue === "string" && rawValue.trim()
+      ? rawValue.split(",")
+      : [];
+
+  const normalizedPackages = normalizedInput
+    .map((value) => Number(value))
+    .filter((value) => Number.isFinite(value) && BASIC_SKU_ADDON_PACKAGE_SET.has(value))
+    .sort((left, right) => left - right);
+
+  const monthlyAmount = normalizedPackages.reduce(
+    (sum, value) => sum + Number(BASIC_SKU_ADDON_PACKAGE_AMOUNTS[value] || 0),
+    0
+  );
+  const skuUnits = normalizedPackages.reduce((sum, value) => sum + value, 0);
+
+  return {
+    packages: normalizedPackages,
+    monthlyAmount,
+    skuUnits,
+  };
+}
+
+async function getOrgSkuLimit(orgId, fallbackUserId = null) {
+  const orgSubscription = await getOrgSubscription(orgId, fallbackUserId);
+  const currentPlanId = String(orgSubscription?.plan || "start-30").trim().toLowerCase();
+  const baseSkuLimit = getPlanBaseSkuLimit(currentPlanId);
+
+  let addonSkuLimit = 0;
+  if (currentPlanId === "basic-30") {
+    const latestSucceededPayment = orgId
+      ? await prisma.payment.findFirst({
+          where: {
+            status: "succeeded",
+            user: { orgId },
+          },
+          orderBy: { id: "desc" },
+          select: { metadata: true },
+        })
+      : await prisma.payment.findFirst({
+          where: {
+            status: "succeeded",
+            userId: Number(fallbackUserId || 0),
+          },
+          orderBy: { id: "desc" },
+          select: { metadata: true },
+        });
+
+    const metadata = latestSucceededPayment?.metadata || {};
+    const paymentPlanId = String(metadata?.planId || "").trim().toLowerCase();
+    if (paymentPlanId === currentPlanId) {
+      addonSkuLimit = Math.max(0, Number(metadata?.skuAddonUnits || 0) || 0);
+    }
+  }
+
+  return {
+    currentPlanId,
+    maxSku: baseSkuLimit + addonSkuLimit,
+    baseSkuLimit,
+    addonSkuLimit,
+  };
 }
 
 async function getOrgPlanAndUserLimit(orgId, fallbackUserId = null) {
@@ -3360,15 +3440,18 @@ function resolveBillingPeriodIdByDays(plan, days, fallbackPeriodId = "1m") {
   return fallbackPeriodId;
 }
 
-function getResolvedPlanCharge(plan, periodIdInput = "1m") {
+function getResolvedPlanCharge(plan, periodIdInput = "1m", options = {}) {
   if (!plan) return null;
   const period = getBillingPeriod(periodIdInput);
   if (!period) return null;
   if (plan.id === "start-30" && period.id !== "1m") return null;
 
   const monthlyAmount = Number(plan.amount || 0);
+  const extraMonthlyAmount = Number(options?.extraMonthlyAmount || 0);
   if (!Number.isFinite(monthlyAmount) || monthlyAmount < 0) return null;
-  const grossAmount = monthlyAmount * period.months;
+  if (!Number.isFinite(extraMonthlyAmount) || extraMonthlyAmount < 0) return null;
+  const totalMonthlyAmount = monthlyAmount + extraMonthlyAmount;
+  const grossAmount = totalMonthlyAmount * period.months;
   const discountMultiplier = Math.max(0, 1 - Number(period.discountPct || 0) / 100);
   const amount = Math.round(grossAmount * discountMultiplier);
   const days = Number(plan.days || 0) * period.months;
@@ -3384,6 +3467,7 @@ function getResolvedPlanCharge(plan, periodIdInput = "1m") {
     periodId: period.id,
     months: period.months,
     discountPct: period.discountPct,
+    extraMonthlyAmount,
   };
 }
 
@@ -3448,6 +3532,9 @@ function parseYookassaMetadata(metadata) {
   const amount = Number(metadata?.amount || 0);
   const currency = metadata?.currency ? String(metadata.currency).trim().toUpperCase() : null;
   const localPaymentId = Number(metadata?.localPaymentId || 0) || null;
+  const skuAddonUnits = Math.max(0, Number(metadata?.skuAddonUnits || 0) || 0);
+  const skuAddonMonthlyAmount = Math.max(0, Number(metadata?.skuAddonMonthlyAmount || 0) || 0);
+  const skuAddonPackages = parseBasicSkuAddons(metadata?.skuAddonPackages).packages;
   return {
     userId: Number.isFinite(userId) && userId > 0 ? userId : null,
     planId,
@@ -3456,6 +3543,9 @@ function parseYookassaMetadata(metadata) {
     amount: Number.isFinite(amount) && amount >= 0 ? amount : null,
     currency,
     localPaymentId,
+    skuAddonUnits,
+    skuAddonMonthlyAmount,
+    skuAddonPackages,
   };
 }
 
@@ -10234,12 +10324,24 @@ app.get("/api/profile", auth, async (req, res) => {
         return res.status(400).json({ message: "PAYMENT_RECEIPT_EMAIL_REQUIRED" });
       }
 
-      const { planId, periodId, paymentMethod } = req.body || {};
+      const { planId, periodId, paymentMethod, skuAddons } = req.body || {};
       const plan = getPlan(planId);
       if (!plan) {
         return res.status(400).json({ message: "PLAN_NOT_FOUND" });
       }
-      const resolvedPlan = getResolvedPlanCharge(plan, periodId || "1m");
+      const basicSkuAddons = plan.id === "basic-30"
+        ? parseBasicSkuAddons(skuAddons)
+        : { packages: [], monthlyAmount: 0, skuUnits: 0 };
+      const baseResolvedPlan = getResolvedPlanCharge(plan, periodId || "1m", {
+        extraMonthlyAmount: 0,
+      });
+      if (!baseResolvedPlan) {
+        return res.status(400).json({ message: "PLAN_PERIOD_NOT_SUPPORTED" });
+      }
+
+      const resolvedPlan = getResolvedPlanCharge(plan, periodId || "1m", {
+        extraMonthlyAmount: basicSkuAddons.monthlyAmount,
+      });
       if (!resolvedPlan) {
         return res.status(400).json({ message: "PLAN_PERIOD_NOT_SUPPORTED" });
       }
@@ -10285,6 +10387,9 @@ app.get("/api/profile", auth, async (req, res) => {
             amount: resolvedPlan.amount,
             currency: resolvedPlan.currency,
             paymentMethod: resolvedPaymentMethod,
+            skuAddonUnits: basicSkuAddons.skuUnits,
+            skuAddonMonthlyAmount: basicSkuAddons.monthlyAmount,
+            skuAddonPackages: basicSkuAddons.packages,
           },
         },
       });
@@ -10308,6 +10413,9 @@ app.get("/api/profile", auth, async (req, res) => {
           amount: String(resolvedPlan.amount),
           currency: resolvedPlan.currency,
           localPaymentId: String(localPayment.id),
+          skuAddonUnits: String(basicSkuAddons.skuUnits),
+          skuAddonMonthlyAmount: String(basicSkuAddons.monthlyAmount),
+          skuAddonPackages: basicSkuAddons.packages.join(","),
         },
         receipt: {
           customer: {
@@ -10318,13 +10426,30 @@ app.get("/api/profile", auth, async (req, res) => {
               description: `Подписка ${resolvedPlan.title}`.slice(0, 128),
               quantity: "1.00",
               amount: {
-                value: formatAmount(resolvedPlan.amount),
+                value: formatAmount(baseResolvedPlan.amount),
                 currency: resolvedPlan.currency,
               },
               vat_code: 1,
               payment_mode: "full_prepayment",
               payment_subject: "service",
             },
+            ...(basicSkuAddons.monthlyAmount > 0
+              ? [
+                  {
+                    description: `Пакеты SKU (+${basicSkuAddons.skuUnits})`.slice(0, 128),
+                    quantity: "1.00",
+                    amount: {
+                      value: formatAmount(
+                        Math.max(0, Number(resolvedPlan.amount) - Number(baseResolvedPlan.amount))
+                      ),
+                      currency: resolvedPlan.currency,
+                    },
+                    vat_code: 1,
+                    payment_mode: "full_prepayment",
+                    payment_subject: "service",
+                  },
+                ]
+              : []),
           ],
         },
       };
@@ -10439,7 +10564,10 @@ app.get("/api/profile", auth, async (req, res) => {
           metadata.days || paymentRecord.metadata?.days,
           "1m"
         );
-      const resolvedPlan = getResolvedPlanCharge(plan, resolvedPeriodId);
+      const resolvedPlan = getResolvedPlanCharge(plan, resolvedPeriodId, {
+        extraMonthlyAmount:
+          Number(metadata.skuAddonMonthlyAmount || paymentRecord.metadata?.skuAddonMonthlyAmount || 0) || 0,
+      });
       if (!resolvedPlan) {
         return res.status(400).json({ message: "PLAN_PERIOD_NOT_SUPPORTED" });
       }
@@ -10499,7 +10627,9 @@ app.get("/api/profile", auth, async (req, res) => {
       const resolvedPeriodId =
         metadata.periodId ||
         resolveBillingPeriodIdByDays(plan, metadata.days, "1m");
-      const resolvedPlan = getResolvedPlanCharge(plan, resolvedPeriodId);
+      const resolvedPlan = getResolvedPlanCharge(plan, resolvedPeriodId, {
+        extraMonthlyAmount: Number(metadata.skuAddonMonthlyAmount || 0) || 0,
+      });
       if (!resolvedPlan) {
         return res.status(400).json({ message: "PLAN_PERIOD_NOT_SUPPORTED" });
       }
@@ -10548,6 +10678,9 @@ app.get("/api/profile", auth, async (req, res) => {
               days: resolvedPlan.days,
               amount: resolvedPlan.amount,
               currency: resolvedPlan.currency,
+              skuAddonUnits: metadata.skuAddonUnits,
+              skuAddonMonthlyAmount: metadata.skuAddonMonthlyAmount,
+              skuAddonPackages: metadata.skuAddonPackages,
               providerStatus: providerPayment.status,
               providerPaid: providerPayment.paid,
             },
@@ -13870,6 +14003,16 @@ app.post("/api/inventory/items", auth, async (req, res) => {
     if (!Number.isFinite(maxVal) || maxVal <= 0) {
       return res.status(400).json({
         message: "Максимальный остаток должен быть положительным числом",
+      });
+    }
+
+    const { maxSku } = await getOrgSkuLimit(req.user.orgId || null, req.user.id);
+    const currentSkuCount = await prisma.item.count({
+      where: { category: "STOCK" },
+    });
+    if (currentSkuCount >= maxSku) {
+      return res.status(400).json({
+        message: `Достигнут лимит SKU по тарифу (${maxSku}).`,
       });
     }
 
@@ -17400,6 +17543,12 @@ app.post(
       let created = 0;
       let updated = 0;
       let skipped = 0;
+      let limitSkipped = 0;
+      const { maxSku } = await getOrgSkuLimit(req.user.orgId || null, req.user.id);
+      const currentSkuCount = await prisma.item.count({
+        where: { category: "STOCK" },
+      });
+      let remainingSkuSlots = Math.max(0, maxSku - currentSkuCount);
 
       const toNumber = (raw) => {
         if (raw == null || String(raw).trim() === "") return 0;
@@ -17479,8 +17628,14 @@ app.post(
             });
             updated++;
           } else {
+            if (remainingSkuSlots <= 0) {
+              skipped++;
+              limitSkipped++;
+              continue;
+            }
             await prisma.item.create({ data });
             created++;
+            remainingSkuSlots--;
           }
         } catch (err) {
           console.error(
@@ -17497,6 +17652,8 @@ app.post(
         created,
         updated,
         skipped,
+        limitSkipped,
+        skuLimit: maxSku,
       });
     } catch (err) {
       console.error("import file error:", err);
@@ -17516,6 +17673,11 @@ app.post("/api/inventory/items/batch", auth, async (req, res) => {
     let created = 0;
     let updated = 0;
     let errors = [];
+    const { maxSku } = await getOrgSkuLimit(req.user.orgId || null, req.user.id);
+    const currentSkuCount = await prisma.item.count({
+      where: { category: "STOCK" },
+    });
+    let remainingSkuSlots = Math.max(0, maxSku - currentSkuCount);
 
     for (const item of items) {
       // Валидация
@@ -17558,8 +17720,16 @@ app.post("/api/inventory/items/batch", auth, async (req, res) => {
           });
           updated++;
         } else {
+          if (remainingSkuSlots <= 0) {
+            errors.push({
+              row: item.row,
+              error: `Превышен лимит SKU по тарифу (${maxSku}).`,
+            });
+            continue;
+          }
           await prisma.item.create({ data });
           created++;
+          remainingSkuSlots--;
         }
       } catch (e) {
         console.error("batch item error:", e);
@@ -17571,6 +17741,7 @@ app.post("/api/inventory/items/batch", auth, async (req, res) => {
       message: "Пакетная обработка завершена",
       created,
       updated,
+      skuLimit: maxSku,
       errors,
     });
   } catch (err) {
