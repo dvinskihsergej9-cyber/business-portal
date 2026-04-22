@@ -77,4 +77,32 @@ test.describe("MVP UI", () => {
     );
     expect(hasHorizontalScroll).toBeFalsy();
   });
+
+  test("Mobile TSD: open flow and back", async ({ page }, testInfo) => {
+    test.skip(testInfo.project.name !== "mobile", "Mobile-only");
+
+    await login(page, ADMIN_EMAIL, ADMIN_PASSWORD);
+    await page.goto("/warehouse/tsd");
+    await expect(page).toHaveURL(/\/warehouse\/tsd/);
+
+    const tsdHome = page.locator(".tsd-home");
+    await expect(tsdHome).toBeVisible();
+    const tileCount = await page.locator(".tsd-tile").count();
+    expect(tileCount).toBeGreaterThanOrEqual(6);
+
+    const moveTile = page
+      .locator(".tsd-tile")
+      .filter({ has: page.locator(".tsd-tile__icon", { hasText: "MOVE" }) })
+      .first();
+    await expect(moveTile).toBeVisible();
+    await moveTile.click();
+
+    await expect(page.locator(".tsd-header")).toBeVisible();
+    await expect(page.locator(".tsd-stepper")).toBeVisible();
+    await expect(page.locator(".tsd-stepper__step")).toHaveCount(5);
+
+    await page.goto("/warehouse/tsd");
+    await expect(page).toHaveURL(/\/warehouse\/tsd/);
+    await expect(tsdHome).toBeVisible();
+  });
 });
