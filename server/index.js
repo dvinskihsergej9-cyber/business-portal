@@ -3674,6 +3674,7 @@ const WAREHOUSE_ROUTE_RULES = [
   { prefix: "/requests", key: PERMISSION_KEYS.WAREHOUSE_REQUESTS },
   { prefix: "/tasks", key: PERMISSION_KEYS.WAREHOUSE_TASKS },
   { prefix: "/locations", key: PERMISSION_KEYS.WAREHOUSE_LOCATIONS },
+  { prefix: "/products", key: PERMISSION_KEYS.WAREHOUSE_LOCATIONS },
   { prefix: "/print", key: PERMISSION_KEYS.WAREHOUSE_LOCATIONS },
   { prefix: "/qr/print", key: PERMISSION_KEYS.WAREHOUSE_LOCATIONS },
   { prefix: "/labels", key: PERMISSION_KEYS.WAREHOUSE_LOCATIONS },
