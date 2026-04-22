@@ -4201,6 +4201,13 @@ input[type="number"] {
   color: #334155;
 }
 
+.register-form__phone-row {
+  display: grid;
+  grid-template-columns: minmax(150px, 42%) minmax(0, 1fr);
+  gap: 8px;
+  align-items: stretch;
+}
+
 .register-form__field input,
 .register-form__field textarea,
 .register-form__field select {

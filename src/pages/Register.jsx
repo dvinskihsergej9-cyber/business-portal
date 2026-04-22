@@ -47,24 +47,6 @@ function findPhoneCountry(code) {
   return PHONE_COUNTRIES.find((country) => country.code === code) || PHONE_COUNTRIES[0];
 }
 
-function applyDialCodeHint(phoneValue, fromDialCode, toDialCode) {
-  const normalizedPhone = String(phoneValue || "").trim();
-  const fromDial = String(fromDialCode || "").trim();
-  const toDial = String(toDialCode || "").trim();
-
-  if (!normalizedPhone) return `${toDial} `;
-  if (!fromDial) {
-    return normalizedPhone.startsWith("+") ? normalizedPhone : `${toDial} ${normalizedPhone}`;
-  }
-  if (normalizedPhone === fromDial || normalizedPhone === `${fromDial} `) {
-    return `${toDial} `;
-  }
-  if (normalizedPhone.startsWith(fromDial)) {
-    return `${toDial}${normalizedPhone.slice(fromDial.length)}`;
-  }
-  return normalizedPhone.startsWith("+") ? normalizedPhone : `${toDial} ${normalizedPhone}`;
-}
-
 function toUiMessage(message, fallback) {
   const key = String(message || "").trim().toUpperCase();
   return ERROR_MESSAGES[key] || message || fallback;
@@ -158,15 +140,7 @@ export default function Register() {
 
   const handlePhoneCountryChange = (event) => {
     const nextCountryCode = String(event.target.value || DEFAULT_PHONE_COUNTRY);
-    setForm((prev) => {
-      const currentCountry = findPhoneCountry(prev.phoneCountry);
-      const nextCountry = findPhoneCountry(nextCountryCode);
-      return {
-        ...prev,
-        phoneCountry: nextCountry.code,
-        phone: applyDialCodeHint(prev.phone, currentCountry.dialCode, nextCountry.dialCode),
-      };
-    });
+    setForm((prev) => ({ ...prev, phoneCountry: nextCountryCode }));
   };
 
   const handleRegister = async (event) => {
@@ -317,30 +291,29 @@ export default function Register() {
             </label>
 
             <label className="register-form__field">
-              <span>Страна</span>
-              <select
-                value={form.phoneCountry}
-                onChange={handlePhoneCountryChange}
-                required
-              >
-                {PHONE_COUNTRIES.map((country) => (
-                  <option key={country.code} value={country.code}>
-                    {country.name} ({country.dialCode})
-                  </option>
-                ))}
-              </select>
-            </label>
-
-            <label className="register-form__field">
               <span>Телефон</span>
-              <input
-                type="tel"
-                value={form.phone}
-                onChange={handleChange("phone")}
-                autoComplete="tel"
-                placeholder={selectedPhoneCountry.placeholder}
-                required
-              />
+              <div className="register-form__phone-row">
+                <select
+                  value={form.phoneCountry}
+                  onChange={handlePhoneCountryChange}
+                  aria-label="Страна и код"
+                  required
+                >
+                  {PHONE_COUNTRIES.map((country) => (
+                    <option key={country.code} value={country.code}>
+                      {country.name} ({country.dialCode})
+                    </option>
+                  ))}
+                </select>
+                <input
+                  type="tel"
+                  value={form.phone}
+                  onChange={handleChange("phone")}
+                  autoComplete="tel"
+                  placeholder={selectedPhoneCountry.placeholder.replace(/^\+\d+\s*/u, "")}
+                  required
+                />
+              </div>
             </label>
 
             <label className="register-form__field">
