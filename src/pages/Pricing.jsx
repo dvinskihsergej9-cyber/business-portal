@@ -111,6 +111,9 @@ export default function Pricing() {
     user?.isSystemOwner === true ||
     (Array.isArray(user?.roles) && user.roles.includes("ADMIN")) ||
     user?.role === "ADMIN";
+  const currentPlanId = String(user?.subscription?.plan || "").trim().toLowerCase();
+  const isCurrentBasicActive =
+    currentPlanId === "basic-30" && Boolean(user?.subscription?.isActive);
 
   const extendedPeriodSelected = periodId !== "1m";
   const basicSkuAddonMonthlyAmount = basicSkuAddons.reduce(
@@ -148,9 +151,18 @@ export default function Pricing() {
     try {
       setLoading(true);
       setError("");
+      const selectedSkuAddons = Array.isArray(options.skuAddons) ? options.skuAddons : [];
+      const isSkuAddonTopupPayment =
+        planId === "basic-30" &&
+        periodId === "1m" &&
+        isCurrentBasicActive &&
+        selectedSkuAddons.length > 0;
+      const endpoint = isSkuAddonTopupPayment
+        ? "/billing/yookassa/create-sku-addon-payment"
+        : "/billing/yookassa/create-payment";
 
       const token = localStorage.getItem("token");
-      const res = await apiFetch("/billing/yookassa/create-payment", {
+      const res = await apiFetch(endpoint, {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
@@ -160,7 +172,7 @@ export default function Pricing() {
           planId,
           periodId,
           paymentMethod: "default",
-          skuAddons: Array.isArray(options.skuAddons) ? options.skuAddons : [],
+          skuAddons: selectedSkuAddons,
         }),
       });
 
@@ -310,8 +322,15 @@ export default function Pricing() {
         {visiblePlanCards.map((plan) => {
           const isBasicPlan = plan.id === "basic-30";
           const monthlyAddonAmount = isBasicPlan ? basicSkuAddonMonthlyAmount : 0;
+          const isBasicTopupMode =
+            isBasicPlan &&
+            isCurrentBasicActive &&
+            periodId === "1m" &&
+            basicSkuAddons.length > 0;
           const displayAmount = plan.available
-            ? getPeriodAmount(plan.amount + monthlyAddonAmount, periodId)
+            ? isBasicTopupMode
+              ? monthlyAddonAmount
+              : getPeriodAmount(plan.amount + monthlyAddonAmount, periodId)
             : 0;
           const canPayCurrentPlan =
             plan.available && billingReady && canManageBilling;
@@ -338,6 +357,11 @@ export default function Pricing() {
                 </span>
                 <span className="pricing-modern__period">/ {getPeriodLabel(periodId)}</span>
               </div>
+              {isBasicTopupMode && (
+                <div className="pricing-modern__hint">
+                  Докупка SKU к действующему тарифу «Базовый» (без повторной оплаты 2990 ₽).
+                </div>
+              )}
 
               {isBasicPlan && (
                 <div className="pricing-modern__sku-builder">

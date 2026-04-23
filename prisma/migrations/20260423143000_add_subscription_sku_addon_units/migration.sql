@@ -1,0 +1,3 @@
+ALTER TABLE "Subscription"
+ADD COLUMN "skuAddonUnits" INTEGER NOT NULL DEFAULT 0;
+

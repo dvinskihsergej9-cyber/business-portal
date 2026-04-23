@@ -3421,33 +3421,10 @@ async function getOrgSkuLimit(orgId, fallbackUserId = null) {
   const orgSubscription = await getOrgSubscription(orgId, fallbackUserId);
   const currentPlanId = normalizePlanId(orgSubscription?.plan, "start-30");
   const baseSkuLimit = getPlanBaseSkuLimit(currentPlanId);
-
-  let addonSkuLimit = 0;
-  if (currentPlanId === "basic-30") {
-    const latestSucceededPayment = orgId
-      ? await prisma.payment.findFirst({
-          where: {
-            status: "succeeded",
-            user: { orgId },
-          },
-          orderBy: { id: "desc" },
-          select: { metadata: true },
-        })
-      : await prisma.payment.findFirst({
-          where: {
-            status: "succeeded",
-            userId: Number(fallbackUserId || 0),
-          },
-          orderBy: { id: "desc" },
-          select: { metadata: true },
-        });
-
-    const metadata = latestSucceededPayment?.metadata || {};
-    const paymentPlanId = String(metadata?.planId || "").trim().toLowerCase();
-    if (paymentPlanId === currentPlanId) {
-      addonSkuLimit = Math.max(0, Number(metadata?.skuAddonUnits || 0) || 0);
-    }
-  }
+  const addonSkuLimit =
+    currentPlanId === "basic-30"
+      ? Math.max(0, Number(orgSubscription?.skuAddonUnits || 0) || 0)
+      : 0;
 
   return {
     currentPlanId,
@@ -3574,6 +3551,12 @@ async function fetchYookassaPayment(providerPaymentId) {
   return yookassaRequest("GET", `/payments/${providerPaymentId}`);
 }
 
+function normalizePaymentKind(value) {
+  const normalized = String(value || "").trim().toLowerCase();
+  if (normalized === "sku-addon-topup") return "sku-addon-topup";
+  return "subscription";
+}
+
 function parseYookassaMetadata(metadata) {
   const userId = Number(metadata?.userId || 0);
   const planId = metadata?.planId ? String(metadata.planId) : null;
@@ -3585,6 +3568,7 @@ function parseYookassaMetadata(metadata) {
   const skuAddonUnits = Math.max(0, Number(metadata?.skuAddonUnits || 0) || 0);
   const skuAddonMonthlyAmount = Math.max(0, Number(metadata?.skuAddonMonthlyAmount || 0) || 0);
   const skuAddonPackages = parseBasicSkuAddons(metadata?.skuAddonPackages).packages;
+  const paymentKind = normalizePaymentKind(metadata?.paymentKind);
   return {
     userId: Number.isFinite(userId) && userId > 0 ? userId : null,
     planId,
@@ -3596,6 +3580,7 @@ function parseYookassaMetadata(metadata) {
     skuAddonUnits,
     skuAddonMonthlyAmount,
     skuAddonPackages,
+    paymentKind,
   };
 }
 
@@ -3666,15 +3651,10 @@ async function applyPaymentSuccess({ paymentRecord, providerPayment, plan }) {
   const userId = paymentRecord.userId;
   const now = new Date();
   const current = await prisma.subscription.findFirst({ where: { userId } });
-  const canExtendFromCurrent =
-    Boolean(current) &&
-    ["active", "trialing"].includes(String(current?.status || "").toLowerCase()) &&
-    current?.paidUntil &&
-    new Date(current.paidUntil) > now;
-  const baseDate = canExtendFromCurrent ? new Date(current.paidUntil) : now;
-  const nextPaidUntil = addDays(baseDate, plan.days);
-
   const existingMetadata = paymentRecord.metadata || {};
+  const paymentKind = normalizePaymentKind(existingMetadata?.paymentKind);
+  const paymentSkuAddonUnits = Math.max(0, Number(existingMetadata?.skuAddonUnits || 0) || 0);
+
   const processedProviderPaymentIds = Array.isArray(existingMetadata.processedProviderPaymentIds)
     ? existingMetadata.processedProviderPaymentIds
     : [];
@@ -3683,7 +3663,43 @@ async function applyPaymentSuccess({ paymentRecord, providerPayment, plan }) {
     ? Array.from(new Set([...processedProviderPaymentIds, providerPaymentId]))
     : processedProviderPaymentIds;
 
+  if (paymentKind === "sku-addon-topup") {
+    const currentPlanId = normalizePlanId(current?.plan, "");
+    if (current && currentPlanId === "basic-30") {
+      await prisma.subscription.update({
+        where: { userId },
+        data: {
+          skuAddonUnits: Math.max(0, Number(current?.skuAddonUnits || 0) + paymentSkuAddonUnits),
+        },
+      });
+    }
+
+    await prisma.payment.update({
+      where: { id: paymentRecord.id },
+      data: {
+        status: "succeeded",
+        metadata: {
+          ...existingMetadata,
+          providerStatus: providerPayment.status,
+          providerPaid: providerPayment.paid,
+          processedProviderPaymentIds: nextProcessedProviderPaymentIds,
+        },
+      },
+    });
+
+    return current?.paidUntil || null;
+  }
+
+  const canExtendFromCurrent =
+    Boolean(current) &&
+    ["active", "trialing"].includes(String(current?.status || "").toLowerCase()) &&
+    current?.paidUntil &&
+    new Date(current.paidUntil) > now;
+  const baseDate = canExtendFromCurrent ? new Date(current.paidUntil) : now;
+  const nextPaidUntil = addDays(baseDate, plan.days);
+
   const isTrialPlan = plan.id === "trial-1";
+  const nextSkuAddonUnits = plan.id === "basic-30" ? paymentSkuAddonUnits : 0;
 
   await prisma.subscription.upsert({
     where: { userId },
@@ -3693,6 +3709,7 @@ async function applyPaymentSuccess({ paymentRecord, providerPayment, plan }) {
       paidUntil: nextPaidUntil,
       trialStartedAt: isTrialPlan ? current?.trialStartedAt || now : current?.trialStartedAt || null,
       trialUsed: isTrialPlan ? true : Boolean(current?.trialUsed),
+      skuAddonUnits: nextSkuAddonUnits,
     },
     create: {
       userId,
@@ -3701,6 +3718,7 @@ async function applyPaymentSuccess({ paymentRecord, providerPayment, plan }) {
       paidUntil: nextPaidUntil,
       trialStartedAt: isTrialPlan ? now : null,
       trialUsed: isTrialPlan,
+      skuAddonUnits: nextSkuAddonUnits,
     },
   });
 
@@ -3797,6 +3815,7 @@ async function getUserPayload(userId) {
           paidUntil: subscription.paidUntil,
           trialStartedAt: subscription.trialStartedAt,
           trialUsed: subscription.trialUsed,
+          skuAddonUnits: Math.max(0, Number(subscription.skuAddonUnits || 0) || 0),
           isActive: Boolean(isActive),
           features: subscriptionFeatures,
         }
@@ -3804,6 +3823,7 @@ async function getUserPayload(userId) {
           plan: "start-30",
           isActive: false,
           trialUsed: false,
+          skuAddonUnits: 0,
           features: getPlanFeatureFlags("start-30"),
         },
   };
@@ -6051,6 +6071,7 @@ app.post("/api/login", async (req, res) => {
           plan: "start-30",
           isActive: false,
           trialUsed: false,
+          skuAddonUnits: 0,
           features: getPlanFeatureFlags("start-30"),
         },
       },
@@ -6174,6 +6195,7 @@ app.post("/api/auth/verify-email-code", async (req, res) => {
           plan: "start-30",
           isActive: false,
           trialUsed: false,
+          skuAddonUnits: 0,
           features: getPlanFeatureFlags("start-30"),
         },
       },
@@ -10374,6 +10396,7 @@ app.get("/api/profile", auth, async (req, res) => {
           paidUntil,
           trialStartedAt: now,
           trialUsed: true,
+          skuAddonUnits: 0,
         },
         create: {
           userId: billingUserId,
@@ -10382,6 +10405,7 @@ app.get("/api/profile", auth, async (req, res) => {
           paidUntil,
           trialStartedAt: now,
           trialUsed: true,
+          skuAddonUnits: 0,
         },
       });
 
@@ -10392,6 +10416,186 @@ app.get("/api/profile", auth, async (req, res) => {
       return res.status(500).json({ message: "TRIAL_START_ERROR" });
     }
   });
+
+  app.post("/api/billing/yookassa/create-sku-addon-payment", auth, async (req, res) => {
+    try {
+      if (!req.user?.isSystemOwner && req.user?.role !== "ADMIN") {
+        return res.status(403).json({
+          message: "Оплату может запускать только администратор клиента.",
+        });
+      }
+      if (req.user?.isSystemOwner) {
+        return res.status(400).json({ message: "OWNER_TENANT_FORBIDDEN" });
+      }
+
+      const targetOrgId = req.user.orgId;
+      if (!targetOrgId) {
+        return res.status(400).json({ message: "ORG_REQUIRED" });
+      }
+
+      const billingUserId = await getBillingUserIdForOrg(targetOrgId, req.user.id);
+      if (!billingUserId) {
+        return res.status(400).json({ message: "BILLING_USER_REQUIRED" });
+      }
+      const billingUser = await prisma.user.findUnique({
+        where: { id: billingUserId },
+        select: { id: true, email: true },
+      });
+      if (!billingUser) {
+        return res.status(400).json({ message: "BILLING_USER_REQUIRED" });
+      }
+
+      const currentSubscription = await prisma.subscription.findFirst({
+        where: { user: { orgId: targetOrgId } },
+        orderBy: [{ paidUntil: "desc" }, { id: "desc" }],
+      });
+      const now = new Date();
+      const currentPlanId = normalizePlanId(currentSubscription?.plan, "");
+      const activeBasicSubscription =
+        currentPlanId === "basic-30" &&
+        ["active", "trialing"].includes(String(currentSubscription?.status || "").toLowerCase()) &&
+        currentSubscription?.paidUntil &&
+        new Date(currentSubscription.paidUntil) > now;
+      if (!activeBasicSubscription) {
+        return res.status(400).json({ message: "SKU_ADDON_TOPUP_BASIC_ONLY" });
+      }
+
+      const parsedAddons = parseBasicSkuAddons(req.body?.skuAddons);
+      if (!parsedAddons.skuUnits || !parsedAddons.monthlyAmount) {
+        return res.status(400).json({ message: "SKU_ADDON_TOPUP_INVALID_UNITS" });
+      }
+
+      const receiptEmail = [billingUser.email, req.user?.email]
+        .map((value) => normalizeEmail(value))
+        .find((value) => isValidRegistrationEmail(value) && !value.endsWith(".invalid"));
+      if (!receiptEmail) {
+        return res.status(400).json({ message: "PAYMENT_RECEIPT_EMAIL_REQUIRED" });
+      }
+
+      const tempProviderId = `pending_${crypto.randomUUID()}`;
+      const localPayment = await prisma.payment.create({
+        data: {
+          userId: billingUserId,
+          provider: "yookassa",
+          providerPaymentId: tempProviderId,
+          amount: parsedAddons.monthlyAmount,
+          currency: "RUB",
+          status: "pending",
+          metadata: {
+            paymentKind: "sku-addon-topup",
+            planId: "basic-30",
+            periodId: "1m",
+            days: 0,
+            amount: parsedAddons.monthlyAmount,
+            currency: "RUB",
+            skuAddonUnits: parsedAddons.skuUnits,
+            skuAddonMonthlyAmount: parsedAddons.monthlyAmount,
+            skuAddonPackages: parsedAddons.packages,
+          },
+        },
+      });
+
+      const payload = {
+        amount: {
+          value: formatAmount(parsedAddons.monthlyAmount),
+          currency: "RUB",
+        },
+        capture: true,
+        confirmation: {
+          type: "redirect",
+          return_url: `${APP_URL}/subscribe/return?paymentId=${localPayment.id}`,
+        },
+        description: `SKU addon +${parsedAddons.skuUnits}`,
+        metadata: {
+          paymentKind: "sku-addon-topup",
+          userId: String(billingUserId),
+          planId: "basic-30",
+          periodId: "1m",
+          days: "0",
+          amount: String(parsedAddons.monthlyAmount),
+          currency: "RUB",
+          localPaymentId: String(localPayment.id),
+          skuAddonUnits: String(parsedAddons.skuUnits),
+          skuAddonMonthlyAmount: String(parsedAddons.monthlyAmount),
+          skuAddonPackages: parsedAddons.packages.join(","),
+        },
+        receipt: {
+          customer: {
+            email: receiptEmail,
+          },
+          items: [
+            {
+              description: `Пакеты SKU (+${parsedAddons.skuUnits})`.slice(0, 128),
+              quantity: "1.00",
+              amount: {
+                value: formatAmount(parsedAddons.monthlyAmount),
+                currency: "RUB",
+              },
+              vat_code: 1,
+              payment_mode: "full_prepayment",
+              payment_subject: "service",
+            },
+          ],
+        },
+      };
+
+      const payment = await yookassaRequest(
+        "POST",
+        "/payments",
+        payload,
+        crypto.randomUUID()
+      );
+
+      await prisma.payment.update({
+        where: { id: localPayment.id },
+        data: {
+          providerPaymentId: payment.id,
+          status: payment.status || "pending",
+          metadata: {
+            ...(localPayment.metadata || {}),
+            providerStatus: payment.status,
+          },
+        },
+      });
+
+      return res.json({
+        confirmationUrl: payment.confirmation?.confirmation_url || null,
+        paymentId: payment.id,
+        localPaymentId: localPayment.id,
+      });
+    } catch (err) {
+      const providerStatus = Number(err?.status || 0) || null;
+      const providerCode = String(err?.payload?.code || "").trim() || null;
+      const providerDescription = String(
+        err?.payload?.description || err?.message || ""
+      ).trim() || null;
+
+      let message = "PAYMENT_CREATE_ERROR";
+      if (String(err?.message || "") === "YOOKASSA_CONFIG_MISSING") {
+        message = "YOOKASSA_CONFIG_MISSING";
+      } else if (providerStatus === 401) {
+        message = "YOOKASSA_AUTH_FAILED";
+      } else if (providerStatus === 403) {
+        message = "YOOKASSA_SHOP_FORBIDDEN";
+      } else if (providerStatus === 400) {
+        message = "PAYMENT_PROVIDER_BAD_REQUEST";
+      }
+
+      console.error("create sku addon payment error:", {
+        message,
+        providerStatus,
+        providerCode,
+        providerDescription,
+      });
+      return res.status(500).json({
+        message,
+        providerStatus,
+        providerCode,
+        providerDescription,
+      });
+    }
+  });
+
   app.post("/api/billing/yookassa/create-payment", auth, async (req, res) => {
     try {
       if (!req.user?.isSystemOwner && req.user?.role !== "ADMIN") {
@@ -10480,6 +10684,7 @@ app.get("/api/profile", auth, async (req, res) => {
           currency: resolvedPlan.currency,
           status: "pending",
           metadata: {
+            paymentKind: "subscription",
             planId: resolvedPlan.planId,
             periodId: resolvedPlan.periodId,
             days: resolvedPlan.days,
@@ -10505,6 +10710,7 @@ app.get("/api/profile", auth, async (req, res) => {
         },
         description: `Subscription ${resolvedPlan.planId} ${resolvedPlan.periodId}`,
         metadata: {
+          paymentKind: "subscription",
           userId: String(billingUserId),
           planId: resolvedPlan.planId,
           periodId: resolvedPlan.periodId,
@@ -10650,29 +10856,55 @@ app.get("/api/profile", auth, async (req, res) => {
       }
 
       const providerPayment = await fetchYookassaPayment(paymentRecord.providerPaymentId);
-      const metadata = parseYookassaMetadata(providerPayment.metadata || {});
-      const plan = getPlan(metadata.planId || paymentRecord.metadata?.planId);
-      if (!plan) {
-        return res.status(400).json({ message: "PLAN_NOT_FOUND" });
+      const providerMetadata = parseYookassaMetadata(providerPayment.metadata || {});
+      const paymentKind = normalizePaymentKind(
+        providerMetadata.paymentKind || paymentRecord?.metadata?.paymentKind
+      );
+      let resolvedPlan = null;
+      let responsePeriodId = null;
+      let expectedCurrency = null;
+      let expectedAmount = null;
+
+      if (paymentKind === "sku-addon-topup") {
+        const expectedAmountNumber =
+          Number(providerMetadata.amount || paymentRecord?.metadata?.amount || paymentRecord?.amount || 0) || 0;
+        expectedCurrency =
+          String(
+            providerMetadata.currency ||
+              paymentRecord?.metadata?.currency ||
+              paymentRecord?.currency ||
+              "RUB"
+          ).toUpperCase();
+        expectedAmount = formatAmount(expectedAmountNumber);
+      } else {
+        const plan = getPlan(providerMetadata.planId || paymentRecord.metadata?.planId);
+        if (!plan) {
+          return res.status(400).json({ message: "PLAN_NOT_FOUND" });
+        }
+        const resolvedPeriodId =
+          providerMetadata.periodId ||
+          paymentRecord.metadata?.periodId ||
+          resolveBillingPeriodIdByDays(
+            plan,
+            providerMetadata.days || paymentRecord.metadata?.days,
+            "1m"
+          );
+        resolvedPlan = getResolvedPlanCharge(plan, resolvedPeriodId, {
+          extraMonthlyAmount:
+            Number(
+              providerMetadata.skuAddonMonthlyAmount || paymentRecord.metadata?.skuAddonMonthlyAmount || 0
+            ) || 0,
+        });
+        if (!resolvedPlan) {
+          return res.status(400).json({ message: "PLAN_PERIOD_NOT_SUPPORTED" });
+        }
+        responsePeriodId = resolvedPlan.periodId;
+        expectedCurrency = resolvedPlan.currency;
+        expectedAmount = formatAmount(resolvedPlan.amount);
       }
-      const resolvedPeriodId =
-        metadata.periodId ||
-        paymentRecord.metadata?.periodId ||
-        resolveBillingPeriodIdByDays(
-          plan,
-          metadata.days || paymentRecord.metadata?.days,
-          "1m"
-        );
-      const resolvedPlan = getResolvedPlanCharge(plan, resolvedPeriodId, {
-        extraMonthlyAmount:
-          Number(metadata.skuAddonMonthlyAmount || paymentRecord.metadata?.skuAddonMonthlyAmount || 0) || 0,
-      });
-      if (!resolvedPlan) {
-        return res.status(400).json({ message: "PLAN_PERIOD_NOT_SUPPORTED" });
-      }
-      const expectedAmount = formatAmount(resolvedPlan.amount);
+
       if (
-        providerPayment.amount?.currency !== resolvedPlan.currency ||
+        String(providerPayment.amount?.currency || "").toUpperCase() !== String(expectedCurrency || "").toUpperCase() ||
         providerPayment.amount?.value !== expectedAmount
       ) {
         return res.status(400).json({ message: "PAYMENT_AMOUNT_MISMATCH" });
@@ -10683,7 +10915,7 @@ app.get("/api/profile", auth, async (req, res) => {
           await applyPaymentSuccess({
             paymentRecord,
             providerPayment,
-            plan: resolvedPlan,
+            plan: resolvedPlan || { id: "basic-30", days: 0 },
           });
         }
       } else if (providerPayment.status === "canceled") {
@@ -10701,7 +10933,8 @@ app.get("/api/profile", auth, async (req, res) => {
       return res.json({
         status: providerPayment.status,
         paid: providerPayment.paid || false,
-        periodId: resolvedPlan.periodId,
+        periodId: responsePeriodId,
+        paymentKind,
       });
     } catch (err) {
       console.error("payment status error:", err);
@@ -10719,32 +10952,46 @@ app.get("/api/profile", auth, async (req, res) => {
 
       const providerPayment = await fetchYookassaPayment(providerPaymentId);
       const metadata = parseYookassaMetadata(providerPayment.metadata || {});
-      const plan = getPlan(metadata.planId);
-      if (!plan) {
-        return res.status(400).json({ message: "PLAN_NOT_FOUND" });
-      }
-      const resolvedPeriodId =
-        metadata.periodId ||
-        resolveBillingPeriodIdByDays(plan, metadata.days, "1m");
-      const resolvedPlan = getResolvedPlanCharge(plan, resolvedPeriodId, {
-        extraMonthlyAmount: Number(metadata.skuAddonMonthlyAmount || 0) || 0,
-      });
-      if (!resolvedPlan) {
-        return res.status(400).json({ message: "PLAN_PERIOD_NOT_SUPPORTED" });
-      }
-      const metadataForValidation = {
-        ...metadata,
-        planId: metadata.planId || resolvedPlan.planId,
-        periodId: metadata.periodId || resolvedPlan.periodId,
-        days: metadata.days || resolvedPlan.days,
-      };
-      if (!validatePlanMetadata(resolvedPlan, metadataForValidation) || !metadata.userId) {
-        return res.status(400).json({ message: "PAYMENT_METADATA_MISMATCH" });
+      const paymentKind = normalizePaymentKind(metadata.paymentKind);
+      let resolvedPlan = null;
+      let expectedCurrency = null;
+      let expectedAmount = null;
+
+      if (paymentKind === "sku-addon-topup") {
+        if (!metadata.userId || metadata.skuAddonUnits <= 0) {
+          return res.status(400).json({ message: "PAYMENT_METADATA_MISMATCH" });
+        }
+        expectedCurrency = String(metadata.currency || "RUB").toUpperCase();
+        expectedAmount = formatAmount(Number(metadata.amount || metadata.skuAddonMonthlyAmount || 0) || 0);
+      } else {
+        const plan = getPlan(metadata.planId);
+        if (!plan) {
+          return res.status(400).json({ message: "PLAN_NOT_FOUND" });
+        }
+        const resolvedPeriodId =
+          metadata.periodId ||
+          resolveBillingPeriodIdByDays(plan, metadata.days, "1m");
+        resolvedPlan = getResolvedPlanCharge(plan, resolvedPeriodId, {
+          extraMonthlyAmount: Number(metadata.skuAddonMonthlyAmount || 0) || 0,
+        });
+        if (!resolvedPlan) {
+          return res.status(400).json({ message: "PLAN_PERIOD_NOT_SUPPORTED" });
+        }
+        const metadataForValidation = {
+          ...metadata,
+          planId: metadata.planId || resolvedPlan.planId,
+          periodId: metadata.periodId || resolvedPlan.periodId,
+          days: metadata.days || resolvedPlan.days,
+        };
+        if (!validatePlanMetadata(resolvedPlan, metadataForValidation) || !metadata.userId) {
+          return res.status(400).json({ message: "PAYMENT_METADATA_MISMATCH" });
+        }
+        expectedCurrency = resolvedPlan.currency;
+        expectedAmount = formatAmount(resolvedPlan.amount);
       }
 
-      const expectedAmount = formatAmount(resolvedPlan.amount);
       if (
-        providerPayment.amount?.currency !== resolvedPlan.currency ||
+        String(providerPayment.amount?.currency || "").toUpperCase() !== String(expectedCurrency || "").toUpperCase() ||
         providerPayment.amount?.value !== expectedAmount
       ) {
         return res.status(400).json({ message: "PAYMENT_AMOUNT_MISMATCH" });
@@ -10768,15 +11015,16 @@ app.get("/api/profile", auth, async (req, res) => {
             userId: metadata.userId,
             provider: "yookassa",
             providerPaymentId,
-            amount: Number(providerPayment.amount?.value || resolvedPlan.amount),
-            currency: providerPayment.amount?.currency || resolvedPlan.currency,
+            amount: Number(providerPayment.amount?.value || metadata.amount || 0),
+            currency: providerPayment.amount?.currency || expectedCurrency || "RUB",
             status: providerPayment.status || "pending",
             metadata: {
-              planId: resolvedPlan.planId,
-              periodId: resolvedPlan.periodId,
-              days: resolvedPlan.days,
-              amount: resolvedPlan.amount,
-              currency: resolvedPlan.currency,
+              paymentKind,
+              planId: resolvedPlan?.planId || metadata.planId || "basic-30",
+              periodId: resolvedPlan?.periodId || metadata.periodId || "1m",
+              days: resolvedPlan?.days || metadata.days || 0,
+              amount: Number(metadata.amount || providerPayment.amount?.value || 0),
+              currency: expectedCurrency || "RUB",
               skuAddonUnits: metadata.skuAddonUnits,
               skuAddonMonthlyAmount: metadata.skuAddonMonthlyAmount,
               skuAddonPackages: metadata.skuAddonPackages,
@@ -10806,7 +11054,7 @@ app.get("/api/profile", auth, async (req, res) => {
         await applyPaymentSuccess({
           paymentRecord,
           providerPayment,
-          plan: resolvedPlan,
+          plan: resolvedPlan || { id: "basic-30", days: 0 },
         });
       } else if (providerPayment.status === "canceled") {
         await prisma.payment.update({

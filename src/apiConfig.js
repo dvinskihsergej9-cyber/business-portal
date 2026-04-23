@@ -133,6 +133,10 @@ const EXTRA_ERROR_MESSAGES = {
     "Запрос индивидуальной автоматизации доступен только на тарифе «Проф».",
   SUPPORT_PRIORITY_REQUIRES_PRO:
     "Повышенный приоритет поддержки доступен только на тарифе «Проф».",
+  SKU_ADDON_TOPUP_BASIC_ONLY:
+    "Докупка SKU доступна только для активного тарифа «Базовый».",
+  SKU_ADDON_TOPUP_INVALID_UNITS:
+    "Выберите пакет SKU для докупки.",
   PAYMENT_AMOUNT_MISMATCH: "Сумма платежа не совпадает с тарифом.",
   PAYMENT_METADATA_MISMATCH: "Ошибка данных платежа.",
   PAYMENT_USER_MISMATCH: "Платеж относится к другому пользователю.",
