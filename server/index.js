@@ -3648,16 +3648,53 @@ function validatePlanMetadata(resolvedPlan, metadata) {
 
 async function getBillingUserIdForOrg(orgId, fallbackUserId = null) {
   if (!orgId) return fallbackUserId;
-  const admin = await prisma.user.findFirst({
+
+  const activeAdmin = await prisma.user.findFirst({
     where: {
       orgId,
       role: "ADMIN",
+      isSystemOwner: false,
       isActive: true,
     },
     orderBy: { id: "asc" },
     select: { id: true },
   });
-  return admin?.id || fallbackUserId;
+  if (activeAdmin?.id) return activeAdmin.id;
+
+  const activeUser = await prisma.user.findFirst({
+    where: {
+      orgId,
+      isSystemOwner: false,
+      isActive: true,
+    },
+    orderBy: [{ role: "desc" }, { id: "asc" }],
+    select: { id: true },
+  });
+  if (activeUser?.id) return activeUser.id;
+
+  const latestOrgSubscription = await prisma.subscription.findFirst({
+    where: {
+      user: {
+        orgId,
+        isSystemOwner: false,
+      },
+    },
+    orderBy: [{ paidUntil: "desc" }, { id: "desc" }],
+    select: { userId: true },
+  });
+  if (latestOrgSubscription?.userId) return latestOrgSubscription.userId;
+
+  const anyOrgUser = await prisma.user.findFirst({
+    where: {
+      orgId,
+      isSystemOwner: false,
+    },
+    orderBy: { id: "asc" },
+    select: { id: true },
+  });
+  if (anyOrgUser?.id) return anyOrgUser.id;
+
+  return fallbackUserId;
 }
 
 async function getOrgSubscription(orgId, fallbackUserId = null) {
