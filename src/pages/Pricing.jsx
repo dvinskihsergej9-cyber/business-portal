@@ -97,7 +97,7 @@ function getPeriodLabel(periodId) {
 }
 
 export default function Pricing() {
-  const { user, refreshUser, logout } = useAuth();
+  const { user } = useAuth();
   const navigate = useNavigate();
 
   const [loading, setLoading] = useState(false);
@@ -212,14 +212,12 @@ export default function Pricing() {
     (plan) => periodId === "1m" || plan.id !== "start-30"
   );
 
-  const handleRefresh = async () => {
-    await refreshUser();
+  const handleBack = () => {
+    if (window.history.length > 1) {
+      navigate(-1);
+      return;
+    }
     navigate("/warehouse");
-  };
-
-  const handleBackToLogin = () => {
-    logout();
-    navigate("/login");
   };
 
   const handleOpenSupport = () => {
@@ -233,9 +231,9 @@ export default function Pricing() {
           <button
             type="button"
             className="pricing-modern__back-login"
-            onClick={handleBackToLogin}
+            onClick={handleBack}
           >
-            Назад ко входу
+            Назад
           </button>
           {canUseSupport ? (
             <button
@@ -297,9 +295,6 @@ export default function Pricing() {
             <div className="pricing-modern__active-title">Подписка активна</div>
             <div className="pricing-modern__active-subtitle">Оплачено до: {paidUntilDate}</div>
           </div>
-          <button className="btn pricing-modern__status-btn" onClick={handleRefresh}>
-            Обновить статус
-          </button>
         </section>
       )}
 
