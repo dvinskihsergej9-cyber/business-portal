@@ -311,9 +311,7 @@ export default function Layout() {
             <div style={styles.userEmail}>{user.login || user.username || user.email}</div>
             <div style={styles.userRole}>{user.role}</div>
             <div style={styles.userSubscriptionRow}>
-              <span style={styles.userSubscriptionLabel}>
-                \u0422\u0430\u0440\u0438\u0444
-              </span>
+              <span style={styles.userSubscriptionLabel}>Тариф</span>
               <span style={styles.userSubscriptionValue}>{planTitle}</span>
             </div>
             <div
@@ -330,7 +328,7 @@ export default function Layout() {
               style={styles.userSubscriptionBtn}
               onClick={handlePricingOpen}
             >
-              \u0422\u0430\u0440\u0438\u0444 \u0438 \u043e\u043f\u043b\u0430\u0442\u0430
+              Тариф и оплата
             </button>
           </div>
         )}
