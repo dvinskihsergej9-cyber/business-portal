@@ -3417,6 +3417,56 @@ function parseBasicSkuAddons(rawValue) {
   };
 }
 
+function buildBasicSkuAddonsFromUnits(rawUnits) {
+  const normalizedUnitsRaw = Math.max(0, Number(rawUnits || 0) || 0);
+  if (!normalizedUnitsRaw) {
+    return { packages: [], monthlyAmount: 0, skuUnits: 0 };
+  }
+
+  const normalizedUnits = Math.ceil(normalizedUnitsRaw / 50) * 50;
+  const targetSteps = Math.max(0, Math.floor(normalizedUnits / 50));
+  if (!targetSteps) {
+    return { packages: [], monthlyAmount: 0, skuUnits: 0 };
+  }
+
+  const packageConfigs = [
+    { sku: 50, steps: 1, price: 500 },
+    { sku: 100, steps: 2, price: 900 },
+    { sku: 200, steps: 4, price: 1500 },
+  ];
+
+  const dp = Array.from({ length: targetSteps + 1 }, () => ({ cost: Number.POSITIVE_INFINITY, pick: null }));
+  dp[0] = { cost: 0, pick: null };
+
+  for (let step = 1; step <= targetSteps; step += 1) {
+    for (const pkg of packageConfigs) {
+      const prevStep = step - pkg.steps;
+      if (prevStep < 0) continue;
+      const prev = dp[prevStep];
+      if (!Number.isFinite(prev.cost)) continue;
+      const nextCost = prev.cost + pkg.price;
+      if (nextCost < dp[step].cost) {
+        dp[step] = { cost: nextCost, pick: pkg };
+      }
+    }
+  }
+
+  if (!Number.isFinite(dp[targetSteps].cost)) {
+    return parseBasicSkuAddons([]);
+  }
+
+  const packages = [];
+  let current = targetSteps;
+  while (current > 0) {
+    const picked = dp[current].pick;
+    if (!picked) break;
+    packages.push(picked.sku);
+    current -= picked.steps;
+  }
+
+  return parseBasicSkuAddons(packages);
+}
+
 async function getOrgSkuLimit(orgId, fallbackUserId = null) {
   const orgSubscription = await getOrgSubscription(orgId, fallbackUserId);
   const currentPlanId = normalizePlanId(orgSubscription?.plan, "start-30");
@@ -10632,9 +10682,24 @@ app.get("/api/profile", auth, async (req, res) => {
       if (!plan) {
         return res.status(400).json({ message: "PLAN_NOT_FOUND" });
       }
-      const basicSkuAddons = plan.id === "basic-30"
+      let basicSkuAddons = plan.id === "basic-30"
         ? parseBasicSkuAddons(skuAddons)
         : { packages: [], monthlyAmount: 0, skuUnits: 0 };
+      if (plan.id === "basic-30" && basicSkuAddons.skuUnits <= 0) {
+        const currentSubscription = req.user.isSystemOwner
+          ? await prisma.subscription.findFirst({
+              where: { userId: billingUserId },
+            })
+          : await prisma.subscription.findFirst({
+              where: { user: { orgId: targetOrgId } },
+              orderBy: [{ paidUntil: "desc" }, { id: "desc" }],
+            });
+        const currentPlanId = normalizePlanId(currentSubscription?.plan, "");
+        const currentSkuAddonUnits = Math.max(0, Number(currentSubscription?.skuAddonUnits || 0) || 0);
+        if (currentPlanId === "basic-30" && currentSkuAddonUnits > 0) {
+          basicSkuAddons = buildBasicSkuAddonsFromUnits(currentSkuAddonUnits);
+        }
+      }
       const baseResolvedPlan = getResolvedPlanCharge(plan, periodId || "1m", {
         extraMonthlyAmount: 0,
       });

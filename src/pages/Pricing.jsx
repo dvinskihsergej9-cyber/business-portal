@@ -96,6 +96,46 @@ function getPeriodLabel(periodId) {
   return "30 дней";
 }
 
+function getBasicSkuAddonPresetFromUnits(unitsInput) {
+  const units = Math.max(0, Number(unitsInput || 0) || 0);
+  if (!units) return [];
+
+  const normalizedUnits = Math.ceil(units / 50) * 50;
+  const steps = Math.max(0, Math.floor(normalizedUnits / 50));
+  if (!steps) return [];
+
+  const options = [
+    { sku: 50, price: 500, step: 1 },
+    { sku: 100, price: 900, step: 2 },
+    { sku: 200, price: 1500, step: 4 },
+  ];
+  const dp = Array.from({ length: steps + 1 }, () => ({ cost: Number.POSITIVE_INFINITY, pick: null }));
+  dp[0] = { cost: 0, pick: null };
+
+  for (let index = 1; index <= steps; index += 1) {
+    options.forEach((option) => {
+      const prev = index - option.step;
+      if (prev < 0 || !Number.isFinite(dp[prev].cost)) return;
+      const nextCost = dp[prev].cost + option.price;
+      if (nextCost < dp[index].cost) {
+        dp[index] = { cost: nextCost, pick: option };
+      }
+    });
+  }
+
+  if (!Number.isFinite(dp[steps].cost)) return [];
+
+  const packages = [];
+  let cursor = steps;
+  while (cursor > 0) {
+    const picked = dp[cursor].pick;
+    if (!picked) break;
+    packages.push({ sku: picked.sku, price: picked.price, label: `+${picked.sku} SKU` });
+    cursor -= picked.step;
+  }
+  return packages;
+}
+
 export default function Pricing() {
   const { user } = useAuth();
   const navigate = useNavigate();
@@ -106,6 +146,7 @@ export default function Pricing() {
   const [billingLoading, setBillingLoading] = useState(true);
   const [periodId, setPeriodId] = useState("1m");
   const [basicSkuAddons, setBasicSkuAddons] = useState([]);
+  const [basicSkuAddonsTouched, setBasicSkuAddonsTouched] = useState(false);
 
   const canManageBilling =
     user?.isSystemOwner === true ||
@@ -114,26 +155,34 @@ export default function Pricing() {
   const currentPlanId = String(user?.subscription?.plan || "").trim().toLowerCase();
   const isCurrentBasicActive =
     currentPlanId === "basic-30" && Boolean(user?.subscription?.isActive);
+  const currentBasicAddonUnits =
+    currentPlanId === "basic-30" ? Math.max(0, Number(user?.subscription?.skuAddonUnits || 0) || 0) : 0;
+  const defaultBasicSkuAddons = getBasicSkuAddonPresetFromUnits(currentBasicAddonUnits);
+  const effectiveBasicSkuAddons = basicSkuAddonsTouched ? basicSkuAddons : defaultBasicSkuAddons;
+  const isBasicCarryMode =
+    !basicSkuAddonsTouched && currentBasicAddonUnits > 0 && periodId === "1m";
 
   const extendedPeriodSelected = periodId !== "1m";
-  const basicSkuAddonMonthlyAmount = basicSkuAddons.reduce(
+  const basicSkuAddonMonthlyAmount = effectiveBasicSkuAddons.reduce(
     (sum, value) => sum + Number(value.price || 0),
     0
   );
-  const basicSkuAddonUnits = basicSkuAddons.reduce(
+  const basicSkuAddonUnits = effectiveBasicSkuAddons.reduce(
     (sum, value) => sum + Number(value.sku || 0),
     0
   );
 
   const toggleBasicSkuAddon = (pkg) => {
+    setBasicSkuAddonsTouched(true);
     setBasicSkuAddons((current) => {
-      const index = current.findIndex(
+      const source = basicSkuAddonsTouched ? current : defaultBasicSkuAddons;
+      const index = source.findIndex(
         (entry) => Number(entry.sku) === Number(pkg.sku) && Number(entry.price) === Number(pkg.price)
       );
       if (index >= 0) {
-        return current.filter((_, idx) => idx !== index);
+        return source.filter((_, idx) => idx !== index);
       }
-      return [...current, pkg];
+      return [...source, pkg];
     });
   };
 
@@ -152,11 +201,7 @@ export default function Pricing() {
       setLoading(true);
       setError("");
       const selectedSkuAddons = Array.isArray(options.skuAddons) ? options.skuAddons : [];
-      const isSkuAddonTopupPayment =
-        planId === "basic-30" &&
-        periodId === "1m" &&
-        isCurrentBasicActive &&
-        selectedSkuAddons.length > 0;
+      const isSkuAddonTopupPayment = Boolean(options.useTopup);
       const endpoint = isSkuAddonTopupPayment
         ? "/billing/yookassa/create-sku-addon-payment"
         : "/billing/yookassa/create-payment";
@@ -322,11 +367,13 @@ export default function Pricing() {
         {visiblePlanCards.map((plan) => {
           const isBasicPlan = plan.id === "basic-30";
           const monthlyAddonAmount = isBasicPlan ? basicSkuAddonMonthlyAmount : 0;
+          const addonsForPay = isBasicPlan ? effectiveBasicSkuAddons.map((entry) => entry.sku) : [];
           const isBasicTopupMode =
             isBasicPlan &&
             isCurrentBasicActive &&
             periodId === "1m" &&
-            basicSkuAddons.length > 0;
+            basicSkuAddonsTouched &&
+            basicSkuAddonUnits > 0;
           const displayAmount = plan.available
             ? isBasicTopupMode
               ? monthlyAddonAmount
@@ -363,12 +410,17 @@ export default function Pricing() {
                 </div>
               )}
 
+              {isBasicPlan && isBasicCarryMode && !isBasicTopupMode && (
+                <div className="pricing-modern__hint">
+                  При продлении по умолчанию сохраняются текущие доп.пакеты SKU.
+                </div>
+              )}
               {isBasicPlan && (
                 <div className="pricing-modern__sku-builder">
                   <div className="pricing-modern__sku-builder-title">Калькулятор SKU</div>
                   <div className="pricing-modern__sku-builder-list">
                     {BASIC_SKU_ADDON_PACKAGES.map((pkg) => {
-                      const checked = basicSkuAddons.some(
+                      const checked = effectiveBasicSkuAddons.some(
                         (entry) => Number(entry.sku) === Number(pkg.sku) && Number(entry.price) === Number(pkg.price)
                       );
                       return (
@@ -401,7 +453,8 @@ export default function Pricing() {
                   className="btn pricing-modern__cta pricing-modern__cta--dark"
                   onClick={() =>
                     handlePay(plan.id, {
-                      skuAddons: isBasicPlan ? basicSkuAddons.map((entry) => entry.sku) : [],
+                      skuAddons: addonsForPay,
+                      useTopup: isBasicTopupMode,
                     })
                   }
                   disabled={
