@@ -12316,6 +12316,10 @@ app.post(
       if (!days || Number.isNaN(days)) {
         return res.status(400).json({ message: "BAD_DAYS" });
       }
+      const requestedPlanId = normalizePlanId(req.body?.planId, "basic-30");
+      if (!["basic-30", "pro-30"].includes(requestedPlanId)) {
+        return res.status(400).json({ message: "FREE_ACCESS_PLAN_INVALID" });
+      }
 
       const tenant = await prisma.organization.findUnique({
         where: { id: tenantId },
@@ -12348,19 +12352,25 @@ app.post(
       const next = await prisma.subscription.upsert({
         where: { userId: billingUserId },
         update: {
-          plan: "manual-free",
+          plan: requestedPlanId,
           status: "active",
           paidUntil,
+          pausedAt: null,
+          pausedPaidUntil: null,
           trialStartedAt: current?.trialStartedAt || null,
           trialUsed: Boolean(current?.trialUsed),
+          skuAddonUnits: 0,
         },
         create: {
           userId: billingUserId,
-          plan: "manual-free",
+          plan: requestedPlanId,
           status: "active",
           paidUntil,
+          pausedAt: null,
+          pausedPaidUntil: null,
           trialStartedAt: null,
           trialUsed: true,
+          skuAddonUnits: 0,
         },
       });
 
@@ -12418,7 +12428,7 @@ app.post(
 
       const orgSubscriptions = await prisma.subscription.findMany({
         where: { user: { orgId: tenant.id } },
-        select: { id: true, userId: true },
+        select: { id: true, userId: true, status: true, paidUntil: true, pausedAt: true, pausedPaidUntil: true },
       });
 
       if (!orgSubscriptions.length) {
@@ -12433,13 +12443,50 @@ app.post(
         return res.status(400).json({ message: "TENANT_SUBSCRIPTION_NOT_FOUND" });
       }
 
-      const subscriptionIds = orgSubscriptions.map((row) => row.id);
-      await prisma.subscription.updateMany({
-        where: { id: { in: subscriptionIds } },
-        data: enabled
-          ? { status: "active" }
-          : { status: "paused", paidUntil: new Date() },
-      });
+      const now = new Date();
+      if (!enabled) {
+        await prisma.$transaction(
+          orgSubscriptions.map((subscriptionRow) =>
+            prisma.subscription.update({
+              where: { id: subscriptionRow.id },
+              data: {
+                status: "paused",
+                pausedAt: now,
+                pausedPaidUntil: subscriptionRow.paidUntil || null,
+              },
+            })
+          )
+        );
+      } else {
+        await prisma.$transaction(
+          orgSubscriptions.map((subscriptionRow) => {
+            const pausedAt = subscriptionRow.pausedAt ? new Date(subscriptionRow.pausedAt) : null;
+            const pausedPaidUntil = subscriptionRow.pausedPaidUntil
+              ? new Date(subscriptionRow.pausedPaidUntil)
+              : null;
+            let nextPaidUntil = subscriptionRow.paidUntil ? new Date(subscriptionRow.paidUntil) : null;
+            if (
+              pausedAt &&
+              pausedPaidUntil &&
+              Number.isFinite(pausedAt.getTime()) &&
+              Number.isFinite(pausedPaidUntil.getTime()) &&
+              pausedPaidUntil > pausedAt
+            ) {
+              const remainingMs = pausedPaidUntil.getTime() - pausedAt.getTime();
+              nextPaidUntil = new Date(now.getTime() + remainingMs);
+            }
+            return prisma.subscription.update({
+              where: { id: subscriptionRow.id },
+              data: {
+                status: "active",
+                paidUntil: nextPaidUntil,
+                pausedAt: null,
+                pausedPaidUntil: null,
+              },
+            });
+          })
+        );
+      }
 
       const subscription = await getOrgSubscription(tenant.id, null);
       const paidUntil = subscription?.paidUntil || null;

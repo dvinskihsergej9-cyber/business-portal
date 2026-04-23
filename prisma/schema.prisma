@@ -96,6 +96,8 @@ model Subscription {
   plan           String
   status         String
   paidUntil      DateTime?
+  pausedAt       DateTime?
+  pausedPaidUntil DateTime?
   trialStartedAt DateTime?
   trialUsed      Boolean   @default(false)
   skuAddonUnits  Int       @default(0)

@@ -259,14 +259,16 @@ export default function TenantManagement() {
     }
   };
 
-  const handleGrantFreeAccess = async (tenant, days = 30) => {
+  const handleGrantFreeAccess = async (tenant, days = 30, planId = "basic-30") => {
     const tenantId = Number(tenant?.id || 0);
     if (!tenantId) return;
     if (String(tenant?.code || "") === "platform-owner") return;
+    const normalizedPlanId = String(planId || "").trim().toLowerCase();
+    const planLabel = normalizedPlanId === "pro-30" ? "Проф" : "Базовый";
 
     const tenantName = String(tenant?.name || `ID ${tenantId}`);
     const confirmed = window.confirm(
-      `Продлить клиенту "${tenantName}" бесплатный доступ на ${days} дней?`
+      `Выдать клиенту "${tenantName}" тариф "${planLabel}" бесплатно на ${days} дней?`
     );
     if (!confirmed) return;
 
@@ -277,14 +279,14 @@ export default function TenantManagement() {
       const res = await apiFetch(`/admin/tenants/${tenantId}/grant-free-access`, {
         method: "POST",
         headers,
-        body: JSON.stringify({ days }),
+        body: JSON.stringify({ days, planId: normalizedPlanId }),
       });
       const data = await res.json().catch(() => ({}));
       if (!res.ok) {
         throw new Error(data.message || "TENANT_GRANT_FREE_ACCESS_ERROR");
       }
       setSuccess(
-        `Клиенту "${tenantName}" продлён бесплатный доступ до ${formatDateTime(
+        `Клиенту "${tenantName}" выдан тариф "${data?.subscription?.plan === "pro-30" ? "Проф" : "Базовый"}" бесплатно до ${formatDateTime(
           data?.subscription?.paidUntil
         )}.`
       );
@@ -583,12 +585,23 @@ export default function TenantManagement() {
                         <button
                           type="button"
                           className="admin-btn admin-btn--ghost"
-                          onClick={() => handleGrantFreeAccess(item, 30)}
+                          onClick={() => handleGrantFreeAccess(item, 30, "basic-30")}
                           disabled={grantingTenantId === item.id || isOwnerTenant}
                         >
                           {grantingTenantId === item.id
                             ? "Продление..."
-                            : "Бесплатно +30 дней"}
+                            : "Бесплатно Базовый +30"}
+                        </button>
+
+                        <button
+                          type="button"
+                          className="admin-btn admin-btn--ghost"
+                          onClick={() => handleGrantFreeAccess(item, 30, "pro-30")}
+                          disabled={grantingTenantId === item.id || isOwnerTenant}
+                        >
+                          {grantingTenantId === item.id
+                            ? "Продление..."
+                            : "Бесплатно Проф +30"}
                         </button>
 
                         <button
