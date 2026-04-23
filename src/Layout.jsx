@@ -22,6 +22,20 @@ const WAREHOUSE_SECTION_TITLE_MAP = {
   tsd: "\u041c\u043e\u0431\u0438\u043b\u044c\u043d\u044b\u0439 \u0422\u0421\u0414",
   crossdock: "\u041a\u0440\u043e\u0441\u0441-\u0434\u043e\u043a\u0438\u043d\u0433",
 };
+const PLAN_TITLES = {
+  "start-30": "\u0421\u0442\u0430\u0440\u0442",
+  "basic-30": "\u0411\u0430\u0437\u043e\u0432\u044b\u0439",
+  "pro-30": "\u041f\u0440\u043e\u0444",
+  "trial-30": "\u041f\u0440\u043e\u0431\u043d\u044b\u0439",
+  "platform-owner": "\u0412\u043b\u0430\u0434\u0435\u043b\u0435\u0446 \u043f\u043b\u0430\u0442\u0444\u043e\u0440\u043c\u044b",
+};
+
+function formatPaidUntilDate(value) {
+  if (!value) return "\u2014";
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return "\u2014";
+  return date.toLocaleDateString("ru-RU");
+}
 
 function openDatePicker(input) {
   if (!input) return;
@@ -165,6 +179,18 @@ export default function Layout() {
     location.pathname === "/warehouse" && sectionParam
       ? WAREHOUSE_SECTION_TITLE_MAP[sectionParam] || activeMenuItem?.label || "\u0421\u043a\u043b\u0430\u0434"
       : activeMenuItem?.label || "\u0420\u0430\u0437\u0434\u0435\u043b";
+  const subscription = user?.subscription || null;
+  const rawPlanId = String(subscription?.plan || "").trim().toLowerCase();
+  const planTitle =
+    user?.isSystemOwner === true
+      ? PLAN_TITLES["platform-owner"]
+      : PLAN_TITLES[rawPlanId] || PLAN_TITLES["start-30"];
+  const paidUntilLabel = formatPaidUntilDate(subscription?.paidUntil);
+  const subscriptionActive =
+    user?.isSystemOwner === true ? true : Boolean(subscription?.isActive);
+  const subscriptionStatusText = subscriptionActive
+    ? `\u041e\u043f\u043b\u0430\u0447\u0435\u043d\u043e \u0434\u043e: ${paidUntilLabel}`
+    : "\u041f\u043e\u0434\u043f\u0438\u0441\u043a\u0430 \u043d\u0435 \u0430\u043a\u0442\u0438\u0432\u043d\u0430";
 
   useEffect(() => {
     const media = window.matchMedia("(max-width: 768px)");
@@ -224,6 +250,10 @@ export default function Layout() {
     navigate("/support");
   };
 
+  const handlePricingOpen = () => {
+    navigate("/pricing");
+  };
+
   const handleBack = () => {
     if (!showBack) return;
 
@@ -280,6 +310,28 @@ export default function Layout() {
             <div style={styles.userName}>{user.name}</div>
             <div style={styles.userEmail}>{user.login || user.username || user.email}</div>
             <div style={styles.userRole}>{user.role}</div>
+            <div style={styles.userSubscriptionRow}>
+              <span style={styles.userSubscriptionLabel}>
+                \u0422\u0430\u0440\u0438\u0444
+              </span>
+              <span style={styles.userSubscriptionValue}>{planTitle}</span>
+            </div>
+            <div
+              style={
+                subscriptionActive
+                  ? styles.userSubscriptionMeta
+                  : { ...styles.userSubscriptionMeta, ...styles.userSubscriptionMetaInactive }
+              }
+            >
+              {subscriptionStatusText}
+            </div>
+            <button
+              type="button"
+              style={styles.userSubscriptionBtn}
+              onClick={handlePricingOpen}
+            >
+              \u0422\u0430\u0440\u0438\u0444 \u0438 \u043e\u043f\u043b\u0430\u0442\u0430
+            </button>
           </div>
         )}
 
@@ -453,6 +505,45 @@ const styles = {
     textTransform: "uppercase",
     color: "#1754db",
     letterSpacing: 0.5,
+  },
+  userSubscriptionRow: {
+    marginTop: 10,
+    display: "flex",
+    alignItems: "center",
+    justifyContent: "space-between",
+    gap: 8,
+  },
+  userSubscriptionLabel: {
+    fontSize: 11,
+    textTransform: "uppercase",
+    color: "#64748b",
+    letterSpacing: 0.4,
+  },
+  userSubscriptionValue: {
+    fontSize: 12,
+    fontWeight: 700,
+    color: "#1d4ed8",
+  },
+  userSubscriptionMeta: {
+    marginTop: 4,
+    fontSize: 12,
+    color: "#166534",
+  },
+  userSubscriptionMetaInactive: {
+    color: "#b45309",
+  },
+  userSubscriptionBtn: {
+    width: "100%",
+    marginTop: 10,
+    padding: "7px 10px",
+    borderRadius: 10,
+    border: "1px solid #93c5fd",
+    background: "#eff6ff",
+    color: "#1d4ed8",
+    fontSize: 12,
+    fontWeight: 700,
+    cursor: "pointer",
+    textAlign: "center",
   },
   nav: {
     flex: 1,
