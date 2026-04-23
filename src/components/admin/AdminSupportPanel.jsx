@@ -12,7 +12,7 @@ const CATEGORY_LABELS = {
   ACCESS: "Доступ и права",
   BILLING: "Оплата и тарифы",
   TECHNICAL: "Техническая ошибка",
-  INTEGRATION: "Интеграции",
+  INTEGRATION: "Интеграции и автоматизация",
   OTHER: "Другое",
 };
 

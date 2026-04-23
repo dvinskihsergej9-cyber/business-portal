@@ -114,6 +114,7 @@ async function auth(req, res, next) {
       ? null
       : await getOrgSubscription(user.orgId || null, user.id);
     const subscriptionPlan = subscription?.plan ? String(subscription.plan) : null;
+    const subscriptionFeatures = getPlanFeatureFlags(subscriptionPlan, { isSystemOwner });
     const basePermissions = resolveUserPermissions({
       role: user.role,
       permissionsJson: user.permissionsJson,
@@ -127,6 +128,7 @@ async function auth(req, res, next) {
       orgId: user.orgId || null,
       isSystemOwner,
       subscriptionPlan,
+      subscriptionFeatures,
       permissions: applyPlanPermissionCap(basePermissions, subscriptionPlan),
     };
     const store = requestContext.getStore();
@@ -1138,6 +1140,7 @@ const SUPPORT_TICKET_CATEGORIES = new Set([
   "INTEGRATION",
   "OTHER",
 ]);
+const SUPPORT_TICKET_AUTOMATION_ALIASES = new Set(["AUTOMATION", "CUSTOM_AUTOMATION"]);
 const SUPPORT_TICKET_STATUS_LABELS = {
   OPEN: "Открыта",
   IN_PROGRESS: "В работе",
@@ -1157,6 +1160,9 @@ function normalizeSupportTicketPriority(value, fallback = "NORMAL") {
 
 function normalizeSupportTicketCategory(value, fallback = "OTHER") {
   const normalized = String(value || "").trim().toUpperCase();
+  if (SUPPORT_TICKET_AUTOMATION_ALIASES.has(normalized)) {
+    return "INTEGRATION";
+  }
   return SUPPORT_TICKET_CATEGORIES.has(normalized) ? normalized : fallback;
 }
 
@@ -3224,6 +3230,46 @@ const PLANS = {
   },
 };
 
+function normalizePlanId(value, fallback = "start-30") {
+  const normalized = String(value || "").trim().toLowerCase();
+  if (normalized && PLANS[normalized]) {
+    return normalized;
+  }
+  return fallback;
+}
+
+const PLAN_FEATURE_FLAGS = Object.freeze({
+  "start-30": Object.freeze({
+    prioritySupport: true,
+    customAutomation: true,
+  }),
+  "basic-30": Object.freeze({
+    prioritySupport: false,
+    customAutomation: false,
+  }),
+  "pro-30": Object.freeze({
+    prioritySupport: true,
+    customAutomation: true,
+  }),
+  "platform-owner": Object.freeze({
+    prioritySupport: true,
+    customAutomation: true,
+  }),
+});
+
+const DEFAULT_PLAN_FEATURE_FLAGS = Object.freeze({
+  prioritySupport: true,
+  customAutomation: true,
+});
+
+function getPlanFeatureFlags(planId, options = {}) {
+  if (options?.isSystemOwner) {
+    return PLAN_FEATURE_FLAGS["platform-owner"];
+  }
+  const normalizedPlanId = normalizePlanId(planId, "start-30");
+  return PLAN_FEATURE_FLAGS[normalizedPlanId] || DEFAULT_PLAN_FEATURE_FLAGS;
+}
+
 const BASIC_PLAN_ALLOWED_PERMISSIONS = Object.freeze([
   PERMISSION_KEYS.APP_WAREHOUSE,
   PERMISSION_KEYS.APP_ADMIN,
@@ -3263,7 +3309,7 @@ const PLAN_PERMISSION_CAP_SETS = Object.freeze(
 );
 
 function getPlanPermissionCapSet(planId) {
-  const normalizedPlanId = String(planId || "").trim().toLowerCase();
+  const normalizedPlanId = normalizePlanId(planId, "");
   return PLAN_PERMISSION_CAP_SETS[normalizedPlanId] || null;
 }
 
@@ -3337,12 +3383,12 @@ const BASIC_SKU_ADDON_PACKAGE_SET = new Set(
 );
 
 function getPlanActiveUserLimit(planId) {
-  const normalizedPlanId = String(planId || "").trim().toLowerCase();
+  const normalizedPlanId = normalizePlanId(planId);
   return Number(PLAN_ACTIVE_USER_LIMITS[normalizedPlanId] || DEFAULT_ACTIVE_USER_LIMIT);
 }
 
 function getPlanBaseSkuLimit(planId) {
-  const normalizedPlanId = String(planId || "").trim().toLowerCase();
+  const normalizedPlanId = normalizePlanId(planId);
   return Number(PLAN_BASE_SKU_LIMITS[normalizedPlanId] || DEFAULT_SKU_LIMIT);
 }
 
@@ -3373,7 +3419,7 @@ function parseBasicSkuAddons(rawValue) {
 
 async function getOrgSkuLimit(orgId, fallbackUserId = null) {
   const orgSubscription = await getOrgSubscription(orgId, fallbackUserId);
-  const currentPlanId = String(orgSubscription?.plan || "start-30").trim().toLowerCase();
+  const currentPlanId = normalizePlanId(orgSubscription?.plan, "start-30");
   const baseSkuLimit = getPlanBaseSkuLimit(currentPlanId);
 
   let addonSkuLimit = 0;
@@ -3413,13 +3459,14 @@ async function getOrgSkuLimit(orgId, fallbackUserId = null) {
 
 async function getOrgPlanAndUserLimit(orgId, fallbackUserId = null) {
   const orgSubscription = await getOrgSubscription(orgId, fallbackUserId);
-  const currentPlanId = String(orgSubscription?.plan || "start-30");
+  const currentPlanId = normalizePlanId(orgSubscription?.plan, "start-30");
   const maxActiveUsers = getPlanActiveUserLimit(currentPlanId);
   return { currentPlanId, maxActiveUsers };
 }
 
 function getPlan(planId) {
-  return PLANS[planId] || null;
+  const normalizedPlanId = normalizePlanId(planId, "");
+  return PLANS[normalizedPlanId] || null;
 }
 
 const BILLING_PERIODS = {
@@ -3703,6 +3750,7 @@ async function getUserPayload(userId) {
     ? null
     : await getOrgSubscription(user.orgId || null, userId);
   const subscriptionPlan = subscription?.plan ? String(subscription.plan) : null;
+  const subscriptionFeatures = getPlanFeatureFlags(subscriptionPlan, { isSystemOwner });
   const permissions = applyPlanPermissionCap(
     resolveUserPermissions({
       role: user.role,
@@ -3740,6 +3788,7 @@ async function getUserPayload(userId) {
           trialStartedAt: null,
           trialUsed: true,
           isActive: true,
+          features: subscriptionFeatures,
         }
       : subscription
       ? {
@@ -3749,8 +3798,14 @@ async function getUserPayload(userId) {
           trialStartedAt: subscription.trialStartedAt,
           trialUsed: subscription.trialUsed,
           isActive: Boolean(isActive),
+          features: subscriptionFeatures,
         }
-      : { isActive: false, trialUsed: false },
+      : {
+          plan: "start-30",
+          isActive: false,
+          trialUsed: false,
+          features: getPlanFeatureFlags("start-30"),
+        },
   };
 }
 
@@ -5992,7 +6047,12 @@ app.post("/api/login", async (req, res) => {
         permissionTemplate: "ROLE_DEFAULT",
         permissionOverrides: { grants: [], revokes: [] },
         roles: [user.role],
-        subscription: { isActive: false },
+        subscription: {
+          plan: "start-30",
+          isActive: false,
+          trialUsed: false,
+          features: getPlanFeatureFlags("start-30"),
+        },
       },
     });
   } catch (err) {
@@ -6110,7 +6170,12 @@ app.post("/api/auth/verify-email-code", async (req, res) => {
         permissionTemplate: "ROLE_DEFAULT",
         permissionOverrides: { grants: [], revokes: [] },
         roles: [verifiedUser.role],
-        subscription: { isActive: false },
+        subscription: {
+          plan: "start-30",
+          isActive: false,
+          trialUsed: false,
+          features: getPlanFeatureFlags("start-30"),
+        },
       },
     });
   } catch (err) {
@@ -9659,8 +9724,24 @@ app.get("/api/profile", auth, async (req, res) => {
       const subject = normalizeSupportText(req.body?.subject, 160);
       const body = normalizeSupportText(req.body?.message, 4000);
       const category = normalizeSupportTicketCategory(req.body?.category, "OTHER");
-      // Приоритет заявки выставляет только поддержка/владелец в админке.
-      const priority = "NORMAL";
+      const requestedPriority = normalizeSupportTicketPriority(req.body?.priority, "NORMAL");
+      const planFeatures =
+        req.user?.subscriptionFeatures || getPlanFeatureFlags(req.user?.subscriptionPlan, {
+          isSystemOwner: req.user?.isSystemOwner === true,
+        });
+
+      if (!planFeatures.customAutomation && category === "INTEGRATION") {
+        return res.status(403).json({ message: "SUPPORT_AUTOMATION_REQUIRES_PRO" });
+      }
+
+      if (
+        !planFeatures.prioritySupport &&
+        (requestedPriority === "HIGH" || requestedPriority === "URGENT")
+      ) {
+        return res.status(403).json({ message: "SUPPORT_PRIORITY_REQUIRES_PRO" });
+      }
+
+      const priority = planFeatures.prioritySupport ? requestedPriority : "NORMAL";
 
       if (!subject) {
         return res.status(400).json({ message: "Укажите тему обращения." });

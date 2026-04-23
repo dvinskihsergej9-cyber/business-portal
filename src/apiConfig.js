@@ -129,6 +129,10 @@ const EXTRA_ERROR_MESSAGES = {
   ORG_NOT_FOUND: "Организация не найдена.",
   OWNER_ONLY_COMPANY: "Раздел доступен только владельцу компании.",
   OWNER_TENANT_FORBIDDEN: "Для владельца платформы продление не требуется.",
+  SUPPORT_AUTOMATION_REQUIRES_PRO:
+    "Запрос индивидуальной автоматизации доступен только на тарифе «Проф».",
+  SUPPORT_PRIORITY_REQUIRES_PRO:
+    "Повышенный приоритет поддержки доступен только на тарифе «Проф».",
   PAYMENT_AMOUNT_MISMATCH: "Сумма платежа не совпадает с тарифом.",
   PAYMENT_METADATA_MISMATCH: "Ошибка данных платежа.",
   PAYMENT_USER_MISMATCH: "Платеж относится к другому пользователю.",

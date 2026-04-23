@@ -3051,6 +3051,37 @@ input[type="number"] {
   gap: 6px;
 }
 
+.support-mail__meta-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.support-mail__field {
+  display: grid;
+  gap: 6px;
+}
+
+.support-mail__field > span {
+  font-size: 12px;
+  font-weight: 700;
+  color: #40658e;
+  text-transform: uppercase;
+  letter-spacing: 0.02em;
+}
+
+.support-mail__field input,
+.support-mail__field select {
+  width: 100%;
+  min-height: 40px;
+  border: 1px solid #bfdbfe;
+  border-radius: 10px;
+  background: #f8fbff;
+  color: #123d6b;
+  padding: 9px 12px;
+  font-size: 14px;
+}
+
 .support-mail__template-wrap {
   border: 1px solid #dbeafe;
   border-radius: 12px;
@@ -3130,6 +3161,10 @@ input[type="number"] {
   .support-mail__actions .support-mail__primary-link {
     width: 100%;
     justify-content: center;
+  }
+
+  .support-mail__meta-grid {
+    grid-template-columns: 1fr;
   }
 }
 
