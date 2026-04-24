@@ -1,3 +1,4 @@
+import "dotenv/config";
 import { spawn } from "node:child_process";
 
 const IS_WIN = process.platform === "win32";

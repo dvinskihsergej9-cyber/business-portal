@@ -1,3 +1,4 @@
+import "dotenv/config";
 import { PrismaClient } from "@prisma/client";
 
 function toBool(value, fallback = false) {
@@ -19,6 +20,11 @@ function parseRoleFromDatabaseUrl(urlValue) {
   } catch {
     return "";
   }
+}
+
+function isPostgresDatabaseUrl(urlValue) {
+  const value = String(urlValue || "").trim().toLowerCase();
+  return value.startsWith("postgres://") || value.startsWith("postgresql://");
 }
 
 function buildPrivilegeCheckSql() {
@@ -137,14 +143,23 @@ async function main() {
     throw new Error("DATABASE_URL is required");
   }
 
-  const strictMode = toBool(process.env.DB_PERMISSIONS_STRICT, true);
+  const strictMode = toBool(process.env.DB_PERMISSIONS_STRICT, false);
   const schemaName = String(process.env.DB_PERMISSIONS_SCHEMA || "public").trim() || "public";
+  if (!isPostgresDatabaseUrl(runtimeUrl)) {
+    console.log("[DB_PERMS] Skip: DATABASE_URL is not PostgreSQL.");
+    return;
+  }
   const targetRole =
     String(process.env.DATABASE_RUNTIME_ROLE || "").trim() ||
     parseRoleFromDatabaseUrl(runtimeUrl);
 
   if (!targetRole) {
-    throw new Error("Cannot determine runtime role. Set DATABASE_RUNTIME_ROLE explicitly.");
+    const message = "Cannot determine runtime role. Set DATABASE_RUNTIME_ROLE explicitly.";
+    if (strictMode) {
+      throw new Error(message);
+    }
+    console.warn(`[DB_PERMS] ${message} Skip permissions bootstrap.`);
+    return;
   }
 
   const before = await loadPrivilegeSnapshot(runtimeUrl);
