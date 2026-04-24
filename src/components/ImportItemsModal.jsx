@@ -162,7 +162,7 @@ export default function ImportItemsModal({ onClose, onImportSuccess }) {
         <div className="modal-header">
           <h2>Импорт товаров</h2>
           <button type="button" onClick={onClose} className="close-btn" aria-label="Закрыть">
-            ×
+            {"\u00D7"}
           </button>
         </div>
 
@@ -329,11 +329,28 @@ export default function ImportItemsModal({ onClose, onImportSuccess }) {
           margin-bottom: 20px;
         }
         .close-btn {
-          background: none;
-          border: none;
+          width: 34px;
+          height: 34px;
+          padding: 0;
+          background: #f8fbff;
+          border: 1px solid #dbeafe;
+          border-radius: 10px;
+          color: #334155;
           font-size: 24px;
+          font-weight: 700;
           cursor: pointer;
           line-height: 1;
+          display: inline-flex;
+          align-items: center;
+          justify-content: center;
+          box-shadow: none;
+          transform: none;
+        }
+        
+        .close-btn:hover:not(:disabled) {
+          background: #eef4ff;
+          color: #1d4ed8;
+          transform: none;
         }
         .btn {
           padding: 8px 16px;
