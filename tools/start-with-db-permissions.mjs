@@ -1,4 +1,3 @@
-import "dotenv/config";
 import { spawn } from "node:child_process";
 
 const IS_WIN = process.platform === "win32";
@@ -45,3 +44,4 @@ main().catch((error) => {
   console.error("[START] failed:", error?.message || error);
   process.exit(1);
 });
+
