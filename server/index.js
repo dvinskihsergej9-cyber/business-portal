@@ -3496,9 +3496,14 @@ function buildBasicSkuAddonsFromUnits(rawUnits) {
 }
 
 async function getOrgSkuFreezeState(orgId, fallbackUserId = null, tx = prisma) {
+  const normalizedOrgId = Number.isFinite(Number(orgId)) && Number(orgId) > 0
+    ? Number(orgId)
+    : null;
   const limit = await getOrgSkuLimit(orgId, fallbackUserId);
   const currentSkuCount = await tx.item.count({
-    where: { category: "STOCK" },
+    where: normalizedOrgId
+      ? { category: "STOCK", orgId: normalizedOrgId }
+      : { category: "STOCK" },
   });
   const frozenSkuCount = Math.max(0, Number(currentSkuCount || 0) - Number(limit.maxSku || 0));
   return {
@@ -3509,6 +3514,9 @@ async function getOrgSkuFreezeState(orgId, fallbackUserId = null, tx = prisma) {
 }
 
 async function getFrozenStockItemIds(orgId, fallbackUserId = null, tx = prisma) {
+  const normalizedOrgId = Number.isFinite(Number(orgId)) && Number(orgId) > 0
+    ? Number(orgId)
+    : null;
   const state = await getOrgSkuFreezeState(orgId, fallbackUserId, tx);
   if (state.frozenSkuCount <= 0) {
     return {
@@ -3518,7 +3526,9 @@ async function getFrozenStockItemIds(orgId, fallbackUserId = null, tx = prisma) 
   }
 
   const rows = await tx.item.findMany({
-    where: { category: "STOCK" },
+    where: normalizedOrgId
+      ? { category: "STOCK", orgId: normalizedOrgId }
+      : { category: "STOCK" },
     orderBy: [{ createdAt: "desc" }, { id: "desc" }],
     take: state.frozenSkuCount,
     select: { id: true },
@@ -3569,8 +3579,14 @@ async function getItemSkuFreezeStatus({
     throw err;
   }
 
+  const normalizedOrgId = Number.isFinite(Number(orgId)) && Number(orgId) > 0
+    ? Number(orgId)
+    : null;
+
   const item = await tx.item.findFirst({
-    where: { id: normalizedItemId, category: "STOCK" },
+    where: normalizedOrgId
+      ? { id: normalizedItemId, category: "STOCK", orgId: normalizedOrgId }
+      : { id: normalizedItemId, category: "STOCK" },
     select: {
       id: true,
       name: true,
@@ -3591,6 +3607,7 @@ async function getItemSkuFreezeStatus({
 
   const newerItemsCount = await tx.item.count({
     where: {
+      ...(normalizedOrgId ? { orgId: normalizedOrgId } : {}),
       category: "STOCK",
       OR: [
         { createdAt: { gt: item.createdAt } },
