@@ -3495,15 +3495,122 @@ function buildBasicSkuAddonsFromUnits(rawUnits) {
   return parseBasicSkuAddons(packages);
 }
 
-async function getOrgSkuFreezeState(orgId, fallbackUserId = null, tx = prisma) {
+function buildOrgStockWhere(orgId = null) {
   const normalizedOrgId = Number.isFinite(Number(orgId)) && Number(orgId) > 0
     ? Number(orgId)
     : null;
+  return normalizedOrgId
+    ? { category: "STOCK", orgId: normalizedOrgId }
+    : { category: "STOCK" };
+}
+
+async function getBasicRenewalSkuSummary(orgId, tx = prisma) {
+  const baseSkuLimit = getPlanBaseSkuLimit("basic-30");
+  const currentSkuCount = await tx.item.count({
+    where: buildOrgStockWhere(orgId),
+  });
+  const overLimitSkuCount = Math.max(0, Number(currentSkuCount || 0) - Number(baseSkuLimit || 0));
+  const recommendedAddons = buildBasicSkuAddonsFromUnits(overLimitSkuCount);
+  return {
+    baseSkuLimit,
+    currentSkuCount,
+    overLimitSkuCount,
+    recommendedSkuAddonUnits: Number(recommendedAddons.skuUnits || 0) || 0,
+    recommendedSkuAddonMonthlyAmount: Number(recommendedAddons.monthlyAmount || 0) || 0,
+    recommendedSkuAddonPackages: Array.isArray(recommendedAddons.packages)
+      ? recommendedAddons.packages
+      : [],
+  };
+}
+
+async function deleteStockItemForSkuTrim(itemId, tx = prisma) {
+  const normalizedItemId = Number(itemId || 0);
+  if (!normalizedItemId || Number.isNaN(normalizedItemId)) return false;
+
+  await tx.stockHold.deleteMany({ where: { itemId: normalizedItemId } });
+  await tx.warehousePlacement.deleteMany({ where: { itemId: normalizedItemId } });
+  await tx.stockMovement.deleteMany({ where: { itemId: normalizedItemId } });
+  await tx.stockRevisionItem.deleteMany({ where: { itemId: normalizedItemId } });
+  await tx.warehouseReceivingLine.deleteMany({ where: { itemId: normalizedItemId } });
+  await tx.purchaseOrderItem.deleteMany({ where: { itemId: normalizedItemId } });
+  await tx.stockDiscrepancy.deleteMany({ where: { itemId: normalizedItemId } });
+  await tx.salesOrderPickSkip.updateMany({
+    where: { itemId: normalizedItemId },
+    data: { itemId: null },
+  });
+  await tx.salesOrderLine.updateMany({
+    where: { itemId: normalizedItemId },
+    data: { itemId: null },
+  });
+  await tx.receivingDiscrepancy.updateMany({
+    where: { itemId: normalizedItemId },
+    data: { itemId: null },
+  });
+  await tx.item.delete({
+    where: { id: normalizedItemId },
+  });
+  return true;
+}
+
+async function trimOrgStockSkuToLimit({ orgId = null, maxSku = 0, tx = prisma } = {}) {
+  const normalizedMaxSku = Math.max(0, Math.trunc(Number(maxSku) || 0));
+  const where = buildOrgStockWhere(orgId);
+  const beforeCount = await tx.item.count({ where });
+  const requestedDeleteCount = Math.max(0, beforeCount - normalizedMaxSku);
+
+  if (!requestedDeleteCount) {
+    return {
+      maxSku: normalizedMaxSku,
+      beforeCount,
+      afterCount: beforeCount,
+      requestedDeleteCount: 0,
+      deletedCount: 0,
+      failedCount: 0,
+    };
+  }
+
+  const candidates = await tx.item.findMany({
+    where,
+    orderBy: [{ createdAt: "desc" }, { id: "desc" }],
+    select: { id: true },
+  });
+
+  let deletedCount = 0;
+  let failedCount = 0;
+
+  for (const candidate of candidates) {
+    if (deletedCount >= requestedDeleteCount) break;
+    try {
+      const deleted = await deleteStockItemForSkuTrim(candidate.id, tx);
+      if (deleted) {
+        deletedCount += 1;
+      }
+    } catch (err) {
+      failedCount += 1;
+      console.warn("[SKU_TRIM] failed to delete item:", {
+        itemId: candidate.id,
+        code: err?.code || null,
+        message: err?.message || null,
+      });
+    }
+  }
+
+  const afterCount = await tx.item.count({ where });
+
+  return {
+    maxSku: normalizedMaxSku,
+    beforeCount,
+    afterCount,
+    requestedDeleteCount,
+    deletedCount,
+    failedCount,
+  };
+}
+
+async function getOrgSkuFreezeState(orgId, fallbackUserId = null, tx = prisma) {
   const limit = await getOrgSkuLimit(orgId, fallbackUserId);
   const currentSkuCount = await tx.item.count({
-    where: normalizedOrgId
-      ? { category: "STOCK", orgId: normalizedOrgId }
-      : { category: "STOCK" },
+    where: buildOrgStockWhere(orgId),
   });
   const frozenSkuCount = Math.max(0, Number(currentSkuCount || 0) - Number(limit.maxSku || 0));
   return {
@@ -3514,9 +3621,6 @@ async function getOrgSkuFreezeState(orgId, fallbackUserId = null, tx = prisma) {
 }
 
 async function getFrozenStockItemIds(orgId, fallbackUserId = null, tx = prisma) {
-  const normalizedOrgId = Number.isFinite(Number(orgId)) && Number(orgId) > 0
-    ? Number(orgId)
-    : null;
   const state = await getOrgSkuFreezeState(orgId, fallbackUserId, tx);
   if (state.frozenSkuCount <= 0) {
     return {
@@ -3526,9 +3630,7 @@ async function getFrozenStockItemIds(orgId, fallbackUserId = null, tx = prisma) 
   }
 
   const rows = await tx.item.findMany({
-    where: normalizedOrgId
-      ? { category: "STOCK", orgId: normalizedOrgId }
-      : { category: "STOCK" },
+    where: buildOrgStockWhere(orgId),
     orderBy: [{ createdAt: "desc" }, { id: "desc" }],
     take: state.frozenSkuCount,
     select: { id: true },
@@ -3579,14 +3681,11 @@ async function getItemSkuFreezeStatus({
     throw err;
   }
 
-  const normalizedOrgId = Number.isFinite(Number(orgId)) && Number(orgId) > 0
-    ? Number(orgId)
-    : null;
-
   const item = await tx.item.findFirst({
-    where: normalizedOrgId
-      ? { id: normalizedItemId, category: "STOCK", orgId: normalizedOrgId }
-      : { id: normalizedItemId, category: "STOCK" },
+    where: {
+      ...buildOrgStockWhere(orgId),
+      id: normalizedItemId,
+    },
     select: {
       id: true,
       name: true,
@@ -3607,8 +3706,7 @@ async function getItemSkuFreezeStatus({
 
   const newerItemsCount = await tx.item.count({
     where: {
-      ...(normalizedOrgId ? { orgId: normalizedOrgId } : {}),
-      category: "STOCK",
+      ...buildOrgStockWhere(orgId),
       OR: [
         { createdAt: { gt: item.createdAt } },
         {
@@ -4029,6 +4127,22 @@ async function applyPaymentSuccess({ paymentRecord, providerPayment, plan }) {
     },
   });
 
+  let skuTrimResult = null;
+  const billingUser = await prisma.user.findUnique({
+    where: { id: userId },
+    select: { orgId: true },
+  });
+  const targetOrgId = Number(billingUser?.orgId || 0);
+  if (targetOrgId) {
+    const nextPlanBaseSkuLimit = getPlanBaseSkuLimit(plan.id);
+    const nextPlanSkuAddonUnits = plan.id === "basic-30" ? nextSkuAddonUnits : 0;
+    const nextPlanMaxSku = Number(nextPlanBaseSkuLimit || 0) + Number(nextPlanSkuAddonUnits || 0);
+    skuTrimResult = await trimOrgStockSkuToLimit({
+      orgId: targetOrgId,
+      maxSku: nextPlanMaxSku,
+    });
+  }
+
   await prisma.payment.update({
     where: { id: paymentRecord.id },
     data: {
@@ -4038,6 +4152,7 @@ async function applyPaymentSuccess({ paymentRecord, providerPayment, plan }) {
         providerStatus: providerPayment.status,
         providerPaid: providerPayment.paid,
         processedProviderPaymentIds: nextProcessedProviderPaymentIds,
+        skuTrimResult,
       },
     },
   });
@@ -10655,6 +10770,30 @@ app.get("/api/profile", auth, async (req, res) => {
     return res.json({ yookassaEnabled: enabled });
   });
 
+  app.get("/api/billing/sku-renewal-summary", auth, async (req, res) => {
+    try {
+      if (!req.user?.isSystemOwner && req.user?.role !== "ADMIN") {
+        return res.status(403).json({
+          message: "Оплату может запускать только администратор клиента.",
+        });
+      }
+      if (req.user?.isSystemOwner) {
+        return res.status(400).json({ message: "OWNER_TENANT_FORBIDDEN" });
+      }
+
+      const targetOrgId = Number(req.user?.orgId || 0);
+      if (!targetOrgId) {
+        return res.status(400).json({ message: "ORG_REQUIRED" });
+      }
+
+      const summary = await getBasicRenewalSkuSummary(targetOrgId);
+      return res.json(summary);
+    } catch (err) {
+      console.error("billing sku renewal summary error:", err);
+      return res.status(500).json({ message: "BILLING_SKU_RENEWAL_SUMMARY_ERROR" });
+    }
+  });
+
   app.post("/api/billing/start-trial", auth, async (req, res) => {
     try {
       if (!req.user?.isSystemOwner && req.user?.role !== "ADMIN") {
@@ -10934,7 +11073,7 @@ app.get("/api/profile", auth, async (req, res) => {
         return res.status(400).json({ message: "PAYMENT_RECEIPT_EMAIL_REQUIRED" });
       }
 
-      const { planId, periodId, paymentMethod, skuAddons } = req.body || {};
+      const { planId, periodId, paymentMethod, skuAddons, acceptSkuTrim } = req.body || {};
       const plan = getPlan(planId);
       if (!plan) {
         return res.status(400).json({ message: "PLAN_NOT_FOUND" });
@@ -10942,19 +11081,23 @@ app.get("/api/profile", auth, async (req, res) => {
       let basicSkuAddons = plan.id === "basic-30"
         ? parseBasicSkuAddons(skuAddons)
         : { packages: [], monthlyAmount: 0, skuUnits: 0 };
-      if (plan.id === "basic-30" && basicSkuAddons.skuUnits <= 0) {
-        const currentSubscription = req.user.isSystemOwner
-          ? await prisma.subscription.findFirst({
-              where: { userId: billingUserId },
-            })
-          : await prisma.subscription.findFirst({
-              where: { user: { orgId: targetOrgId } },
-              orderBy: [{ paidUntil: "desc" }, { id: "desc" }],
-            });
-        const currentPlanId = normalizePlanId(currentSubscription?.plan, "");
-        const currentSkuAddonUnits = Math.max(0, Number(currentSubscription?.skuAddonUnits || 0) || 0);
-        if (currentPlanId === "basic-30" && currentSkuAddonUnits > 0) {
-          basicSkuAddons = buildBasicSkuAddonsFromUnits(currentSkuAddonUnits);
+      let skuTrimProjectedCount = 0;
+      if (plan.id === "basic-30" && targetOrgId) {
+        const currentSkuCount = await prisma.item.count({
+          where: buildOrgStockWhere(targetOrgId),
+        });
+        const targetMaxSku = getPlanBaseSkuLimit("basic-30") + Math.max(0, Number(basicSkuAddons.skuUnits || 0));
+        skuTrimProjectedCount = Math.max(0, Number(currentSkuCount || 0) - Number(targetMaxSku || 0));
+        if (skuTrimProjectedCount > 0 && acceptSkuTrim !== true) {
+          return res.status(409).json({
+            message: "SKU_TRIM_CONFIRM_REQUIRED",
+            detail: {
+              currentSkuCount: Number(currentSkuCount || 0) || 0,
+              targetMaxSku: Number(targetMaxSku || 0) || 0,
+              overLimitSkuCount: Number(skuTrimProjectedCount || 0) || 0,
+              recommended: buildBasicSkuAddonsFromUnits(skuTrimProjectedCount),
+            },
+          });
         }
       }
       const baseResolvedPlan = getResolvedPlanCharge(plan, periodId || "1m", {
@@ -11016,6 +11159,8 @@ app.get("/api/profile", auth, async (req, res) => {
             skuAddonUnits: basicSkuAddons.skuUnits,
             skuAddonMonthlyAmount: basicSkuAddons.monthlyAmount,
             skuAddonPackages: basicSkuAddons.packages,
+            skuTrimAccepted: acceptSkuTrim === true,
+            skuTrimProjectedCount,
           },
         },
       });
@@ -11043,6 +11188,8 @@ app.get("/api/profile", auth, async (req, res) => {
           skuAddonUnits: String(basicSkuAddons.skuUnits),
           skuAddonMonthlyAmount: String(basicSkuAddons.monthlyAmount),
           skuAddonPackages: basicSkuAddons.packages.join(","),
+          skuTrimAccepted: acceptSkuTrim === true ? "1" : "0",
+          skuTrimProjectedCount: String(skuTrimProjectedCount),
         },
         receipt: {
           customer: {

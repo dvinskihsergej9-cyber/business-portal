@@ -141,6 +141,8 @@ const EXTRA_ERROR_MESSAGES = {
     "Выберите пакет SKU для докупки.",
   SKU_ITEM_FROZEN:
     "Товар заморожен из-за превышения лимита SKU. Докупите SKU или уменьшите количество номенклатуры.",
+  SKU_TRIM_CONFIRM_REQUIRED:
+    "SKU сверх лимита. Подтвердите продление без доп-SKU: лишние SKU будут удалены.",
   PAYMENT_AMOUNT_MISMATCH: "Сумма платежа не совпадает с тарифом.",
   PAYMENT_METADATA_MISMATCH: "Ошибка данных платежа.",
   PAYMENT_USER_MISMATCH: "Платеж относится к другому пользователю.",
@@ -167,6 +169,7 @@ const EXTRA_ERROR_MESSAGES = {
   TENANT_TOGGLE_ACCESS_ERROR: "Не удалось изменить состояние доступа клиента.",
   TENANT_SUBSCRIPTION_NOT_FOUND:
     "У клиента нет активной подписки. Для возобновления используйте бесплатное продление.",
+  BILLING_SKU_RENEWAL_SUMMARY_ERROR: "Не удалось получить данные по лимиту SKU для продления.",
   MARKETING_SETTINGS_LOAD_ERROR: "Не удалось загрузить настройки рассылки.",
   MARKETING_SETTINGS_SAVE_ERROR: "Не удалось сохранить настройки рассылки.",
   UNSUBSCRIBE_ERROR: "Не удалось обработать отписку. Попробуйте позже.",
