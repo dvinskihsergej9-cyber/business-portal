@@ -1,4 +1,4 @@
-import { useRef, useState } from "react";
+﻿import { useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import * as XLSX from "xlsx";
 import { API_BASE } from "../apiConfig";
@@ -145,15 +145,36 @@ export default function ImportItemsModal({ onClose, onImportSuccess }) {
         throw new Error(data?.message || "Ошибка импорта");
       }
 
+      const createdCount = Number(data?.created) || 0;
+      const updatedCount = Number(data?.updated) || 0;
+      const importErrors = Array.isArray(data?.errors) ? data.errors : [];
+
+      if (createdCount + updatedCount === 0 && importErrors.length > 0) {
+        const firstError = String(importErrors[0]?.error || "").trim();
+        alert(firstError ? `Импорт не выполнен: ${firstError}` : "Импорт не выполнен. Проверьте ошибки в отчете.");
+      }
+
       setResult(data);
       setStep(3);
-      if (onImportSuccess) onImportSuccess();
     } catch (err) {
       console.error(err);
-      alert(err.message);
+      alert(err.message || "Ошибка импорта");
     } finally {
       setImporting(false);
     }
+  };
+
+  const createdCount = Number(result?.created) || 0;
+  const updatedCount = Number(result?.updated) || 0;
+  const resultErrors = Array.isArray(result?.errors) ? result.errors : [];
+  const importFailed = step === 3 && createdCount + updatedCount === 0 && resultErrors.length > 0;
+
+  const handleClose = () => {
+    if (step === 3 && typeof onImportSuccess === "function") {
+      onImportSuccess();
+      return;
+    }
+    onClose();
   };
 
   const modal = (
@@ -161,7 +182,7 @@ export default function ImportItemsModal({ onClose, onImportSuccess }) {
       <div className="modal-content" style={{ maxWidth: 900, width: "90%" }}>
         <div className="modal-header">
           <h2>Импорт товаров</h2>
-          <button type="button" onClick={onClose} className="close-btn" aria-label="Закрыть">
+          <button type="button" onClick={handleClose} className="close-btn" aria-label="Закрыть">
             {"\u00D7"}
           </button>
         </div>
@@ -270,18 +291,24 @@ export default function ImportItemsModal({ onClose, onImportSuccess }) {
 
           {step === 3 && result && (
             <div style={{ textAlign: "center", padding: 20 }}>
-              <h3 style={{ color: "green" }}>Импорт завершён!</h3>
+              <h3 style={{ color: importFailed ? "#dc2626" : "green" }}>
+                {importFailed ? "Импорт не выполнен" : "Импорт завершен!"}
+              </h3>
               <p>
-                Создано новых: <strong>{result.created}</strong>
+                Создано новых: <strong>{createdCount}</strong>
               </p>
               <p>
-                Обновлено: <strong>{result.updated}</strong>
+                Обновлено: <strong>{updatedCount}</strong>
               </p>
-              {result.errors && result.errors.length > 0 && (
+              {resultErrors.length > 0 && (
                 <div style={{ marginTop: 20, textAlign: "left" }}>
-                  <h4 style={{ color: "red" }}>Ошибки при сохранении ({result.errors.length}):</h4>
-                  <ul style={{ maxHeight: 100, overflow: "auto", fontSize: 12 }}>
-                    {result.errors.map((error, index) => (
+                  <h4 style={{ color: importFailed ? "#dc2626" : "#b45309" }}>
+                    {importFailed
+                      ? `Критические ошибки импорта (${resultErrors.length})`
+                      : `Импорт выполнен с ошибками (${resultErrors.length})`}
+                  </h4>
+                  <ul style={{ maxHeight: 120, overflow: "auto", fontSize: 12 }}>
+                    {resultErrors.map((error, index) => (
                       <li key={index}>
                         Строка {error.row}: {error.error}
                       </li>
@@ -289,7 +316,7 @@ export default function ImportItemsModal({ onClose, onImportSuccess }) {
                   </ul>
                 </div>
               )}
-              <button type="button" onClick={onClose} className="btn btn-primary" style={{ marginTop: 20 }}>
+              <button type="button" onClick={handleClose} className="btn btn-primary" style={{ marginTop: 20 }}>
                 Закрыть
               </button>
             </div>
@@ -346,7 +373,6 @@ export default function ImportItemsModal({ onClose, onImportSuccess }) {
           box-shadow: none;
           transform: none;
         }
-        
         .close-btn:hover:not(:disabled) {
           background: #eef4ff;
           color: #1d4ed8;
