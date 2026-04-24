@@ -762,6 +762,34 @@ prisma = prismaBase.$extends({
 });
 
 const stockService = createWarehouseStockService(prisma, {
+  assertMovementAllowed: async ({ tx, itemId }) => {
+    const store = requestContext.getStore();
+    if (!store || store.skipTenantScope || store.isSystemOwner) return;
+    const normalizedItemId = Number(itemId || 0);
+    if (!normalizedItemId || Number.isNaN(normalizedItemId)) return;
+
+    if (!store.skuOperationFreezeCache) {
+      store.skuOperationFreezeCache = new Map();
+    }
+    const cached = store.skuOperationFreezeCache.get(normalizedItemId);
+    if (cached?.isFrozen) {
+      const err = new Error("SKU_ITEM_FROZEN");
+      err.code = "SKU_ITEM_FROZEN";
+      err.detail = cached.detail || null;
+      throw err;
+    }
+    if (cached && cached.isFrozen === false) return;
+
+    const status = await assertSkuOperationAllowedForItem({
+      itemId: normalizedItemId,
+      orgId: store.orgId || null,
+      tx,
+    });
+    store.skuOperationFreezeCache.set(normalizedItemId, {
+      isFrozen: Boolean(status?.isFrozen),
+      detail: buildSkuItemFrozenErrorDetail(status?.item, status?.state),
+    });
+  },
   onMovementCreated: ({ itemId }) => {
     scheduleAutoReorderCheck(itemId);
   },
@@ -3465,6 +3493,181 @@ function buildBasicSkuAddonsFromUnits(rawUnits) {
   }
 
   return parseBasicSkuAddons(packages);
+}
+
+async function getOrgSkuFreezeState(orgId, fallbackUserId = null, tx = prisma) {
+  const limit = await getOrgSkuLimit(orgId, fallbackUserId);
+  const currentSkuCount = await tx.item.count({
+    where: { category: "STOCK" },
+  });
+  const frozenSkuCount = Math.max(0, Number(currentSkuCount || 0) - Number(limit.maxSku || 0));
+  return {
+    ...limit,
+    currentSkuCount,
+    frozenSkuCount,
+  };
+}
+
+async function getFrozenStockItemIds(orgId, fallbackUserId = null, tx = prisma) {
+  const state = await getOrgSkuFreezeState(orgId, fallbackUserId, tx);
+  if (state.frozenSkuCount <= 0) {
+    return {
+      ...state,
+      frozenItemIds: new Set(),
+    };
+  }
+
+  const rows = await tx.item.findMany({
+    where: { category: "STOCK" },
+    orderBy: [{ createdAt: "desc" }, { id: "desc" }],
+    take: state.frozenSkuCount,
+    select: { id: true },
+  });
+
+  return {
+    ...state,
+    frozenItemIds: new Set(rows.map((row) => Number(row.id)).filter((id) => id > 0)),
+  };
+}
+
+async function appendSkuFreezeFlags(items, orgId, fallbackUserId = null, tx = prisma) {
+  const list = Array.isArray(items) ? items : [];
+  if (!list.length) return list;
+
+  const hasStockItems = list.some((row) => {
+    const itemId = Number(row?.id || 0);
+    if (!itemId || Number.isNaN(itemId)) return false;
+    const category = String(row?.category || "STOCK").trim().toUpperCase();
+    return category === "STOCK";
+  });
+  if (!hasStockItems) return list;
+
+  const freezeState = await getFrozenStockItemIds(orgId, fallbackUserId, tx);
+  const frozenItemIds = freezeState.frozenItemIds;
+
+  return list.map((row) => {
+    const category = String(row?.category || "STOCK").trim().toUpperCase();
+    if (category !== "STOCK") return row;
+    const itemId = Number(row?.id || 0);
+    return {
+      ...row,
+      isFrozenBySkuLimit: itemId > 0 ? frozenItemIds.has(itemId) : false,
+    };
+  });
+}
+
+async function getItemSkuFreezeStatus({
+  itemId,
+  orgId,
+  fallbackUserId = null,
+  tx = prisma,
+} = {}) {
+  const normalizedItemId = Number(itemId || 0);
+  if (!normalizedItemId || Number.isNaN(normalizedItemId)) {
+    const err = new Error("BAD_ITEM_ID");
+    err.code = "BAD_ITEM_ID";
+    throw err;
+  }
+
+  const item = await tx.item.findFirst({
+    where: { id: normalizedItemId, category: "STOCK" },
+    select: {
+      id: true,
+      name: true,
+      sku: true,
+      createdAt: true,
+    },
+  });
+  if (!item) {
+    const err = new Error("ITEM_NOT_FOUND");
+    err.code = "ITEM_NOT_FOUND";
+    throw err;
+  }
+
+  const state = await getOrgSkuFreezeState(orgId, fallbackUserId, tx);
+  if (state.frozenSkuCount <= 0) {
+    return { item, state, isFrozen: false };
+  }
+
+  const newerItemsCount = await tx.item.count({
+    where: {
+      category: "STOCK",
+      OR: [
+        { createdAt: { gt: item.createdAt } },
+        {
+          AND: [
+            { createdAt: item.createdAt },
+            { id: { gt: item.id } },
+          ],
+        },
+      ],
+    },
+  });
+
+  const isFrozen = Number(newerItemsCount || 0) < Number(state.frozenSkuCount || 0);
+  return { item, state, isFrozen };
+}
+
+function buildSkuItemFrozenErrorDetail(item, state) {
+  return {
+    itemId: Number(item?.id || 0) || null,
+    itemName: String(item?.name || "").trim() || null,
+    sku: String(item?.sku || "").trim() || null,
+    maxSku: Number(state?.maxSku || 0) || 0,
+    currentSkuCount: Number(state?.currentSkuCount || 0) || 0,
+    frozenSkuCount: Number(state?.frozenSkuCount || 0) || 0,
+  };
+}
+
+async function assertSkuOperationAllowedForItem({
+  itemId,
+  orgId,
+  fallbackUserId = null,
+  tx = prisma,
+} = {}) {
+  const status = await getItemSkuFreezeStatus({
+    itemId,
+    orgId,
+    fallbackUserId,
+    tx,
+  });
+  if (!status.isFrozen) return status;
+
+  const err = new Error("SKU_ITEM_FROZEN");
+  err.code = "SKU_ITEM_FROZEN";
+  err.detail = buildSkuItemFrozenErrorDetail(status.item, status.state);
+  throw err;
+}
+
+async function assertSkuOperationAllowedForItems({
+  itemIds,
+  orgId,
+  fallbackUserId = null,
+  tx = prisma,
+} = {}) {
+  const uniqueItemIds = Array.from(
+    new Set(
+      (Array.isArray(itemIds) ? itemIds : [itemIds])
+        .map((value) => Number(value || 0))
+        .filter((value) => value > 0 && !Number.isNaN(value))
+    )
+  );
+  for (const itemId of uniqueItemIds) {
+    await assertSkuOperationAllowedForItem({
+      itemId,
+      orgId,
+      fallbackUserId,
+      tx,
+    });
+  }
+}
+
+function tryHandleSkuItemFrozenError(res, err) {
+  if (err?.code !== "SKU_ITEM_FROZEN") return false;
+  return res.status(409).json({
+    message: "SKU_ITEM_FROZEN",
+    detail: err?.detail || null,
+  });
 }
 
 async function getOrgSkuLimit(orgId, fallbackUserId = null) {
@@ -13601,6 +13804,21 @@ async function autoPostRequestToStock(requestId, userId) {
       continue;
     }
 
+    try {
+      await assertSkuOperationAllowedForItem({
+        itemId: invItem.id,
+        orgId: request.orgId || null,
+      });
+    } catch (skuLimitErr) {
+      if (skuLimitErr?.code === "SKU_ITEM_FROZEN") {
+        console.warn(
+          `[Warehouse] SKU frozen by limit for "${item.name}" in request #${id}, skip movement`
+        );
+        continue;
+      }
+      throw skuLimitErr;
+    }
+
     // Если это расход — проверяем, хватит ли остатка
     if (movementType === "ISSUE") {
       try {
@@ -13622,14 +13840,12 @@ async function autoPostRequestToStock(requestId, userId) {
     }
 
     // Создаём движение по складу
-    await prisma.stockMovement.create({
-      data: {
-        itemId: invItem.id,
-        type: movementType, // "ISSUE" или "INCOME"
-        quantity: q,
-        comment: `Автодвижение по заявке склада #${request.id}: ${request.title} [REQ#${request.id}]`,
-        createdById: userId,
-      },
+    await stockService.createMovement({
+      itemId: invItem.id,
+      type: movementType, // "ISSUE" или "INCOME"
+      qty: q,
+      comment: `Автодвижение по заявке склада #${request.id}: ${request.title} [REQ#${request.id}]`,
+      userId,
     });
 
     scheduleAutoReorderCheck(invItem.id);
@@ -14547,7 +14763,12 @@ app.get("/api/inventory/items", auth, async (req, res) => {
       where: { category: "STOCK" },
       orderBy: { name: "asc" },
     });
-    res.json(items);
+    const itemsWithFlags = await appendSkuFreezeFlags(
+      items,
+      req.user?.orgId || null,
+      req.user?.id || null
+    );
+    res.json(itemsWithFlags);
   } catch (err) {
     console.error("list items error:", err);
     res
@@ -14587,6 +14808,12 @@ app.get("/api/inventory/items/by-barcode/:barcode", auth, async (req, res) => {
     // считаем текущий остаток по этому товару
     const currentStock = await getCurrentStockForItem(item.id);
 
+    const freezeStatus = await getItemSkuFreezeStatus({
+      itemId: item.id,
+      orgId: req.user?.orgId || null,
+      fallbackUserId: req.user?.id || null,
+    });
+
     return res.json({
       id: item.id,
       name: item.name,
@@ -14599,6 +14826,7 @@ app.get("/api/inventory/items/by-barcode/:barcode", auth, async (req, res) => {
       maxStock: item.maxStock,
       defaultPrice: item.defaultPrice,
       currentStock: currentStock ?? 0,
+      isFrozenBySkuLimit: Boolean(freezeStatus?.isFrozen),
     });
   } catch (err) {
     console.error("get item by barcode error:", err);
@@ -15823,6 +16051,7 @@ app.post("/api/warehouse/revisions/:id/apply", auth, requireAdmin, async (req, r
 
     res.json({ ok: true, appliedIds });
   } catch (err) {
+    if (tryHandleSkuItemFrozenError(res, err)) return;
     console.error("revision apply error:", err);
     res.status(500).json({ message: "REVISION_APPLY_ERROR" });
   }
@@ -15890,6 +16119,7 @@ app.put("/api/warehouse/discrepancies/:id/close", auth, async (req, res) => {
 
     res.json({ ok: true });
   } catch (err) {
+    if (tryHandleSkuItemFrozenError(res, err)) return;
     console.error("discrepancy close error:", err);
     if (err.code === "NO_LOCATION") {
       return res.status(400).json({ message: "Нет привязки к ячейке товара." });
@@ -16258,6 +16488,7 @@ app.post("/api/warehouse/receiving", auth, async (req, res) => {
 
     res.json({ ok: true, locationId: locationId || null, lines: linesToPost.length });
   } catch (err) {
+    if (tryHandleSkuItemFrozenError(res, err)) return;
     console.error("receiving error:", err);
     if (err.code === "MANUFACTURED_AT_REQUIRED") {
       return res.status(400).json({ message: "MANUFACTURED_AT_REQUIRED" });
@@ -16334,6 +16565,7 @@ app.post("/api/warehouse/move", auth, async (req, res) => {
 
     res.json({ ok: true, fromLocationId: from, toLocationId: to, itemId: item });
   } catch (err) {
+    if (tryHandleSkuItemFrozenError(res, err)) return;
     if (err.code === "INSUFFICIENT_QTY") {
       return res.status(400).json({ message: "INSUFFICIENT_QTY" });
     }
@@ -16410,6 +16642,7 @@ app.post("/api/warehouse/putaway", auth, async (req, res) => {
 
     res.json({ ok: true, fromLocationId: from, toLocationId: to, itemId: item });
   } catch (err) {
+    if (tryHandleSkuItemFrozenError(res, err)) return;
     if (err.code === "INSUFFICIENT_QTY") {
       return res.status(400).json({ message: "INSUFFICIENT_QTY" });
     }
@@ -16640,6 +16873,7 @@ app.post("/api/warehouse/putaway/from-receiving", auth, async (req, res) => {
 
     res.json({ ok: true });
   } catch (err) {
+    if (tryHandleSkuItemFrozenError(res, err)) return;
     if (err.code === "BAD_QTY") {
       return res.status(400).json({ message: "BAD_QTY" });
     }
@@ -16729,6 +16963,7 @@ app.post("/api/warehouse/pick", auth, async (req, res) => {
 
     res.json({ ok: true, movementId: movement.id });
   } catch (err) {
+    if (tryHandleSkuItemFrozenError(res, err)) return;
     if (err.code === "INSUFFICIENT_QTY") {
       return res.status(400).json({ message: "INSUFFICIENT_QTY" });
     }
@@ -16802,6 +17037,7 @@ app.post("/api/warehouse/replen/execute", auth, async (req, res) => {
 
     res.json({ ok: true, fromLocationId: from, toLocationId: to, itemId: item });
   } catch (err) {
+    if (tryHandleSkuItemFrozenError(res, err)) return;
     if (err.code === "INSUFFICIENT_QTY") {
       return res.status(400).json({ message: "INSUFFICIENT_QTY" });
     }
@@ -17535,7 +17771,12 @@ app.get("/api/inventory/stock", auth, async (req, res) => {
       };
     });
 
-    res.json(result);
+    const resultWithFlags = await appendSkuFreezeFlags(
+      result,
+      req.user?.orgId || null,
+      req.user?.id || null
+    );
+    res.json(resultWithFlags);
   } catch (err) {
     console.error("stock list error:", err);
     res
@@ -17591,7 +17832,12 @@ app.get("/api/warehouse/stock/summary", auth, async (req, res) => {
       };
     });
 
-    res.json(result);
+    const resultWithFlags = await appendSkuFreezeFlags(
+      result,
+      req.user?.orgId || null,
+      req.user?.id || null
+    );
+    res.json(resultWithFlags);
   } catch (err) {
     console.error("warehouse stock summary error:", err);
     res.status(500).json({ message: "WAREHOUSE_STOCK_SUMMARY_ERROR" });
@@ -17670,6 +17916,13 @@ app.post("/api/warehouse/holds", auth, async (req, res) => {
           throw err;
       }
 
+      await assertSkuOperationAllowedForItem({
+        itemId,
+        orgId,
+        fallbackUserId: req.user?.id || null,
+        tx,
+      });
+
       const location = await tx.warehouseLocation.findFirst({ where: { id: locationId, orgId } });
       if (!location) {
         const err = new Error("LOCATION_NOT_FOUND");
@@ -17715,6 +17968,7 @@ app.post("/api/warehouse/holds", auth, async (req, res) => {
     scheduleAutoReorderCheck(created.itemId);
     res.status(201).json({ ok: true, hold: created });
   } catch (err) {
+    if (tryHandleSkuItemFrozenError(res, err)) return;
     if (err.code === "ITEM_NOT_FOUND") {
       return res.status(404).json({ message: "\u0422\u043e\u0432\u0430\u0440 \u043d\u0435 \u043d\u0430\u0439\u0434\u0435\u043d." });
     }
@@ -17788,6 +18042,11 @@ app.get("/api/warehouse/stock/item/:id", auth, async (req, res) => {
     }
 
     const currentStock = await getCurrentStockForItem(id);
+    const freezeStatus = await getItemSkuFreezeStatus({
+      itemId: id,
+      orgId: req.user?.orgId || null,
+      fallbackUserId: req.user?.id || null,
+    });
     return res.json({
       item: {
         id: item.id,
@@ -17797,8 +18056,10 @@ app.get("/api/warehouse/stock/item/:id", auth, async (req, res) => {
         unit: item.unit,
       },
       currentStock: currentStock ?? 0,
+      isFrozenBySkuLimit: Boolean(freezeStatus?.isFrozen),
     });
   } catch (err) {
+    if (tryHandleSkuItemFrozenError(res, err)) return;
     console.error("warehouse stock item error:", err);
     res.status(500).json({ message: "WAREHOUSE_STOCK_ITEM_ERROR" });
   }
@@ -18378,6 +18639,12 @@ app.post("/api/inventory/movements", auth, async (req, res) => {
       priceValue = p;
     }
 
+    await assertSkuOperationAllowedForItem({
+      itemId: itemIdNum,
+      orgId: req.user?.orgId || null,
+      fallbackUserId: req.user?.id || null,
+    });
+
     // ===== ПРОВЕРКА ОСТАТКА ПЕРЕД СОЗДАНИЕМ ДВИЖЕНИЯ =====
     let stockInfo;
     try {
@@ -18423,6 +18690,7 @@ app.post("/api/inventory/movements", auth, async (req, res) => {
     scheduleAutoReorderCheck(movement.itemId);
     res.status(201).json(movement);
   } catch (err) {
+    if (tryHandleSkuItemFrozenError(res, err)) return;
     console.error("create movement error:", err);
     res.status(500).json({
       message: "Ошибка сервера при создании движения по складу",
@@ -19396,15 +19664,13 @@ app.put("/api/purchase-orders/:id/status", auth, async (req, res) => {
       for (const row of order.items) {
         if (!row.itemId || !row.quantity) continue;
 
-        await prisma.stockMovement.create({
-          data: {
-            itemId: row.itemId,
-            type: "INCOME",
-            quantity: row.quantity,
-            pricePerUnit: row.price,
-            comment: `\u041f\u0440\u0438\u0445\u043e\u0434 \u043f\u043e \u0437\u0430\u043a\u0430\u0437\u0443 \u043f\u043e\u0441\u0442\u0430\u0432\u0449\u0438\u043a\u0443 ${order.number} [PO#${order.id}]`,
-            createdById: req.user.id,
-          },
+        await stockService.createMovement({
+          itemId: row.itemId,
+          type: "INCOME",
+          qty: row.quantity,
+          pricePerUnit: row.price,
+          comment: `\u041f\u0440\u0438\u0445\u043e\u0434 \u043f\u043e \u0437\u0430\u043a\u0430\u0437\u0443 \u043f\u043e\u0441\u0442\u0430\u0432\u0449\u0438\u043a\u0443 ${order.number} [PO#${order.id}]`,
+          userId: req.user.id,
         });
         touchedAutoReorderItemIds.add(Number(row.itemId));
       }
@@ -19442,6 +19708,7 @@ app.put("/api/purchase-orders/:id/status", auth, async (req, res) => {
 
     res.json(updated);
   } catch (err) {
+    if (tryHandleSkuItemFrozenError(res, err)) return;
     console.error("update purchase order status error:", err);
     res
       .status(500)
@@ -19565,6 +19832,11 @@ app.post("/api/purchase-orders/:id/receive", auth, async (req, res) => {
 
     // создаём движения
     if (movementsData.length > 0) {
+      await assertSkuOperationAllowedForItems({
+        itemIds: movementsData.map((row) => Number(row.itemId)),
+        orgId: order.orgId || req.user?.orgId || null,
+        fallbackUserId: req.user?.id || null,
+      });
       await prisma.stockMovement.createMany({ data: movementsData });
       scheduleAutoReorderChecks(
         movementsData.map((row) => Number(row.itemId)).filter((value) => Number.isFinite(value) && value > 0)
@@ -19623,6 +19895,7 @@ app.post("/api/purchase-orders/:id/receive", auth, async (req, res) => {
       discrepancies,
     });
   } catch (err) {
+    if (tryHandleSkuItemFrozenError(res, err)) return;
     console.error("purchase-order receive error:", err);
     res
       .status(500)
@@ -19881,6 +20154,7 @@ app.post("/api/warehouse/receiving/:poId/confirm", auth, async (req, res) => {
       order: updatedOrder || { id: poId },
     });
   } catch (err) {
+    if (tryHandleSkuItemFrozenError(res, err)) return;
     console.error("po receiving confirm error:", err);
     if (err.code === "INSUFFICIENT_QTY") {
       return res.status(400).json({ message: "INSUFFICIENT_QTY" });
@@ -22179,6 +22453,7 @@ app.post("/api/orders/:id/pick-confirm", auth, async (req, res) => {
 
     res.json({ ok: true, order: updated });
   } catch (err) {
+    if (tryHandleSkuItemFrozenError(res, err)) return;
     if (err.code === "ORDER_NOT_FOUND") return res.status(404).json({ message: "Заказ не найден." });
     if (err.code === "LINE_NOT_FOUND") return res.status(404).json({ message: "Строка заказа не найдена." });
     if (err.code === "NOT_ASSIGNED_TO_YOU") return res.status(403).json({ message: "Заказ закреплен за другим сотрудником." });
@@ -23952,6 +24227,7 @@ app.post(
       affectedLocations: result.affectedLocations,
     });
   } catch (err) {
+    if (tryHandleSkuItemFrozenError(res, err)) return;
     if (err.code === "ITEM_NOT_FOUND") {
       return res.status(404).json({ message: "Товар не найден." });
     }

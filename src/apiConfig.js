@@ -139,6 +139,8 @@ const EXTRA_ERROR_MESSAGES = {
     "Докупка SKU доступна только для активного тарифа «Базовый».",
   SKU_ADDON_TOPUP_INVALID_UNITS:
     "Выберите пакет SKU для докупки.",
+  SKU_ITEM_FROZEN:
+    "Товар заморожен из-за превышения лимита SKU. Докупите SKU или уменьшите количество номенклатуры.",
   PAYMENT_AMOUNT_MISMATCH: "Сумма платежа не совпадает с тарифом.",
   PAYMENT_METADATA_MISMATCH: "Ошибка данных платежа.",
   PAYMENT_USER_MISMATCH: "Платеж относится к другому пользователю.",

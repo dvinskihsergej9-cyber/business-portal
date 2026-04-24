@@ -3,6 +3,10 @@ export function createWarehouseStockService(prisma, options = {}) {
     typeof options.onMovementCreated === "function"
       ? options.onMovementCreated
       : null;
+  const assertMovementAllowed =
+    typeof options.assertMovementAllowed === "function"
+      ? options.assertMovementAllowed
+      : null;
 
   const normalizeQty = (value) => {
     const qty = Number(value);
@@ -43,6 +47,7 @@ export function createWarehouseStockService(prisma, options = {}) {
       fromLocationId,
       toLocationId,
       comment,
+      pricePerUnit,
       refType,
       refId,
       userId,
@@ -55,10 +60,23 @@ export function createWarehouseStockService(prisma, options = {}) {
     }
 
     const amount = normalizeQty(qty);
+    const parsedPricePerUnit =
+      pricePerUnit === null || pricePerUnit === undefined
+        ? null
+        : Number(pricePerUnit);
 
     if (opId) {
       const existing = await tx.stockMovement.findUnique({ where: { opId } });
       if (existing) return existing;
+    }
+
+    if (assertMovementAllowed) {
+      await assertMovementAllowed({
+        tx,
+        itemId,
+        type,
+        data,
+      });
     }
 
     if (type === "ISSUE" && locationId) {
@@ -92,6 +110,9 @@ export function createWarehouseStockService(prisma, options = {}) {
         fromLocationId: fromLocationId ?? null,
         toLocationId: toLocationId ?? null,
         comment: comment || null,
+        pricePerUnit: Number.isFinite(parsedPricePerUnit)
+          ? parsedPricePerUnit
+          : null,
         refType: refType || null,
         refId: refId || null,
         createdById: userId || null,
