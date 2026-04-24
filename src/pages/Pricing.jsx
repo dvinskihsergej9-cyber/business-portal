@@ -1,12 +1,12 @@
-﻿import { useEffect, useState } from "react";
+import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { apiFetch, normalizeErrorMessage } from "../apiConfig";
 import { useAuth } from "../context/AuthContext";
 
 const PERIOD_OPTIONS = [
-  { id: "1m", label: "1 РјРµСЃСЏС†", discountPct: 0 },
-  { id: "6m", label: "6 РјРµСЃСЏС†РµРІ", discountPct: 10 },
-  { id: "12m", label: "1 РіРѕРґ", discountPct: 30 },
+  { id: "1m", label: "1 месяц", discountPct: 0 },
+  { id: "6m", label: "6 месяцев", discountPct: 10 },
+  { id: "12m", label: "1 год", discountPct: 30 },
 ];
 
 const BASIC_SKU_ADDON_PACKAGES = [
@@ -18,55 +18,55 @@ const BASIC_SKU_ADDON_PACKAGES = [
 const PLAN_CARDS = [
   {
     id: "start-30",
-    title: "РЎС‚Р°СЂС‚",
+    title: "Старт",
     amount: 1,
     currency: "RUB",
-    description: "РџРѕР»РЅС‹Р№ С„СѓРЅРєС†РёРѕРЅР°Р» СЃ РјРёРЅРёРјР°Р»СЊРЅС‹РјРё Р»РёРјРёС‚Р°РјРё РґР»СЏ СЃС‚Р°СЂС‚Р°.",
-    highlight: "РџСЂРѕР±РЅС‹Р№ Р·Р°РїСѓСЃРє",
+    description: "Полный функционал с минимальными лимитами для старта.",
+    highlight: "Пробный запуск",
     available: true,
     features: [
-      "Р”Рѕ 2 Р°РєС‚РёРІРЅС‹С… СЃРѕС‚СЂСѓРґРЅРёРєРѕРІ РІ РєРѕРјРїР°РЅРёРё",
-      "50 SKU (РЅРѕРјРµРЅРєР»Р°С‚СѓСЂ) РІРєР»СЋС‡РµРЅРѕ",
-      "РџРѕР»РЅС‹Р№ РґРѕСЃС‚СѓРї РєРѕ РІСЃРµРј СЂР°Р·РґРµР»Р°Рј СЃРєР»Р°РґР°",
-      "РџРѕР»РЅС‹Р№ РјРѕР±РёР»СЊРЅС‹Р№ РўРЎР” Рё СЂРѕР»Рё СЃРѕС‚СЂСѓРґРЅРёРєРѕРІ",
-      "РўР°СЂРёС„ РґРѕСЃС‚СѓРїРµРЅ С‚РѕР»СЊРєРѕ РѕРґРёРЅ СЂР°Р·",
+      "До 2 активных сотрудников в компании",
+      "50 SKU (номенклатур) включено",
+      "Полный доступ ко всем разделам склада",
+      "Полный мобильный ТСД и роли сотрудников",
+      "Тариф доступен только один раз",
     ],
   },
   {
     id: "basic-30",
-    title: "Р‘Р°Р·РѕРІС‹Р№",
+    title: "Базовый",
     amount: 2990,
     currency: "RUB",
-    description: "РЈСЂРµР·Р°РЅРЅС‹Р№ С„СѓРЅРєС†РёРѕРЅР°Р» РґР»СЏ Р±Р°Р·РѕРІС‹С… РїСЂРѕС†РµСЃСЃРѕРІ Рё РїРµСЂРІС‹С… РѕРїРµСЂР°С†РёР№.",
-    highlight: "РћРїС‚РёРјР°Р»СЊРЅС‹Р№",
+    description: "Урезанный функционал для базовых процессов и первых операций.",
+    highlight: "Оптимальный",
     available: true,
     features: [
-      "Р”Рѕ 5 Р°РєС‚РёРІРЅС‹С… СЃРѕС‚СЂСѓРґРЅРёРєРѕРІ РІ РєРѕРјРїР°РЅРёРё",
-      "100 SKU РІРєР»СЋС‡РµРЅРѕ",
-      "Р‘РµР· Р±Р»РѕРєРёСЂРѕРІРєРё РѕСЃС‚Р°С‚РєРѕРІ",
-      "Р‘РµР· РєСЂРѕСЃСЃ-РґРѕРєРёРЅРіР°",
-      "Р‘РµР· Р±РёР»Р»РёРЅРіР° СЃР±РѕСЂРєРё",
-      "РЎС‚Р°РЅРґР°СЂС‚РЅР°СЏ РїРѕРґРґРµСЂР¶РєР° (РІ СЂР°Р±РѕС‡РµРµ РІСЂРµРјСЏ)",
-      "РРЅРґРёРІРёРґСѓР°Р»СЊРЅС‹Рµ Р°РІС‚РѕРјР°С‚РёР·Р°С†РёРё РЅРµ РІРєР»СЋС‡РµРЅС‹",
-      "РњРѕР¶РЅРѕ РґРѕРєСѓРїР°С‚СЊ РїР°РєРµС‚С‹ SKU",
+      "До 5 активных сотрудников в компании",
+      "100 SKU включено",
+      "Без блокировки остатков",
+      "Без кросс-докинга",
+      "Без биллинга сборки",
+      "Стандартная поддержка (в рабочее время)",
+      "Индивидуальные автоматизации не включены",
+      "Можно докупать пакеты SKU",
     ],
   },
   {
     id: "pro-30",
-    title: "РџСЂРѕС„",
+    title: "Проф",
     amount: 4990,
     currency: "RUB",
-    description: "РџРѕР»РЅС‹Р№ С„СѓРЅРєС†РёРѕРЅР°Р» РґР»СЏ Р°РєС‚РёРІРЅРѕР№ РєРѕРјР°РЅРґС‹ Рё РјР°СЃС€С‚Р°Р±РёСЂРѕРІР°РЅРёСЏ РїСЂРѕС†РµСЃСЃРѕРІ.",
-    highlight: "РњР°РєСЃРёРјСѓРј",
+    description: "Полный функционал для активной команды и масштабирования процессов.",
+    highlight: "Максимум",
     available: true,
     features: [
-      "Р”Рѕ 30 Р°РєС‚РёРІРЅС‹С… СЃРѕС‚СЂСѓРґРЅРёРєРѕРІ РІ РєРѕРјРїР°РЅРёРё",
-      "500 SKU РІРєР»СЋС‡РµРЅРѕ",
-      "РџРѕР»РЅС‹Р№ РґРѕСЃС‚СѓРї РєРѕ РІСЃРµРј СЂР°Р·РґРµР»Р°Рј СЃРєР»Р°РґР°",
-      "РџРѕР»РЅС‹Р№ РјРѕР±РёР»СЊРЅС‹Р№ РўРЎР” Рё СЂРѕР»Рё СЃРѕС‚СЂСѓРґРЅРёРєРѕРІ",
-      "Р‘Р»РѕРєРёСЂРѕРІРєР° РѕСЃС‚Р°С‚РєРѕРІ, РєСЂРѕСЃСЃ-РґРѕРєРёРЅРі Рё Р±РёР»Р»РёРЅРі СЃР±РѕСЂРєРё РІРєР»СЋС‡РµРЅС‹",
-      "РџСЂРёРѕСЂРёС‚РµС‚РЅР°СЏ РїРѕРґРґРµСЂР¶РєР°",
-      "РРЅРґРёРІРёРґСѓР°Р»СЊРЅС‹Рµ Р°РІС‚РѕРјР°С‚РёР·Р°С†РёРё РїРѕРґ РєР»РёРµРЅС‚Р°",
+      "До 30 активных сотрудников в компании",
+      "500 SKU включено",
+      "Полный доступ ко всем разделам склада",
+      "Полный мобильный ТСД и роли сотрудников",
+      "Блокировка остатков, кросс-докинг и биллинг сборки включены",
+      "Приоритетная поддержка",
+      "Индивидуальные автоматизации под клиента",
     ],
   },
 ];
@@ -91,9 +91,9 @@ function getPeriodAmount(baseAmount, periodId) {
 }
 
 function getPeriodLabel(periodId) {
-  if (periodId === "6m") return "6 РјРµСЃСЏС†РµРІ";
-  if (periodId === "12m") return "1 РіРѕРґ";
-  return "30 РґРЅРµР№";
+  if (periodId === "6m") return "6 месяцев";
+  if (periodId === "12m") return "1 год";
+  return "30 дней";
 }
 
 function getBasicSkuAddonPresetFromUnits(unitsInput) {
@@ -219,7 +219,6 @@ export default function Pricing() {
     try {
       setLoading(true);
       setError("");
-
       const selectedSkuAddons = Array.isArray(options.skuAddons) ? options.skuAddons : [];
       const selectedSkuAddonUnits = selectedSkuAddons.reduce(
         (sum, value) => sum + Math.max(0, Number(value || 0) || 0),
@@ -267,8 +266,8 @@ export default function Pricing() {
           acceptSkuTrim,
         }),
       });
-      let data = await res.json().catch(() => ({}));
 
+      let data = await res.json().catch(() => ({}));
       if (!res.ok && data?.message === "SKU_TRIM_CONFIRM_REQUIRED" && !acceptSkuTrim) {
         const projectedOverLimit = Math.max(
           0,
@@ -280,7 +279,6 @@ export default function Pricing() {
         if (!confirmed) {
           return;
         }
-
         res = await apiFetch(endpoint, {
           method: "POST",
           headers: {
@@ -297,9 +295,10 @@ export default function Pricing() {
         });
         data = await res.json().catch(() => ({}));
       }
-
       if (!res.ok) {
-        setError(normalizeErrorMessage(data?.message || "", "Не удалось инициировать оплату."));
+        setError(
+          normalizeErrorMessage(data?.message || "", "Не удалось инициировать оплату.")
+        );
         return;
       }
 
@@ -368,7 +367,7 @@ export default function Pricing() {
   const subscription = user?.subscription;
   const paidUntilDate = subscription?.paidUntil
     ? new Date(subscription.paidUntil).toLocaleDateString("ru-RU")
-    : "вЂ”";
+    : "—";
   const canUseSupport = Boolean(user?.role === "ADMIN");
   const visiblePlanCards = PLAN_CARDS.filter(
     (plan) => periodId === "1m" || plan.id !== "start-30"
@@ -395,7 +394,7 @@ export default function Pricing() {
             className="pricing-modern__back-login"
             onClick={handleBack}
           >
-            РќР°Р·Р°Рґ
+            Назад
           </button>
           {canUseSupport ? (
             <button
@@ -403,19 +402,19 @@ export default function Pricing() {
               className="pricing-modern__back-login pricing-modern__support-link"
               onClick={handleOpenSupport}
             >
-              РџРѕРґРґРµСЂР¶РєР°
+              Поддержка
             </button>
           ) : null}
         </div>
 
         <div className="pricing-modern__brand">
-          <img src="/logo-mark.png" alt="Р›РѕРіРѕС‚РёРї РЎРєР»Р°РґРћРЅР»Р°Р№РЅ" />
-          <span>РЎРєР»Р°РґРћРЅР»Р°Р№РЅ</span>
+          <img src="/logo-mark.png" alt="Логотип СкладОнлайн" />
+          <span>СкладОнлайн</span>
         </div>
-        <span className="pricing-modern__pill">SaaS-РїРѕРґРїРёСЃРєР°</span>
-        <h1 className="pricing-modern__title pricing-modern__title--center">Р¦РµРЅС‹</h1>
+        <span className="pricing-modern__pill">SaaS-подписка</span>
+        <h1 className="pricing-modern__title pricing-modern__title--center">Цены</h1>
 
-        <div className="pricing-modern__periods" role="tablist" aria-label="РџРµСЂРёРѕРґ РѕРїР»Р°С‚С‹">
+        <div className="pricing-modern__periods" role="tablist" aria-label="Период оплаты">
           {PERIOD_OPTIONS.map((option) => (
             <div
               key={option.id}
@@ -440,22 +439,22 @@ export default function Pricing() {
         </div>
 
         <p className="pricing-modern__subtitle pricing-modern__subtitle--center">
-          РћРґРёРЅ РїР»Р°С‚РµР¶ РЅР° РѕСЂРіР°РЅРёР·Р°С†РёСЋ. Р’СЃРµ СЃРѕС‚СЂСѓРґРЅРёРєРё СЂР°Р±РѕС‚Р°СЋС‚ РІ РµРґРёРЅРѕР№ СЃРёСЃС‚РµРјРµ
-          РїРѕ РЅР°Р·РЅР°С‡РµРЅРЅС‹Рј РїСЂР°РІР°Рј.
+          Один платеж на организацию. Все сотрудники работают в единой системе
+          по назначенным правам.
         </p>
       </section>
 
       {!canManageBilling && (
         <div className="pricing-modern__notice">
-          РћРїР»Р°С‚Сѓ РІС‹РїРѕР»РЅСЏРµС‚ Р°РґРјРёРЅРёСЃС‚СЂР°С‚РѕСЂ РІР°С€РµР№ РєРѕРјРїР°РЅРёРё.
+          Оплату выполняет администратор вашей компании.
         </div>
       )}
 
       {subscription?.isActive && (
         <section className="pricing-modern__active">
           <div>
-            <div className="pricing-modern__active-title">РџРѕРґРїРёСЃРєР° Р°РєС‚РёРІРЅР°</div>
-            <div className="pricing-modern__active-subtitle">РћРїР»Р°С‡РµРЅРѕ РґРѕ: {paidUntilDate}</div>
+            <div className="pricing-modern__active-title">Подписка активна</div>
+            <div className="pricing-modern__active-subtitle">Оплачено до: {paidUntilDate}</div>
           </div>
         </section>
       )}
@@ -480,7 +479,7 @@ export default function Pricing() {
 
       {extendedPeriodSelected && (
         <div className="pricing-modern__notice">
-          РўР°СЂРёС„ В«РЎС‚Р°СЂС‚В» РґРѕСЃС‚СѓРїРµРЅ С‚РѕР»СЊРєРѕ РЅР° РїРµСЂРёРѕРґ 1 РјРµСЃСЏС†.
+          Тариф «Старт» доступен только на период 1 месяц.
         </div>
       )}
 
@@ -521,13 +520,13 @@ export default function Pricing() {
 
               <div className="pricing-modern__price-row">
                 <span className="pricing-modern__price">
-                  {plan.available ? formatPrice(displayAmount, plan.currency) : "вЂ”"}
+                  {plan.available ? formatPrice(displayAmount, plan.currency) : "—"}
                 </span>
                 <span className="pricing-modern__period">/ {getPeriodLabel(periodId)}</span>
               </div>
               {isBasicTopupMode && (
                 <div className="pricing-modern__hint">
-                  Р”РѕРєСѓРїРєР° SKU Рє РґРµР№СЃС‚РІСѓСЋС‰РµРјСѓ С‚Р°СЂРёС„Сѓ В«Р‘Р°Р·РѕРІС‹Р№В» (Р±РµР· РїРѕРІС‚РѕСЂРЅРѕР№ РѕРїР»Р°С‚С‹ 2990 в‚Ѕ).
+                  Докупка SKU к действующему тарифу «Базовый» (без повторной оплаты 2990 ₽).
                 </div>
               )}
 
@@ -538,7 +537,7 @@ export default function Pricing() {
               )}
               {isBasicPlan && (
                 <div className="pricing-modern__sku-builder">
-                  <div className="pricing-modern__sku-builder-title">РљР°Р»СЊРєСѓР»СЏС‚РѕСЂ SKU</div>
+                  <div className="pricing-modern__sku-builder-title">Калькулятор SKU</div>
                   <div className="pricing-modern__sku-builder-list">
                     {BASIC_SKU_ADDON_PACKAGES.map((pkg) => {
                       const checked = effectiveBasicSkuAddons.some(
@@ -558,7 +557,7 @@ export default function Pricing() {
                     })}
                   </div>
                   <div className="pricing-modern__sku-summary">
-                    Р”РѕРїРѕР»РЅРёС‚РµР»СЊРЅРѕ: +{basicSkuAddonUnits} SKU / +{formatPrice(basicSkuAddonMonthlyAmount, "RUB")} РІ РјРµСЃСЏС†
+                    Дополнительно: +{basicSkuAddonUnits} SKU / +{formatPrice(basicSkuAddonMonthlyAmount, "RUB")} в месяц
                   </div>
                 </div>
               )}
@@ -585,19 +584,19 @@ export default function Pricing() {
                     !canManageBilling
                   }
                 >
-                  {loading ? "РћРїР»Р°С‚РёС‚СЊ" : "РћРїР»Р°С‚РёС‚СЊ"}
+                  {loading ? "Оплатить" : "Оплатить"}
                 </button>
               </div>
 
               {plan.available && !billingReady && (
                 <div className="pricing-modern__hint">
-                  РџР»Р°С‚РµР¶Рё Р±СѓРґСѓС‚ РґРѕСЃС‚СѓРїРЅС‹ РїРѕСЃР»Рµ РїРѕРґРєР»СЋС‡РµРЅРёСЏ YooKassa.
+                  Платежи будут доступны после подключения YooKassa.
                 </div>
               )}
 
               {plan.available && canPayCurrentPlan && (
                 <div className="pricing-modern__hint">
-                  РџР»Р°С‚РµР¶ РїСЂРѕР№РґРµС‚ С‡РµСЂРµР· YooKassa, СЃРїРѕСЃРѕР± РѕРїР»Р°С‚С‹ РІС‹Р±РёСЂР°РµС‚СЃСЏ РЅР° СЃС‚СЂР°РЅРёС†Рµ РѕРїР»Р°С‚С‹.
+                  Платеж пройдет через YooKassa, способ оплаты выбирается на странице оплаты.
                 </div>
               )}
             </article>
@@ -606,35 +605,34 @@ export default function Pricing() {
       </section>
 
       <section className="pricing-modern__trust">
-        <div>Р‘РµР·РѕРїР°СЃРЅР°СЏ РѕРїР»Р°С‚Р° С‡РµСЂРµР· YooKassa</div>
-        <div>Р”РѕСЃС‚СѓРї СѓРїСЂР°РІР»СЏРµС‚СЃСЏ РЅР° СѓСЂРѕРІРЅРµ РєРѕРјРїР°РЅРёРё</div>
-        <div>РћРїР»Р°С‚Сѓ Р·Р°РїСѓСЃРєР°РµС‚ С‚РѕР»СЊРєРѕ Р°РґРјРёРЅРёСЃС‚СЂР°С‚РѕСЂ</div>
+        <div>Безопасная оплата через YooKassa</div>
+        <div>Доступ управляется на уровне компании</div>
+        <div>Оплату запускает только администратор</div>
       </section>
 
       <section className="pricing-modern__faq">
-        <h3>Р§Р°СЃС‚С‹Рµ РІРѕРїСЂРѕСЃС‹</h3>
+        <h3>Частые вопросы</h3>
         <details>
-          <summary>РљС‚Рѕ РґРѕР»Р¶РµРЅ РѕРїР»Р°С‡РёРІР°С‚СЊ РґРѕСЃС‚СѓРї?</summary>
+          <summary>Кто должен оплачивать доступ?</summary>
           <p>
-            РћРїР»Р°С‚Сѓ РІС‹РїРѕР»РЅСЏРµС‚ Р°РґРјРёРЅРёСЃС‚СЂР°С‚РѕСЂ РєР»РёРµРЅС‚Р°. РџРѕСЃР»Рµ РѕРїР»Р°С‚С‹ РґРѕСЃС‚СѓРї РїРѕР»СѓС‡Р°СЋС‚
-            СЃРѕС‚СЂСѓРґРЅРёРєРё РµРіРѕ РєРѕРјРїР°РЅРёРё.
+            Оплату выполняет администратор клиента. После оплаты доступ получают
+            сотрудники его компании.
           </p>
         </details>
         <details>
-          <summary>РЎРѕС‚СЂСѓРґРЅРёРє РјРѕР¶РµС‚ СЃР°Рј РѕРїР»Р°С‚РёС‚СЊ С‚Р°СЂРёС„?</summary>
-          <p>РќРµС‚, РѕРїР»Р°С‚Сѓ РґРµР»Р°РµС‚ С‚РѕР»СЊРєРѕ Р°РґРјРёРЅРёСЃС‚СЂР°С‚РѕСЂ РєРѕРјРїР°РЅРёРё.</p>
+          <summary>Сотрудник может сам оплатить тариф?</summary>
+          <p>Нет, оплату делает только администратор компании.</p>
         </details>
         <details>
-          <summary>Р§С‚Рѕ Р±СѓРґРµС‚ РїРѕСЃР»Рµ РѕРєРѕРЅС‡Р°РЅРёСЏ РїРѕРґРїРёСЃРєРё?</summary>
-          <p>Р”РѕСЃС‚СѓРї Рє СЂР°Р±РѕС‡РёРј СЂР°Р·РґРµР»Р°Рј Р±СѓРґРµС‚ РѕРіСЂР°РЅРёС‡РµРЅ РґРѕ РїСЂРѕРґР»РµРЅРёСЏ РїРѕРґРїРёСЃРєРё.</p>
+          <summary>Что будет после окончания подписки?</summary>
+          <p>Доступ к рабочим разделам будет ограничен до продления подписки.</p>
         </details>
       </section>
 
       <div className="pricing-modern__footnote">
-        РќР°Р¶РёРјР°СЏ РєРЅРѕРїРєСѓ РѕРїР»Р°С‚С‹, РІС‹ РїРѕРґС‚РІРµСЂР¶РґР°РµС‚Рµ СЃРѕРіР»Р°СЃРёРµ СЃ СѓСЃР»РѕРІРёСЏРјРё РѕС„РµСЂС‚С‹ Рё
-        РїРѕР»РёС‚РёРєРѕР№ РєРѕРЅС„РёРґРµРЅС†РёР°Р»СЊРЅРѕСЃС‚Рё.
+        Нажимая кнопку оплаты, вы подтверждаете согласие с условиями оферты и
+        политикой конфиденциальности.
       </div>
     </div>
   );
 }
-
