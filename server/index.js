@@ -16712,6 +16712,13 @@ app.post("/api/warehouse/putaway/from-receiving", auth, async (req, res) => {
         throw err;
       }
 
+      await assertSkuOperationAllowedForItem({
+        itemId: line.itemId,
+        orgId: req.user?.orgId || null,
+        fallbackUserId: req.user?.id || null,
+        tx,
+      });
+
       const toLoc = await tx.warehouseLocation.findUnique({ where: { id: to } });
       if (!toLoc) {
         const err = new Error("LOCATION_NOT_FOUND");
