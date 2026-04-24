@@ -224,7 +224,7 @@ export default function MobileTsd() {
     } catch {
       const normalized = String(raw).trim();
       const codeMatch = normalized.match(
-        /(LOCATION_CONFLICT_CONFIRM|LOCATION_OCCUPIED|BAD_QTY|RECEIVING_LINE_NOT_FOUND|TENANT_NOT_FOUND|RECORD_CHANGED|ALREADY_PROCESSED)/i
+        /(SKU_ITEM_FROZEN|LOCATION_CONFLICT_CONFIRM|LOCATION_OCCUPIED|BAD_QTY|RECEIVING_LINE_NOT_FOUND|TENANT_NOT_FOUND|RECORD_CHANGED|ALREADY_PROCESSED)/i
       );
       if (codeMatch?.[1]) {
         return { message: String(codeMatch[1]).toUpperCase() };
@@ -264,6 +264,9 @@ export default function MobileTsd() {
 
     if (code === "LOCATION_OCCUPIED") {
       return "В этой ячейке уже другой товар. Разместите в другую ячейку.";
+    }
+    if (code === "SKU_ITEM_FROZEN") {
+      return "Товар заморожен из-за превышения лимита SKU. Докупите SKU или уменьшите количество номенклатуры.";
     }
     if (code === "LOCATION_CONFLICT_CONFIRM") {
       return "В ячейке есть такой же товар, но с другой датой. Нажмите «Подтвердить» еще раз, чтобы разрешить размещение.";
@@ -826,6 +829,11 @@ export default function MobileTsd() {
         if (code === "LOCATION_OCCUPIED") {
           throw new Error("В этой ячейке уже другой товар. Разместите в другую ячейку.");
         }
+        if (code === "SKU_ITEM_FROZEN") {
+          throw new Error(
+            "Товар заморожен из-за превышения лимита SKU. Докупите SKU или уменьшите количество номенклатуры."
+          );
+        }
         if (res.status === 409) {
           const conflictType = await detectLocationConflictType(
             countState.location?.id,
@@ -1200,6 +1208,11 @@ export default function MobileTsd() {
         }
         if (code === "LOCATION_OCCUPIED") {
           throw new Error("В этой ячейке уже другой товар. Разместите в другую ячейку.");
+        }
+        if (code === "SKU_ITEM_FROZEN") {
+          throw new Error(
+            "Товар заморожен из-за превышения лимита SKU. Докупите SKU или уменьшите количество номенклатуры."
+          );
         }
         if (res.status === 409) {
           const conflictType = await detectLocationConflictType(
