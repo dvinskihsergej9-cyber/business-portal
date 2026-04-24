@@ -1,6 +1,7 @@
 import { useRef, useState } from "react";
 import * as XLSX from "xlsx";
 import { API_BASE } from "../apiConfig";
+import { createPortal } from "react-dom";
 
 const ITEM_HEADER_ALIASES = {
   name: "name",
@@ -160,8 +161,8 @@ export default function ImportItemsModal({ onClose, onImportSuccess }) {
     }
   };
 
-  return (
-    <div className="admin-modal">
+  const modal = (
+    <div className="admin-modal" style={{ placeItems: "start center", paddingTop: 48, zIndex: 8000 }}>
       <div className="admin-modal__panel" style={{ maxWidth: 900, width: "90%" }}>
         <div className="admin-modal__header">
           <div>
@@ -287,4 +288,7 @@ export default function ImportItemsModal({ onClose, onImportSuccess }) {
       </div>
     </div>
   );
+
+  if (typeof document === "undefined") return modal;
+  return createPortal(modal, document.body);
 }
