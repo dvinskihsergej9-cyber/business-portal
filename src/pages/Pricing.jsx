@@ -205,6 +205,17 @@ export default function Pricing() {
     });
   };
 
+  const formatBillingProviderDetails = (payload) => {
+    const providerStatus = Number(payload?.providerStatus || 0) || 0;
+    const providerCode = String(payload?.providerCode || "").trim();
+    const providerDescription = String(payload?.providerDescription || "").trim();
+    const details = [];
+    if (providerStatus > 0) details.push(`HTTP ${providerStatus}`);
+    if (providerCode) details.push(providerCode);
+    if (providerDescription) details.push(providerDescription);
+    return details.join(" | ");
+  };
+
   const handlePay = async (planId, options = {}) => {
     if (!planId) {
       setError("Этот тариф пока недоступен для онлайн-оплаты.");
@@ -296,8 +307,15 @@ export default function Pricing() {
         data = await res.json().catch(() => ({}));
       }
       if (!res.ok) {
+        const providerDetails = formatBillingProviderDetails(data);
+        const normalizedMessage = normalizeErrorMessage(
+          data?.message || "",
+          "Не удалось инициировать оплату."
+        );
         setError(
-          normalizeErrorMessage(data?.message || "", "Не удалось инициировать оплату.")
+          providerDetails
+            ? `${normalizedMessage} Детали: ${providerDetails}.`
+            : normalizedMessage
         );
         return;
       }
