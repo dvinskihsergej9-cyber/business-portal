@@ -185,6 +185,11 @@ export default function Layout() {
     user?.isSystemOwner === true
       ? PLAN_TITLES["platform-owner"]
       : PLAN_TITLES[rawPlanId] || PLAN_TITLES["start-30"];
+  const currentSkuAddonUnits = Math.max(0, Number(subscription?.skuAddonUnits || 0) || 0);
+  const planTitleWithSku =
+    rawPlanId === "basic-30" && currentSkuAddonUnits > 0
+      ? `${planTitle} + ${currentSkuAddonUnits} SKU`
+      : planTitle;
   const paidUntilLabel = formatPaidUntilDate(subscription?.paidUntil);
   const subscriptionActive =
     user?.isSystemOwner === true ? true : Boolean(subscription?.isActive);
@@ -312,7 +317,7 @@ export default function Layout() {
             <div style={styles.userRole}>{user.role}</div>
             <div style={styles.userSubscriptionRow}>
               <span style={styles.userSubscriptionLabel}>Тариф</span>
-              <span style={styles.userSubscriptionValue}>{planTitle}</span>
+              <span style={styles.userSubscriptionValue}>{planTitleWithSku}</span>
             </div>
             <div
               style={
