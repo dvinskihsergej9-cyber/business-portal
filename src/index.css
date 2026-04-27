@@ -3704,23 +3704,23 @@ input[type="number"] {
   background: #334155;
 }
 
-.pricing-modern__cta--danger {
-  background: #fff1f2;
-  color: #b91c1c;
-  border: 1px solid #fecdd3;
+.pricing-modern__cta--secondary {
+  background: #eef2ff;
+  color: #1e40af;
+  border: 1px solid #c7d2fe;
   box-shadow: none;
 }
 
-.pricing-modern__cta--danger::after {
+.pricing-modern__cta--secondary::after {
   display: none;
 }
 
-.pricing-modern__cta--danger:not(:disabled) {
+.pricing-modern__cta--secondary:not(:disabled) {
   animation: none;
 }
 
-.pricing-modern__cta--danger:hover:not(:disabled) {
-  background: #ffe4e6;
+.pricing-modern__cta--secondary:hover:not(:disabled) {
+  background: #e0e7ff;
 }
 
 .pricing-modern__cta:disabled {

@@ -629,7 +629,7 @@ export default function Pricing() {
           const canUseTrimRenewalAction =
             isBasicPlan &&
             !isTopupMode &&
-            trimSkuCountOnBaseRenewal > 0;
+            currentBasicAddonUnits > 0;
           const canPayCurrentPlan =
             plan.available && billingReady && canManageBilling;
 
@@ -777,7 +777,7 @@ export default function Pricing() {
                 </button>
                 {canUseTrimRenewalAction && (
                   <button
-                    className="btn pricing-modern__cta pricing-modern__cta--danger"
+                    className="btn pricing-modern__cta pricing-modern__cta--secondary"
                     onClick={() =>
                       handlePay(plan.id, {
                         skuAddons: [],
@@ -793,13 +793,15 @@ export default function Pricing() {
                       !canManageBilling
                     }
                   >
-                    {loading ? "Оплата..." : "Продлить и удалить лишние SKU"}
+                    {loading ? "Оплата..." : "Продлить без доп SKU"}
                   </button>
                 )}
               </div>
               {canUseTrimRenewalAction && (
                 <div className="pricing-modern__hint pricing-modern__hint--danger">
-                  При этом варианте будет удалено до {trimSkuCountOnBaseRenewal} SKU сверх базового лимита.
+                  {trimSkuCountOnBaseRenewal > 0
+                    ? `При этом варианте будет удалено до ${trimSkuCountOnBaseRenewal} SKU сверх базового лимита.`
+                    : "При этом варианте доп-SKU будут отключены в следующем периоде, без удаления номенклатуры."}
                 </div>
               )}
 
