@@ -11073,7 +11073,9 @@ app.get("/api/profile", auth, async (req, res) => {
         return res.status(400).json({ message: "PAYMENT_RECEIPT_EMAIL_REQUIRED" });
       }
 
-      const { planId, periodId, paymentMethod, skuAddons, acceptSkuTrim } = req.body || {};
+      const requestBody =
+        req.body && typeof req.body === "object" && !Array.isArray(req.body) ? req.body : {};
+      const { planId, periodId, paymentMethod, skuAddons, acceptSkuTrim, dropSkuAddons } = requestBody;
       const plan = getPlan(planId);
       if (!plan) {
         return res.status(400).json({ message: "PLAN_NOT_FOUND" });
@@ -11081,6 +11083,21 @@ app.get("/api/profile", auth, async (req, res) => {
       let basicSkuAddons = plan.id === "basic-30"
         ? parseBasicSkuAddons(skuAddons)
         : { packages: [], monthlyAmount: 0, skuUnits: 0 };
+      if (
+        plan.id === "basic-30" &&
+        basicSkuAddons.skuUnits <= 0 &&
+        dropSkuAddons !== true
+      ) {
+        const currentSubscription = await getOrgSubscription(targetOrgId, billingUserId);
+        const currentPlanId = normalizePlanId(currentSubscription?.plan, "");
+        const currentAddonUnits = Math.max(
+          0,
+          Number(currentSubscription?.skuAddonUnits || 0) || 0
+        );
+        if (currentPlanId === "basic-30" && currentAddonUnits > 0) {
+          basicSkuAddons = buildBasicSkuAddonsFromUnits(currentAddonUnits);
+        }
+      }
       let skuTrimProjectedCount = 0;
       if (plan.id === "basic-30" && targetOrgId) {
         const currentSkuCount = await prisma.item.count({

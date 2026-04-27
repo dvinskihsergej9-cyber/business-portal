@@ -262,18 +262,34 @@ export default function Pricing() {
     try {
       setLoading(true);
       setError("");
-      const selectedSkuAddons = Array.isArray(options.skuAddons) ? options.skuAddons : [];
+      const hasSkuAddonsPayload = Array.isArray(options.skuAddons);
+      const selectedSkuAddons = hasSkuAddonsPayload ? options.skuAddons : [];
       const selectedSkuAddonUnits = selectedSkuAddons.reduce(
         (sum, value) => sum + Math.max(0, Number(value || 0) || 0),
         0
       );
       const isSkuAddonTopupPayment = Boolean(options.useTopup);
       let acceptSkuTrim = options.acceptSkuTrim === true;
+      let dropSkuAddons = options.dropSkuAddons === true;
       const endpoint = isSkuAddonTopupPayment
         ? "/billing/yookassa/create-sku-addon-payment"
         : "/billing/yookassa/create-payment";
 
       if (
+        !isSkuAddonTopupPayment &&
+        String(planId || "").trim().toLowerCase() === "basic-30" &&
+        dropSkuAddons
+      ) {
+        const confirmedDrop = window.confirm(
+          "Вы отключаете все оплаченные доп-SKU на следующий период. После оплаты лимит вернется к базовому. Продолжить?"
+        );
+        if (!confirmedDrop) {
+          return;
+        }
+      }
+
+      if (
+        hasSkuAddonsPayload &&
         !isSkuAddonTopupPayment &&
         String(planId || "").trim().toLowerCase() === "basic-30" &&
         renewalOverLimitSkuCount > 0 &&
@@ -305,8 +321,9 @@ export default function Pricing() {
           planId,
           periodId,
           paymentMethod: "default",
-          skuAddons: selectedSkuAddons,
+          ...(hasSkuAddonsPayload ? { skuAddons: selectedSkuAddons } : {}),
           acceptSkuTrim,
+          dropSkuAddons,
         }),
       });
 
@@ -332,8 +349,9 @@ export default function Pricing() {
             planId,
             periodId,
             paymentMethod: "default",
-            skuAddons: selectedSkuAddons,
+            ...(hasSkuAddonsPayload ? { skuAddons: selectedSkuAddons } : {}),
             acceptSkuTrim: true,
+            dropSkuAddons,
           }),
         });
         data = await res.json().catch(() => ({}));
@@ -569,6 +587,11 @@ export default function Pricing() {
               : getPeriodAmount(plan.amount + monthlyAddonAmount, periodId)
             : 0;
           const displayPeriodLabel = isTopupMode ? "разово" : getPeriodLabel(periodId);
+          const shouldDropExistingBasicAddons =
+            isBasicPlan &&
+            !isTopupMode &&
+            basicSkuAddonsTouched &&
+            renewalAddonsForPay.length === 0;
           const canPayCurrentPlan =
             plan.available && billingReady && canManageBilling;
 
@@ -687,6 +710,7 @@ export default function Pricing() {
                     handlePay(plan.id, {
                       skuAddons: isTopupMode ? topupAddonsForPay : renewalAddonsForPay,
                       useTopup: isTopupMode,
+                      dropSkuAddons: shouldDropExistingBasicAddons,
                     })
                   }
                   disabled={
