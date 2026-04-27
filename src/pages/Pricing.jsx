@@ -148,6 +148,7 @@ export default function Pricing() {
   const [basicSkuAddons, setBasicSkuAddons] = useState([]);
   const [basicSkuAddonsTouched, setBasicSkuAddonsTouched] = useState(false);
   const [topupSkuAddons, setTopupSkuAddons] = useState([]);
+  const [basicPaymentMode, setBasicPaymentMode] = useState("renewal");
   const [skuRenewalSummary, setSkuRenewalSummary] = useState(null);
   const [skuRenewalLoading, setSkuRenewalLoading] = useState(false);
 
@@ -419,6 +420,12 @@ export default function Pricing() {
     }
   }, [periodId, topupSkuAddons.length]);
 
+  useEffect(() => {
+    if (periodId !== "1m" && basicPaymentMode !== "renewal") {
+      setBasicPaymentMode("renewal");
+    }
+  }, [periodId, basicPaymentMode]);
+
   const subscription = user?.subscription;
   const paidUntilDate = subscription?.paidUntil
     ? new Date(subscription.paidUntil).toLocaleDateString("ru-RU")
@@ -552,9 +559,16 @@ export default function Pricing() {
             isBasicPlan &&
             isCurrentBasicActive &&
             periodId === "1m";
+          const isTopupMode =
+            isBasicPlan &&
+            canUseBasicTopup &&
+            basicPaymentMode === "topup";
           const displayAmount = plan.available
-            ? getPeriodAmount(plan.amount + monthlyAddonAmount, periodId)
+            ? isTopupMode
+              ? topupSkuAddonMonthlyAmount
+              : getPeriodAmount(plan.amount + monthlyAddonAmount, periodId)
             : 0;
+          const displayPeriodLabel = isTopupMode ? "разово" : getPeriodLabel(periodId);
           const canPayCurrentPlan =
             plan.available && billingReady && canManageBilling;
 
@@ -578,14 +592,34 @@ export default function Pricing() {
                 <span className="pricing-modern__price">
                   {plan.available ? formatPrice(displayAmount, plan.currency) : "—"}
                 </span>
-                <span className="pricing-modern__period">/ {getPeriodLabel(periodId)}</span>
+                <span className="pricing-modern__period">/ {displayPeriodLabel}</span>
               </div>
-              {isBasicPlan && isBasicCarryMode && (
+              {isBasicPlan && canUseBasicTopup && (
+                <div className="pricing-modern__mode-switch" role="tablist" aria-label="Сценарий оплаты">
+                  <button
+                    type="button"
+                    className={`pricing-modern__mode-btn ${basicPaymentMode === "renewal" ? "is-active" : ""}`}
+                    aria-pressed={basicPaymentMode === "renewal"}
+                    onClick={() => setBasicPaymentMode("renewal")}
+                  >
+                    Продление
+                  </button>
+                  <button
+                    type="button"
+                    className={`pricing-modern__mode-btn ${basicPaymentMode === "topup" ? "is-active" : ""}`}
+                    aria-pressed={basicPaymentMode === "topup"}
+                    onClick={() => setBasicPaymentMode("topup")}
+                  >
+                    Докупка SKU
+                  </button>
+                </div>
+              )}
+              {isBasicPlan && isBasicCarryMode && !isTopupMode && (
                 <div className="pricing-modern__hint">
                   Для продления автоматически подобраны доп.пакеты SKU по текущему объему номенклатуры.
                 </div>
               )}
-              {isBasicPlan && (
+              {isBasicPlan && !isTopupMode && (
                 <div className="pricing-modern__sku-builder">
                   <div className="pricing-modern__sku-builder-title">Калькулятор SKU для продления</div>
                   <div className="pricing-modern__sku-builder-list">
@@ -611,7 +645,7 @@ export default function Pricing() {
                   </div>
                 </div>
               )}
-              {isBasicPlan && canUseBasicTopup && (
+              {isBasicPlan && canUseBasicTopup && isTopupMode && (
                 <div className="pricing-modern__sku-builder">
                   <div className="pricing-modern__sku-builder-title">Докупка SKU сейчас</div>
                   <div className="pricing-modern__sku-builder-list">
@@ -646,50 +680,33 @@ export default function Pricing() {
                 ))}
               </ul>
 
-              <div
-                className={`pricing-modern__actions ${
-                  isBasicPlan && canUseBasicTopup
-                    ? ""
-                    : "pricing-modern__actions--single"
-                }`}
-              >
+              <div className="pricing-modern__actions pricing-modern__actions--single">
                 <button
-                  className="btn pricing-modern__cta pricing-modern__cta--dark"
+                  className={`btn pricing-modern__cta ${
+                    isTopupMode ? "pricing-modern__cta--light" : "pricing-modern__cta--dark"
+                  }`}
                   onClick={() =>
                     handlePay(plan.id, {
-                      skuAddons: renewalAddonsForPay,
-                      useTopup: false,
+                      skuAddons: isTopupMode ? topupAddonsForPay : renewalAddonsForPay,
+                      useTopup: isTopupMode,
                     })
                   }
                   disabled={
                     loading ||
                     billingLoading ||
                     !billingReady ||
-                    !canManageBilling
+                    !canManageBilling ||
+                    (isTopupMode && topupSkuAddonUnits <= 0)
                   }
                 >
-                  {loading ? "Оплата..." : isBasicPlan && isCurrentBasicActive ? "Продлить тариф" : "Оплатить"}
+                  {loading
+                    ? "Оплата..."
+                    : isTopupMode
+                      ? "Оплатить докупку SKU"
+                      : isBasicPlan && isCurrentBasicActive
+                        ? "Продлить тариф"
+                        : "Оплатить"}
                 </button>
-                {isBasicPlan && canUseBasicTopup && (
-                  <button
-                    className="btn pricing-modern__cta pricing-modern__cta--light"
-                    onClick={() =>
-                      handlePay(plan.id, {
-                        skuAddons: topupAddonsForPay,
-                        useTopup: true,
-                      })
-                    }
-                    disabled={
-                      loading ||
-                      billingLoading ||
-                      !billingReady ||
-                      !canManageBilling ||
-                      topupSkuAddonUnits <= 0
-                    }
-                  >
-                    {loading ? "Оплата..." : "Докупка SKU"}
-                  </button>
-                )}
               </div>
 
               {plan.available && !billingReady && (

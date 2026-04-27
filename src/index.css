@@ -3603,6 +3603,29 @@ input[type="number"] {
   color: #334155;
 }
 
+.pricing-modern__mode-switch {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px;
+}
+
+.pricing-modern__mode-btn {
+  border: 1px solid #c7d9f5;
+  border-radius: 10px;
+  background: #ffffff;
+  color: #1e3a8a;
+  min-height: 40px;
+  font-size: 13px;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.pricing-modern__mode-btn.is-active {
+  border-color: #2563eb;
+  background: #dbeafe;
+  color: #1d4ed8;
+}
+
 .pricing-modern__actions {
   display: grid;
   grid-template-columns: 1fr 1fr;
