@@ -295,6 +295,7 @@ export default function Pricing() {
         if (!confirmedDrop) {
           return;
         }
+        acceptSkuTrim = true;
       }
 
       const keepsCurrentAddonsOnRenewal =
@@ -595,14 +596,13 @@ export default function Pricing() {
             isBasicPlan &&
             canUseBasicTopup &&
             basicPaymentMode === "topup";
-          const renewalAddonUnitsForPay =
-            isBasicPlan && !isTopupMode
-              ? Math.max(0, Math.max(basicSkuAddonUnits, currentBasicAddonUnits))
-              : Math.max(0, basicSkuAddonUnits);
-          const renewalAddonPresetForPay =
-            isBasicPlan && !isTopupMode
-              ? getBasicSkuAddonPresetFromUnits(renewalAddonUnitsForPay)
-              : effectiveBasicSkuAddons;
+          const renewalAddonPresetForPay = isBasicPlan ? effectiveBasicSkuAddons : [];
+          const renewalAddonUnitsForPay = isBasicPlan
+            ? renewalAddonPresetForPay.reduce(
+                (sum, value) => sum + Number(value.sku || 0),
+                0
+              )
+            : 0;
           const renewalAddonMonthlyAmountForPay = isBasicPlan
             ? renewalAddonPresetForPay.reduce(
                 (sum, value) => sum + Number(value.price || 0),
@@ -612,23 +612,17 @@ export default function Pricing() {
           const renewalAddonsForPay = isBasicPlan
             ? renewalAddonPresetForPay.map((entry) => entry.sku)
             : [];
-          const autoKeptAddonUnits =
-            isBasicPlan && !isTopupMode
-              ? Math.max(0, renewalAddonUnitsForPay - Math.max(0, basicSkuAddonUnits))
-              : 0;
           const displayAmount = plan.available
             ? isTopupMode
               ? topupSkuAddonMonthlyAmount
               : getPeriodAmount(plan.amount + renewalAddonMonthlyAmountForPay, periodId)
             : 0;
           const displayPeriodLabel = isTopupMode ? "разово" : getPeriodLabel(periodId);
-          const trimSkuCountOnBaseRenewal = Math.max(
-            0,
-            renewalCurrentSkuCount - renewalBaseSkuLimit
-          );
-          const canUseTrimRenewalAction =
+          const shouldDropExistingBasicAddons =
             isBasicPlan &&
             !isTopupMode &&
+            basicSkuAddonsTouched &&
+            renewalAddonsForPay.length === 0 &&
             currentBasicAddonUnits > 0;
           const canPayCurrentPlan =
             plan.available && billingReady && canManageBilling;
@@ -706,11 +700,6 @@ export default function Pricing() {
                   </div>
                 </div>
               )}
-              {isBasicPlan && !isTopupMode && autoKeptAddonUnits > 0 && (
-                <div className="pricing-modern__hint">
-                  В этом продлении автоматически сохранятся ранее оплаченные +{autoKeptAddonUnits} SKU.
-                </div>
-              )}
               {isBasicPlan && canUseBasicTopup && isTopupMode && (
                 <div className="pricing-modern__sku-builder">
                   <div className="pricing-modern__sku-builder-title">Докупка SKU сейчас</div>
@@ -746,17 +735,14 @@ export default function Pricing() {
                 ))}
               </ul>
 
-              <div
-                className={`pricing-modern__actions ${
-                  canUseTrimRenewalAction ? "pricing-modern__actions--trim" : "pricing-modern__actions--single"
-                }`}
-              >
+              <div className="pricing-modern__actions pricing-modern__actions--single">
                 <button
                   className="btn pricing-modern__cta pricing-modern__cta--dark"
                   onClick={() =>
                     handlePay(plan.id, {
                       skuAddons: isTopupMode ? topupAddonsForPay : renewalAddonsForPay,
                       useTopup: isTopupMode,
+                      dropSkuAddons: shouldDropExistingBasicAddons,
                     })
                   }
                   disabled={
@@ -769,41 +755,9 @@ export default function Pricing() {
                 >
                   {loading
                     ? "Оплата..."
-                    : isTopupMode
-                      ? "Оплатить"
-                      : isBasicPlan && isCurrentBasicActive
-                        ? "Продлить тариф"
-                        : "Оплатить"}
+                    : "Оплатить"}
                 </button>
-                {canUseTrimRenewalAction && (
-                  <button
-                    className="btn pricing-modern__cta pricing-modern__cta--secondary"
-                    onClick={() =>
-                      handlePay(plan.id, {
-                        skuAddons: [],
-                        useTopup: false,
-                        dropSkuAddons: true,
-                        acceptSkuTrim: true,
-                      })
-                    }
-                    disabled={
-                      loading ||
-                      billingLoading ||
-                      !billingReady ||
-                      !canManageBilling
-                    }
-                  >
-                    {loading ? "Оплата..." : "Продлить без доп SKU"}
-                  </button>
-                )}
               </div>
-              {canUseTrimRenewalAction && (
-                <div className="pricing-modern__hint pricing-modern__hint--danger">
-                  {trimSkuCountOnBaseRenewal > 0
-                    ? `При этом варианте будет удалено до ${trimSkuCountOnBaseRenewal} SKU сверх базового лимита.`
-                    : "При этом варианте доп-SKU будут отключены в следующем периоде, без удаления номенклатуры."}
-                </div>
-              )}
 
               {plan.available && !billingReady && (
                 <div className="pricing-modern__hint">
