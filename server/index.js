@@ -3506,13 +3506,33 @@ function buildOrgStockWhere(orgId = null) {
 
 async function getBasicRenewalSkuSummary(orgId, tx = prisma) {
   const baseSkuLimit = getPlanBaseSkuLimit("basic-30");
+  const currentSubscription = await tx.subscription.findFirst({
+    where: { user: { orgId } },
+    orderBy: [{ paidUntil: "desc" }, { id: "desc" }],
+    select: {
+      plan: true,
+      skuAddonUnits: true,
+    },
+  });
+  const currentPlanId = normalizePlanId(currentSubscription?.plan, "start-30");
+  const currentSubscriptionAddonUnits =
+    currentPlanId === "basic-30"
+      ? Math.max(0, Number(currentSubscription?.skuAddonUnits || 0) || 0)
+      : 0;
   const currentSkuCount = await tx.item.count({
     where: buildOrgStockWhere(orgId),
   });
-  const overLimitSkuCount = Math.max(0, Number(currentSkuCount || 0) - Number(baseSkuLimit || 0));
+  const effectiveRenewalSkuLimit = Number(baseSkuLimit || 0) + Number(currentSubscriptionAddonUnits || 0);
+  const overLimitSkuCount = Math.max(
+    0,
+    Number(currentSkuCount || 0) - Number(effectiveRenewalSkuLimit || 0)
+  );
   const recommendedAddons = buildBasicSkuAddonsFromUnits(overLimitSkuCount);
   return {
     baseSkuLimit,
+    currentPlanId,
+    currentSubscriptionAddonUnits,
+    effectiveRenewalSkuLimit,
     currentSkuCount,
     overLimitSkuCount,
     recommendedSkuAddonUnits: Number(recommendedAddons.skuUnits || 0) || 0,

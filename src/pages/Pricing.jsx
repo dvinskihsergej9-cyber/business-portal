@@ -157,10 +157,19 @@ export default function Pricing() {
     (Array.isArray(user?.roles) && user.roles.includes("ADMIN")) ||
     user?.role === "ADMIN";
   const currentPlanId = String(user?.subscription?.plan || "").trim().toLowerCase();
+  const summaryCurrentPlanId = String(skuRenewalSummary?.currentPlanId || "").trim().toLowerCase();
   const isCurrentBasicActive =
     currentPlanId === "basic-30" && Boolean(user?.subscription?.isActive);
-  const currentBasicAddonUnits =
+  const currentBasicAddonUnitsFromProfile =
     currentPlanId === "basic-30" ? Math.max(0, Number(user?.subscription?.skuAddonUnits || 0) || 0) : 0;
+  const currentBasicAddonUnitsFromSummary =
+    summaryCurrentPlanId === "basic-30"
+      ? Math.max(0, Number(skuRenewalSummary?.currentSubscriptionAddonUnits || 0) || 0)
+      : 0;
+  const currentBasicAddonUnits = Math.max(
+    currentBasicAddonUnitsFromProfile,
+    currentBasicAddonUnitsFromSummary
+  );
   const recommendedRenewalAddonUnits = Math.max(
     0,
     Number(skuRenewalSummary?.recommendedSkuAddonUnits || 0) || 0
@@ -179,7 +188,8 @@ export default function Pricing() {
   );
   const renewalEffectiveSkuLimit = Math.max(
     0,
-    renewalBaseSkuLimit + (isCurrentBasicActive ? currentBasicAddonUnits : 0)
+    Number(skuRenewalSummary?.effectiveRenewalSkuLimit || 0) ||
+      (renewalBaseSkuLimit + (isCurrentBasicActive ? currentBasicAddonUnits : 0))
   );
   const renewalProjectedOverLimitSkuCount = Math.max(
     0,
@@ -195,10 +205,6 @@ export default function Pricing() {
     !basicSkuAddonsTouched && defaultBasicAddonUnits > 0 && periodId === "1m";
 
   const extendedPeriodSelected = periodId !== "1m";
-  const basicSkuAddonMonthlyAmount = effectiveBasicSkuAddons.reduce(
-    (sum, value) => sum + Number(value.price || 0),
-    0
-  );
   const basicSkuAddonUnits = effectiveBasicSkuAddons.reduce(
     (sum, value) => sum + Number(value.sku || 0),
     0
@@ -578,10 +584,6 @@ export default function Pricing() {
       <section className="pricing-modern__grid pricing-modern__grid--plans">
         {visiblePlanCards.map((plan) => {
           const isBasicPlan = plan.id === "basic-30";
-          const monthlyAddonAmount = isBasicPlan ? basicSkuAddonMonthlyAmount : 0;
-          const renewalAddonsForPay = isBasicPlan
-            ? effectiveBasicSkuAddons.map((entry) => entry.sku)
-            : [];
           const topupAddonsForPay = isBasicPlan
             ? topupSkuAddons.map((entry) => entry.sku)
             : [];
@@ -593,10 +595,31 @@ export default function Pricing() {
             isBasicPlan &&
             canUseBasicTopup &&
             basicPaymentMode === "topup";
+          const renewalAddonUnitsForPay =
+            isBasicPlan && !isTopupMode
+              ? Math.max(0, Math.max(basicSkuAddonUnits, currentBasicAddonUnits))
+              : Math.max(0, basicSkuAddonUnits);
+          const renewalAddonPresetForPay =
+            isBasicPlan && !isTopupMode
+              ? getBasicSkuAddonPresetFromUnits(renewalAddonUnitsForPay)
+              : effectiveBasicSkuAddons;
+          const renewalAddonMonthlyAmountForPay = isBasicPlan
+            ? renewalAddonPresetForPay.reduce(
+                (sum, value) => sum + Number(value.price || 0),
+                0
+              )
+            : 0;
+          const renewalAddonsForPay = isBasicPlan
+            ? renewalAddonPresetForPay.map((entry) => entry.sku)
+            : [];
+          const autoKeptAddonUnits =
+            isBasicPlan && !isTopupMode
+              ? Math.max(0, renewalAddonUnitsForPay - Math.max(0, basicSkuAddonUnits))
+              : 0;
           const displayAmount = plan.available
             ? isTopupMode
               ? topupSkuAddonMonthlyAmount
-              : getPeriodAmount(plan.amount + monthlyAddonAmount, periodId)
+              : getPeriodAmount(plan.amount + renewalAddonMonthlyAmountForPay, periodId)
             : 0;
           const displayPeriodLabel = isTopupMode ? "разово" : getPeriodLabel(periodId);
           const trimSkuCountOnBaseRenewal = Math.max(
@@ -679,8 +702,13 @@ export default function Pricing() {
                     })}
                   </div>
                   <div className="pricing-modern__sku-summary">
-                    В следующем периоде: +{basicSkuAddonUnits} SKU / +{formatPrice(basicSkuAddonMonthlyAmount, "RUB")} в месяц
+                    В следующем периоде: +{renewalAddonUnitsForPay} SKU / +{formatPrice(renewalAddonMonthlyAmountForPay, "RUB")} в месяц
                   </div>
+                </div>
+              )}
+              {isBasicPlan && !isTopupMode && autoKeptAddonUnits > 0 && (
+                <div className="pricing-modern__hint">
+                  В этом продлении автоматически сохранятся ранее оплаченные +{autoKeptAddonUnits} SKU.
                 </div>
               )}
               {isBasicPlan && canUseBasicTopup && isTopupMode && (
