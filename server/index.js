@@ -24366,6 +24366,7 @@ const BILLING_AUTO_RENEW_RETRY_COOLDOWN_MS = Math.max(
   Number(process.env.BILLING_AUTO_RENEW_RETRY_COOLDOWN_MS || 1000 * 60 * 60 * 6) ||
     1000 * 60 * 60 * 6
 );
+const BILLING_AUTO_RENEW_ENABLED = false;
 let billingAutoRenewRunning = false;
 
 function computeAutoRenewNextAttemptAt(subscription, now = new Date()) {
@@ -24757,6 +24758,7 @@ async function runSingleAutoRenewal(subscription, now = new Date()) {
 }
 
 async function checkAutoSubscriptionRenewals() {
+  if (!BILLING_AUTO_RENEW_ENABLED) return;
   if (billingAutoRenewRunning) return;
   if (!YOOKASSA_SHOP_ID || !YOOKASSA_SECRET_KEY) return;
 
@@ -25061,8 +25063,10 @@ async function startBackgroundTasks() {
   setInterval(checkAutoReorders, AUTO_REORDER_INTERVAL_MS);
   checkAutoReorders();
 
-  setInterval(checkAutoSubscriptionRenewals, BILLING_AUTO_RENEW_INTERVAL_MS);
-  checkAutoSubscriptionRenewals();
+  if (BILLING_AUTO_RENEW_ENABLED) {
+    setInterval(checkAutoSubscriptionRenewals, BILLING_AUTO_RENEW_INTERVAL_MS);
+    checkAutoSubscriptionRenewals();
+  }
 
   setInterval(() => {
     // 1) Уведомления по задачам склада

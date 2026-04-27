@@ -3428,23 +3428,6 @@ input[type="number"] {
   gap: 12px;
 }
 
-.pricing-modern__active--auto-renew {
-  background: #eef6ff;
-}
-
-.pricing-modern__status-btn {
-  background: #4b5563;
-  color: #ffffff;
-  border: none;
-  border-radius: 11px;
-  min-height: 44px;
-  min-width: 170px;
-}
-
-.pricing-modern__status-btn:hover:not(:disabled) {
-  background: #374151;
-}
-
 .pricing-modern__active-title {
   font-size: 17px;
   font-weight: 800;
@@ -3867,10 +3850,6 @@ input[type="number"] {
     align-items: stretch;
   }
 
-  .pricing-modern__active--auto-renew .pricing-modern__status-btn {
-    width: 100%;
-    min-width: 0;
-  }
 }
 
 @media (max-width: 620px) {
