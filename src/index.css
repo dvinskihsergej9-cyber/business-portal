@@ -3638,6 +3638,11 @@ input[type="number"] {
   grid-template-columns: 1fr;
 }
 
+.pricing-modern__actions--trim {
+  grid-template-columns: 1fr;
+  gap: 8px;
+}
+
 .pricing-modern__cta {
   height: 56px;
   border-radius: 12px;
@@ -3699,6 +3704,25 @@ input[type="number"] {
   background: #334155;
 }
 
+.pricing-modern__cta--danger {
+  background: #fff1f2;
+  color: #b91c1c;
+  border: 1px solid #fecdd3;
+  box-shadow: none;
+}
+
+.pricing-modern__cta--danger::after {
+  display: none;
+}
+
+.pricing-modern__cta--danger:not(:disabled) {
+  animation: none;
+}
+
+.pricing-modern__cta--danger:hover:not(:disabled) {
+  background: #ffe4e6;
+}
+
 .pricing-modern__cta:disabled {
   opacity: 1;
   filter: none;
@@ -3707,6 +3731,10 @@ input[type="number"] {
 .pricing-modern__hint {
   font-size: 12px;
   color: #64748b;
+}
+
+.pricing-modern__hint--danger {
+  color: #b91c1c;
 }
 
 .pricing-modern__trust {
