@@ -170,6 +170,10 @@ const EXTRA_ERROR_MESSAGES = {
   TENANT_SUBSCRIPTION_NOT_FOUND:
     "У клиента нет активной подписки. Для возобновления используйте бесплатное продление.",
   BILLING_SKU_RENEWAL_SUMMARY_ERROR: "Не удалось получить данные по лимиту SKU для продления.",
+  BILLING_AUTO_RENEW_UNAVAILABLE:
+    "Автосписание временно недоступно: на сервере не применено обновление БД. Обратитесь в поддержку.",
+  BILLING_AUTO_RENEW_SETTINGS_GET_ERROR: "Не удалось загрузить настройки автосписания.",
+  BILLING_AUTO_RENEW_SETTINGS_UPDATE_ERROR: "Не удалось обновить настройки автосписания.",
   MARKETING_SETTINGS_LOAD_ERROR: "Не удалось загрузить настройки рассылки.",
   MARKETING_SETTINGS_SAVE_ERROR: "Не удалось сохранить настройки рассылки.",
   UNSUBSCRIBE_ERROR: "Не удалось обработать отписку. Попробуйте позже.",
