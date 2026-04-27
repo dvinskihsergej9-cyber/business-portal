@@ -702,7 +702,7 @@ export default function Pricing() {
                   {loading
                     ? "Оплата..."
                     : isTopupMode
-                      ? "Оплатить докупку SKU"
+                      ? "Оплатить"
                       : isBasicPlan && isCurrentBasicActive
                         ? "Продлить тариф"
                         : "Оплатить"}

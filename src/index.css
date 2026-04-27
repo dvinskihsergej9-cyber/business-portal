@@ -3644,7 +3644,41 @@ input[type="number"] {
   font-weight: 700;
   font-size: 16px;
   border: none;
-  box-shadow: none;
+  box-shadow: 0 8px 20px rgba(37, 99, 235, 0.18);
+  position: relative;
+  overflow: hidden;
+  transition: transform 0.2s ease, box-shadow 0.25s ease, filter 0.2s ease;
+}
+
+.pricing-modern__cta::after {
+  content: "";
+  position: absolute;
+  top: -35%;
+  left: -55%;
+  width: 36%;
+  height: 170%;
+  transform: rotate(20deg);
+  background: linear-gradient(
+    90deg,
+    rgba(255, 255, 255, 0) 0%,
+    rgba(255, 255, 255, 0.34) 50%,
+    rgba(255, 255, 255, 0) 100%
+  );
+  pointer-events: none;
+  animation: pricing-cta-sheen 2.8s ease-in-out infinite;
+}
+
+.pricing-modern__cta:not(:disabled) {
+  animation: pricing-cta-breathe 1.9s ease-in-out infinite;
+}
+
+.pricing-modern__cta:hover:not(:disabled) {
+  transform: translateY(-2px) scale(1.01);
+  filter: saturate(1.08);
+}
+
+.pricing-modern__cta:active:not(:disabled) {
+  transform: translateY(0) scale(0.995);
 }
 
 .pricing-modern__cta--dark {
@@ -3654,10 +3688,6 @@ input[type="number"] {
 
 .pricing-modern__cta--dark:hover:not(:disabled) {
   background: #15803d;
-}
-
-.pricing-modern__cta--dark:not(:disabled) {
-  animation: pricing-cta-pulse 1.9s ease-in-out infinite;
 }
 
 .pricing-modern__cta--light {
@@ -3737,18 +3767,43 @@ input[type="number"] {
   padding-bottom: 4px;
 }
 
-@keyframes pricing-cta-pulse {
+@keyframes pricing-cta-breathe {
   0% {
-    box-shadow: 0 0 0 0 rgba(22, 163, 74, 0.45);
-    transform: translateY(0);
+    box-shadow: 0 8px 20px rgba(37, 99, 235, 0.16);
   }
   50% {
-    box-shadow: 0 0 0 8px rgba(22, 163, 74, 0);
-    transform: translateY(-1px);
+    box-shadow: 0 12px 26px rgba(37, 99, 235, 0.28);
   }
   100% {
-    box-shadow: 0 0 0 0 rgba(22, 163, 74, 0);
-    transform: translateY(0);
+    box-shadow: 0 8px 20px rgba(37, 99, 235, 0.16);
+  }
+}
+
+@keyframes pricing-cta-sheen {
+  0% {
+    left: -55%;
+    opacity: 0;
+  }
+  18% {
+    opacity: 1;
+  }
+  38% {
+    left: 130%;
+    opacity: 0;
+  }
+  100% {
+    left: 130%;
+    opacity: 0;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .pricing-modern__cta:not(:disabled) {
+    animation: none;
+  }
+
+  .pricing-modern__cta::after {
+    animation: none;
   }
 }
 
