@@ -3972,6 +3972,19 @@ function parseYookassaMetadata(metadata) {
   };
 }
 
+function extractSavedYookassaPaymentMethod(providerPayment) {
+  const methodId = String(providerPayment?.payment_method?.id || "").trim();
+  const methodType = String(providerPayment?.payment_method?.type || "").trim();
+  const methodSaved = providerPayment?.payment_method?.saved === true;
+  if (!methodSaved || !methodId) {
+    return null;
+  }
+  return {
+    id: methodId,
+    type: methodType || null,
+  };
+}
+
 function validatePlanMetadata(resolvedPlan, metadata) {
   if (!resolvedPlan || !metadata.planId || !metadata.days) return false;
   if (resolvedPlan.planId !== metadata.planId) return false;
@@ -4079,6 +4092,16 @@ async function applyPaymentSuccess({ paymentRecord, providerPayment, plan }) {
   const existingMetadata = paymentRecord.metadata || {};
   const paymentKind = normalizePaymentKind(existingMetadata?.paymentKind);
   const paymentSkuAddonUnits = Math.max(0, Number(existingMetadata?.skuAddonUnits || 0) || 0);
+  const savedPaymentMethod = extractSavedYookassaPaymentMethod(providerPayment);
+  const autoPaymentMetadataPatch =
+    paymentKind === "subscription" && savedPaymentMethod
+      ? {
+          autoPaymentMethodId: savedPaymentMethod.id,
+          autoPaymentMethodType: savedPaymentMethod.type,
+          autoPaymentMethodSaved: true,
+          autoPaymentUpdatedAt: now.toISOString(),
+        }
+      : {};
 
   const processedProviderPaymentIds = Array.isArray(existingMetadata.processedProviderPaymentIds)
     ? existingMetadata.processedProviderPaymentIds
@@ -4105,6 +4128,7 @@ async function applyPaymentSuccess({ paymentRecord, providerPayment, plan }) {
         status: "succeeded",
         metadata: {
           ...existingMetadata,
+          ...autoPaymentMetadataPatch,
           providerStatus: providerPayment.status,
           providerPaid: providerPayment.paid,
           processedProviderPaymentIds: nextProcessedProviderPaymentIds,
@@ -4169,6 +4193,7 @@ async function applyPaymentSuccess({ paymentRecord, providerPayment, plan }) {
       status: "succeeded",
       metadata: {
         ...existingMetadata,
+        ...autoPaymentMetadataPatch,
         providerStatus: providerPayment.status,
         providerPaid: providerPayment.paid,
         processedProviderPaymentIds: nextProcessedProviderPaymentIds,
@@ -11267,6 +11292,8 @@ app.get("/api/profile", auth, async (req, res) => {
 
       if (resolvedPaymentMethod === "sbp") {
         payload.payment_method_data = { type: "sbp" };
+      } else {
+        payload.save_payment_method = true;
       }
 
       const payment = await yookassaRequest(
@@ -24026,6 +24053,356 @@ async function ensureWarehouseItemsResetForCurrentRevision() {
   );
 }
 
+const BILLING_AUTO_RENEW_INTERVAL_MS = Math.max(
+  1000 * 60 * 5,
+  Number(process.env.BILLING_AUTO_RENEW_INTERVAL_MS || 1000 * 60 * 15) || 1000 * 60 * 15
+);
+const BILLING_AUTO_RENEW_LOOKAHEAD_MS = Math.max(
+  0,
+  Number(process.env.BILLING_AUTO_RENEW_LOOKAHEAD_MS || 1000 * 60 * 15) || 0
+);
+const BILLING_AUTO_RENEW_MAX_OVERDUE_MS = Math.max(
+  1000 * 60 * 60,
+  Number(process.env.BILLING_AUTO_RENEW_MAX_OVERDUE_MS || 1000 * 60 * 60 * 24 * 14) ||
+    1000 * 60 * 60 * 24 * 14
+);
+const BILLING_AUTO_RENEW_RETRY_COOLDOWN_MS = Math.max(
+  1000 * 60 * 15,
+  Number(process.env.BILLING_AUTO_RENEW_RETRY_COOLDOWN_MS || 1000 * 60 * 60 * 6) ||
+    1000 * 60 * 60 * 6
+);
+let billingAutoRenewRunning = false;
+
+async function getLatestSucceededSubscriptionPayment(userId) {
+  const recentSucceededPayments = await prisma.payment.findMany({
+    where: {
+      userId,
+      provider: "yookassa",
+      status: "succeeded",
+    },
+    orderBy: { createdAt: "desc" },
+    take: 30,
+    select: {
+      id: true,
+      metadata: true,
+      createdAt: true,
+      providerPaymentId: true,
+    },
+  });
+  return recentSucceededPayments.find(
+    (entry) => normalizePaymentKind(entry?.metadata?.paymentKind) === "subscription"
+  ) || null;
+}
+
+async function hasRecentAutoRenewAttempt(userId, now = new Date()) {
+  const lastPayment = await prisma.payment.findFirst({
+    where: {
+      userId,
+      provider: "yookassa",
+    },
+    orderBy: { createdAt: "desc" },
+    select: {
+      status: true,
+      createdAt: true,
+      metadata: true,
+    },
+  });
+  if (!lastPayment?.createdAt || !lastPayment?.metadata?.autoRenew) {
+    return false;
+  }
+  const ageMs = Math.max(0, now.getTime() - new Date(lastPayment.createdAt).getTime());
+  if (ageMs > BILLING_AUTO_RENEW_RETRY_COOLDOWN_MS) {
+    return false;
+  }
+  const status = String(lastPayment.status || "").toLowerCase();
+  return ["pending", "waiting_for_capture", "canceled", "failed"].includes(status);
+}
+
+async function runSingleAutoRenewal(subscription, now = new Date()) {
+  const userId = Number(subscription?.userId || 0);
+  if (!userId) return;
+
+  const planId = normalizePlanId(subscription?.plan, "");
+  if (!["basic-30", "pro-30"].includes(planId)) return;
+
+  const paidUntil = subscription?.paidUntil ? new Date(subscription.paidUntil) : null;
+  if (!paidUntil) return;
+  const overdueMs = now.getTime() - paidUntil.getTime();
+  if (overdueMs > BILLING_AUTO_RENEW_MAX_OVERDUE_MS) return;
+
+  if (await hasRecentAutoRenewAttempt(userId, now)) {
+    return;
+  }
+  const recentPendingPayment = await prisma.payment.findFirst({
+    where: {
+      userId,
+      provider: "yookassa",
+      status: {
+        in: ["pending", "waiting_for_capture"],
+      },
+      createdAt: {
+        gte: new Date(now.getTime() - BILLING_AUTO_RENEW_RETRY_COOLDOWN_MS),
+      },
+    },
+    select: { id: true },
+  });
+  if (recentPendingPayment?.id) {
+    return;
+  }
+
+  const latestSubscriptionPayment = await getLatestSucceededSubscriptionPayment(userId);
+  if (!latestSubscriptionPayment) return;
+
+  let paymentMethodId = String(latestSubscriptionPayment?.metadata?.autoPaymentMethodId || "").trim();
+  if (!paymentMethodId && latestSubscriptionPayment?.providerPaymentId) {
+    try {
+      const sourceProviderPayment = await fetchYookassaPayment(
+        String(latestSubscriptionPayment.providerPaymentId)
+      );
+      const savedSourceMethod = extractSavedYookassaPaymentMethod(sourceProviderPayment);
+      if (savedSourceMethod?.id) {
+        paymentMethodId = savedSourceMethod.id;
+        await prisma.payment.update({
+          where: { id: latestSubscriptionPayment.id },
+          data: {
+            metadata: {
+              ...(latestSubscriptionPayment.metadata || {}),
+              autoPaymentMethodId: savedSourceMethod.id,
+              autoPaymentMethodType: savedSourceMethod.type,
+              autoPaymentMethodSaved: true,
+              autoPaymentUpdatedAt: now.toISOString(),
+            },
+          },
+        }).catch(() => null);
+      }
+    } catch (err) {
+      console.error("[BILLING_AUTO_RENEW] source payment method fetch error:", {
+        userId,
+        paymentId: latestSubscriptionPayment.id,
+        error: err?.message || err,
+      });
+    }
+  }
+  if (!paymentMethodId) return;
+
+  const periodIdRaw = String(latestSubscriptionPayment?.metadata?.periodId || "1m").trim().toLowerCase();
+  const periodId = getBillingPeriod(periodIdRaw)?.id || "1m";
+
+  const plan = getPlan(planId);
+  if (!plan) return;
+
+  const skuAddonUnits =
+    planId === "basic-30"
+      ? Math.max(0, Number(subscription?.skuAddonUnits || 0) || 0)
+      : 0;
+  const skuAddonConfig =
+    planId === "basic-30"
+      ? buildBasicSkuAddonsFromUnits(skuAddonUnits)
+      : { packages: [], monthlyAmount: 0, skuUnits: 0 };
+
+  const baseResolvedPlan = getResolvedPlanCharge(plan, periodId, { extraMonthlyAmount: 0 });
+  const resolvedPlan = getResolvedPlanCharge(plan, periodId, {
+    extraMonthlyAmount: skuAddonConfig.monthlyAmount,
+  });
+  if (!baseResolvedPlan || !resolvedPlan) return;
+
+  const emailCandidates = [subscription?.user?.email];
+  const receiptEmail = emailCandidates
+    .map((value) => normalizeEmail(value))
+    .find((value) => isValidRegistrationEmail(value) && !value.endsWith(".invalid"));
+  if (!receiptEmail) return;
+
+  const tempProviderId = `pending_${crypto.randomUUID()}`;
+  const localPayment = await prisma.payment.create({
+    data: {
+      userId,
+      provider: "yookassa",
+      providerPaymentId: tempProviderId,
+      amount: resolvedPlan.amount,
+      currency: resolvedPlan.currency,
+      status: "pending",
+      metadata: {
+        paymentKind: "subscription",
+        planId: resolvedPlan.planId,
+        periodId: resolvedPlan.periodId,
+        days: resolvedPlan.days,
+        amount: resolvedPlan.amount,
+        currency: resolvedPlan.currency,
+        paymentMethod: "autopay",
+        skuAddonUnits: skuAddonConfig.skuUnits,
+        skuAddonMonthlyAmount: skuAddonConfig.monthlyAmount,
+        skuAddonPackages: skuAddonConfig.packages,
+        autoRenew: true,
+        autoRenewTriggeredAt: now.toISOString(),
+        autoRenewSourcePaymentId: latestSubscriptionPayment.id,
+        autoRenewPaymentMethodId: paymentMethodId,
+      },
+    },
+  });
+
+  try {
+    const payload = {
+      amount: {
+        value: formatAmount(resolvedPlan.amount),
+        currency: resolvedPlan.currency,
+      },
+      capture: true,
+      payment_method_id: paymentMethodId,
+      description: `Subscription auto-renew ${resolvedPlan.planId} ${resolvedPlan.periodId}`,
+      metadata: {
+        paymentKind: "subscription",
+        userId: String(userId),
+        planId: resolvedPlan.planId,
+        periodId: resolvedPlan.periodId,
+        days: String(resolvedPlan.days),
+        amount: String(resolvedPlan.amount),
+        currency: resolvedPlan.currency,
+        localPaymentId: String(localPayment.id),
+        skuAddonUnits: String(skuAddonConfig.skuUnits),
+        skuAddonMonthlyAmount: String(skuAddonConfig.monthlyAmount),
+        skuAddonPackages: skuAddonConfig.packages.join(","),
+        autoRenew: "1",
+        autoRenewSourcePaymentId: String(latestSubscriptionPayment.id),
+      },
+      receipt: {
+        customer: {
+          email: receiptEmail,
+        },
+        items: [
+          {
+            description: `Подписка ${resolvedPlan.title}`.slice(0, 128),
+            quantity: "1.00",
+            amount: {
+              value: formatAmount(baseResolvedPlan.amount),
+              currency: resolvedPlan.currency,
+            },
+            vat_code: 1,
+            payment_mode: "full_prepayment",
+            payment_subject: "service",
+          },
+          ...(skuAddonConfig.monthlyAmount > 0
+            ? [
+                {
+                  description: `Пакеты SKU (+${skuAddonConfig.skuUnits})`.slice(0, 128),
+                  quantity: "1.00",
+                  amount: {
+                    value: formatAmount(
+                      Math.max(0, Number(resolvedPlan.amount) - Number(baseResolvedPlan.amount))
+                    ),
+                    currency: resolvedPlan.currency,
+                  },
+                  vat_code: 1,
+                  payment_mode: "full_prepayment",
+                  payment_subject: "service",
+                },
+              ]
+            : []),
+        ],
+      },
+    };
+
+    const providerPayment = await yookassaRequest(
+      "POST",
+      "/payments",
+      payload,
+      crypto.randomUUID()
+    );
+
+    await prisma.payment.update({
+      where: { id: localPayment.id },
+      data: {
+        providerPaymentId: providerPayment.id,
+        status: providerPayment.status || "pending",
+        metadata: {
+          ...(localPayment.metadata || {}),
+          providerStatus: providerPayment.status,
+        },
+      },
+    });
+
+    if (providerPayment.status === "succeeded" && providerPayment.paid) {
+      await applyPaymentSuccess({
+        paymentRecord: {
+          ...localPayment,
+          metadata: {
+            ...(localPayment.metadata || {}),
+            providerStatus: providerPayment.status,
+          },
+        },
+        providerPayment,
+        plan: resolvedPlan,
+      });
+    } else if (providerPayment.status === "canceled") {
+      await prisma.payment.update({
+        where: { id: localPayment.id },
+        data: { status: "canceled" },
+      });
+    }
+  } catch (err) {
+    console.error("[BILLING_AUTO_RENEW] create payment error:", {
+      userId,
+      planId,
+      error: err?.message || err,
+      status: err?.status || null,
+    });
+    await prisma.payment.update({
+      where: { id: localPayment.id },
+      data: {
+        status: "failed",
+        metadata: {
+          ...(localPayment.metadata || {}),
+          autoRenewError: String(err?.message || "AUTO_RENEW_CREATE_PAYMENT_ERROR"),
+          autoRenewErrorAt: new Date().toISOString(),
+        },
+      },
+    }).catch(() => null);
+  }
+}
+
+async function checkAutoSubscriptionRenewals() {
+  if (billingAutoRenewRunning) return;
+  if (!YOOKASSA_SHOP_ID || !YOOKASSA_SECRET_KEY) return;
+
+  billingAutoRenewRunning = true;
+  try {
+    const now = new Date();
+    const dueBefore = new Date(now.getTime() + BILLING_AUTO_RENEW_LOOKAHEAD_MS);
+    const dueAfter = new Date(now.getTime() - BILLING_AUTO_RENEW_MAX_OVERDUE_MS);
+    const dueSubscriptions = await prisma.subscription.findMany({
+      where: {
+        status: "active",
+        paidUntil: {
+          not: null,
+          lte: dueBefore,
+          gte: dueAfter,
+        },
+        user: {
+          isSystemOwner: false,
+          isActive: true,
+        },
+      },
+      include: {
+        user: {
+          select: {
+            id: true,
+            email: true,
+          },
+        },
+      },
+      orderBy: [{ paidUntil: "asc" }, { id: "asc" }],
+      take: 200,
+    });
+
+    for (const subscription of dueSubscriptions) {
+      await runSingleAutoRenewal(subscription, now);
+    }
+  } catch (err) {
+    console.error("[BILLING_AUTO_RENEW] check error:", err);
+  } finally {
+    billingAutoRenewRunning = false;
+  }
+}
+
 async function checkAutoReorders(options = {}) {
   try {
     const requestedItemIds = Array.isArray(options?.itemIds)
@@ -24271,6 +24648,9 @@ async function startBackgroundTasks() {
 
   setInterval(checkAutoReorders, AUTO_REORDER_INTERVAL_MS);
   checkAutoReorders();
+
+  setInterval(checkAutoSubscriptionRenewals, BILLING_AUTO_RENEW_INTERVAL_MS);
+  checkAutoSubscriptionRenewals();
 
   setInterval(() => {
     // 1) Уведомления по задачам склада
