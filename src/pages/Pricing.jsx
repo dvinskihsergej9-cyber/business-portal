@@ -96,6 +96,13 @@ function getPeriodLabel(periodId) {
   return "30 дней";
 }
 
+function formatDateTime(value) {
+  if (!value) return "—";
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return "—";
+  return date.toLocaleString("ru-RU");
+}
+
 function getBasicSkuAddonPresetFromUnits(unitsInput) {
   const units = Math.max(0, Number(unitsInput || 0) || 0);
   if (!units) return [];
@@ -151,6 +158,9 @@ export default function Pricing() {
   const [basicPaymentMode, setBasicPaymentMode] = useState("renewal");
   const [skuRenewalSummary, setSkuRenewalSummary] = useState(null);
   const [skuRenewalLoading, setSkuRenewalLoading] = useState(false);
+  const [autoRenewSettings, setAutoRenewSettings] = useState(null);
+  const [autoRenewLoading, setAutoRenewLoading] = useState(false);
+  const [autoRenewSaving, setAutoRenewSaving] = useState(false);
 
   const canManageBilling =
     user?.isSystemOwner === true ||
@@ -442,12 +452,77 @@ export default function Pricing() {
     }
   };
 
+  const loadAutoRenewSettings = async () => {
+    if (!canManageBilling || user?.isSystemOwner) {
+      setAutoRenewSettings(null);
+      return;
+    }
+    try {
+      setAutoRenewLoading(true);
+      const token = localStorage.getItem("token");
+      const res = await apiFetch("/billing/auto-renew-settings", {
+        headers: {
+          Authorization: `Bearer ${token}`,
+        },
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        throw new Error(data?.message || "BILLING_AUTO_RENEW_SETTINGS_GET_ERROR");
+      }
+      setAutoRenewSettings(data?.settings || null);
+    } catch (err) {
+      console.error("billing auto renew settings error:", err);
+      setAutoRenewSettings(null);
+    } finally {
+      setAutoRenewLoading(false);
+    }
+  };
+
+  const handleToggleAutoRenew = async () => {
+    if (!canManageBilling || user?.isSystemOwner || autoRenewSaving) return;
+    const nextEnabled = autoRenewSettings?.enabled !== true;
+    try {
+      setAutoRenewSaving(true);
+      setError("");
+      const token = localStorage.getItem("token");
+      const res = await apiFetch("/billing/auto-renew-settings", {
+        method: "PUT",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify({ enabled: nextEnabled }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        setError(
+          normalizeErrorMessage(
+            data?.message || "",
+            "Не удалось обновить настройки автосписания."
+          )
+        );
+        return;
+      }
+      setAutoRenewSettings(data?.settings || null);
+    } catch (err) {
+      console.error("billing auto renew update error:", err);
+      setError("Не удалось обновить настройки автосписания.");
+    } finally {
+      setAutoRenewSaving(false);
+    }
+  };
+
   useEffect(() => {
     loadBillingConfig();
   }, []);
 
   useEffect(() => {
     loadSkuRenewalSummary();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [canManageBilling, user?.isSystemOwner, user?.orgId]);
+
+  useEffect(() => {
+    loadAutoRenewSettings();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [canManageBilling, user?.isSystemOwner, user?.orgId]);
 
@@ -471,6 +546,19 @@ export default function Pricing() {
   const visiblePlanCards = PLAN_CARDS.filter(
     (plan) => periodId === "1m" || plan.id !== "start-30"
   );
+  const showAutoRenewControl = Boolean(canManageBilling && !user?.isSystemOwner);
+  const autoRenewState = String(autoRenewSettings?.state || "").trim().toLowerCase();
+  const autoRenewStateLabel = autoRenewSettings?.enabled
+    ? autoRenewState === "enabled"
+      ? "Включено"
+      : autoRenewState === "needs_method"
+        ? "Нужна привязка карты"
+        : autoRenewState === "inactive"
+          ? "Ожидает активации подписки"
+          : autoRenewState === "unsupported_plan"
+            ? "Для текущего тарифа недоступно"
+            : "Включено"
+    : "Выключено";
 
   const handleBack = () => {
     if (window.history.length > 1) {
@@ -555,6 +643,43 @@ export default function Pricing() {
             <div className="pricing-modern__active-title">Подписка активна</div>
             <div className="pricing-modern__active-subtitle">Оплачено до: {paidUntilDate}</div>
           </div>
+        </section>
+      )}
+
+      {showAutoRenewControl && (
+        <section className="pricing-modern__active pricing-modern__active--auto-renew">
+          <div>
+            <div className="pricing-modern__active-title">Автосписание</div>
+            <div className="pricing-modern__active-subtitle">Статус: {autoRenewStateLabel}</div>
+            <div className="pricing-modern__hint">
+              Следующая попытка: {formatDateTime(autoRenewSettings?.nextAttemptAt)}
+            </div>
+            <div className="pricing-modern__hint">
+              Способ оплаты: {autoRenewSettings?.paymentMethod?.type || "не привязан"}
+            </div>
+            {autoRenewSettings?.lastAttempt?.status && (
+              <div className="pricing-modern__hint">
+                Последняя попытка: {autoRenewSettings.lastAttempt.status} ({formatDateTime(autoRenewSettings?.lastAttempt?.createdAt)})
+              </div>
+            )}
+            {autoRenewSettings?.lastAttempt?.error && (
+              <div className="pricing-modern__hint pricing-modern__hint--danger">
+                Ошибка автосписания: {autoRenewSettings.lastAttempt.error}
+              </div>
+            )}
+          </div>
+          <button
+            type="button"
+            className="btn pricing-modern__status-btn"
+            onClick={handleToggleAutoRenew}
+            disabled={autoRenewLoading || autoRenewSaving}
+          >
+            {autoRenewSaving
+              ? "Сохраняем..."
+              : autoRenewSettings?.enabled
+                ? "Отключить автосписание"
+                : "Включить автосписание"}
+          </button>
         </section>
       )}
 

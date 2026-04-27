@@ -232,8 +232,18 @@ async function ensureOrgRuntimeSettingsTable() {
           CREATE TABLE IF NOT EXISTS "OrgRuntimeSetting" (
             "orgId" INTEGER PRIMARY KEY,
             "pickingMode" TEXT NOT NULL DEFAULT 'SCAN_EACH',
+            "billingAutoRenewEnabled" BOOLEAN NOT NULL DEFAULT true,
+            "billingAutoRenewUpdatedAt" TIMESTAMP(3),
             "updatedAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP
           );
+        `);
+        await prisma.$executeRawUnsafe(`
+          ALTER TABLE "OrgRuntimeSetting"
+          ADD COLUMN IF NOT EXISTS "billingAutoRenewEnabled" BOOLEAN NOT NULL DEFAULT true;
+        `);
+        await prisma.$executeRawUnsafe(`
+          ALTER TABLE "OrgRuntimeSetting"
+          ADD COLUMN IF NOT EXISTS "billingAutoRenewUpdatedAt" TIMESTAMP(3);
         `);
         orgRuntimeSettingsTableAvailable = true;
         return true;
@@ -319,6 +329,83 @@ async function setOrgPickingMode(orgIdInput, modeInput) {
     throw err;
   }
   return mode;
+}
+
+async function getOrgBillingAutoRenewEnabled(orgIdInput) {
+  const orgId = Number(orgIdInput);
+  if (!orgId || Number.isNaN(orgId)) return true;
+  const tableReady = await ensureOrgRuntimeSettingsTable();
+  if (!tableReady) return true;
+  try {
+    const rows = await prisma.$queryRawUnsafe(
+      `SELECT "billingAutoRenewEnabled" FROM "OrgRuntimeSetting" WHERE "orgId" = $1 LIMIT 1`,
+      orgId
+    );
+    const rawValue = Array.isArray(rows) && rows[0] ? rows[0].billingAutoRenewEnabled : null;
+    if (rawValue === null || rawValue === undefined) return true;
+    return rawValue !== false;
+  } catch (err) {
+    if (
+      isMissingRelationError(err, "OrgRuntimeSetting") ||
+      isPermissionDeniedForSchema(err, "public") ||
+      isPermissionDeniedForTable(err, "OrgRuntimeSetting")
+    ) {
+      orgRuntimeSettingsTableAvailable = false;
+      return true;
+    }
+    throw err;
+  }
+}
+
+async function setOrgBillingAutoRenewEnabled(orgIdInput, enabledInput) {
+  const orgId = Number(orgIdInput);
+  if (!orgId || Number.isNaN(orgId)) {
+    const err = new Error("ORG_REQUIRED");
+    err.code = "ORG_REQUIRED";
+    throw err;
+  }
+  const enabled = enabledInput !== false;
+  const tableReady = await ensureOrgRuntimeSettingsTable();
+  if (!tableReady) {
+    const err = new Error("BILLING_AUTO_RENEW_UNAVAILABLE");
+    err.code = "BILLING_AUTO_RENEW_UNAVAILABLE";
+    throw err;
+  }
+  try {
+    await prisma.$executeRawUnsafe(
+      `
+        INSERT INTO "OrgRuntimeSetting" (
+          "orgId",
+          "pickingMode",
+          "billingAutoRenewEnabled",
+          "billingAutoRenewUpdatedAt",
+          "updatedAt"
+        )
+        VALUES ($1, $2, $3, NOW(), NOW())
+        ON CONFLICT ("orgId")
+        DO UPDATE SET
+          "billingAutoRenewEnabled" = EXCLUDED."billingAutoRenewEnabled",
+          "billingAutoRenewUpdatedAt" = NOW(),
+          "updatedAt" = NOW()
+      `,
+      orgId,
+      PICKING_MODE_SCAN_EACH,
+      enabled
+    );
+  } catch (err) {
+    if (
+      isMissingRelationError(err, "OrgRuntimeSetting") ||
+      isPermissionDeniedForSchema(err, "public") ||
+      isPermissionDeniedForTable(err, "OrgRuntimeSetting")
+    ) {
+      orgRuntimeSettingsTableAvailable = false;
+      const unavailable = new Error("BILLING_AUTO_RENEW_UNAVAILABLE");
+      unavailable.code = "BILLING_AUTO_RENEW_UNAVAILABLE";
+      throw unavailable;
+    }
+    throw err;
+  }
+  return enabled;
 }
 
 
@@ -10808,11 +10895,143 @@ app.get("/api/profile", auth, async (req, res) => {
     }
   });
 
+  async function getBillingAutoRenewSettingsForOrg({ orgId, fallbackUserId = null } = {}) {
+    const targetOrgId = Number(orgId || 0);
+    if (!targetOrgId || Number.isNaN(targetOrgId)) {
+      const err = new Error("ORG_REQUIRED");
+      err.code = "ORG_REQUIRED";
+      throw err;
+    }
+    const billingUserId = await getBillingUserIdForOrg(targetOrgId, fallbackUserId);
+    const subscription = await getOrgSubscription(targetOrgId, billingUserId);
+    const now = new Date();
+    const planId = normalizePlanId(subscription?.plan, "");
+    const status = String(subscription?.status || "").trim().toLowerCase();
+    const isSubscriptionActive = Boolean(
+      subscription?.paidUntil &&
+        !Number.isNaN(new Date(subscription.paidUntil).getTime()) &&
+        ["active", "trialing"].includes(status)
+    );
+    const isSupportedPlan = ["basic-30", "pro-30"].includes(planId);
+    const enabled = await getOrgBillingAutoRenewEnabled(targetOrgId);
+    const latestSubscriptionPayment = subscription?.userId
+      ? await getLatestSucceededSubscriptionPayment(subscription.userId)
+      : null;
+    const autoPaymentMethodId = String(
+      latestSubscriptionPayment?.metadata?.autoPaymentMethodId || ""
+    ).trim();
+    const autoPaymentMethodType = String(
+      latestSubscriptionPayment?.metadata?.autoPaymentMethodType || ""
+    ).trim();
+    const lastAutoRenewPayment = subscription?.userId
+      ? await getLatestAutoRenewPayment(subscription.userId)
+      : null;
 
+    let state = "disabled";
+    if (!enabled) {
+      state = "disabled";
+    } else if (!isSubscriptionActive) {
+      state = "inactive";
+    } else if (!isSupportedPlan) {
+      state = "unsupported_plan";
+    } else if (!autoPaymentMethodId) {
+      state = "needs_method";
+    } else {
+      state = "enabled";
+    }
+
+    return {
+      orgId: targetOrgId,
+      enabled,
+      state,
+      isSubscriptionActive,
+      isSupportedPlan,
+      planId: planId || null,
+      paidUntil: subscription?.paidUntil || null,
+      nextAttemptAt:
+        state === "enabled" ? computeAutoRenewNextAttemptAt(subscription, now) : null,
+      paymentMethod: autoPaymentMethodId
+        ? {
+            id: autoPaymentMethodId,
+            type: autoPaymentMethodType || null,
+            updatedAt:
+              latestSubscriptionPayment?.metadata?.autoPaymentUpdatedAt ||
+              latestSubscriptionPayment?.createdAt ||
+              null,
+          }
+        : null,
+      lastAttempt: lastAutoRenewPayment
+        ? {
+            status: String(lastAutoRenewPayment.status || "").toLowerCase() || null,
+            createdAt: lastAutoRenewPayment.createdAt || null,
+            amount: Number(lastAutoRenewPayment.amount || 0) || 0,
+            currency: String(lastAutoRenewPayment.currency || "RUB").toUpperCase(),
+            error: String(lastAutoRenewPayment?.metadata?.autoRenewError || "").trim() || null,
+          }
+        : null,
+    };
+  }
 
   app.get("/api/billing/config", (req, res) => {
     const enabled = Boolean(YOOKASSA_SHOP_ID && YOOKASSA_SECRET_KEY);
     return res.json({ yookassaEnabled: enabled });
+  });
+
+  app.get("/api/billing/auto-renew-settings", auth, async (req, res) => {
+    try {
+      if (!req.user?.isSystemOwner && req.user?.role !== "ADMIN") {
+        return res.status(403).json({
+          message: "Оплату может настраивать только администратор клиента.",
+        });
+      }
+      const targetOrgId = req.user.isSystemOwner
+        ? Number(req.query.orgId || 0)
+        : Number(req.user.orgId || 0);
+      if (!targetOrgId || Number.isNaN(targetOrgId)) {
+        return res.status(400).json({ message: "ORG_REQUIRED" });
+      }
+
+      const settings = await getBillingAutoRenewSettingsForOrg({
+        orgId: targetOrgId,
+        fallbackUserId: req.user.id,
+      });
+      return res.json({ settings });
+    } catch (err) {
+      console.error("billing auto renew settings get error:", err);
+      return res.status(500).json({ message: "BILLING_AUTO_RENEW_SETTINGS_GET_ERROR" });
+    }
+  });
+
+  app.put("/api/billing/auto-renew-settings", auth, async (req, res) => {
+    try {
+      if (!req.user?.isSystemOwner && req.user?.role !== "ADMIN") {
+        return res.status(403).json({
+          message: "Оплату может настраивать только администратор клиента.",
+        });
+      }
+      const targetOrgId = req.user.isSystemOwner
+        ? Number(req.body?.orgId || req.user.orgId || 0)
+        : Number(req.user.orgId || 0);
+      if (!targetOrgId || Number.isNaN(targetOrgId)) {
+        return res.status(400).json({ message: "ORG_REQUIRED" });
+      }
+      if (typeof req.body?.enabled !== "boolean") {
+        return res.status(400).json({ message: "AUTO_RENEW_ENABLED_REQUIRED" });
+      }
+
+      await setOrgBillingAutoRenewEnabled(targetOrgId, req.body.enabled);
+      const settings = await getBillingAutoRenewSettingsForOrg({
+        orgId: targetOrgId,
+        fallbackUserId: req.user.id,
+      });
+      return res.json({ settings });
+    } catch (err) {
+      if (err?.code === "BILLING_AUTO_RENEW_UNAVAILABLE") {
+        return res.status(503).json({ message: "BILLING_AUTO_RENEW_UNAVAILABLE" });
+      }
+      console.error("billing auto renew settings update error:", err);
+      return res.status(500).json({ message: "BILLING_AUTO_RENEW_SETTINGS_UPDATE_ERROR" });
+    }
   });
 
   app.get("/api/billing/sku-renewal-summary", auth, async (req, res) => {
@@ -24073,6 +24292,38 @@ const BILLING_AUTO_RENEW_RETRY_COOLDOWN_MS = Math.max(
 );
 let billingAutoRenewRunning = false;
 
+function computeAutoRenewNextAttemptAt(subscription, now = new Date()) {
+  const paidUntil = subscription?.paidUntil ? new Date(subscription.paidUntil) : null;
+  if (!paidUntil) return null;
+  if (Number.isNaN(paidUntil.getTime())) return null;
+  if (paidUntil.getTime() <= now.getTime()) {
+    return now.toISOString();
+  }
+  return paidUntil.toISOString();
+}
+
+async function getLatestAutoRenewPayment(userId) {
+  const recentPayments = await prisma.payment.findMany({
+    where: {
+      userId,
+      provider: "yookassa",
+    },
+    orderBy: { createdAt: "desc" },
+    take: 30,
+    select: {
+      id: true,
+      status: true,
+      amount: true,
+      currency: true,
+      createdAt: true,
+      metadata: true,
+    },
+  });
+  return (
+    recentPayments.find((entry) => Boolean(entry?.metadata?.autoRenew)) || null
+  );
+}
+
 async function getLatestSucceededSubscriptionPayment(userId) {
   const recentSucceededPayments = await prisma.payment.findMany({
     where: {
@@ -24411,6 +24662,7 @@ async function checkAutoSubscriptionRenewals() {
           select: {
             id: true,
             email: true,
+            orgId: true,
           },
         },
       },
@@ -24418,7 +24670,19 @@ async function checkAutoSubscriptionRenewals() {
       take: 200,
     });
 
+    const autoRenewByOrg = new Map();
     for (const subscription of dueSubscriptions) {
+      const orgId = Number(subscription?.user?.orgId || 0);
+      if (!orgId || Number.isNaN(orgId)) {
+        continue;
+      }
+      if (!autoRenewByOrg.has(orgId)) {
+        const enabled = await getOrgBillingAutoRenewEnabled(orgId).catch(() => true);
+        autoRenewByOrg.set(orgId, enabled);
+      }
+      if (autoRenewByOrg.get(orgId) !== true) {
+        continue;
+      }
       await runSingleAutoRenewal(subscription, now);
     }
   } catch (err) {

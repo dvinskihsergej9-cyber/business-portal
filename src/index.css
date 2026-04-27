@@ -3428,6 +3428,10 @@ input[type="number"] {
   gap: 12px;
 }
 
+.pricing-modern__active--auto-renew {
+  background: #eef6ff;
+}
+
 .pricing-modern__status-btn {
   background: #4b5563;
   color: #ffffff;
@@ -3861,6 +3865,11 @@ input[type="number"] {
   .pricing-modern__active {
     flex-direction: column;
     align-items: stretch;
+  }
+
+  .pricing-modern__active--auto-renew .pricing-modern__status-btn {
+    width: 100%;
+    min-width: 0;
   }
 }
 
