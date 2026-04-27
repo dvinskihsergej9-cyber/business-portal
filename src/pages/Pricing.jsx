@@ -682,9 +682,7 @@ export default function Pricing() {
 
               <div className="pricing-modern__actions pricing-modern__actions--single">
                 <button
-                  className={`btn pricing-modern__cta ${
-                    isTopupMode ? "pricing-modern__cta--light" : "pricing-modern__cta--dark"
-                  }`}
+                  className="btn pricing-modern__cta pricing-modern__cta--dark"
                   onClick={() =>
                     handlePay(plan.id, {
                       skuAddons: isTopupMode ? topupAddonsForPay : renewalAddonsForPay,
