@@ -24118,7 +24118,7 @@ async function hasRecentAutoRenewAttempt(userId, now = new Date()) {
   return ["pending", "waiting_for_capture", "canceled", "failed"].includes(status);
 }
 
-async function runSingleAutoRenewal(subscription, now = new Date()) {
+async function runSingleAutoRenewalCore(subscription, now = new Date()) {
   const userId = Number(subscription?.userId || 0);
   if (!userId) return;
 
@@ -24356,6 +24356,31 @@ async function runSingleAutoRenewal(subscription, now = new Date()) {
         },
       },
     }).catch(() => null);
+  }
+}
+
+async function runSingleAutoRenewal(subscription, now = new Date()) {
+  const userId = Number(subscription?.userId || 0);
+  if (!userId) return;
+  if (!isPostgresDatabaseUrl()) {
+    await runSingleAutoRenewalCore(subscription, now);
+    return;
+  }
+
+  let lockAcquired = false;
+  try {
+    const lockRows = await prisma.$queryRawUnsafe(
+      `SELECT pg_try_advisory_lock(${Number(userId)}) AS "locked";`
+    );
+    lockAcquired = Boolean(Array.isArray(lockRows) && lockRows[0] && lockRows[0].locked);
+    if (!lockAcquired) return;
+    await runSingleAutoRenewalCore(subscription, now);
+  } finally {
+    if (lockAcquired) {
+      await prisma.$queryRawUnsafe(
+        `SELECT pg_advisory_unlock(${Number(userId)});`
+      ).catch(() => null);
+    }
   }
 }
 
