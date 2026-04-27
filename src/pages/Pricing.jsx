@@ -147,6 +147,7 @@ export default function Pricing() {
   const [periodId, setPeriodId] = useState("1m");
   const [basicSkuAddons, setBasicSkuAddons] = useState([]);
   const [basicSkuAddonsTouched, setBasicSkuAddonsTouched] = useState(false);
+  const [topupSkuAddons, setTopupSkuAddons] = useState([]);
   const [skuRenewalSummary, setSkuRenewalSummary] = useState(null);
   const [skuRenewalLoading, setSkuRenewalLoading] = useState(false);
 
@@ -201,6 +202,14 @@ export default function Pricing() {
     (sum, value) => sum + Number(value.sku || 0),
     0
   );
+  const topupSkuAddonMonthlyAmount = topupSkuAddons.reduce(
+    (sum, value) => sum + Number(value.price || 0),
+    0
+  );
+  const topupSkuAddonUnits = topupSkuAddons.reduce(
+    (sum, value) => sum + Number(value.sku || 0),
+    0
+  );
 
   const toggleBasicSkuAddon = (pkg) => {
     setBasicSkuAddonsTouched(true);
@@ -213,6 +222,18 @@ export default function Pricing() {
         return source.filter((_, idx) => idx !== index);
       }
       return [...source, pkg];
+    });
+  };
+
+  const toggleTopupSkuAddon = (pkg) => {
+    setTopupSkuAddons((current) => {
+      const index = current.findIndex(
+        (entry) => Number(entry.sku) === Number(pkg.sku) && Number(entry.price) === Number(pkg.price)
+      );
+      if (index >= 0) {
+        return current.filter((_, idx) => idx !== index);
+      }
+      return [...current, pkg];
     });
   };
   const formatBillingProviderDetails = (payload) => {
@@ -392,6 +413,12 @@ export default function Pricing() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [canManageBilling, user?.isSystemOwner, user?.orgId]);
 
+  useEffect(() => {
+    if (periodId !== "1m" && topupSkuAddons.length > 0) {
+      setTopupSkuAddons([]);
+    }
+  }, [periodId, topupSkuAddons.length]);
+
   const subscription = user?.subscription;
   const paidUntilDate = subscription?.paidUntil
     ? new Date(subscription.paidUntil).toLocaleDateString("ru-RU")
@@ -515,17 +542,18 @@ export default function Pricing() {
         {visiblePlanCards.map((plan) => {
           const isBasicPlan = plan.id === "basic-30";
           const monthlyAddonAmount = isBasicPlan ? basicSkuAddonMonthlyAmount : 0;
-          const addonsForPay = isBasicPlan ? effectiveBasicSkuAddons.map((entry) => entry.sku) : [];
-          const isBasicTopupMode =
+          const renewalAddonsForPay = isBasicPlan
+            ? effectiveBasicSkuAddons.map((entry) => entry.sku)
+            : [];
+          const topupAddonsForPay = isBasicPlan
+            ? topupSkuAddons.map((entry) => entry.sku)
+            : [];
+          const canUseBasicTopup =
             isBasicPlan &&
             isCurrentBasicActive &&
-            periodId === "1m" &&
-            basicSkuAddonsTouched &&
-            basicSkuAddonUnits > 0;
+            periodId === "1m";
           const displayAmount = plan.available
-            ? isBasicTopupMode
-              ? monthlyAddonAmount
-              : getPeriodAmount(plan.amount + monthlyAddonAmount, periodId)
+            ? getPeriodAmount(plan.amount + monthlyAddonAmount, periodId)
             : 0;
           const canPayCurrentPlan =
             plan.available && billingReady && canManageBilling;
@@ -552,20 +580,14 @@ export default function Pricing() {
                 </span>
                 <span className="pricing-modern__period">/ {getPeriodLabel(periodId)}</span>
               </div>
-              {isBasicTopupMode && (
-                <div className="pricing-modern__hint">
-                  Докупка SKU к действующему тарифу «Базовый» (без повторной оплаты 2990 ₽).
-                </div>
-              )}
-
-              {isBasicPlan && isBasicCarryMode && !isBasicTopupMode && (
+              {isBasicPlan && isBasicCarryMode && (
                 <div className="pricing-modern__hint">
                   Для продления автоматически подобраны доп.пакеты SKU по текущему объему номенклатуры.
                 </div>
               )}
               {isBasicPlan && (
                 <div className="pricing-modern__sku-builder">
-                  <div className="pricing-modern__sku-builder-title">Калькулятор SKU</div>
+                  <div className="pricing-modern__sku-builder-title">Калькулятор SKU для продления</div>
                   <div className="pricing-modern__sku-builder-list">
                     {BASIC_SKU_ADDON_PACKAGES.map((pkg) => {
                       const checked = effectiveBasicSkuAddons.some(
@@ -585,24 +607,58 @@ export default function Pricing() {
                     })}
                   </div>
                   <div className="pricing-modern__sku-summary">
-                    Дополнительно: +{basicSkuAddonUnits} SKU / +{formatPrice(basicSkuAddonMonthlyAmount, "RUB")} в месяц
+                    В следующем периоде: +{basicSkuAddonUnits} SKU / +{formatPrice(basicSkuAddonMonthlyAmount, "RUB")} в месяц
                   </div>
                 </div>
               )}
-
+              {isBasicPlan && canUseBasicTopup && (
+                <div className="pricing-modern__sku-builder">
+                  <div className="pricing-modern__sku-builder-title">Докупка SKU сейчас</div>
+                  <div className="pricing-modern__sku-builder-list">
+                    {BASIC_SKU_ADDON_PACKAGES.map((pkg) => {
+                      const checked = topupSkuAddons.some(
+                        (entry) => Number(entry.sku) === Number(pkg.sku) && Number(entry.price) === Number(pkg.price)
+                      );
+                      return (
+                        <button
+                          key={`topup-${pkg.sku}-${pkg.price}`}
+                          type="button"
+                          className={`pricing-modern__sku-chip ${checked ? "is-active" : ""}`}
+                          onClick={() => toggleTopupSkuAddon(pkg)}
+                        >
+                          <span>{pkg.label}</span>
+                          <span>+{formatPrice(pkg.price, "RUB")}</span>
+                        </button>
+                      );
+                    })}
+                  </div>
+                  <div className="pricing-modern__sku-summary">
+                    К оплате сейчас: +{topupSkuAddonUnits} SKU / {formatPrice(topupSkuAddonMonthlyAmount, "RUB")}
+                  </div>
+                  <div className="pricing-modern__hint">
+                    Докупка SKU не продлевает срок подписки.
+                  </div>
+                </div>
+              )}
               <ul className="pricing-modern__list">
                 {plan.features.map((feature) => (
                   <li key={feature}>{feature}</li>
                 ))}
               </ul>
 
-              <div className="pricing-modern__actions pricing-modern__actions--single">
+              <div
+                className={`pricing-modern__actions ${
+                  isBasicPlan && canUseBasicTopup
+                    ? ""
+                    : "pricing-modern__actions--single"
+                }`}
+              >
                 <button
                   className="btn pricing-modern__cta pricing-modern__cta--dark"
                   onClick={() =>
                     handlePay(plan.id, {
-                      skuAddons: addonsForPay,
-                      useTopup: isBasicTopupMode,
+                      skuAddons: renewalAddonsForPay,
+                      useTopup: false,
                     })
                   }
                   disabled={
@@ -612,8 +668,28 @@ export default function Pricing() {
                     !canManageBilling
                   }
                 >
-                  {loading ? "Оплатить" : "Оплатить"}
+                  {loading ? "Оплата..." : isBasicPlan && isCurrentBasicActive ? "Продлить тариф" : "Оплатить"}
                 </button>
+                {isBasicPlan && canUseBasicTopup && (
+                  <button
+                    className="btn pricing-modern__cta pricing-modern__cta--light"
+                    onClick={() =>
+                      handlePay(plan.id, {
+                        skuAddons: topupAddonsForPay,
+                        useTopup: true,
+                      })
+                    }
+                    disabled={
+                      loading ||
+                      billingLoading ||
+                      !billingReady ||
+                      !canManageBilling ||
+                      topupSkuAddonUnits <= 0
+                    }
+                  >
+                    {loading ? "Оплата..." : "Докупка SKU"}
+                  </button>
+                )}
               </div>
 
               {plan.available && !billingReady && (
