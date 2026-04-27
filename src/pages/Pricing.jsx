@@ -175,6 +175,17 @@ export default function Pricing() {
     0,
     Number(skuRenewalSummary?.baseSkuLimit || 0) || 0
   );
+  const renewalEffectiveSkuLimit = Math.max(
+    0,
+    renewalBaseSkuLimit + (isCurrentBasicActive ? currentBasicAddonUnits : 0)
+  );
+  const renewalProjectedOverLimitSkuCount = Math.max(
+    0,
+    renewalCurrentSkuCount - renewalEffectiveSkuLimit
+  );
+  const renewalProjectedRecommendedAddonUnits = getBasicSkuAddonPresetFromUnits(
+    renewalProjectedOverLimitSkuCount
+  ).reduce((sum, pkg) => sum + Math.max(0, Number(pkg?.sku || 0) || 0), 0);
   const defaultBasicAddonUnits = Math.max(currentBasicAddonUnits, recommendedRenewalAddonUnits);
   const defaultBasicSkuAddons = getBasicSkuAddonPresetFromUnits(defaultBasicAddonUnits);
   const effectiveBasicSkuAddons = basicSkuAddonsTouched ? basicSkuAddons : defaultBasicSkuAddons;
@@ -482,12 +493,12 @@ export default function Pricing() {
         </div>
       )}
 
-      {!skuRenewalLoading && renewalOverLimitSkuCount > 0 && (
+      {!skuRenewalLoading && renewalProjectedOverLimitSkuCount > 0 && (
         <div className="alert alert--error pricing-modern__alert">
-          Сейчас SKU: {renewalCurrentSkuCount}. Базовый лимит: {renewalBaseSkuLimit}. Сверх лимита:{" "}
-          {renewalOverLimitSkuCount}.
+          Сейчас SKU: {renewalCurrentSkuCount}. Лимит на продление: {renewalEffectiveSkuLimit}. Сверх лимита:{" "}
+          {renewalProjectedOverLimitSkuCount}.
           <br />
-          Рекомендуется докупить минимум +{recommendedRenewalAddonUnits} SKU при продлении, иначе лишние SKU
+          Рекомендуется докупить минимум +{renewalProjectedRecommendedAddonUnits} SKU при продлении, иначе лишние SKU
           будут удалены после оплаты.
         </div>
       )}
