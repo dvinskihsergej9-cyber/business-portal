@@ -86,6 +86,10 @@ const CROSSDOCK_TAB_IDS = new Set([
   "search",
 ]);
 
+function normalizeWarehouseSectionKey(sectionKey) {
+  return sectionKey === "transactions" ? "movement" : sectionKey;
+}
+
 const WAREHOUSE_IMAGE = {
   tasks: WAREHOUSE_EMBEDDED_ICONS.tasks,
   inventory: WAREHOUSE_EMBEDDED_ICONS.inventory,
@@ -335,16 +339,20 @@ export default function Warehouse({
 
   const permissionAllowedSections = useMemo(
     () => {
-      const allowed = defaultSections.filter((sectionKey) =>
+      const allowedRaw = defaultSections.filter((sectionKey) =>
         hasPermission(user, WAREHOUSE_SECTION_PERMISSION_MAP[sectionKey])
       );
       if (
         hasPermission(user, PERMISSION_KEYS.APP_WAREHOUSE) &&
-        !allowed.includes("tasks")
+        !allowedRaw.includes("tasks")
       ) {
-        return ["tasks", ...allowed];
+        allowedRaw.unshift("tasks");
       }
-      return allowed;
+      return Array.from(
+        new Set(
+          allowedRaw.map((sectionKey) => normalizeWarehouseSectionKey(sectionKey))
+        )
+      );
     },
     [user]
   );
@@ -354,7 +362,12 @@ export default function Warehouse({
       Array.isArray(allowedSections) && allowedSections.length > 0
         ? allowedSections
         : defaultSections;
-    return Array.from(new Set(baseSections)).filter((sectionKey) =>
+    const normalizedBaseSections = Array.from(
+      new Set(
+        baseSections.map((sectionKey) => normalizeWarehouseSectionKey(sectionKey))
+      )
+    );
+    return normalizedBaseSections.filter((sectionKey) =>
       permissionAllowedSections.includes(sectionKey)
     );
   }, [allowedSections, permissionAllowedSections]);
@@ -391,7 +404,6 @@ export default function Warehouse({
   const locationsRef = useRef(null);
   const queueRef = useRef(null);
   const tsdRef = useRef(null);
-  const transactionsRef = useRef(null);
   const revisionRef = useRef(null);
   const purchaseOrdersLoadSeqRef = useRef(0);
   const purchaseOrdersRef = useRef([]);
@@ -459,7 +471,9 @@ export default function Warehouse({
 
   useEffect(() => {
     const params = new URLSearchParams(location.search || "");
-    const sectionParam = params.get("section");
+    const sectionParam = normalizeWarehouseSectionKey(
+      String(params.get("section") || "").trim()
+    );
     const taskViewParam = params.get("taskView");
     const crossdockTabParam = String(params.get("crossdockTab") || "").trim();
 
@@ -2700,8 +2714,7 @@ export default function Warehouse({
       { key: "tasks", title: "Задачи склада", subtitle: "Постановка задач сотрудникам, сроки и журнал выполнения." },
       { key: "inventory", title: "\u041e\u0441\u0442\u0430\u0442\u043a\u0438", subtitle: "\u0422\u0435\u043a\u0443\u0449\u0438\u0435 \u043e\u0441\u0442\u0430\u0442\u043a\u0438 \u043f\u043e \u0441\u043a\u043b\u0430\u0434\u0443." },
       { key: "holds", title: "Блокировка остатков", subtitle: "Фиксация и снятие блокировок по товарам и ячейкам." },
-      { key: "movement", title: "\u0418\u0441\u0442\u043e\u0440\u0438\u044f \u0434\u0432\u0438\u0436\u0435\u043d\u0438\u0439", subtitle: "\u0416\u0443\u0440\u043d\u0430\u043b \u043e\u043f\u0435\u0440\u0430\u0446\u0438\u0439 \u043f\u043e \u0441\u043a\u043b\u0430\u0434\u0443." },
-      { key: "transactions", title: "\u0422\u0440\u0430\u043d\u0437\u0430\u043a\u0446\u0438\u0438", subtitle: "\u0412\u0441\u0435 \u0434\u0435\u0439\u0441\u0442\u0432\u0438\u044f \u043f\u043e \u044f\u0447\u0435\u0439\u043a\u0430\u043c \u0438 \u0442\u043e\u0432\u0430\u0440\u0443." },
+      { key: "movement", title: "Операции склада", subtitle: "История движений и транзакции в одном разделе." },
       { key: "revision", title: "\u0420\u0435\u0432\u0438\u0437\u0438\u044f", subtitle: "\u0421\u043d\u0438\u043c\u043e\u043a \u0440\u0430\u0441\u0445\u043e\u0436\u0434\u0435\u043d\u0438\u0439 \u043f\u043e \u043a\u043e\u043d\u0442\u0440\u043e\u043b\u044e \u044f\u0447\u0435\u0435\u043a." },
       { key: "suppliers", title: "\u041f\u043e\u0441\u0442\u0430\u0432\u0449\u0438\u043a\u0438", subtitle: "\u041f\u043e\u0441\u0442\u0430\u0432\u0449\u0438\u043a\u0438 \u0438 \u0437\u0430\u043a\u0430\u0437\u044b \u043f\u043e\u0441\u0442\u0430\u0432\u0449\u0438\u043a\u0443." },
       { key: "locations", title: "\u0421\u043f\u0440\u0430\u0432\u043e\u0447\u043d\u0438\u043a \u044f\u0447\u0435\u0435\u043a", subtitle: "\u0421\u043e\u0437\u0434\u0430\u043d\u0438\u0435 \u044f\u0447\u0435\u0435\u043a \u0438 \u043f\u0435\u0447\u0430\u0442\u044c QR-\u044d\u0442\u0438\u043a\u0435\u0442\u043e\u043a." },
@@ -4206,12 +4219,6 @@ export default function Warehouse({
         </div>
       )}
 
-      {sectionSet.has("transactions") && section === "transactions" && (
-        <div className="inventory-section" ref={transactionsRef}>
-          <StockTransactionsTab />
-        </div>
-      )}
-
       {sectionSet.has("revision") && section === "revision" && (
         <div className="inventory-section" ref={revisionRef}>
           <StockRevisionTab />
@@ -4243,6 +4250,15 @@ export default function Warehouse({
                 onClick={() => setMovementTab("movementsHistory")}
               >
                 История движений
+              </button>
+              <button
+                type="button"
+                className={
+                  "tabs__btn " + (movementTab === "transactions" ? "tabs__btn--active" : "")
+                }
+                onClick={() => setMovementTab("transactions")}
+              >
+                Транзакции
               </button>
             </div>
           )}
@@ -4529,6 +4545,7 @@ export default function Warehouse({
           {/* ===== Вкладка 4: История движений (1С) ===== */}
 
           {inventoryTab === "movement" && movementTab === "movementsHistory" && <StockMovementsHistoryTab />}
+          {inventoryTab === "movement" && movementTab === "transactions" && <StockTransactionsTab />}
 
           {/* ===== Вкладка 5: Поставщики ===== */}
           {inventoryTab === "suppliers" && suppliersTab === "suppliers" && (
