@@ -290,7 +290,7 @@ export default function Pricing() {
         const confirmedDrop = window.confirm(
           projectedDropSkuCount > 0
             ? `Будет удалено ${projectedDropSkuCount} SKU (сверх базового лимита ${renewalBaseSkuLimit}). Продолжить продление?`
-            : "Вы отключаете все оплаченные доп-SKU на следующий период. Лимит вернется к базовому. Продолжить?"
+            : "Вы отключаете все оплаченные доп-SKU на следующий период. Лимит вернется к базовому, а все неоплаченные SKU будут удалены. Продолжить?"
         );
         if (!confirmedDrop) {
           return;
