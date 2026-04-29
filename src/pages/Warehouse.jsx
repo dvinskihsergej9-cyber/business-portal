@@ -1,6 +1,7 @@
 ﻿
 
 import { useCallback, useEffect, useMemo, useRef, useState, Fragment } from "react";
+import { createPortal } from "react-dom";
 import { useLocation, useNavigate } from "react-router-dom";
 
 import { API_BASE, normalizeErrorMessage } from "../apiConfig";
@@ -3938,235 +3939,238 @@ export default function Warehouse({
 
                 )}
 
-                {taskDetails && (
-                  <div className="modal-backdrop" onClick={closeTaskDetails}>
-                    <div
-                      className="modal modal--wide task-details-modal"
-                      onClick={(event) => event.stopPropagation()}
-                    >
-                      <div className="modal__header">
-                        <h2 className="modal__title">
-                          Задача №{taskDetails.id}: {taskDetails.title || "Без названия"}
-                        </h2>
-                        <button
-                          type="button"
-                          className="modal__close"
-                          aria-label="Закрыть детали задачи"
-                          onClick={closeTaskDetails}
-                        >
-                          ×
-                        </button>
-                      </div>
+                {taskDetails &&
+                  typeof document !== "undefined" &&
+                  createPortal(
+                    <div className="modal-backdrop" onClick={closeTaskDetails}>
+                      <div
+                        className="modal modal--wide task-details-modal"
+                        onClick={(event) => event.stopPropagation()}
+                      >
+                        <div className="modal__header">
+                          <h2 className="modal__title">
+                            Задача №{taskDetails.id}: {taskDetails.title || "Без названия"}
+                          </h2>
+                          <button
+                            type="button"
+                            className="modal__close"
+                            aria-label="Закрыть детали задачи"
+                            onClick={closeTaskDetails}
+                          >
+                            ×
+                          </button>
+                        </div>
 
-                      <div className="modal__body task-details-modal__body">
-                        <div className="task-details-grid">
-                          <div>
-                            <div className="task-details-label">Статус</div>
+                        <div className="modal__body task-details-modal__body">
+                          <div className="task-details-grid">
                             <div>
-                              <span className={taskStatusBadgeClass(taskDetails.status)}>
-                                {TASK_STATUS_LABELS[taskDetailsUiStatus] || taskDetailsUiStatus}
-                              </span>
+                              <div className="task-details-label">Статус</div>
+                              <div>
+                                <span className={taskStatusBadgeClass(taskDetails.status)}>
+                                  {TASK_STATUS_LABELS[taskDetailsUiStatus] || taskDetailsUiStatus}
+                                </span>
+                              </div>
+                            </div>
+                            <div>
+                              <div className="task-details-label">Срок</div>
+                              <div>
+                                {taskDetails.dueDate
+                                  ? new Date(taskDetails.dueDate).toLocaleString("ru-RU", {
+                                      day: "2-digit",
+                                      month: "2-digit",
+                                      year: "numeric",
+                                      hour: "2-digit",
+                                      minute: "2-digit",
+                                    })
+                                  : "-"}
+                              </div>
+                            </div>
+                            <div>
+                              <div className="task-details-label">Исполнитель</div>
+                              <div>{taskDetailsExecutor}</div>
+                            </div>
+                            <div>
+                              <div className="task-details-label">Автор</div>
+                              <div>{taskDetailsAuthor}</div>
                             </div>
                           </div>
-                          <div>
-                            <div className="task-details-label">Срок</div>
-                            <div>
-                              {taskDetails.dueDate
-                                ? new Date(taskDetails.dueDate).toLocaleString("ru-RU", {
+
+                          <div className="task-details-section">
+                            <div className="task-details-label">Описание</div>
+                            <div className="task-details-text">
+                              {taskDetails.description || "Описание не добавлено"}
+                            </div>
+                          </div>
+
+                          <div className="task-details-section">
+                            <div className="task-details-label">Фото к задаче</div>
+                            {taskDetailsTaskPhotos.length === 0 ? (
+                              <div className="text-muted">Фото не добавлены</div>
+                            ) : (
+                              <div className="task-details-photos">
+                                {taskDetailsTaskPhotos.map((photo, photoIndex) => (
+                                  <a
+                                    key={`${taskDetails.id}-task-photo-${photoIndex}`}
+                                    href={photo.dataUrl}
+                                    title={photo.fileName || "Фото"}
+                                    onClick={(event) =>
+                                      openTaskPhotoPreview(
+                                        event,
+                                        photo,
+                                        `Фото ${photoIndex + 1}`
+                                      )
+                                    }
+                                  >
+                                    <img
+                                      src={photo.dataUrl}
+                                      alt={photo.fileName || `Фото ${photoIndex + 1}`}
+                                    />
+                                  </a>
+                                ))}
+                              </div>
+                            )}
+                          </div>
+
+                          <div className="task-details-section">
+                            <div className="task-details-label">Ответ исполнителя</div>
+                            {taskDetails.responseText ? (
+                              <div className="task-details-text">{taskDetails.responseText}</div>
+                            ) : (
+                              <div className="text-muted">Ответ не добавлен</div>
+                            )}
+
+                            {taskDetailsResponsePhotos.length > 0 && (
+                              <div className="task-details-photos">
+                                {taskDetailsResponsePhotos.map((photo, photoIndex) => (
+                                  <a
+                                    key={`${taskDetails.id}-response-photo-${photoIndex}`}
+                                    href={photo.dataUrl}
+                                    title={photo.fileName || "Фото"}
+                                    onClick={(event) =>
+                                      openTaskPhotoPreview(
+                                        event,
+                                        photo,
+                                        `Фото ${photoIndex + 1}`
+                                      )
+                                    }
+                                  >
+                                    <img
+                                      src={photo.dataUrl}
+                                      alt={photo.fileName || `Фото ${photoIndex + 1}`}
+                                    />
+                                  </a>
+                                ))}
+                              </div>
+                            )}
+
+                            {taskDetails.responseUpdatedAt && (
+                              <div className="text-muted" style={{ fontSize: 12 }}>
+                                Ответ обновлён:{" "}
+                                {new Date(taskDetails.responseUpdatedAt).toLocaleString(
+                                  "ru-RU",
+                                  {
                                     day: "2-digit",
                                     month: "2-digit",
                                     year: "numeric",
                                     hour: "2-digit",
                                     minute: "2-digit",
-                                  })
-                                : "-"}
-                            </div>
-                          </div>
-                          <div>
-                            <div className="task-details-label">Исполнитель</div>
-                            <div>{taskDetailsExecutor}</div>
-                          </div>
-                          <div>
-                            <div className="task-details-label">Автор</div>
-                            <div>{taskDetailsAuthor}</div>
-                          </div>
-                        </div>
-
-                        <div className="task-details-section">
-                          <div className="task-details-label">Описание</div>
-                          <div className="task-details-text">
-                            {taskDetails.description || "Описание не добавлено"}
-                          </div>
-                        </div>
-
-                        <div className="task-details-section">
-                          <div className="task-details-label">Фото к задаче</div>
-                          {taskDetailsTaskPhotos.length === 0 ? (
-                            <div className="text-muted">Фото не добавлены</div>
-                          ) : (
-                            <div className="task-details-photos">
-                              {taskDetailsTaskPhotos.map((photo, photoIndex) => (
-                                <a
-                                  key={`${taskDetails.id}-task-photo-${photoIndex}`}
-                                  href={photo.dataUrl}
-                                  title={photo.fileName || "Фото"}
-                                  onClick={(event) =>
-                                    openTaskPhotoPreview(
-                                      event,
-                                      photo,
-                                      `Фото ${photoIndex + 1}`
-                                    )
                                   }
-                                >
-                                  <img
-                                    src={photo.dataUrl}
-                                    alt={photo.fileName || `Фото ${photoIndex + 1}`}
-                                  />
-                                </a>
-                              ))}
-                            </div>
-                          )}
-                        </div>
-
-                        <div className="task-details-section">
-                          <div className="task-details-label">Ответ исполнителя</div>
-                          {taskDetails.responseText ? (
-                            <div className="task-details-text">{taskDetails.responseText}</div>
-                          ) : (
-                            <div className="text-muted">Ответ не добавлен</div>
-                          )}
-
-                          {taskDetailsResponsePhotos.length > 0 && (
-                            <div className="task-details-photos">
-                              {taskDetailsResponsePhotos.map((photo, photoIndex) => (
-                                <a
-                                  key={`${taskDetails.id}-response-photo-${photoIndex}`}
-                                  href={photo.dataUrl}
-                                  title={photo.fileName || "Фото"}
-                                  onClick={(event) =>
-                                    openTaskPhotoPreview(
-                                      event,
-                                      photo,
-                                      `Фото ${photoIndex + 1}`
-                                    )
-                                  }
-                                >
-                                  <img
-                                    src={photo.dataUrl}
-                                    alt={photo.fileName || `Фото ${photoIndex + 1}`}
-                                  />
-                                </a>
-                              ))}
-                            </div>
-                          )}
-
-                          {taskDetails.responseUpdatedAt && (
-                            <div className="text-muted" style={{ fontSize: 12 }}>
-                              Ответ обновлён:{" "}
-                              {new Date(taskDetails.responseUpdatedAt).toLocaleString(
-                                "ru-RU",
-                                {
-                                  day: "2-digit",
-                                  month: "2-digit",
-                                  year: "numeric",
-                                  hour: "2-digit",
-                                  minute: "2-digit",
-                                }
-                              )}
-                              {taskDetails.responseAuthorName
-                                ? `, ${taskDetails.responseAuthorName}`
-                                : ""}
-                            </div>
-                          )}
-                        </div>
-
-                        {taskDetailsCanEdit && (
-                          <div className="task-details-section">
-                            <div className="task-details-label">Комментарий по выполнению</div>
-                            <textarea
-                              className="form__textarea"
-                              rows={3}
-                              placeholder="Комментарий по выполнению задачи..."
-                              value={taskDetailsResponseDraft}
-                              onChange={(e) =>
-                                setTaskResponseDrafts((prev) => ({
-                                  ...prev,
-                                  [taskDetails.id]: e.target.value,
-                                }))
-                              }
-                            />
-
-                            <input
-                              type="file"
-                              className="form__input"
-                              accept="image/jpeg,image/png,image/webp"
-                              multiple
-                              onChange={(event) =>
-                                handleTaskResponsePhotoPick(taskDetails.id, event)
-                              }
-                            />
-
-                            {taskDetailsResponseFiles.length > 0 && (
-                              <div className="task-details-files">
-                                {taskDetailsResponseFiles.map((file, fileIndex) => (
-                                  <div
-                                    key={`${taskDetails.id}-response-file-${file.name}-${file.lastModified}-${fileIndex}`}
-                                    className="task-details-file-row"
-                                  >
-                                    <span>{file.name}</span>
-                                    <button
-                                      type="button"
-                                      className="btn btn--ghost btn--sm"
-                                      onClick={() =>
-                                        removeTaskResponsePhoto(taskDetails.id, fileIndex)
-                                      }
-                                    >
-                                      Убрать
-                                    </button>
-                                  </div>
-                                ))}
+                                )}
+                                {taskDetails.responseAuthorName
+                                  ? `, ${taskDetails.responseAuthorName}`
+                                  : ""}
                               </div>
                             )}
-
-                            <div className="task-details-actions">
-                              <select
-                                className="form__select form__select--sm"
-                                style={{ minWidth: 190 }}
-                                value={taskDetailsUiStatus}
-                                onChange={(e) =>
-                                  handleTaskApplyStatus(taskDetails, e.target.value)
-                                }
-                                disabled={
-                                  taskStatusSavingId === taskDetails.id ||
-                                  taskResponseSavingId === taskDetails.id
-                                }
-                              >
-                                {TASK_STATUS_OPTIONS.map((option) => (
-                                  <option key={option.value} value={option.value}>
-                                    {option.label}
-                                  </option>
-                                ))}
-                              </select>
-                              <span className="text-muted" style={{ fontSize: 12 }}>
-                                При смене статуса сохраняются комментарий и фото.
-                              </span>
-                            </div>
                           </div>
-                        )}
-                      </div>
 
-                      <div className="task-details-footer">
-                        <button
-                          type="button"
-                          className="btn btn--ghost"
-                          onClick={closeTaskDetails}
-                        >
-                          Закрыть
-                        </button>
+                          {taskDetailsCanEdit && (
+                            <div className="task-details-section">
+                              <div className="task-details-label">Комментарий по выполнению</div>
+                              <textarea
+                                className="form__textarea"
+                                rows={3}
+                                placeholder="Комментарий по выполнению задачи..."
+                                value={taskDetailsResponseDraft}
+                                onChange={(e) =>
+                                  setTaskResponseDrafts((prev) => ({
+                                    ...prev,
+                                    [taskDetails.id]: e.target.value,
+                                  }))
+                                }
+                              />
+
+                              <input
+                                type="file"
+                                className="form__input"
+                                accept="image/jpeg,image/png,image/webp"
+                                multiple
+                                onChange={(event) =>
+                                  handleTaskResponsePhotoPick(taskDetails.id, event)
+                                }
+                              />
+
+                              {taskDetailsResponseFiles.length > 0 && (
+                                <div className="task-details-files">
+                                  {taskDetailsResponseFiles.map((file, fileIndex) => (
+                                    <div
+                                      key={`${taskDetails.id}-response-file-${file.name}-${file.lastModified}-${fileIndex}`}
+                                      className="task-details-file-row"
+                                    >
+                                      <span>{file.name}</span>
+                                      <button
+                                        type="button"
+                                        className="btn btn--ghost btn--sm"
+                                        onClick={() =>
+                                          removeTaskResponsePhoto(taskDetails.id, fileIndex)
+                                        }
+                                      >
+                                        Убрать
+                                      </button>
+                                    </div>
+                                  ))}
+                                </div>
+                              )}
+
+                              <div className="task-details-actions">
+                                <select
+                                  className="form__select form__select--sm"
+                                  style={{ minWidth: 190 }}
+                                  value={taskDetailsUiStatus}
+                                  onChange={(e) =>
+                                    handleTaskApplyStatus(taskDetails, e.target.value)
+                                  }
+                                  disabled={
+                                    taskStatusSavingId === taskDetails.id ||
+                                    taskResponseSavingId === taskDetails.id
+                                  }
+                                >
+                                  {TASK_STATUS_OPTIONS.map((option) => (
+                                    <option key={option.value} value={option.value}>
+                                      {option.label}
+                                    </option>
+                                  ))}
+                                </select>
+                                <span className="text-muted" style={{ fontSize: 12 }}>
+                                  При смене статуса сохраняются комментарий и фото.
+                                </span>
+                              </div>
+                            </div>
+                          )}
+                        </div>
+
+                        <div className="task-details-footer">
+                          <button
+                            type="button"
+                            className="btn btn--ghost"
+                            onClick={closeTaskDetails}
+                          >
+                            Закрыть
+                          </button>
+                        </div>
                       </div>
-                    </div>
-                  </div>
-                )}
+                    </div>,
+                    document.body
+                  )}
 
               </div>
 
