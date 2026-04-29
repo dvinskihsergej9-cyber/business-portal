@@ -1130,6 +1130,10 @@ input[type="number"] {
   width: min(980px, 96vw);
 }
 
+.task-photo-preview--backdrop {
+  z-index: 1300;
+}
+
 .task-photo-preview__body {
   padding-top: 12px;
   padding-bottom: 8px;

@@ -213,6 +213,21 @@ const TASK_ATTACHMENT_ALLOWED_TYPES = new Set([
   "image/png",
   "image/webp",
 ]);
+const TASK_TIME_ZONE = "Europe/Moscow";
+
+function formatTaskDateTime(value) {
+  if (!value) return "-";
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return "-";
+  return date.toLocaleString("ru-RU", {
+    day: "2-digit",
+    month: "2-digit",
+    year: "numeric",
+    hour: "2-digit",
+    minute: "2-digit",
+    timeZone: TASK_TIME_ZONE,
+  });
+}
 
 async function fileToDataUrl(file) {
   return new Promise((resolve, reject) => {
@@ -3802,23 +3817,7 @@ export default function Warehouse({
 
                                 {t.createdAt
 
-                                  ? new Date(
-
-                                      t.createdAt
-
-                                    ).toLocaleString("ru-RU", {
-
-                                      day: "2-digit",
-
-                                      month: "2-digit",
-
-                                      year: "numeric",
-
-                                      hour: "2-digit",
-
-                                      minute: "2-digit",
-
-                                    })
+                                  ? formatTaskDateTime(t.createdAt)
 
                                   : "-"}
 
@@ -3828,23 +3827,7 @@ export default function Warehouse({
 
                                 {t.dueDate
 
-                                  ? new Date(
-
-                                      t.dueDate
-
-                                    ).toLocaleString("ru-RU", {
-
-                                      day: "2-digit",
-
-                                      month: "2-digit",
-
-                                      year: "numeric",
-
-                                      hour: "2-digit",
-
-                                      minute: "2-digit",
-
-                                    })
+                                  ? formatTaskDateTime(t.dueDate)
 
                                   : "-"}
 
@@ -3974,15 +3957,7 @@ export default function Warehouse({
                             <div>
                               <div className="task-details-label">Срок</div>
                               <div>
-                                {taskDetails.dueDate
-                                  ? new Date(taskDetails.dueDate).toLocaleString("ru-RU", {
-                                      day: "2-digit",
-                                      month: "2-digit",
-                                      year: "numeric",
-                                      hour: "2-digit",
-                                      minute: "2-digit",
-                                    })
-                                  : "-"}
+                                {formatTaskDateTime(taskDetails.dueDate)}
                               </div>
                             </div>
                             <div>
@@ -4066,16 +4041,7 @@ export default function Warehouse({
                             {taskDetails.responseUpdatedAt && (
                               <div className="text-muted" style={{ fontSize: 12 }}>
                                 Ответ обновлён:{" "}
-                                {new Date(taskDetails.responseUpdatedAt).toLocaleString(
-                                  "ru-RU",
-                                  {
-                                    day: "2-digit",
-                                    month: "2-digit",
-                                    year: "numeric",
-                                    hour: "2-digit",
-                                    minute: "2-digit",
-                                  }
-                                )}
+                                {formatTaskDateTime(taskDetails.responseUpdatedAt)}
                                 {taskDetails.responseAuthorName
                                   ? `, ${taskDetails.responseAuthorName}`
                                   : ""}
@@ -5006,40 +4972,46 @@ export default function Warehouse({
 
 
 
-      {taskPhotoPreview?.url && (
-        <div className="modal-backdrop task-photo-preview" onClick={closeTaskPhotoPreview}>
+      {taskPhotoPreview?.url &&
+        typeof document !== "undefined" &&
+        createPortal(
           <div
-            className="modal modal--wide task-photo-preview__modal"
-            onClick={(event) => event.stopPropagation()}
+            className="modal-backdrop task-photo-preview task-photo-preview--backdrop"
+            onClick={closeTaskPhotoPreview}
           >
-            <div className="modal__header">
-              <h2 className="modal__title">{taskPhotoPreview.title}</h2>
-              <button
-                type="button"
-                className="modal__close"
-                aria-label="Закрыть просмотр фото"
-                onClick={closeTaskPhotoPreview}
-              >
-                ×
-              </button>
-            </div>
-            <div className="modal__body task-photo-preview__body">
-              <div className="task-photo-preview__image-wrap">
-                <img
-                  src={taskPhotoPreview.url}
-                  alt={taskPhotoPreview.title || "Фото"}
-                  className="task-photo-preview__image"
-                />
+            <div
+              className="modal modal--wide task-photo-preview__modal"
+              onClick={(event) => event.stopPropagation()}
+            >
+              <div className="modal__header">
+                <h2 className="modal__title">{taskPhotoPreview.title}</h2>
+                <button
+                  type="button"
+                  className="modal__close"
+                  aria-label="Закрыть просмотр фото"
+                  onClick={closeTaskPhotoPreview}
+                >
+                  ×
+                </button>
+              </div>
+              <div className="modal__body task-photo-preview__body">
+                <div className="task-photo-preview__image-wrap">
+                  <img
+                    src={taskPhotoPreview.url}
+                    alt={taskPhotoPreview.title || "Фото"}
+                    className="task-photo-preview__image"
+                  />
+                </div>
+              </div>
+              <div className="task-photo-preview__actions">
+                <button type="button" className="btn btn--ghost" onClick={closeTaskPhotoPreview}>
+                  Закрыть
+                </button>
               </div>
             </div>
-            <div className="task-photo-preview__actions">
-              <button type="button" className="btn btn--ghost" onClick={closeTaskPhotoPreview}>
-                Закрыть
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
+          </div>,
+          document.body
+        )}
 
       {showReceiveModal && (
 

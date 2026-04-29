@@ -15407,11 +15407,6 @@ app.delete("/api/inventory/items/:id", auth, async (req, res) => {
 app.get("/api/warehouse/locations", auth, async (req, res) => {
   try {
     const locations = await prisma.warehouseLocation.findMany({
-      where: {
-        NOT: {
-          OR: RECEIVING_LOCATION_MARKERS,
-        },
-      },
       orderBy: { id: "asc" },
     });
     res.json(locations);

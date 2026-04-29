@@ -492,7 +492,7 @@
   background: rgba(15, 23, 42, 0.45);
   display: grid;
   place-items: center;
-  z-index: 50;
+  z-index: 1300;
   padding: 20px;
   overflow-y: auto;
 }

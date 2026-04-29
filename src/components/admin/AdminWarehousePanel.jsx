@@ -1,4 +1,5 @@
 ﻿import { useEffect, useMemo, useRef, useState } from "react";
+import { createPortal } from "react-dom";
 import { API_BASE, normalizeErrorMessage } from "../../apiConfig";
 import ImportOrdersModal from "../ImportOrdersModal";
 import ImportItemsModal from "../ImportItemsModal";
@@ -85,6 +86,15 @@ export default function AdminWarehousePanel() {
   const [itemError, setItemError] = useState("");
   const [itemImageBusyId, setItemImageBusyId] = useState(null);
   const [imagePreview, setImagePreview] = useState(null);
+  const hasOpenModal = Boolean(
+    editItem ||
+      editLocation ||
+      deleteItem ||
+      deleteLocation ||
+      imagePreview
+  );
+  const renderInPortal = (node) =>
+    typeof document === "undefined" ? node : createPortal(node, document.body);
 
   const openImagePreview = (url, title) => {
     const imageUrl = String(url || "").trim();
@@ -216,6 +226,15 @@ export default function AdminWarehousePanel() {
     if (!error) return;
     // Ошибки показываются через глобальное модальное окно.
   }, [error]);
+
+  useEffect(() => {
+    if (!hasOpenModal || typeof document === "undefined") return undefined;
+    const prevOverflow = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+    return () => {
+      document.body.style.overflow = prevOverflow;
+    };
+  }, [hasOpenModal]);
 
   const handleSaveItem = async () => {
     if (!editItem) return;
@@ -834,7 +853,7 @@ export default function AdminWarehousePanel() {
         </div>
       )}
 
-      {editItem && (
+      {editItem && renderInPortal(
         <div className="admin-modal">
           <div className="admin-modal__panel">
             <div className="admin-modal__header">
@@ -1134,7 +1153,7 @@ export default function AdminWarehousePanel() {
         </div>
       )}
 
-      {editLocation && (
+      {editLocation && renderInPortal(
         <div className="admin-modal">
           <div className="admin-modal__panel">
             <div className="admin-modal__header">
@@ -1261,7 +1280,7 @@ export default function AdminWarehousePanel() {
         </div>
       )}
 
-      {deleteItem && (
+      {deleteItem && renderInPortal(
         <div className="admin-modal">
           <div className="admin-modal__panel admin-modal__panel--danger">
             <div className="admin-modal__title">
@@ -1291,7 +1310,7 @@ export default function AdminWarehousePanel() {
         </div>
       )}
 
-      {deleteLocation && (
+      {deleteLocation && renderInPortal(
         <div className="admin-modal">
           <div className="admin-modal__panel admin-modal__panel--danger">
             <div className="admin-modal__title">
@@ -1338,7 +1357,7 @@ export default function AdminWarehousePanel() {
         />
       )}
 
-      {imagePreview?.url && (
+      {imagePreview?.url && renderInPortal(
         <div className="admin-modal" onClick={() => setImagePreview(null)}>
           <div
             className="admin-modal__panel admin-modal__panel--image"
@@ -1372,13 +1391,4 @@ export default function AdminWarehousePanel() {
     </div>
   );
 }
-
-
-
-
-
-
-
-
-
 
