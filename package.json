@@ -7,7 +7,7 @@
     "dev": "vite",
     "start": "node tools/start-with-db-permissions.mjs",
     "api": "node tools/start-with-db-permissions.mjs",
-    "postinstall": "prisma generate",
+    "api:prepare": "prisma generate --schema=prisma/schema.prisma",
     "seed": "node tools/seed-employee.mjs",
     "owner:grant": "node tools/owner-grant.mjs",
     "db:grant-perms": "node tools/grant-runtime-db-permissions.mjs",
