@@ -15135,6 +15135,7 @@ app.post("/api/notifications/push/test", auth, async (req, res) => {
       });
     }
 
+    let pushReport = null;
     await createWarehouseNotification({
       orgId: req.user.orgId || null,
       userId: req.user.id,
@@ -15143,11 +15144,16 @@ app.post("/api/notifications/push/test", auth, async (req, res) => {
       message: "Проверка прошла: push-канал подключен.",
       linkUrl: "/warehouse",
       payloadJson: { at: new Date().toISOString() },
+      onPushReport: (report) => {
+        pushReport = report || null;
+      },
     });
 
     return res.json({
       ok: true,
       message: "Тестовое push-уведомление отправлено.",
+      subscriptionsCount: userSubsCount,
+      pushReport,
     });
   } catch (err) {
     console.error("push test error:", err);
