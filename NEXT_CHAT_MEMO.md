@@ -16,12 +16,12 @@
   - добавлены failover-попытки SMTP.
 - Публичные страницы:
   - цены синхронизированы (`1 / 2990 / 6990`),
-  - исправлен домен в контактах на `https://skladonline74.ru`,
+- исправлен домен в контактах на `https://app.skladonline74.ru`,
   - усилены юридические разделы для модерации YooKassa (`offer/privacy/refund/contacts`),
   - добавлена публичная ссылка на YooKassa на лендинге.
 
 ## Текущая инфраструктура (Timeweb)
-- Web-домен: `https://skladonline74.ru`
+- Web-домен: `https://app.skladonline74.ru`
 - API-домен: `https://api.skladonline74.ru`
 
 ## Что осталось сделать (приоритет)
@@ -29,8 +29,8 @@
 2. В `business-portal-api` задать env с реальными значениями:
    - `YOOKASSA_SHOP_ID`
    - `YOOKASSA_SECRET_KEY`
-   - `FRONTEND_URL=https://skladonline74.ru`
-   - `APP_URL=https://skladonline74.ru`
+  - `FRONTEND_URL=https://app.skladonline74.ru`
+  - `APP_URL=https://app.skladonline74.ru`
 3. Выполнить redeploy `business-portal-api`.
 4. Проверить `https://api.skladonline74.ru/api/billing/config`:
    - должно вернуть `{ "yookassaEnabled": true }`.
