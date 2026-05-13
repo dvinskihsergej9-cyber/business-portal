@@ -4288,8 +4288,11 @@ async function applyPaymentSuccess({ paymentRecord, providerPayment, plan }) {
     return current?.paidUntil || null;
   }
 
+  const currentPlanId = normalizePlanId(current?.plan, "");
+  const isSamePlanRenewal = currentPlanId && currentPlanId === plan.id;
   const canExtendFromCurrent =
     Boolean(current) &&
+    isSamePlanRenewal &&
     ["active", "trialing"].includes(String(current?.status || "").toLowerCase()) &&
     current?.paidUntil &&
     new Date(current.paidUntil) > now;
