@@ -74,7 +74,6 @@ const CROSSDOCK_TAB_IDS = new Set([
   "dispatch",
   "locationControl",
   "discrepancies",
-  "palletList",
   "search",
 ]);
 
@@ -673,8 +672,6 @@ export default function PalletFlow({
   const [selectedPalletId, setSelectedPalletId] = useState(null);
   const [recentItems, setRecentItems] = useState([]);
   const [recentLoading, setRecentLoading] = useState(false);
-  const [warehousePalletItems, setWarehousePalletItems] = useState([]);
-  const [warehousePalletsLoading, setWarehousePalletsLoading] = useState(false);
   const [planningForm, setPlanningForm] = useState(INITIAL_PLANNING_FORM);
   const [planningSheet, setPlanningSheet] = useState(null);
   const [planningSheets, setPlanningSheets] = useState([]);
@@ -772,7 +769,6 @@ export default function PalletFlow({
       locationCode: "",
     });
     setSearchView("list");
-    setWarehousePalletItems([]);
     setActiveReceivePalletCodes([]);
     setStoreReceiveScopeLocked(false);
     receiveSubmitLockRef.current = false;
@@ -1599,27 +1595,6 @@ export default function PalletFlow({
     }
   };
 
-  const loadWarehousePallets = async () => {
-    setWarehousePalletsLoading(true);
-    try {
-      const params = new URLSearchParams();
-      params.set("statuses", "RECEIVED,STORED");
-      const response = await fetch(`${API_BASE}/pallets?${params.toString()}`, {
-        headers: authHeaders,
-      });
-      const data = await readJsonSafe(response);
-      if (!response.ok) {
-        throw new Error(mapPalletError(data?.message, "Не удалось загрузить паллеты на складе."));
-      }
-      const items = applySearchStatusPreset(data?.items, "ACTIVE");
-      setWarehousePalletItems(items);
-    } catch (err) {
-      handleFlowError(err, "Ошибка загрузки паллет на складе.");
-    } finally {
-      setWarehousePalletsLoading(false);
-    }
-  };
-
   const handlePlanningSheetPrint = () => {
     if (!planningSheet?.id) {
       setSuccess("");
@@ -2098,12 +2073,6 @@ export default function PalletFlow({
   }, [activeTab, searchView]);
 
   useEffect(() => {
-    if (activeTab !== "palletList") return;
-    loadWarehousePallets();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [activeTab]);
-
-  useEffect(() => {
     if (activeTab !== "dispatch") return;
     loadDispatchSheets();
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -2189,7 +2158,6 @@ export default function PalletFlow({
       { id: "dispatch", label: "Отгрузка" },
       { id: "locationControl", label: "Контроль ячеек" },
       { id: "discrepancies", label: "Расхождения" },
-      { id: "palletList", label: "Список паллет" },
       { id: "search", label: "Поиск паллет" },
     ],
     []
@@ -2295,11 +2263,6 @@ export default function PalletFlow({
       return;
     }
 
-    if (activeTab === "palletList") {
-      setActiveTab("receive");
-      return;
-    }
-
     if (activeTab === "locationControl") {
       if (locationControlStep === "confirm") {
         setLocationControlStep("scan");
@@ -2383,9 +2346,6 @@ export default function PalletFlow({
                 }
                 if (tab.id === "search") {
                   setSearchView("list");
-                }
-                if (tab.id === "palletList") {
-                  setSelectedPalletId(null);
                 }
                 if (tab.id === "locationControl") {
                   setLocationControlStep("scan");
@@ -3935,55 +3895,6 @@ export default function PalletFlow({
                     </div>
                   );
                 })}
-              </div>
-            ) : null}
-          </div>
-        ) : null}
-
-        {activeTab === "palletList" ? (
-          <div className="tsd-list">
-            <div className="tsd-card">
-              <div className="tsd-inline tsd-inline--two">
-                <div className="tsd-card__title">Паллеты на складе</div>
-                <button
-                  type="button"
-                  className="tsd-btn tsd-btn--secondary tsd-btn--compact"
-                  onClick={loadWarehousePallets}
-                  disabled={warehousePalletsLoading}
-                >
-                  {warehousePalletsLoading ? "Обновляем..." : "Обновить"}
-                </button>
-              </div>
-              <div className="tsd-card__meta">Показываются только паллеты в статусах «Принята» и «Размещена».</div>
-            </div>
-            {warehousePalletItems.length ? (
-              <div className="tsd-list">
-                {warehousePalletItems.map((item) => (
-                  <div key={item.id} className="tsd-card tsd-pallet-list-btn tsd-pallet-list-btn--received">
-                    <div className="tsd-card__title">{item.palletCode}</div>
-                    <div className="tsd-card__meta">Статус: {statusLabel(item.status)}</div>
-                    <div className="tsd-card__meta">Локация: {locationDisplayName(item.currentLocation)}</div>
-                    <div className="tsd-card__meta">
-                      Поставщик: {item.supplierName || "-"} • Машина/ТТН: {item.inboundRef || "-"}
-                    </div>
-                    <div className="tsd-discrepancy-actions">
-                      <button
-                        type="button"
-                        className="tsd-btn tsd-btn--chip"
-                        onClick={async () => {
-                          await handleSearchOpenDetails(item);
-                        }}
-                        disabled={loading || historyLoading}
-                      >
-                        Открыть
-                      </button>
-                    </div>
-                  </div>
-                ))}
-              </div>
-            ) : !warehousePalletsLoading ? (
-              <div className="tsd-card">
-                <div className="tsd-card__meta">Сейчас на складе нет активных паллет.</div>
               </div>
             ) : null}
           </div>
