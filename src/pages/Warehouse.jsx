@@ -83,6 +83,7 @@ const CROSSDOCK_TAB_IDS = new Set([
   "dispatch",
   "locationControl",
   "discrepancies",
+  "palletList",
   "search",
 ]);
 
