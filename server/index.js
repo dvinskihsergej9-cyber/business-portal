@@ -6598,16 +6598,23 @@ app.post("/api/register", async (req, res) => {
 
 // логин
 app.post("/api/login", async (req, res) => {
-  try {
-    const { login, email, password } = req.body || {};
-    const normalizedLogin = normalizeLogin(login || email);
+  const { login, email, password } = req.body || {};
+  const normalizedLogin = normalizeLogin(login || email);
 
-    if (!normalizedLogin || !password) {
-      return res
-        .status(400)
-        .json({ message: "Логин и пароль обязательны" });
-    }
+  if (!normalizedLogin || !password) {
+    return res
+      .status(400)
+      .json({ message: "Логин и пароль обязательны" });
+  }
 
+  const fail = (status, message) => {
+    const error = new Error(String(message || "LOGIN_ERROR"));
+    error.status = Number(status) || 500;
+    error.publicMessage = String(message || "LOGIN_ERROR");
+    throw error;
+  };
+
+  const runLoginAttempt = async () => {
     let user = null;
 
     if (!normalizedLogin.includes("@")) {
@@ -6621,9 +6628,7 @@ app.post("/api/login", async (req, res) => {
     }
     if (!user) {
       console.warn(`[LOGIN_FAIL] user not found: ${normalizedLogin}`);
-      return res
-        .status(401)
-        .json({ message: "Неверный логин или пароль" });
+      fail(401, "Неверный логин или пароль");
     }
 
     if (!user.orgId) {
@@ -6633,7 +6638,7 @@ app.post("/api/login", async (req, res) => {
 
     if (user.isActive === false) {
       console.warn(`[LOGIN_FAIL] inactive user: ${normalizedLogin}`);
-      return res.status(403).json({ message: "USER_INACTIVE" });
+      fail(403, "USER_INACTIVE");
     }
 
     const storedHash = String(user.passwordHash || user.password || "");
@@ -6652,15 +6657,11 @@ app.post("/api/login", async (req, res) => {
     }
     if (!ok) {
       console.warn(`[LOGIN_FAIL] wrong password: ${normalizedLogin}`);
-      return res
-        .status(401)
-        .json({ message: "Неверный логин или пароль" });
+      fail(401, "Неверный логин или пароль");
     }
 
     if (!user.emailVerifiedAt) {
-      return res.status(403).json({
-        message: "EMAIL_NOT_VERIFIED",
-      });
+      fail(403, "EMAIL_NOT_VERIFIED");
     }
 
     const token = createToken(user);
@@ -6672,7 +6673,7 @@ app.post("/api/login", async (req, res) => {
       console.error("[LOGIN_PAYLOAD] failed, fallback response used:", payloadError);
     }
 
-    res.json({
+    return {
       message: "Вход выполнен",
       token,
       user: userPayload || {
@@ -6694,25 +6695,42 @@ app.post("/api/login", async (req, res) => {
           features: getPlanFeatureFlags("start-30"),
         },
       },
-    });
-  } catch (err) {
-    if (isPermissionDeniedForTable(err, "User")) {
-      await ensureAuthDbPermissions().catch((bootstrapErr) => {
-        console.error("[LOGIN][DB_AUTH_PERMS] bootstrap retry failed:", bootstrapErr);
-      });
-      return res.status(500).json({ message: "AUTH_DB_PERMISSION_USER_TABLE" });
+    };
+  };
+
+  let retriedAfterGrant = false;
+  while (true) {
+    try {
+      const payload = await runLoginAttempt();
+      return res.json(payload);
+    } catch (err) {
+      if (Number(err?.status) >= 400 && Number(err?.status) < 500) {
+        return res.status(err.status).json({ message: err.publicMessage || err.message });
+      }
+
+      const userPermissionDenied = isPermissionDeniedForTable(err, "User");
+      const orgPermissionDenied = isPermissionDeniedForTable(err, "Organization");
+
+      if (!retriedAfterGrant && (userPermissionDenied || orgPermissionDenied)) {
+        retriedAfterGrant = true;
+        await ensureAuthDbPermissions().catch((bootstrapErr) => {
+          console.error("[LOGIN][DB_AUTH_PERMS] bootstrap retry failed:", bootstrapErr);
+        });
+        continue;
+      }
+
+      if (userPermissionDenied) {
+        return res.status(500).json({ message: "AUTH_DB_PERMISSION_USER_TABLE" });
+      }
+      if (orgPermissionDenied) {
+        return res.status(500).json({ message: "AUTH_DB_PERMISSION_ORG_TABLE" });
+      }
+      if (String(err?.name || "").includes("PrismaClientUnknownRequestError")) {
+        return res.status(500).json({ message: "AUTH_DB_QUERY_ERROR" });
+      }
+      console.error("login error:", err);
+      return res.status(500).json({ message: "Ошибка сервера при входе" });
     }
-    if (isPermissionDeniedForTable(err, "Organization")) {
-      await ensureAuthDbPermissions().catch((bootstrapErr) => {
-        console.error("[LOGIN][DB_AUTH_PERMS] bootstrap retry failed:", bootstrapErr);
-      });
-      return res.status(500).json({ message: "AUTH_DB_PERMISSION_ORG_TABLE" });
-    }
-    if (String(err?.name || "").includes("PrismaClientUnknownRequestError")) {
-      return res.status(500).json({ message: "AUTH_DB_QUERY_ERROR" });
-    }
-    console.error("login error:", err);
-    res.status(500).json({ message: "Ошибка сервера при входе" });
   }
 });
 
