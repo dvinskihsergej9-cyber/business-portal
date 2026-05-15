@@ -140,6 +140,7 @@ export default function Layout() {
   const navigate = useNavigate();
   const location = useLocation();
   const [isMobile, setIsMobile] = useState(false);
+  const [mobilePlanSheetOpen, setMobilePlanSheetOpen] = useState(false);
 
   const menu = useMemo(
     () => [
@@ -196,6 +197,9 @@ export default function Layout() {
   const subscriptionStatusText = subscriptionActive
     ? `\u041e\u043f\u043b\u0430\u0447\u0435\u043d\u043e \u0434\u043e: ${paidUntilLabel}`
     : "\u041f\u043e\u0434\u043f\u0438\u0441\u043a\u0430 \u043d\u0435 \u0430\u043a\u0442\u0438\u0432\u043d\u0430";
+  const showMobilePlanBadge =
+    isMobile && location.pathname === "/warehouse" && !sectionParam && Boolean(user);
+  const mobilePlanBadgeText = planTitle;
 
   useEffect(() => {
     const media = window.matchMedia("(max-width: 768px)");
@@ -204,6 +208,12 @@ export default function Layout() {
     media.addEventListener("change", onChange);
     return () => media.removeEventListener("change", onChange);
   }, []);
+
+  useEffect(() => {
+    if (!showMobilePlanBadge && mobilePlanSheetOpen) {
+      setMobilePlanSheetOpen(false);
+    }
+  }, [showMobilePlanBadge, mobilePlanSheetOpen]);
 
   useEffect(() => {
     const onDocumentClick = (event) => {
@@ -257,6 +267,11 @@ export default function Layout() {
 
   const handlePricingOpen = () => {
     navigate("/pricing");
+  };
+
+  const handleMobilePlanPricingOpen = () => {
+    setMobilePlanSheetOpen(false);
+    handlePricingOpen();
   };
 
   const handleBack = () => {
@@ -379,8 +394,20 @@ export default function Layout() {
             )}
           </div>
 
-          <div style={styles.topBarTitle} title={currentPageTitle}>
-            {currentPageTitle}
+          <div style={styles.topBarTitleWrap}>
+            {showMobilePlanBadge && (
+              <button
+                type="button"
+                style={styles.mobilePlanBadge}
+                onClick={() => setMobilePlanSheetOpen(true)}
+                aria-label={`Открыть тариф: ${planTitleWithSku}`}
+              >
+                {mobilePlanBadgeText}
+              </button>
+            )}
+            <div style={styles.topBarTitle} title={currentPageTitle}>
+              {currentPageTitle}
+            </div>
           </div>
 
           <div style={styles.topBarActions}>
@@ -403,6 +430,38 @@ export default function Layout() {
           <Outlet />
         </main>
       </div>
+
+      {isMobile && mobilePlanSheetOpen && (
+        <>
+          <button
+            type="button"
+            style={styles.mobilePlanSheetBackdrop}
+            onClick={() => setMobilePlanSheetOpen(false)}
+            aria-label="Закрыть окно тарифа"
+          />
+          <section style={styles.mobilePlanSheet} aria-label="Тариф и оплата">
+            <div style={styles.mobilePlanSheetHandle} />
+            <div style={styles.mobilePlanSheetTitle}>Тариф</div>
+            <div style={styles.mobilePlanSheetPlan}>{planTitleWithSku}</div>
+            <div
+              style={
+                subscriptionActive
+                  ? styles.mobilePlanSheetMeta
+                  : { ...styles.mobilePlanSheetMeta, ...styles.mobilePlanSheetMetaInactive }
+              }
+            >
+              {subscriptionStatusText}
+            </div>
+            <button
+              type="button"
+              style={styles.mobilePlanSheetBtn}
+              onClick={handleMobilePlanPricingOpen}
+            >
+              Тариф и оплата
+            </button>
+          </section>
+        </>
+      )}
 
       {isMobile && (
         <nav style={styles.mobileBottomNav} className="mobile-bottom-nav">
@@ -631,10 +690,17 @@ const styles = {
     minHeight: 34,
     minWidth: 0,
   },
-  topBarTitle: {
+  topBarTitleWrap: {
     justifySelf: "stretch",
+    minWidth: 0,
+    display: "inline-flex",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 6,
+    padding: "0 6px",
+  },
+  topBarTitle: {
     maxWidth: "100%",
-    padding: "0 8px",
     textAlign: "center",
     fontSize: 16,
     fontWeight: 700,
@@ -644,6 +710,20 @@ const styles = {
     overflow: "hidden",
     textOverflow: "ellipsis",
     pointerEvents: "none",
+  },
+  mobilePlanBadge: {
+    border: "1px solid #8bb7ff",
+    background: "linear-gradient(180deg, #eff6ff 0%, #dbeafe 100%)",
+    color: "#1d4ed8",
+    borderRadius: 999,
+    padding: "2px 8px",
+    minHeight: 24,
+    fontSize: 11,
+    fontWeight: 700,
+    lineHeight: 1,
+    cursor: "pointer",
+    whiteSpace: "nowrap",
+    boxShadow: "0 4px 10px rgba(37, 99, 235, 0.16)",
   },
   topBarActions: {
     justifySelf: "end",
@@ -739,5 +819,65 @@ const styles = {
     textAlign: "center",
     whiteSpace: "normal",
     overflowWrap: "anywhere",
+  },
+  mobilePlanSheetBackdrop: {
+    position: "fixed",
+    inset: 0,
+    zIndex: 130,
+    border: "none",
+    background: "rgba(15, 23, 42, 0.34)",
+    padding: 0,
+    margin: 0,
+  },
+  mobilePlanSheet: {
+    position: "fixed",
+    left: 0,
+    right: 0,
+    bottom: "calc(env(safe-area-inset-bottom, 0px) + 72px)",
+    zIndex: 131,
+    margin: "0 10px",
+    borderRadius: 14,
+    border: "1px solid #bfdbfe",
+    background: "#ffffff",
+    boxShadow: "0 18px 40px rgba(15, 23, 42, 0.24)",
+    padding: "10px 12px 12px",
+    display: "grid",
+    gap: 8,
+  },
+  mobilePlanSheetHandle: {
+    width: 44,
+    height: 4,
+    borderRadius: 999,
+    background: "#dbeafe",
+    justifySelf: "center",
+  },
+  mobilePlanSheetTitle: {
+    fontSize: 12,
+    color: "#64748b",
+    fontWeight: 600,
+  },
+  mobilePlanSheetPlan: {
+    fontSize: 16,
+    color: "#1d4ed8",
+    fontWeight: 700,
+    lineHeight: 1.2,
+  },
+  mobilePlanSheetMeta: {
+    fontSize: 13,
+    color: "#166534",
+  },
+  mobilePlanSheetMetaInactive: {
+    color: "#b45309",
+  },
+  mobilePlanSheetBtn: {
+    marginTop: 2,
+    borderRadius: 10,
+    border: "1px solid #93c5fd",
+    background: "#eff6ff",
+    color: "#1d4ed8",
+    minHeight: 38,
+    fontSize: 14,
+    fontWeight: 700,
+    cursor: "pointer",
   },
 };
