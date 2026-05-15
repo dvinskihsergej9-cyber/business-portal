@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { useNavigate } from "react-router-dom";
 import { API_BASE } from "../apiConfig";
 
 const T = {
@@ -12,6 +13,7 @@ const T = {
 };
 
 export default function ForgotPassword() {
+  const navigate = useNavigate();
   const [email, setEmail] = useState("");
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
@@ -43,6 +45,21 @@ export default function ForgotPassword() {
 
   return (
     <div style={{ maxWidth: 420, margin: "60px auto", padding: "0 16px" }}>
+      <button
+        type="button"
+        onClick={() => navigate("/login")}
+        style={{
+          marginBottom: 12,
+          padding: "8px 14px",
+          background: "#e5efff",
+          color: "#1d4ed8",
+          border: "1px solid #bfdbfe",
+          borderRadius: 8,
+          cursor: "pointer",
+        }}
+      >
+        Назад
+      </button>
       <h1 style={{ marginBottom: 12 }}>{T.title}</h1>
 
       {done ? (
