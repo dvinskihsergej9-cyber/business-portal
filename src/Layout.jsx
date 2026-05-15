@@ -392,6 +392,16 @@ export default function Layout() {
               <span>Назад</span>
             </button>
             )}
+            {!showBack && showMobilePlanBadge && (
+              <button
+                type="button"
+                style={styles.mobilePlanBadgeButton}
+                onClick={() => setMobilePlanSheetOpen(true)}
+                aria-label={`Открыть тариф: ${planTitleWithSku}`}
+              >
+                {planTitle}
+              </button>
+            )}
           </div>
 
           <div style={styles.topBarTitleWrap}>
@@ -440,6 +450,23 @@ export default function Layout() {
             aria-label="Закрыть окно тарифа"
           />
           <section style={styles.mobilePlanSheet} aria-label="Тариф и оплата">
+            <button
+              type="button"
+              style={styles.mobilePlanSheetCloseBtn}
+              onClick={() => setMobilePlanSheetOpen(false)}
+              aria-label="Закрыть"
+            >
+              ×
+            </button>
+            <div style={styles.mobilePlanSheetName}>{user?.name || "—"}</div>
+            <div style={styles.mobilePlanSheetEmail}>
+              {user?.login || user?.username || user?.email || "—"}
+            </div>
+            <div style={styles.mobilePlanSheetRole}>{user?.role || "-"}</div>
+            <div style={styles.mobilePlanSheetSubscriptionRow}>
+              <span style={styles.mobilePlanSheetSubscriptionLabel}>Тариф</span>
+              <span style={styles.mobilePlanSheetSubscriptionValue}>{planTitleWithSku}</span>
+            </div>
             <div style={styles.mobilePlanSheetHandle} />
             <div style={styles.mobilePlanSheetTitle}>Тариф</div>
             <div style={styles.mobilePlanSheetPlan}>{planTitleWithSku}</div>
@@ -696,8 +723,8 @@ const styles = {
     display: "inline-flex",
     alignItems: "center",
     justifyContent: "center",
-    gap: 6,
-    padding: "0 6px",
+    gap: 0,
+    padding: "0 8px",
   },
   topBarTitle: {
     maxWidth: "100%",
@@ -710,6 +737,20 @@ const styles = {
     overflow: "hidden",
     textOverflow: "ellipsis",
     pointerEvents: "none",
+  },
+  mobilePlanBadgeButton: {
+    border: "1px solid #8bb7ff",
+    background: "linear-gradient(180deg, #2f7ef7 0%, #1d4ed8 100%)",
+    color: "#ffffff",
+    borderRadius: 10,
+    padding: "6px 10px",
+    minHeight: 34,
+    fontSize: 12,
+    fontWeight: 700,
+    lineHeight: 1,
+    cursor: "pointer",
+    whiteSpace: "nowrap",
+    boxShadow: "0 6px 14px rgba(37, 99, 235, 0.24)",
   },
   mobilePlanBadge: {
     border: "1px solid #8bb7ff",
@@ -724,6 +765,7 @@ const styles = {
     cursor: "pointer",
     whiteSpace: "nowrap",
     boxShadow: "0 4px 10px rgba(37, 99, 235, 0.16)",
+    display: "none",
   },
   topBarActions: {
     justifySelf: "end",
@@ -833,16 +875,69 @@ const styles = {
     position: "fixed",
     left: 0,
     right: 0,
-    bottom: "calc(env(safe-area-inset-bottom, 0px) + 72px)",
+    top: "calc(env(safe-area-inset-top, 0px) + 58px)",
     zIndex: 131,
     margin: "0 10px",
     borderRadius: 14,
     border: "1px solid #bfdbfe",
     background: "#ffffff",
     boxShadow: "0 18px 40px rgba(15, 23, 42, 0.24)",
-    padding: "10px 12px 12px",
+    padding: "12px 12px 12px",
     display: "grid",
+    gap: 6,
+  },
+  mobilePlanSheetCloseBtn: {
+    position: "absolute",
+    top: 8,
+    right: 8,
+    border: "1px solid #cbd5e1",
+    background: "#f8fafc",
+    color: "#334155",
+    borderRadius: 10,
+    width: 32,
+    height: 32,
+    fontSize: 22,
+    lineHeight: 1,
+    padding: 0,
+    cursor: "pointer",
+  },
+  mobilePlanSheetName: {
+    fontSize: 26,
+    fontWeight: 600,
+    color: "#0f172a",
+    lineHeight: 1.2,
+    maxWidth: "86%",
+  },
+  mobilePlanSheetEmail: {
+    fontSize: 16,
+    color: "#64748b",
+    lineHeight: 1.2,
+    overflowWrap: "anywhere",
+  },
+  mobilePlanSheetRole: {
+    fontSize: 14,
+    marginTop: 2,
+    textTransform: "uppercase",
+    color: "#1754db",
+    letterSpacing: 0.5,
+  },
+  mobilePlanSheetSubscriptionRow: {
+    marginTop: 2,
+    display: "flex",
+    alignItems: "center",
+    justifyContent: "space-between",
     gap: 8,
+  },
+  mobilePlanSheetSubscriptionLabel: {
+    fontSize: 13,
+    textTransform: "uppercase",
+    color: "#64748b",
+    letterSpacing: 0.4,
+  },
+  mobilePlanSheetSubscriptionValue: {
+    fontSize: 16,
+    fontWeight: 700,
+    color: "#1d4ed8",
   },
   mobilePlanSheetHandle: {
     width: 44,
@@ -850,33 +945,37 @@ const styles = {
     borderRadius: 999,
     background: "#dbeafe",
     justifySelf: "center",
+    display: "none",
   },
   mobilePlanSheetTitle: {
     fontSize: 12,
     color: "#64748b",
     fontWeight: 600,
+    display: "none",
   },
   mobilePlanSheetPlan: {
     fontSize: 16,
     color: "#1d4ed8",
     fontWeight: 700,
     lineHeight: 1.2,
+    display: "none",
   },
   mobilePlanSheetMeta: {
-    fontSize: 13,
+    marginTop: 2,
+    fontSize: 16,
     color: "#166534",
   },
   mobilePlanSheetMetaInactive: {
     color: "#b45309",
   },
   mobilePlanSheetBtn: {
-    marginTop: 2,
+    marginTop: 6,
     borderRadius: 10,
     border: "1px solid #93c5fd",
     background: "#eff6ff",
     color: "#1d4ed8",
-    minHeight: 38,
-    fontSize: 14,
+    minHeight: 42,
+    fontSize: 16,
     fontWeight: 700,
     cursor: "pointer",
   },
