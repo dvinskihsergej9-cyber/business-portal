@@ -302,10 +302,10 @@ export default function Layout() {
     : styles.sidebar;
   const canUseSupport = Boolean(user && user.role === "ADMIN");
   const supportBtnStyle = isMobile
-    ? { ...styles.headerSupportBtn, ...styles.headerTopBtnMobile }
+    ? { ...styles.headerSupportBtn, ...styles.headerTopBtnMobile, ...styles.headerSupportBtnMobile }
     : styles.headerSupportBtn;
   const logoutBtnStyle = isMobile
-    ? { ...styles.headerLogoutBtn, ...styles.headerTopBtnMobile }
+    ? { ...styles.headerLogoutBtn, ...styles.headerTopBtnMobile, ...styles.headerLogoutBtnMobile }
     : styles.headerLogoutBtn;
 
   return (
@@ -773,6 +773,9 @@ const styles = {
     alignItems: "center",
     flexWrap: "nowrap",
     gap: 8,
+    minWidth: 0,
+    maxWidth: "100%",
+    overflow: "hidden",
   },
   headerLogoutBtn: {
     padding: "7px 12px",
@@ -804,6 +807,15 @@ const styles = {
     minHeight: 34,
     padding: "6px 9px",
     fontSize: 12,
+    maxWidth: 92,
+    overflow: "hidden",
+    textOverflow: "ellipsis",
+  },
+  headerSupportBtnMobile: {
+    maxWidth: 98,
+  },
+  headerLogoutBtnMobile: {
+    maxWidth: 72,
   },
   content: {
     padding: 0,
