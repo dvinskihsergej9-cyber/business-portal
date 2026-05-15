@@ -739,9 +739,9 @@ const styles = {
     pointerEvents: "none",
   },
   mobilePlanBadgeButton: {
-    border: "1px solid #8bb7ff",
-    background: "linear-gradient(180deg, #2f7ef7 0%, #1d4ed8 100%)",
-    color: "#ffffff",
+    border: "1px solid #86d8a3",
+    background: "linear-gradient(180deg, #effcf3 0%, #dcf7e6 100%)",
+    color: "#166534",
     borderRadius: 10,
     padding: "6px 10px",
     minHeight: 34,
@@ -750,7 +750,7 @@ const styles = {
     lineHeight: 1,
     cursor: "pointer",
     whiteSpace: "nowrap",
-    boxShadow: "0 6px 14px rgba(37, 99, 235, 0.24)",
+    boxShadow: "0 6px 14px rgba(22, 163, 74, 0.2)",
   },
   mobilePlanBadge: {
     border: "1px solid #8bb7ff",
