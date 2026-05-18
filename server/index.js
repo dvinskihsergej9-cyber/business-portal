@@ -691,6 +691,348 @@ async function cleanupExpiredDemoWorkspaces() {
   }
 }
 
+async function runDemoSeedStep(label, fn) {
+  try {
+    return await fn();
+  } catch (err) {
+    console.warn(`[DEMO] seed step failed: ${label}`, {
+      code: err?.code || null,
+      message: err?.message || null,
+    });
+    return null;
+  }
+}
+
+async function seedDemoWorkspaceData({ orgId, userId, workspaceKey, now }) {
+  await runDemoSeedStep("orgProfile", () =>
+    prisma.orgProfile.upsert({
+      where: { orgId },
+      create: {
+        orgId,
+        orgName: `Демо-склад ${workspaceKey}`,
+        legalAddress: "г. Челябинск, ул. Складская, 1",
+        actualAddress: "г. Челябинск, ул. Складская, 1",
+        inn: "7400000000",
+        kpp: "740001001",
+        phone: "+79000000000",
+      },
+      update: {
+        orgName: `Демо-склад ${workspaceKey}`,
+        legalAddress: "г. Челябинск, ул. Складская, 1",
+        actualAddress: "г. Челябинск, ул. Складская, 1",
+        inn: "7400000000",
+        kpp: "740001001",
+        phone: "+79000000000",
+      },
+    })
+  );
+
+  const locationsSeed = [
+    { code: "RECEIVING", name: "Зона приемки", zone: "PRM", aisle: "0", rack: "0", level: "0" },
+    { code: "A01", name: "Ячейка A01", zone: "A", aisle: "1", rack: "1", level: "1" },
+    { code: "A02", name: "Ячейка A02", zone: "A", aisle: "1", rack: "1", level: "2" },
+    { code: "B01", name: "Ячейка B01", zone: "B", aisle: "2", rack: "1", level: "1" },
+  ];
+  await runDemoSeedStep("warehouseLocation.createMany", () =>
+    prisma.warehouseLocation.createMany({
+      data: locationsSeed.map((row) => ({ ...row, orgId })),
+      skipDuplicates: true,
+    })
+  );
+  const locations = (await runDemoSeedStep("warehouseLocation.findMany", () =>
+    prisma.warehouseLocation.findMany({
+      where: { orgId },
+      select: { id: true, code: true },
+    })
+  )) || [];
+  const locationByCode = new Map(
+    locations.map((row) => [String(row.code || "").toUpperCase(), row])
+  );
+
+  const itemsSeed = [
+    {
+      name: "Коробка 60x40",
+      sku: `DEMO-BOX-${workspaceKey.slice(-4)}`,
+      barcode: `200000${Math.floor(100000 + Math.random() * 899999)}`,
+      unit: "шт",
+      minStock: 40,
+      maxStock: 300,
+      defaultPrice: 90,
+    },
+    {
+      name: "Стрейч пленка",
+      sku: `DEMO-FILM-${workspaceKey.slice(-4)}`,
+      barcode: `201000${Math.floor(100000 + Math.random() * 899999)}`,
+      unit: "шт",
+      minStock: 20,
+      maxStock: 150,
+      defaultPrice: 180,
+    },
+    {
+      name: "Пакет ZIP",
+      sku: `DEMO-ZIP-${workspaceKey.slice(-4)}`,
+      barcode: `202000${Math.floor(100000 + Math.random() * 899999)}`,
+      unit: "шт",
+      minStock: 60,
+      maxStock: 400,
+      defaultPrice: 12,
+    },
+    {
+      name: "Маркер складской",
+      sku: `DEMO-MARK-${workspaceKey.slice(-4)}`,
+      barcode: `203000${Math.floor(100000 + Math.random() * 899999)}`,
+      unit: "шт",
+      minStock: 15,
+      maxStock: 120,
+      defaultPrice: 65,
+    },
+  ];
+  await runDemoSeedStep("item.createMany", () =>
+    prisma.item.createMany({
+      data: itemsSeed.map((row) => ({ ...row, orgId })),
+      skipDuplicates: true,
+    })
+  );
+  const items = (await runDemoSeedStep("item.findMany", () =>
+    prisma.item.findMany({
+      where: { orgId },
+      select: { id: true, sku: true, name: true, defaultPrice: true },
+    })
+  )) || [];
+  const itemBySku = new Map(items.map((row) => [String(row.sku || ""), row]));
+
+  const stockSeed = [
+    { sku: itemsSeed[0].sku, locationCode: "A01", qty: 120 },
+    { sku: itemsSeed[1].sku, locationCode: "A02", qty: 70 },
+    { sku: itemsSeed[2].sku, locationCode: "B01", qty: 210 },
+    { sku: itemsSeed[3].sku, locationCode: "A02", qty: 50 },
+  ];
+  for (const row of stockSeed) {
+    await runDemoSeedStep(`stock:${row.sku}:${row.locationCode}`, async () => {
+      const item = itemBySku.get(row.sku);
+      const location = locationByCode.get(String(row.locationCode || "").toUpperCase());
+      if (!item || !location) return null;
+
+      await prisma.$transaction(async (tx) => {
+        await stockService.createMovementInTx(tx, {
+          opId: `DEMO:${workspaceKey}:${item.id}:${location.id}:IN`,
+          type: "INCOME",
+          itemId: item.id,
+          qty: Number(row.qty) || 0,
+          locationId: location.id,
+          comment: "Демо остатки",
+          refType: "DEMO_SEED",
+          refId: workspaceKey,
+          userId,
+        });
+
+        await tx.warehousePlacement.upsert({
+          where: {
+            itemId_locationId: {
+              itemId: item.id,
+              locationId: location.id,
+            },
+          },
+          create: {
+            orgId,
+            itemId: item.id,
+            locationId: location.id,
+            qty: Number(row.qty) || 0,
+          },
+          update: {
+            qty: Number(row.qty) || 0,
+          },
+        });
+      });
+      return true;
+    });
+  }
+
+  let supplier = null;
+  supplier = await runDemoSeedStep("supplier.create", () =>
+    prisma.supplier.create({
+      data: {
+        orgId,
+        name: "ООО ДемоПоставщик",
+        phone: "+79000000000",
+        email: `supplier-${workspaceKey}@demo.skladonline.local`,
+      },
+    })
+  );
+  if (!supplier) {
+    supplier = await runDemoSeedStep("supplier.findFirst", () =>
+      prisma.supplier.findFirst({
+        where: { orgId },
+        orderBy: { id: "desc" },
+      })
+    );
+  }
+
+  let po = null;
+  if (supplier?.id) {
+    po = await runDemoSeedStep("purchaseOrder.create", () =>
+      prisma.purchaseOrder.create({
+        data: {
+          orgId,
+          number: `PO-${workspaceKey.slice(-6).toUpperCase()}`,
+          date: now,
+          status: "SENT",
+          receivingStage: "IN_PROGRESS",
+          supplierId: supplier.id,
+          comment: "Демо поставка для теста приемки.",
+          createdById: userId,
+        },
+      })
+    );
+  }
+
+  const receivingItemA = itemBySku.get(itemsSeed[0].sku);
+  const receivingItemB = itemBySku.get(itemsSeed[1].sku);
+  const receivingLocation = locationByCode.get("RECEIVING");
+  if (po?.id && receivingItemA && receivingItemB) {
+    await runDemoSeedStep("purchaseOrderItem.createMany", () =>
+      prisma.purchaseOrderItem.createMany({
+        data: [
+          {
+            orgId,
+            orderId: po.id,
+            itemId: receivingItemA.id,
+            quantity: 40,
+            receivedQty: 0,
+            price: receivingItemA.defaultPrice || 90,
+          },
+          {
+            orgId,
+            orderId: po.id,
+            itemId: receivingItemB.id,
+            quantity: 25,
+            receivedQty: 0,
+            price: receivingItemB.defaultPrice || 180,
+          },
+        ],
+      })
+    );
+  }
+
+  if (receivingItemA && receivingItemB && receivingLocation) {
+    await runDemoSeedStep("warehouseReceivingLine.createMany", () =>
+      prisma.warehouseReceivingLine.createMany({
+        data: [
+          {
+            orgId,
+            itemId: receivingItemA.id,
+            qty: 40,
+            remainingQty: 40,
+            manufacturedAt: now,
+            expiresAt: new Date(now.getTime() + 180 * 24 * 60 * 60 * 1000),
+            status: "PENDING",
+            sourceType: "RECEIVING",
+            locationId: receivingLocation.id,
+            createdById: userId,
+          },
+          {
+            orgId,
+            itemId: receivingItemB.id,
+            qty: 25,
+            remainingQty: 25,
+            manufacturedAt: now,
+            expiresAt: new Date(now.getTime() + 180 * 24 * 60 * 60 * 1000),
+            status: "PENDING",
+            sourceType: "RECEIVING",
+            locationId: receivingLocation.id,
+            createdById: userId,
+          },
+        ],
+      })
+    );
+  }
+
+  if (receivingItemA && receivingItemB) {
+    const order = await runDemoSeedStep("salesOrder.create", () =>
+      prisma.salesOrder.create({
+        data: {
+          orgId,
+          source: "DEMO",
+          status: "NEW",
+          orderNumber: `SO-${workspaceKey.slice(-6).toUpperCase()}`,
+          customerName: "ООО Клиент-Демо",
+          customerPhone: "+79001112233",
+          shippingAddress: "г. Екатеринбург, ул. Логистическая, 7",
+          deliveryComment: "Срочная сборка до 18:00",
+        },
+      })
+    );
+    if (order?.id) {
+      await runDemoSeedStep("salesOrderLine.createMany", () =>
+        prisma.salesOrderLine.createMany({
+          data: [
+            {
+              orgId,
+              orderId: order.id,
+              itemId: receivingItemA.id,
+              requestedSku: receivingItemA.sku,
+              requestedName: receivingItemA.name,
+              qty: 8,
+              pickedQty: 0,
+            },
+            {
+              orgId,
+              orderId: order.id,
+              itemId: receivingItemB.id,
+              requestedSku: receivingItemB.sku,
+              requestedName: receivingItemB.name,
+              qty: 5,
+              pickedQty: 0,
+            },
+          ],
+        })
+      );
+    }
+  }
+
+  await runDemoSeedStep("warehouseTask.createMany", () =>
+    prisma.warehouseTask.createMany({
+      data: [
+        {
+          orgId,
+          title: "Проверить зону A и подтвердить остатки",
+          description: "Сверьте остатки по ячейкам A01/A02 и отметьте расхождения.",
+          status: "IN_PROGRESS",
+          assignerId: userId,
+          executorUserId: userId,
+        },
+        {
+          orgId,
+          title: "Подготовить отбор по заказу SO",
+          description: "Соберите позиции заказа и проверьте комплектность перед отгрузкой.",
+          status: "NEW",
+          assignerId: userId,
+          executorUserId: userId,
+        },
+      ],
+    })
+  );
+
+  if (supplier?.name) {
+    await runDemoSeedStep("supplierTruck.create", () =>
+      prisma.supplierTruck.create({
+        data: {
+          orgId,
+          status: "IN_QUEUE",
+          supplier: supplier.name,
+          orderNumber: po?.number || null,
+          vehicleBrand: "MAN",
+          truckNumber: "A123AA174",
+          driverName: "Иван Петров",
+          driverPhone: "+79001234567",
+          gate: "2",
+          cargo: "Упаковка и расходники",
+        },
+      })
+    );
+  }
+}
+
 async function createDemoWorkspace() {
   const workspaceKey = buildDemoWorkspaceKey();
   const now = new Date();
@@ -735,232 +1077,17 @@ async function createDemoWorkspace() {
       },
     });
 
-    await tx.orgProfile.create({
-      data: {
-        orgId: org.id,
-        orgName: `Демо-склад ${workspaceKey}`,
-        legalAddress: "г. Челябинск, ул. Складская, 1",
-        actualAddress: "г. Челябинск, ул. Складская, 1",
-        inn: "7400000000",
-        kpp: "740001001",
-        phone: "+79000000000",
-      },
-    }).catch(() => null);
-
-    const locationsSeed = [
-      { code: "RECEIVING", name: "Зона приемки", zone: "PRM", aisle: "0", rack: "0", level: "0" },
-      { code: "A01", name: "Ячейка A01", zone: "A", aisle: "1", rack: "1", level: "1" },
-      { code: "A02", name: "Ячейка A02", zone: "A", aisle: "1", rack: "1", level: "2" },
-      { code: "B01", name: "Ячейка B01", zone: "B", aisle: "2", rack: "1", level: "1" },
-    ];
-    await tx.warehouseLocation.createMany({
-      data: locationsSeed.map((row) => ({ ...row, orgId: org.id })),
-    });
-    const locations = await tx.warehouseLocation.findMany({
-      where: { orgId: org.id },
-      select: { id: true, code: true },
-    });
-    const locationByCode = new Map(locations.map((row) => [String(row.code || "").toUpperCase(), row]));
-
-    const itemsSeed = [
-      { name: "Коробка 60x40", sku: `DEMO-BOX-${workspaceKey.slice(-4)}`, barcode: `200000${Math.floor(100000 + Math.random() * 899999)}`, unit: "шт", minStock: 40, maxStock: 300 },
-      { name: "Стрейч пленка", sku: `DEMO-FILM-${workspaceKey.slice(-4)}`, barcode: `201000${Math.floor(100000 + Math.random() * 899999)}`, unit: "шт", minStock: 20, maxStock: 150 },
-      { name: "Пакет ZIP", sku: `DEMO-ZIP-${workspaceKey.slice(-4)}`, barcode: `202000${Math.floor(100000 + Math.random() * 899999)}`, unit: "шт", minStock: 60, maxStock: 400 },
-      { name: "Маркер складской", sku: `DEMO-MARK-${workspaceKey.slice(-4)}`, barcode: `203000${Math.floor(100000 + Math.random() * 899999)}`, unit: "шт", minStock: 15, maxStock: 120 },
-    ];
-    await tx.item.createMany({
-      data: itemsSeed.map((row, idx) => ({
-        ...row,
-        orgId: org.id,
-        defaultPrice: [90, 180, 12, 65][idx],
-      })),
-    });
-    const items = await tx.item.findMany({
-      where: { orgId: org.id },
-      select: { id: true, sku: true, name: true, defaultPrice: true },
-    });
-    const itemBySku = new Map(items.map((row) => [String(row.sku || ""), row]));
-
-    const stockSeed = [
-      { sku: itemsSeed[0].sku, locationCode: "A01", qty: 120 },
-      { sku: itemsSeed[1].sku, locationCode: "A02", qty: 70 },
-      { sku: itemsSeed[2].sku, locationCode: "B01", qty: 210 },
-      { sku: itemsSeed[3].sku, locationCode: "A02", qty: 50 },
-    ];
-
-    for (const row of stockSeed) {
-      const item = itemBySku.get(row.sku);
-      const location = locationByCode.get(String(row.locationCode || "").toUpperCase());
-      if (!item || !location) continue;
-
-      await stockService.createMovementInTx(tx, {
-        opId: `DEMO:${workspaceKey}:${item.id}:${location.id}:IN`,
-        type: "INCOME",
-        itemId: item.id,
-        qty: Number(row.qty) || 0,
-        locationId: location.id,
-        comment: "Демо остатки",
-        refType: "DEMO_SEED",
-        refId: workspaceKey,
-        userId: user.id,
-      });
-
-      await tx.warehousePlacement.upsert({
-        where: {
-          itemId_locationId: {
-            itemId: item.id,
-            locationId: location.id,
-          },
-        },
-        create: {
-          orgId: org.id,
-          itemId: item.id,
-          locationId: location.id,
-          qty: Number(row.qty) || 0,
-        },
-        update: {
-          qty: Number(row.qty) || 0,
-        },
-      });
-    }
-
-    const supplier = await tx.supplier.create({
-      data: {
-        orgId: org.id,
-        name: "ООО ДемоПоставщик",
-        phone: "+79000000000",
-        email: "supplier-demo@skladonline.local",
-      },
-    });
-
-    const po = await tx.purchaseOrder.create({
-      data: {
-        orgId: org.id,
-        number: `PO-${workspaceKey.slice(-6).toUpperCase()}`,
-        date: now,
-        status: "SENT",
-        receivingStage: "IN_PROGRESS",
-        supplierId: supplier.id,
-        comment: "Демо поставка для теста приемки.",
-        createdById: user.id,
-      },
-    });
-
-    const receivingItemA = itemBySku.get(itemsSeed[0].sku);
-    const receivingItemB = itemBySku.get(itemsSeed[1].sku);
-    const receivingLocation = locationByCode.get("RECEIVING");
-    if (receivingItemA && receivingItemB && receivingLocation) {
-      await tx.purchaseOrderItem.createMany({
-        data: [
-          { orgId: org.id, orderId: po.id, itemId: receivingItemA.id, quantity: 40, receivedQty: 0, price: receivingItemA.defaultPrice || 90 },
-          { orgId: org.id, orderId: po.id, itemId: receivingItemB.id, quantity: 25, receivedQty: 0, price: receivingItemB.defaultPrice || 180 },
-        ],
-      });
-      await tx.warehouseReceivingLine.createMany({
-        data: [
-          {
-            orgId: org.id,
-            itemId: receivingItemA.id,
-            qty: 40,
-            remainingQty: 40,
-            manufacturedAt: now,
-            expiresAt: new Date(now.getTime() + 180 * 24 * 60 * 60 * 1000),
-            status: "PENDING",
-            sourceType: "RECEIVING",
-            locationId: receivingLocation.id,
-            createdById: user.id,
-          },
-          {
-            orgId: org.id,
-            itemId: receivingItemB.id,
-            qty: 25,
-            remainingQty: 25,
-            manufacturedAt: now,
-            expiresAt: new Date(now.getTime() + 180 * 24 * 60 * 60 * 1000),
-            status: "PENDING",
-            sourceType: "RECEIVING",
-            locationId: receivingLocation.id,
-            createdById: user.id,
-          },
-        ],
-      });
-    }
-
-    if (receivingItemA && receivingItemB) {
-      const order = await tx.salesOrder.create({
-        data: {
-          orgId: org.id,
-          source: "DEMO",
-          status: "NEW",
-          orderNumber: `SO-${workspaceKey.slice(-6).toUpperCase()}`,
-          customerName: "ООО Клиент-Демо",
-          customerPhone: "+79001112233",
-          shippingAddress: "г. Екатеринбург, ул. Логистическая, 7",
-          deliveryComment: "Срочная сборка до 18:00",
-        },
-      });
-      await tx.salesOrderLine.createMany({
-        data: [
-          {
-            orgId: org.id,
-            orderId: order.id,
-            itemId: receivingItemA.id,
-            requestedSku: receivingItemA.sku,
-            requestedName: receivingItemA.name,
-            qty: 8,
-            pickedQty: 0,
-          },
-          {
-            orgId: org.id,
-            orderId: order.id,
-            itemId: receivingItemB.id,
-            requestedSku: receivingItemB.sku,
-            requestedName: receivingItemB.name,
-            qty: 5,
-            pickedQty: 0,
-          },
-        ],
-      });
-    }
-
-    await tx.warehouseTask.createMany({
-      data: [
-        {
-          orgId: org.id,
-          title: "Проверить зону A и подтвердить остатки",
-          description: "Сверьте остатки по ячейкам A01/A02 и отметьте расхождения.",
-          status: "IN_PROGRESS",
-          assignerId: user.id,
-          executorUserId: user.id,
-        },
-        {
-          orgId: org.id,
-          title: "Подготовить отбор по заказу SO",
-          description: "Соберите позиции заказа и проверьте комплектность перед отгрузкой.",
-          status: "NEW",
-          assignerId: user.id,
-          executorUserId: user.id,
-        },
-      ],
-    });
-
-    await tx.supplierTruck.create({
-      data: {
-        orgId: org.id,
-        status: "IN_QUEUE",
-        supplier: supplier.name,
-        orderNumber: po.number || null,
-        vehicleBrand: "MAN",
-        truckNumber: "A123AA174",
-        driverName: "Иван Петров",
-        driverPhone: "+79001234567",
-        gate: "2",
-        cargo: "Упаковка и расходники",
-      },
-    });
-
     return { org, user };
   });
+
+  await runWithoutTenantScope(() =>
+    seedDemoWorkspaceData({
+      orgId: result.org.id,
+      userId: result.user.id,
+      workspaceKey,
+      now,
+    })
+  );
 
   const token = createToken(result.user);
   const userPayload = await getUserPayload(result.user.id);
