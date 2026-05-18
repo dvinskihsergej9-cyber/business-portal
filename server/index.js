@@ -576,6 +576,16 @@ function getClientIp(req) {
   return raw.replace(/^::ffff:/, "").slice(0, 64);
 }
 
+function buildDemoClientFingerprint(req) {
+  const ip = getClientIp(req) || "unknown";
+  const userAgent = String(req?.headers?.["user-agent"] || "")
+    .trim()
+    .toLowerCase()
+    .slice(0, 255);
+  const raw = `${ip}|${userAgent}`;
+  return crypto.createHash("sha256").update(raw).digest("hex").slice(0, 12);
+}
+
 function buildRegistrationConsentSnapshot(req, {
   privacyAccepted = false,
   marketingAccepted = false,
@@ -623,10 +633,17 @@ function normalizeLogin(value) {
     .toLowerCase();
 }
 
-function buildDemoWorkspaceKey() {
+function buildDemoWorkspaceKey(fingerprint = "") {
   const ts = Date.now().toString(36);
-  const rnd = Math.random().toString(36).slice(2, 8);
-  return `${DEMO_WORKSPACE_PREFIX}-${ts}-${rnd}`.slice(0, 48);
+  const rnd = Math.random().toString(36).slice(2, 6);
+  const normalizedFingerprint = String(fingerprint || "")
+    .trim()
+    .toLowerCase()
+    .replace(/[^a-z0-9]/g, "")
+    .slice(0, 12);
+  return normalizedFingerprint
+    ? `${DEMO_WORKSPACE_PREFIX}-${normalizedFingerprint}-${ts}-${rnd}`.slice(0, 48)
+    : `${DEMO_WORKSPACE_PREFIX}-${ts}-${rnd}`.slice(0, 48);
 }
 
 function trimRateWindow(rateList, now = Date.now(), ttlMs = DEMO_CREATE_COOLDOWN_MS) {
@@ -701,6 +718,149 @@ async function runDemoSeedStep(label, fn) {
     });
     return null;
   }
+}
+
+async function findDemoUserByFingerprint(fingerprint) {
+  const normalized = String(fingerprint || "")
+    .trim()
+    .toLowerCase()
+    .replace(/[^a-z0-9]/g, "")
+    .slice(0, 12);
+  if (!normalized) return null;
+  const codePrefix = `${DEMO_WORKSPACE_PREFIX}-${normalized}-`;
+  return prisma.user.findFirst({
+    where: {
+      role: "ADMIN",
+      organization: {
+        code: {
+          startsWith: codePrefix,
+          mode: "insensitive",
+        },
+      },
+    },
+    orderBy: [{ createdAt: "desc" }, { id: "desc" }],
+    select: {
+      id: true,
+      email: true,
+      username: true,
+      passwordVisible: true,
+      orgId: true,
+      organization: {
+        select: {
+          id: true,
+          code: true,
+          isActive: true,
+        },
+      },
+    },
+  });
+}
+
+async function buildExistingDemoWorkspaceSession(demoUserId) {
+  const now = new Date();
+  const paidUntil = new Date(now.getTime() + DEMO_WORKSPACE_TTL_HOURS * 60 * 60 * 1000);
+  const freshUser = await prisma.$transaction(async (tx) => {
+    const current = await tx.user.findUnique({
+      where: { id: Number(demoUserId || 0) },
+      select: {
+        id: true,
+        email: true,
+        username: true,
+        password: true,
+        passwordHash: true,
+        passwordVisible: true,
+        name: true,
+        role: true,
+        orgId: true,
+        tokenVersion: true,
+        isActive: true,
+      },
+    });
+    if (!current || !current.orgId) return null;
+
+    const updates = {};
+    if (!current.isActive) updates.isActive = true;
+    if (!current.passwordVisible) {
+      const nextPassword = buildDemoPassword();
+      const nextHash = await bcrypt.hash(nextPassword, 10);
+      updates.password = nextHash;
+      updates.passwordHash = nextHash;
+      updates.passwordVisible = nextPassword;
+    }
+    if (Object.keys(updates).length) {
+      await tx.user.update({
+        where: { id: current.id },
+        data: updates,
+      });
+    }
+    await tx.organization.update({
+      where: { id: current.orgId },
+      data: { isActive: true },
+    }).catch(() => null);
+
+    const existingSubscription = await tx.subscription.findUnique({
+      where: { userId: current.id },
+      select: { id: true, trialStartedAt: true },
+    });
+    if (existingSubscription?.id) {
+      await tx.subscription.update({
+        where: { userId: current.id },
+        data: {
+          plan: "pro-30",
+          status: "active",
+          paidUntil,
+          trialUsed: true,
+          trialStartedAt: existingSubscription.trialStartedAt || now,
+        },
+      });
+    } else {
+      await tx.subscription.create({
+        data: {
+          userId: current.id,
+          plan: "pro-30",
+          status: "active",
+          paidUntil,
+          trialUsed: true,
+          trialStartedAt: now,
+        },
+      });
+    }
+
+    return tx.user.findUnique({
+      where: { id: current.id },
+      select: {
+        id: true,
+        email: true,
+        role: true,
+        orgId: true,
+        isSystemOwner: true,
+        tokenVersion: true,
+        passwordVisible: true,
+      },
+    });
+  });
+
+  if (!freshUser?.id) return null;
+
+  const org = await prisma.organization.findUnique({
+    where: { id: freshUser.orgId || 0 },
+    select: { id: true, code: true },
+  });
+
+  const token = createToken(freshUser);
+  const userPayload = await getUserPayload(freshUser.id);
+  return {
+    token,
+    user: userPayload,
+    demo: {
+      workspace: String(org?.code || ""),
+      email: freshUser.email || null,
+      password: freshUser.passwordVisible || null,
+      expiresAt: paidUntil.toISOString(),
+      ttlHours: DEMO_WORKSPACE_TTL_HOURS,
+      organizationId: Number(org?.id || 0) || null,
+    },
+  };
 }
 
 async function seedDemoWorkspaceData({ orgId, userId, workspaceKey, now }) {
@@ -1241,8 +1401,8 @@ async function seedDemoWorkspaceData({ orgId, userId, workspaceKey, now }) {
   }
 }
 
-async function createDemoWorkspace() {
-  const workspaceKey = buildDemoWorkspaceKey();
+async function createDemoWorkspace(options = {}) {
+  const workspaceKey = buildDemoWorkspaceKey(options?.fingerprint || "");
   const now = new Date();
   const paidUntil = new Date(now.getTime() + DEMO_WORKSPACE_TTL_HOURS * 60 * 60 * 1000);
   const demoEmail = `${workspaceKey}@${DEMO_EMAIL_DOMAIN}`;
@@ -7129,9 +7289,25 @@ async function sendDailyLowStockSummary(options = {}) {
 
 app.post("/api/demo/create", async (req, res) => {
   try {
+    await cleanupExpiredDemoWorkspaces();
+
     const now = Date.now();
     const ip = getClientIp(req) || "unknown";
+    const fingerprint = buildDemoClientFingerprint(req);
     const key = `demo:${ip}`;
+
+    const existingDemoUser = await findDemoUserByFingerprint(fingerprint);
+    if (existingDemoUser?.id) {
+      const reusedSession = await buildExistingDemoWorkspaceSession(existingDemoUser.id);
+      if (reusedSession) {
+        return res.status(200).json({
+          ok: true,
+          reused: true,
+          message: "Для этого клиента уже создан демо-доступ. Открыли существующий демо-склад.",
+          ...reusedSession,
+        });
+      }
+    }
 
     const lastByIp = Number(demoCreateRate.get(key) || 0);
     if (lastByIp && now - lastByIp < DEMO_CREATE_COOLDOWN_MS) {
@@ -7151,8 +7327,7 @@ app.post("/api/demo/create", async (req, res) => {
     demoCreateRate.set(key, now);
     demoCreateGlobalRate.push(now);
 
-    await cleanupExpiredDemoWorkspaces();
-    const demoSession = await createDemoWorkspace();
+    const demoSession = await createDemoWorkspace({ fingerprint });
     return res.status(201).json({
       ok: true,
       message: "Демо-склад готов. Можно тестировать полный цикл.",
