@@ -105,6 +105,30 @@ export function AuthProvider({ children }) {
     }
   };
 
+  const startDemoSession = async () => {
+    try {
+      const res = await apiFetch("/demo/create", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        return { ok: false, message: data.message || "Не удалось запустить демо." };
+      }
+      if (!data?.token || !data?.user) {
+        return { ok: false, message: "Сервер вернул некорректный ответ демо." };
+      }
+      localStorage.setItem("token", data.token);
+      localStorage.setItem("user", JSON.stringify(data.user));
+      setUser(data.user);
+      bindPushForSession(data.token, false, true);
+      return { ok: true, demo: data.demo || null };
+    } catch (e) {
+      console.error("Start demo error:", e);
+      return { ok: false, message: normalizeErrorMessage(e, "Не удалось запустить демо.") };
+    }
+  };
+
   // Регистрация без role: роль назначает сервер.
   const register = async ({
     email,
@@ -274,6 +298,7 @@ export function AuthProvider({ children }) {
     register,
     verifyRegistrationCode,
     resendRegistrationCode,
+    startDemoSession,
     updateProfile,
     logout,
     refreshUser,

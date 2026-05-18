@@ -459,6 +459,31 @@ const resetEmailRate = new Map();
 const resetGlobalRate = [];
 const emailVerifyResendRate = new Map();
 const emailVerifyGlobalRate = [];
+const demoCreateRate = new Map();
+const demoCreateGlobalRate = [];
+
+const DEMO_WORKSPACE_TTL_HOURS = Math.max(
+  1,
+  Number(process.env.DEMO_WORKSPACE_TTL_HOURS || 72)
+);
+const DEMO_WORKSPACE_PREFIX = String(
+  process.env.DEMO_WORKSPACE_PREFIX || "demo"
+)
+  .trim()
+  .toLowerCase();
+const DEMO_EMAIL_DOMAIN = String(
+  process.env.DEMO_EMAIL_DOMAIN || "demo.skladonline.local"
+)
+  .trim()
+  .toLowerCase();
+const DEMO_CREATE_COOLDOWN_MS = Math.max(
+  10_000,
+  Number(process.env.DEMO_CREATE_COOLDOWN_MS || 60_000)
+);
+const DEMO_CREATE_GLOBAL_LIMIT = Math.max(
+  5,
+  Number(process.env.DEMO_CREATE_GLOBAL_LIMIT || 60)
+);
 
 const FRONTEND_URL = process.env.FRONTEND_URL || "http://localhost:5173";
 const OWNER_BOOTSTRAP_EMAIL = String(
@@ -596,6 +621,361 @@ function normalizeLogin(value) {
     .trim()
     .replace(/\s+/g, "_")
     .toLowerCase();
+}
+
+function buildDemoWorkspaceKey() {
+  const ts = Date.now().toString(36);
+  const rnd = Math.random().toString(36).slice(2, 8);
+  return `${DEMO_WORKSPACE_PREFIX}-${ts}-${rnd}`.slice(0, 48);
+}
+
+function trimRateWindow(rateList, now = Date.now(), ttlMs = DEMO_CREATE_COOLDOWN_MS) {
+  while (rateList.length && now - rateList[0] > ttlMs) {
+    rateList.shift();
+  }
+}
+
+function buildDemoPassword() {
+  const code = Math.floor(100000 + Math.random() * 900000);
+  return `Demo${code}!`;
+}
+
+async function cleanupExpiredDemoWorkspaces() {
+  const cutoff = new Date(Date.now() - DEMO_WORKSPACE_TTL_HOURS * 60 * 60 * 1000);
+  try {
+    const expiredUsers = await prisma.user.findMany({
+      where: {
+        isActive: true,
+        role: "ADMIN",
+        createdAt: { lt: cutoff },
+        organization: {
+          code: {
+            startsWith: `${DEMO_WORKSPACE_PREFIX}-`,
+            mode: "insensitive",
+          },
+        },
+      },
+      select: { id: true, orgId: true },
+      take: 500,
+    });
+    if (!expiredUsers.length) return;
+
+    const expiredUserIds = expiredUsers
+      .map((row) => Number(row.id))
+      .filter((id) => Number.isFinite(id) && id > 0);
+    const expiredOrgIds = Array.from(
+      new Set(
+        expiredUsers
+          .map((row) => Number(row.orgId || 0))
+          .filter((id) => Number.isFinite(id) && id > 0)
+      )
+    );
+
+    if (expiredUserIds.length) {
+      await prisma.user.updateMany({
+        where: { id: { in: expiredUserIds } },
+        data: {
+          isActive: false,
+          tokenVersion: { increment: 1 },
+        },
+      });
+    }
+    if (expiredOrgIds.length) {
+      await prisma.organization.updateMany({
+        where: { id: { in: expiredOrgIds } },
+        data: { isActive: false },
+      });
+    }
+  } catch (err) {
+    console.error("[DEMO] cleanup error:", err);
+  }
+}
+
+async function createDemoWorkspace() {
+  const workspaceKey = buildDemoWorkspaceKey();
+  const now = new Date();
+  const paidUntil = new Date(now.getTime() + DEMO_WORKSPACE_TTL_HOURS * 60 * 60 * 1000);
+  const demoEmail = `${workspaceKey}@${DEMO_EMAIL_DOMAIN}`;
+  const demoUsername = workspaceKey.replace(/[^a-z0-9_-]/g, "_").slice(0, 32);
+  const demoPassword = buildDemoPassword();
+  const hash = await bcrypt.hash(demoPassword, 10);
+
+  const result = await prisma.$transaction(async (tx) => {
+    const org = await tx.organization.create({
+      data: {
+        name: `Демо-склад ${workspaceKey}`,
+        code: workspaceKey,
+        isActive: true,
+      },
+    });
+
+    const user = await tx.user.create({
+      data: {
+        email: demoEmail,
+        username: demoUsername,
+        password: hash,
+        passwordHash: hash,
+        passwordVisible: demoPassword,
+        name: "Демо Администратор",
+        role: "ADMIN",
+        orgId: org.id,
+        isActive: true,
+        emailVerifiedAt: now,
+      },
+    });
+
+    await tx.subscription.create({
+      data: {
+        userId: user.id,
+        plan: "pro-30",
+        status: "active",
+        paidUntil,
+        trialUsed: true,
+        trialStartedAt: now,
+      },
+    });
+
+    await tx.orgProfile.create({
+      data: {
+        orgId: org.id,
+        orgName: `Демо-склад ${workspaceKey}`,
+        legalAddress: "г. Челябинск, ул. Складская, 1",
+        actualAddress: "г. Челябинск, ул. Складская, 1",
+        inn: "7400000000",
+        kpp: "740001001",
+        phone: "+79000000000",
+      },
+    }).catch(() => null);
+
+    const locationsSeed = [
+      { code: "RECEIVING", name: "Зона приемки", zone: "PRM", aisle: "0", rack: "0", level: "0" },
+      { code: "A01", name: "Ячейка A01", zone: "A", aisle: "1", rack: "1", level: "1" },
+      { code: "A02", name: "Ячейка A02", zone: "A", aisle: "1", rack: "1", level: "2" },
+      { code: "B01", name: "Ячейка B01", zone: "B", aisle: "2", rack: "1", level: "1" },
+    ];
+    await tx.warehouseLocation.createMany({
+      data: locationsSeed.map((row) => ({ ...row, orgId: org.id })),
+    });
+    const locations = await tx.warehouseLocation.findMany({
+      where: { orgId: org.id },
+      select: { id: true, code: true },
+    });
+    const locationByCode = new Map(locations.map((row) => [String(row.code || "").toUpperCase(), row]));
+
+    const itemsSeed = [
+      { name: "Коробка 60x40", sku: `DEMO-BOX-${workspaceKey.slice(-4)}`, barcode: `200000${Math.floor(100000 + Math.random() * 899999)}`, unit: "шт", minStock: 40, maxStock: 300 },
+      { name: "Стрейч пленка", sku: `DEMO-FILM-${workspaceKey.slice(-4)}`, barcode: `201000${Math.floor(100000 + Math.random() * 899999)}`, unit: "шт", minStock: 20, maxStock: 150 },
+      { name: "Пакет ZIP", sku: `DEMO-ZIP-${workspaceKey.slice(-4)}`, barcode: `202000${Math.floor(100000 + Math.random() * 899999)}`, unit: "шт", minStock: 60, maxStock: 400 },
+      { name: "Маркер складской", sku: `DEMO-MARK-${workspaceKey.slice(-4)}`, barcode: `203000${Math.floor(100000 + Math.random() * 899999)}`, unit: "шт", minStock: 15, maxStock: 120 },
+    ];
+    await tx.item.createMany({
+      data: itemsSeed.map((row, idx) => ({
+        ...row,
+        orgId: org.id,
+        defaultPrice: [90, 180, 12, 65][idx],
+      })),
+    });
+    const items = await tx.item.findMany({
+      where: { orgId: org.id },
+      select: { id: true, sku: true, name: true, defaultPrice: true },
+    });
+    const itemBySku = new Map(items.map((row) => [String(row.sku || ""), row]));
+
+    const stockSeed = [
+      { sku: itemsSeed[0].sku, locationCode: "A01", qty: 120 },
+      { sku: itemsSeed[1].sku, locationCode: "A02", qty: 70 },
+      { sku: itemsSeed[2].sku, locationCode: "B01", qty: 210 },
+      { sku: itemsSeed[3].sku, locationCode: "A02", qty: 50 },
+    ];
+
+    for (const row of stockSeed) {
+      const item = itemBySku.get(row.sku);
+      const location = locationByCode.get(String(row.locationCode || "").toUpperCase());
+      if (!item || !location) continue;
+
+      await stockService.createMovementInTx(tx, {
+        opId: `DEMO:${workspaceKey}:${item.id}:${location.id}:IN`,
+        type: "INCOME",
+        itemId: item.id,
+        qty: Number(row.qty) || 0,
+        locationId: location.id,
+        comment: "Демо остатки",
+        refType: "DEMO_SEED",
+        refId: workspaceKey,
+        userId: user.id,
+      });
+
+      await tx.warehousePlacement.upsert({
+        where: {
+          itemId_locationId: {
+            itemId: item.id,
+            locationId: location.id,
+          },
+        },
+        create: {
+          orgId: org.id,
+          itemId: item.id,
+          locationId: location.id,
+          qty: Number(row.qty) || 0,
+        },
+        update: {
+          qty: Number(row.qty) || 0,
+        },
+      });
+    }
+
+    const supplier = await tx.supplier.create({
+      data: {
+        orgId: org.id,
+        name: "ООО ДемоПоставщик",
+        phone: "+79000000000",
+        email: "supplier-demo@skladonline.local",
+      },
+    });
+
+    const po = await tx.purchaseOrder.create({
+      data: {
+        orgId: org.id,
+        number: `PO-${workspaceKey.slice(-6).toUpperCase()}`,
+        date: now,
+        status: "SENT",
+        receivingStage: "IN_PROGRESS",
+        supplierId: supplier.id,
+        comment: "Демо поставка для теста приемки.",
+        createdById: user.id,
+      },
+    });
+
+    const receivingItemA = itemBySku.get(itemsSeed[0].sku);
+    const receivingItemB = itemBySku.get(itemsSeed[1].sku);
+    const receivingLocation = locationByCode.get("RECEIVING");
+    if (receivingItemA && receivingItemB && receivingLocation) {
+      await tx.purchaseOrderItem.createMany({
+        data: [
+          { orgId: org.id, orderId: po.id, itemId: receivingItemA.id, quantity: 40, receivedQty: 0, price: receivingItemA.defaultPrice || 90 },
+          { orgId: org.id, orderId: po.id, itemId: receivingItemB.id, quantity: 25, receivedQty: 0, price: receivingItemB.defaultPrice || 180 },
+        ],
+      });
+      await tx.warehouseReceivingLine.createMany({
+        data: [
+          {
+            orgId: org.id,
+            itemId: receivingItemA.id,
+            qty: 40,
+            remainingQty: 40,
+            manufacturedAt: now,
+            expiresAt: new Date(now.getTime() + 180 * 24 * 60 * 60 * 1000),
+            status: "PENDING",
+            sourceType: "RECEIVING",
+            locationId: receivingLocation.id,
+            createdById: user.id,
+          },
+          {
+            orgId: org.id,
+            itemId: receivingItemB.id,
+            qty: 25,
+            remainingQty: 25,
+            manufacturedAt: now,
+            expiresAt: new Date(now.getTime() + 180 * 24 * 60 * 60 * 1000),
+            status: "PENDING",
+            sourceType: "RECEIVING",
+            locationId: receivingLocation.id,
+            createdById: user.id,
+          },
+        ],
+      });
+    }
+
+    if (receivingItemA && receivingItemB) {
+      const order = await tx.salesOrder.create({
+        data: {
+          orgId: org.id,
+          source: "DEMO",
+          status: "NEW",
+          orderNumber: `SO-${workspaceKey.slice(-6).toUpperCase()}`,
+          customerName: "ООО Клиент-Демо",
+          customerPhone: "+79001112233",
+          shippingAddress: "г. Екатеринбург, ул. Логистическая, 7",
+          deliveryComment: "Срочная сборка до 18:00",
+        },
+      });
+      await tx.salesOrderLine.createMany({
+        data: [
+          {
+            orgId: org.id,
+            orderId: order.id,
+            itemId: receivingItemA.id,
+            requestedSku: receivingItemA.sku,
+            requestedName: receivingItemA.name,
+            qty: 8,
+            pickedQty: 0,
+          },
+          {
+            orgId: org.id,
+            orderId: order.id,
+            itemId: receivingItemB.id,
+            requestedSku: receivingItemB.sku,
+            requestedName: receivingItemB.name,
+            qty: 5,
+            pickedQty: 0,
+          },
+        ],
+      });
+    }
+
+    await tx.warehouseTask.createMany({
+      data: [
+        {
+          orgId: org.id,
+          title: "Проверить зону A и подтвердить остатки",
+          description: "Сверьте остатки по ячейкам A01/A02 и отметьте расхождения.",
+          status: "IN_PROGRESS",
+          assignerId: user.id,
+          executorUserId: user.id,
+        },
+        {
+          orgId: org.id,
+          title: "Подготовить отбор по заказу SO",
+          description: "Соберите позиции заказа и проверьте комплектность перед отгрузкой.",
+          status: "NEW",
+          assignerId: user.id,
+          executorUserId: user.id,
+        },
+      ],
+    });
+
+    await tx.supplierTruck.create({
+      data: {
+        orgId: org.id,
+        status: "IN_QUEUE",
+        supplier: supplier.name,
+        orderNumber: po.number || null,
+        vehicleBrand: "MAN",
+        truckNumber: "A123AA174",
+        driverName: "Иван Петров",
+        driverPhone: "+79001234567",
+        gate: "2",
+        cargo: "Упаковка и расходники",
+      },
+    });
+
+    return { org, user };
+  });
+
+  const token = createToken(result.user);
+  const userPayload = await getUserPayload(result.user.id);
+  return {
+    token,
+    user: userPayload,
+    demo: {
+      workspace: workspaceKey,
+      email: demoEmail,
+      password: demoPassword,
+      expiresAt: paidUntil.toISOString(),
+      ttlHours: DEMO_WORKSPACE_TTL_HOURS,
+      organizationId: result.org.id,
+    },
+  };
 }
 
 function isValidUsername(value) {
@@ -6411,6 +6791,43 @@ async function sendDailyLowStockSummary(options = {}) {
 }
 
 // ================== АУТЕНТИФИКАЦИЯ ==================
+
+app.post("/api/demo/create", async (req, res) => {
+  try {
+    const now = Date.now();
+    const ip = getClientIp(req) || "unknown";
+    const key = `demo:${ip}`;
+
+    const lastByIp = Number(demoCreateRate.get(key) || 0);
+    if (lastByIp && now - lastByIp < DEMO_CREATE_COOLDOWN_MS) {
+      const waitSec = Math.ceil((DEMO_CREATE_COOLDOWN_MS - (now - lastByIp)) / 1000);
+      return res.status(429).json({
+        message: `Подождите ${waitSec} сек. перед новым запуском демо.`,
+      });
+    }
+
+    trimRateWindow(demoCreateGlobalRate, now, 60 * 60 * 1000);
+    if (demoCreateGlobalRate.length >= DEMO_CREATE_GLOBAL_LIMIT) {
+      return res.status(429).json({
+        message: "Сейчас много запросов на демо. Попробуйте через несколько минут.",
+      });
+    }
+
+    demoCreateRate.set(key, now);
+    demoCreateGlobalRate.push(now);
+
+    await cleanupExpiredDemoWorkspaces();
+    const demoSession = await createDemoWorkspace();
+    return res.status(201).json({
+      ok: true,
+      message: "Демо-склад готов. Можно тестировать полный цикл.",
+      ...demoSession,
+    });
+  } catch (err) {
+    console.error("demo create error:", err);
+    return res.status(500).json({ message: "Не удалось создать демо-склад." });
+  }
+});
 
 // регистрация
 app.post("/api/register", async (req, res) => {
@@ -25089,6 +25506,9 @@ async function startBackgroundTasks() {
     setInterval(checkAutoSubscriptionRenewals, BILLING_AUTO_RENEW_INTERVAL_MS);
     checkAutoSubscriptionRenewals();
   }
+
+  setInterval(cleanupExpiredDemoWorkspaces, 60 * 60 * 1000);
+  cleanupExpiredDemoWorkspaces().catch(() => null);
 
   setInterval(() => {
     // 1) Уведомления по задачам склада

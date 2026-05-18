@@ -75,7 +75,7 @@ function LoginHero() {
 }
 
 export default function Login() {
-  const { login } = useAuth();
+  const { login, startDemoSession } = useAuth();
   const navigate = useNavigate();
   const welcomeTimerRef = useRef(null);
   const disablePublicRegister =
@@ -86,6 +86,7 @@ export default function Login() {
   const [error, setError] = useState("");
   const [pushHint, setPushHint] = useState("");
   const [loading, setLoading] = useState(false);
+  const [demoLoading, setDemoLoading] = useState(false);
   const [showWelcome, setShowWelcome] = useState(false);
 
   useEffect(() => {
@@ -153,6 +154,21 @@ export default function Login() {
     welcomeTimerRef.current = setTimeout(openDashboard, 1700);
   };
 
+  const handleStartDemo = async () => {
+    if (loading || demoLoading || showWelcome) return;
+    setError("");
+    setPushHint("");
+    setDemoLoading(true);
+    const result = await startDemoSession();
+    setDemoLoading(false);
+    if (!result.ok) {
+      setError(result.message || "Не удалось запустить демо.");
+      return;
+    }
+    setShowWelcome(true);
+    welcomeTimerRef.current = setTimeout(openDashboard, 1200);
+  };
+
   return (
     <div className="login-page">
       <div className="login-card">
@@ -187,6 +203,14 @@ export default function Login() {
 
           <button type="submit" disabled={loading} className="login-form__submit">
             {loading ? "Входим..." : "Войти"}
+          </button>
+          <button
+            type="button"
+            disabled={loading || demoLoading}
+            className="register-form__secondary"
+            onClick={handleStartDemo}
+          >
+            {demoLoading ? "Подготавливаем демо..." : "Попробовать демо 72ч"}
           </button>
         </form>
 
