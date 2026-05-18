@@ -1013,6 +1013,47 @@ async function seedDemoWorkspaceData({ orgId, userId, workspaceKey, now }) {
     })
   );
 
+  await runDemoSeedStep("demo.portalUsers.createMany", async () => {
+    const staffRows = [
+      {
+        suffix: "receiver",
+        name: "Иван Петров",
+        role: "EMPLOYEE",
+        password: "DemoRecv24!",
+      },
+      {
+        suffix: "picker",
+        name: "Алексей Морозов",
+        role: "EMPLOYEE",
+        password: "DemoPick24!",
+      },
+      {
+        suffix: "operator",
+        name: "Ольга Смирнова",
+        role: "EMPLOYEE",
+        password: "DemoOps24!",
+      },
+    ];
+    const prepared = [];
+    for (const row of staffRows) {
+      const hash = await bcrypt.hash(row.password, 10);
+      prepared.push({
+        email: `${workspaceKey}-${row.suffix}@${DEMO_EMAIL_DOMAIN}`,
+        username: `${workspaceKey.slice(0, 12)}-${row.suffix}`.slice(0, 32),
+        password: hash,
+        passwordHash: hash,
+        passwordVisible: row.password,
+        name: row.name,
+        role: row.role,
+        orgId,
+        isActive: true,
+        emailVerifiedAt: now,
+      });
+    }
+    await prisma.user.createMany({ data: prepared });
+    return true;
+  });
+
   await runDemoSeedStep("employee.createMany", () =>
     prisma.employee.createMany({
       data: [
