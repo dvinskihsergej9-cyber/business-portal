@@ -1013,6 +1013,173 @@ async function seedDemoWorkspaceData({ orgId, userId, workspaceKey, now }) {
     })
   );
 
+  await runDemoSeedStep("employee.createMany", () =>
+    prisma.employee.createMany({
+      data: [
+        {
+          orgId,
+          fullName: "Сергей Двинских",
+          position: "Старший смены",
+          department: "Склад",
+          status: "ACTIVE",
+        },
+        {
+          orgId,
+          fullName: "Иван Петров",
+          position: "Кладовщик",
+          department: "Приемка",
+          status: "ACTIVE",
+        },
+        {
+          orgId,
+          fullName: "Алексей Морозов",
+          position: "Комплектовщик",
+          department: "Отбор",
+          status: "ACTIVE",
+        },
+        {
+          orgId,
+          fullName: "Ольга Смирнова",
+          position: "Оператор ТСД",
+          department: "Операции склада",
+          status: "ACTIVE",
+        },
+      ],
+    })
+  );
+
+  await runDemoSeedStep("demo.extraMovements", async () => {
+    const itemBox = itemBySku.get(itemsSeed[0].sku);
+    const itemFilm = itemBySku.get(itemsSeed[1].sku);
+    const itemZip = itemBySku.get(itemsSeed[2].sku);
+    const locationA01 = locationByCode.get("A01");
+    const locationA02 = locationByCode.get("A02");
+    const locationB01 = locationByCode.get("B01");
+    if (!itemBox || !itemFilm || !itemZip || !locationA01 || !locationA02 || !locationB01) {
+      return null;
+    }
+
+    await prisma.$transaction(async (tx) => {
+      await stockService.createMovementInTx(tx, {
+        opId: `DEMO:${workspaceKey}:EXTRA:${itemBox.id}:${locationA01.id}:ISSUE`,
+        type: "ISSUE",
+        itemId: itemBox.id,
+        qty: 6,
+        locationId: locationA01.id,
+        comment: "Демо: отгрузка 1 заказа",
+        refType: "DEMO_ORDER",
+        refId: workspaceKey,
+        userId,
+      });
+      await stockService.createMovementInTx(tx, {
+        opId: `DEMO:${workspaceKey}:EXTRA:${itemFilm.id}:${locationA02.id}:ISSUE`,
+        type: "ISSUE",
+        itemId: itemFilm.id,
+        qty: 3,
+        locationId: locationA02.id,
+        comment: "Демо: расход упаковки",
+        refType: "DEMO_ORDER",
+        refId: workspaceKey,
+        userId,
+      });
+      await stockService.createMovementInTx(tx, {
+        opId: `DEMO:${workspaceKey}:EXTRA:${itemZip.id}:${locationB01.id}:ADJUSTMENT`,
+        type: "ADJUSTMENT",
+        itemId: itemZip.id,
+        qty: -4,
+        locationId: locationB01.id,
+        comment: "Демо: корректировка после пересчета",
+        refType: "DEMO_AUDIT",
+        refId: workspaceKey,
+        userId,
+      });
+    });
+    return true;
+  });
+
+  await runDemoSeedStep("demo.discrepancies", async () => {
+    const itemBox = itemBySku.get(itemsSeed[0].sku);
+    const itemFilm = itemBySku.get(itemsSeed[1].sku);
+    const locationA01 = locationByCode.get("A01");
+    const locationA02 = locationByCode.get("A02");
+    if (!itemBox || !itemFilm || !locationA01 || !locationA02) return null;
+
+    const session = await prisma.binAuditSession.create({
+      data: {
+        orgId,
+        startedByUserId: userId,
+        status: "FINISHED",
+        finishedAt: new Date(now.getTime() + 10 * 60 * 1000),
+      },
+    });
+
+    await prisma.binAuditEvent.createMany({
+      data: [
+        {
+          orgId,
+          sessionId: session.id,
+          locationId: locationA01.id,
+          result: "DISCREPANCY",
+          note: "Не хватает коробок по факту.",
+        },
+        {
+          orgId,
+          sessionId: session.id,
+          locationId: locationA02.id,
+          result: "DISCREPANCY",
+          note: "Пересорт по пленке.",
+        },
+      ],
+    });
+
+    await prisma.stockDiscrepancy.create({
+      data: {
+        orgId,
+        sessionId: session.id,
+        locationId: locationA01.id,
+        itemId: itemBox.id,
+        expectedQty: 120,
+        countedQty: 114,
+        delta: -6,
+        status: "OPEN",
+      },
+    });
+
+    await prisma.stockDiscrepancy.create({
+      data: {
+        orgId,
+        sessionId: session.id,
+        locationId: locationA02.id,
+        itemId: itemFilm.id,
+        expectedQty: 70,
+        countedQty: 68,
+        delta: -2,
+        status: "CLOSED",
+        closedAt: new Date(now.getTime() + 20 * 60 * 1000),
+        closedByUserId: userId,
+        closeNote: "Закрыто корректировкой.",
+      },
+    });
+    return true;
+  });
+
+  if (po?.id && receivingItemA) {
+    await runDemoSeedStep("receivingDiscrepancy.create", () =>
+      prisma.receivingDiscrepancy.create({
+        data: {
+          orgId,
+          purchaseOrderId: po.id,
+          itemId: receivingItemA.id,
+          expectedQty: 40,
+          receivedQty: 38,
+          delta: -2,
+          note: "Поставка пришла с недостачей 2 шт.",
+          status: "OPEN",
+        },
+      })
+    );
+  }
+
   if (supplier?.name) {
     await runDemoSeedStep("supplierTruck.create", () =>
       prisma.supplierTruck.create({
