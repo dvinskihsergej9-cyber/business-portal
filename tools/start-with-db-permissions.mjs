@@ -26,10 +26,9 @@ async function main() {
     console.log("[START] Step 1/2: check and grant runtime DB permissions");
     const grantExitCode = await runNodeScript(["tools/grant-runtime-db-permissions.mjs"]);
     if (grantExitCode !== 0) {
-      console.error(
-        "[START] DB permissions bootstrap failed. Backend will not start to avoid runtime auth errors."
+      console.warn(
+        "[START] DB permissions bootstrap failed. Continue server startup and handle permissions at runtime."
       );
-      process.exit(grantExitCode);
     }
   } else {
     console.warn("[START] SKIP_DB_PERMISSIONS_BOOTSTRAP=true -> permissions bootstrap skipped.");
