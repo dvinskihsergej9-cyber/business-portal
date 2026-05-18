@@ -75,9 +75,10 @@ function LoginHero() {
 }
 
 export default function Login() {
-  const { login, startDemoSession } = useAuth();
+  const { login, startDemoSession, signInWithToken } = useAuth();
   const navigate = useNavigate();
   const welcomeTimerRef = useRef(null);
+  const demoAutoStartedRef = useRef(false);
   const disablePublicRegister =
     String(import.meta.env.VITE_DISABLE_PUBLIC_REGISTER || "false") === "true";
 
@@ -96,6 +97,40 @@ export default function Login() {
       }
     };
   }, []);
+
+  useEffect(() => {
+    if (demoAutoStartedRef.current) return;
+    const params = new URLSearchParams(window.location.search || "");
+    const demoToken = String(params.get("demo_token") || "").trim();
+    const demoFlag = String(params.get("demo") || "").trim() === "1";
+    if (!demoToken && !demoFlag) return;
+
+    demoAutoStartedRef.current = true;
+    params.delete("demo_token");
+    params.delete("demo");
+    params.delete("demo_from");
+    const cleanSearch = params.toString();
+    const cleanUrl = `${window.location.pathname}${cleanSearch ? `?${cleanSearch}` : ""}`;
+    window.history.replaceState({}, "", cleanUrl);
+
+    const start = async () => {
+      setError("");
+      setPushHint("");
+      setDemoLoading(true);
+      const result = demoToken
+        ? await signInWithToken(demoToken)
+        : await startDemoSession();
+      setDemoLoading(false);
+      if (!result.ok) {
+        setError(result.message || "Не удалось открыть демо.");
+        return;
+      }
+      setShowWelcome(true);
+      welcomeTimerRef.current = setTimeout(openDashboard, 1200);
+    };
+
+    start();
+  }, [signInWithToken, startDemoSession]);
 
   const openDashboard = () => {
     if (welcomeTimerRef.current) {

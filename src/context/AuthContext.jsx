@@ -129,6 +129,38 @@ export function AuthProvider({ children }) {
     }
   };
 
+  const signInWithToken = async (tokenInput) => {
+    const token = String(tokenInput || "").trim();
+    if (!token) {
+      return { ok: false, message: "Токен демо не передан." };
+    }
+    try {
+      localStorage.setItem("token", token);
+      const res = await apiFetch("/me", {
+        headers: {
+          Authorization: `Bearer ${token}`,
+        },
+        suppressGlobalError: true,
+      });
+      if (!res.ok) {
+        localStorage.removeItem("token");
+        localStorage.removeItem("user");
+        return { ok: false, message: "Демо-сессия недействительна. Запустите демо снова." };
+      }
+      const data = await res.json();
+      localStorage.setItem("user", JSON.stringify(data));
+      setUser(data);
+      bindPushForSession(token, false, true);
+      return { ok: true };
+    } catch (e) {
+      localStorage.removeItem("token");
+      localStorage.removeItem("user");
+      setUser(null);
+      console.error("signInWithToken error:", e);
+      return { ok: false, message: normalizeErrorMessage(e, "Не удалось открыть демо-кабинет.") };
+    }
+  };
+
   // Регистрация без role: роль назначает сервер.
   const register = async ({
     email,
@@ -299,6 +331,7 @@ export function AuthProvider({ children }) {
     verifyRegistrationCode,
     resendRegistrationCode,
     startDemoSession,
+    signInWithToken,
     updateProfile,
     logout,
     refreshUser,
