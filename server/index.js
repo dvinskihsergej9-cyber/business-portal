@@ -1456,6 +1456,53 @@ async function seedDemoWorkspaceData({ orgId, userId, workspaceKey, now }) {
     return true;
   });
 
+  await runDemoSeedStep("demo.stockHolds", async () => {
+    const itemBox = itemBySku.get(itemsSeed[0].sku);
+    const itemFilm = itemBySku.get(itemsSeed[1].sku);
+    const locationA01 = locationByCode.get("A01");
+    const locationA02 = locationByCode.get("A02");
+    if (!itemBox || !itemFilm || !locationA01 || !locationA02) return null;
+
+    await prisma.stockHold.deleteMany({
+      where: {
+        orgId,
+        reason: {
+          startsWith: "DEMO:",
+        },
+      },
+    });
+
+    await prisma.stockHold.createMany({
+      data: [
+        {
+          orgId,
+          itemId: itemBox.id,
+          locationId: locationA01.id,
+          qty: 12,
+          status: "ACTIVE",
+          reason: "DEMO: quality_check",
+          note: "Демо: партия на проверке качества.",
+          createdByUserId: userId,
+        },
+        {
+          orgId,
+          itemId: itemFilm.id,
+          locationId: locationA02.id,
+          qty: 5,
+          status: "RELEASED",
+          reason: "DEMO: recount",
+          note: "Демо: блокировка снята после пересчета.",
+          createdByUserId: userId,
+          releasedAt: new Date(now.getTime() + 30 * 60 * 1000),
+          releasedByUserId: userId,
+          releaseNote: "Демо: подтверждено, остаток корректен.",
+        },
+      ],
+    });
+
+    return true;
+  });
+
   await runDemoSeedStep("demo.discrepancies", async () => {
     const itemBox = itemBySku.get(itemsSeed[0].sku);
     const itemFilm = itemBySku.get(itemsSeed[1].sku);
