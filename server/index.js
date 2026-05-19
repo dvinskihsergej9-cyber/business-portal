@@ -1110,9 +1110,15 @@ async function purgeDemoWorkspaceByOrgId(orgId) {
     refs: orgRefTables,
   });
 
-  await prisma.user.deleteMany({
-    where: { orgId: normalizedOrgId },
-  });
+  if (userIds.length) {
+    await prisma.user.deleteMany({
+      where: { id: { in: userIds } },
+    });
+  } else {
+    await prisma.user.deleteMany({
+      where: { orgId: normalizedOrgId },
+    });
+  }
   await prisma.organization.deleteMany({
     where: { id: normalizedOrgId },
   });
