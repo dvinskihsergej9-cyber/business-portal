@@ -471,6 +471,8 @@ const DEMO_WORKSPACE_PREFIX = String(
 )
   .trim()
   .toLowerCase();
+const DEMO_FINGERPRINT_LENGTH = 12;
+const DEMO_FINGERPRINT_REGEX = /^[a-f0-9]{12}$/;
 const DEMO_EMAIL_DOMAIN = String(
   process.env.DEMO_EMAIL_DOMAIN || "demo.skladonline.local"
 )
@@ -656,11 +658,7 @@ function normalizeLogin(value) {
 function buildDemoWorkspaceKey(fingerprint = "") {
   const ts = Date.now().toString(36);
   const rnd = Math.random().toString(36).slice(2, 6);
-  const normalizedFingerprint = String(fingerprint || "")
-    .trim()
-    .toLowerCase()
-    .replace(/[^a-z0-9]/g, "")
-    .slice(0, 12);
+  const normalizedFingerprint = normalizeDemoFingerprint(fingerprint);
   return normalizedFingerprint
     ? `${DEMO_WORKSPACE_PREFIX}-${normalizedFingerprint}-${ts}-${rnd}`.slice(0, 48)
     : `${DEMO_WORKSPACE_PREFIX}-${ts}-${rnd}`.slice(0, 48);
@@ -692,35 +690,36 @@ async function cleanupExpiredDemoWorkspaces() {
           },
         },
       },
-      select: { id: true, orgId: true },
+      select: {
+        id: true,
+        orgId: true,
+        organization: {
+          select: { code: true },
+        },
+      },
       take: 500,
     });
     if (!expiredUsers.length) return;
 
-    const expiredUserIds = expiredUsers
-      .map((row) => Number(row.id))
-      .filter((id) => Number.isFinite(id) && id > 0);
-    const expiredOrgIds = Array.from(
-      new Set(
-        expiredUsers
-          .map((row) => Number(row.orgId || 0))
-          .filter((id) => Number.isFinite(id) && id > 0)
-      )
-    );
-
-    if (expiredUserIds.length) {
-      await prisma.user.updateMany({
-        where: { id: { in: expiredUserIds } },
-        data: {
-          isActive: false,
-          tokenVersion: { increment: 1 },
-        },
-      });
+    const expiredOrgs = new Map();
+    for (const row of expiredUsers) {
+      const orgId = Number(row.orgId || 0);
+      if (!Number.isFinite(orgId) || orgId <= 0) continue;
+      if (!expiredOrgs.has(orgId)) {
+        expiredOrgs.set(orgId, String(row?.organization?.code || ""));
+      }
     }
-    if (expiredOrgIds.length) {
-      await prisma.organization.updateMany({
-        where: { id: { in: expiredOrgIds } },
-        data: { isActive: false },
+
+    for (const [orgId, orgCode] of expiredOrgs.entries()) {
+      const fingerprint = extractDemoFingerprintFromWorkspaceCode(orgCode);
+      if (fingerprint) {
+        await rememberDemoFingerprintLock(fingerprint).catch(() => null);
+      }
+      await purgeDemoWorkspaceByOrgId(orgId).catch((purgeError) => {
+        console.warn("[DEMO] purge expired workspace failed", {
+          orgId,
+          message: purgeError?.message || null,
+        });
       });
     }
   } catch (err) {
@@ -738,6 +737,151 @@ async function runDemoSeedStep(label, fn) {
     });
     return null;
   }
+}
+
+function normalizeDemoFingerprint(value) {
+  const normalized = String(value || "")
+    .trim()
+    .toLowerCase()
+    .replace(/[^a-f0-9]/g, "")
+    .slice(0, DEMO_FINGERPRINT_LENGTH);
+  return DEMO_FINGERPRINT_REGEX.test(normalized) ? normalized : "";
+}
+
+function extractDemoFingerprintFromWorkspaceCode(workspaceCode) {
+  const value = String(workspaceCode || "").trim().toLowerCase();
+  const prefix = `${DEMO_WORKSPACE_PREFIX}-`;
+  if (!value.startsWith(prefix)) return "";
+  const afterPrefix = value.slice(prefix.length);
+  const candidate = String(afterPrefix.split("-")[0] || "");
+  return normalizeDemoFingerprint(candidate);
+}
+
+function getDemoFingerprintLockCode(fingerprint) {
+  const normalized = normalizeDemoFingerprint(fingerprint);
+  if (!normalized) return "";
+  return `${DEMO_WORKSPACE_PREFIX}-lock-${normalized}`;
+}
+
+function quotePgIdentifier(value) {
+  return `"${String(value || "").replace(/"/g, "\"\"")}"`;
+}
+
+async function listBaseTablesWithColumn(columnName) {
+  const rows = await prisma.$queryRawUnsafe(
+    `
+      SELECT DISTINCT c.table_name
+      FROM information_schema.columns c
+      JOIN information_schema.tables t
+        ON t.table_schema = c.table_schema
+       AND t.table_name = c.table_name
+      WHERE c.table_schema = 'public'
+        AND c.column_name = $1
+        AND t.table_type = 'BASE TABLE'
+      ORDER BY c.table_name ASC
+    `,
+    String(columnName || "")
+  );
+  return Array.isArray(rows)
+    ? rows
+        .map((row) => String(row?.table_name || "").trim())
+        .filter(Boolean)
+    : [];
+}
+
+async function listForeignKeysToUserId() {
+  const rows = await prisma.$queryRawUnsafe(`
+    SELECT DISTINCT tc.table_name, kcu.column_name
+    FROM information_schema.table_constraints tc
+    JOIN information_schema.key_column_usage kcu
+      ON tc.constraint_name = kcu.constraint_name
+     AND tc.table_schema = kcu.table_schema
+    JOIN information_schema.constraint_column_usage ccu
+      ON ccu.constraint_name = tc.constraint_name
+     AND ccu.table_schema = tc.table_schema
+    JOIN information_schema.tables t
+      ON t.table_schema = tc.table_schema
+     AND t.table_name = tc.table_name
+    WHERE tc.constraint_type = 'FOREIGN KEY'
+      AND tc.table_schema = 'public'
+      AND ccu.table_schema = 'public'
+      AND ccu.table_name = 'User'
+      AND ccu.column_name = 'id'
+      AND t.table_type = 'BASE TABLE'
+    ORDER BY tc.table_name ASC
+  `);
+  return Array.isArray(rows)
+    ? rows
+        .map((row) => ({
+          tableName: String(row?.table_name || "").trim(),
+          columnName: String(row?.column_name || "").trim(),
+        }))
+        .filter((row) => row.tableName && row.columnName)
+    : [];
+}
+
+async function isDemoFingerprintLocked(fingerprint) {
+  const code = getDemoFingerprintLockCode(fingerprint);
+  if (!code) return false;
+  const marker = await prisma.organization.findUnique({
+    where: { code },
+    select: { id: true },
+  });
+  return Boolean(marker?.id);
+}
+
+async function rememberDemoFingerprintLock(fingerprint) {
+  const code = getDemoFingerprintLockCode(fingerprint);
+  if (!code) return null;
+  return prisma.organization.upsert({
+    where: { code },
+    create: {
+      name: `DEMO_LOCK_${code.slice(-DEMO_FINGERPRINT_LENGTH)}`,
+      code,
+      isActive: false,
+    },
+    update: {
+      isActive: false,
+    },
+    select: { id: true, code: true },
+  });
+}
+
+async function purgeDemoWorkspaceByOrgId(orgId) {
+  const normalizedOrgId = Number(orgId || 0);
+  if (!Number.isFinite(normalizedOrgId) || normalizedOrgId <= 0) return false;
+
+  const usersInOrg = await prisma.user.findMany({
+    where: { orgId: normalizedOrgId },
+    select: { id: true },
+  });
+  const userIds = usersInOrg
+    .map((row) => Number(row.id || 0))
+    .filter((id) => Number.isFinite(id) && id > 0);
+
+  const orgScopedTables = await listBaseTablesWithColumn("orgId");
+  for (const tableName of orgScopedTables) {
+    if (tableName === "Organization" || tableName === "User") continue;
+    const sql = `DELETE FROM ${quotePgIdentifier("public")}.${quotePgIdentifier(tableName)} WHERE "orgId" = $1`;
+    await prisma.$executeRawUnsafe(sql, normalizedOrgId);
+  }
+
+  if (userIds.length) {
+    const userRefTables = await listForeignKeysToUserId();
+    for (const { tableName, columnName } of userRefTables) {
+      if (tableName === "User") continue;
+      const sql = `DELETE FROM ${quotePgIdentifier("public")}.${quotePgIdentifier(tableName)} WHERE ${quotePgIdentifier(columnName)} = ANY($1::int[])`;
+      await prisma.$executeRawUnsafe(sql, userIds);
+    }
+  }
+
+  await prisma.user.deleteMany({
+    where: { orgId: normalizedOrgId },
+  });
+  await prisma.organization.deleteMany({
+    where: { id: normalizedOrgId },
+  });
+  return true;
 }
 
 async function ensureDemoPortalUsers({ orgId, workspaceKey, now }) {
@@ -780,17 +924,15 @@ async function ensureDemoPortalUsers({ orgId, workspaceKey, now }) {
 }
 
 async function findDemoUserByFingerprint(fingerprint) {
-  const normalized = String(fingerprint || "")
-    .trim()
-    .toLowerCase()
-    .replace(/[^a-z0-9]/g, "")
-    .slice(0, 12);
+  const normalized = normalizeDemoFingerprint(fingerprint);
   if (!normalized) return null;
   const codePrefix = `${DEMO_WORKSPACE_PREFIX}-${normalized}-`;
   return prisma.user.findFirst({
     where: {
+      isActive: true,
       role: "ADMIN",
       organization: {
+        isActive: true,
         code: {
           startsWith: codePrefix,
           mode: "insensitive",
@@ -817,7 +959,7 @@ async function findDemoUserByFingerprint(fingerprint) {
 
 async function buildExistingDemoWorkspaceSession(demoUserId) {
   const now = new Date();
-  const paidUntil = new Date(now.getTime() + DEMO_WORKSPACE_TTL_HOURS * 60 * 60 * 1000);
+  let paidUntilIso = null;
   const freshUser = await prisma.$transaction(async (tx) => {
     const current = await tx.user.findUnique({
       where: { id: Number(demoUserId || 0) },
@@ -835,10 +977,27 @@ async function buildExistingDemoWorkspaceSession(demoUserId) {
         isActive: true,
       },
     });
-    if (!current || !current.orgId) return null;
+    if (!current || !current.orgId || !current.isActive) return null;
+
+    const org = await tx.organization.findUnique({
+      where: { id: current.orgId },
+      select: { id: true, code: true, isActive: true },
+    });
+    if (!org?.id || !org?.isActive) return null;
+
+    const existingSubscription = await tx.subscription.findUnique({
+      where: { userId: current.id },
+      select: { id: true, paidUntil: true },
+    });
+    const paidUntil = existingSubscription?.paidUntil
+      ? new Date(existingSubscription.paidUntil)
+      : null;
+    if (!paidUntil || Number.isNaN(paidUntil.getTime()) || paidUntil <= now) {
+      return null;
+    }
+    paidUntilIso = paidUntil.toISOString();
 
     const updates = {};
-    if (!current.isActive) updates.isActive = true;
     if (!current.passwordVisible) {
       const nextPassword = buildDemoPassword();
       const nextHash = await bcrypt.hash(nextPassword, 10);
@@ -850,38 +1009,6 @@ async function buildExistingDemoWorkspaceSession(demoUserId) {
       await tx.user.update({
         where: { id: current.id },
         data: updates,
-      });
-    }
-    await tx.organization.update({
-      where: { id: current.orgId },
-      data: { isActive: true },
-    }).catch(() => null);
-
-    const existingSubscription = await tx.subscription.findUnique({
-      where: { userId: current.id },
-      select: { id: true, trialStartedAt: true },
-    });
-    if (existingSubscription?.id) {
-      await tx.subscription.update({
-        where: { userId: current.id },
-        data: {
-          plan: "pro-30",
-          status: "active",
-          paidUntil,
-          trialUsed: true,
-          trialStartedAt: existingSubscription.trialStartedAt || now,
-        },
-      });
-    } else {
-      await tx.subscription.create({
-        data: {
-          userId: current.id,
-          plan: "pro-30",
-          status: "active",
-          paidUntil,
-          trialUsed: true,
-          trialStartedAt: now,
-        },
       });
     }
 
@@ -924,7 +1051,7 @@ async function buildExistingDemoWorkspaceSession(demoUserId) {
       workspace: String(org?.code || ""),
       email: freshUser.email || null,
       password: freshUser.passwordVisible || null,
-      expiresAt: paidUntil.toISOString(),
+      expiresAt: paidUntilIso,
       ttlHours: DEMO_WORKSPACE_TTL_HOURS,
       organizationId: Number(org?.id || 0) || null,
     },
@@ -7325,7 +7452,17 @@ app.post("/api/demo/create", async (req, res) => {
     const now = Date.now();
     const ip = getClientIp(req) || "unknown";
     const fingerprint = buildDemoClientFingerprint(req);
+    const normalizedFingerprint = normalizeDemoFingerprint(fingerprint);
     const key = `demo:${ip}`;
+
+    if (normalizedFingerprint) {
+      const isLocked = await isDemoFingerprintLocked(normalizedFingerprint);
+      if (isLocked) {
+        return res.status(403).json({
+          message: "Демо-доступ уже был использован на этом устройстве.",
+        });
+      }
+    }
 
     const existingDemoUser = await findDemoUserByFingerprint(fingerprint);
     if (existingDemoUser?.id) {
@@ -7338,6 +7475,13 @@ app.post("/api/demo/create", async (req, res) => {
           ...reusedSession,
         });
       }
+      if (normalizedFingerprint) {
+        await rememberDemoFingerprintLock(normalizedFingerprint).catch(() => null);
+      }
+      await purgeDemoWorkspaceByOrgId(existingDemoUser.orgId).catch(() => null);
+      return res.status(403).json({
+        message: "Срок демо-доступа истёк для этого устройства.",
+      });
     }
 
     const lastByIp = Number(demoCreateRate.get(key) || 0);
