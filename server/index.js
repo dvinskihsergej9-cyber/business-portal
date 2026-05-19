@@ -767,6 +767,101 @@ function quotePgIdentifier(value) {
   return `"${String(value || "").replace(/"/g, "\"\"")}"`;
 }
 
+function isForeignKeyConstraintError(err) {
+  const code = String(err?.code || "").toUpperCase();
+  const dbCode = String(err?.meta?.code || "").toUpperCase();
+  const message = String(err?.message || "").toLowerCase();
+  return (
+    code === "P2003" ||
+    dbCode === "23503" ||
+    message.includes("foreign key constraint") ||
+    message.includes("violates foreign key")
+  );
+}
+
+async function deleteOrgScopedTablesWithDependencyRetry({ orgId, tables }) {
+  let pending = Array.from(new Set((Array.isArray(tables) ? tables : []).filter(Boolean)));
+  let pass = 0;
+  while (pending.length) {
+    pass += 1;
+    const nextPending = [];
+    let resolvedInPass = 0;
+
+    for (const tableName of pending) {
+      try {
+        const sql = `DELETE FROM ${quotePgIdentifier("public")}.${quotePgIdentifier(tableName)} WHERE "orgId" = $1`;
+        await prisma.$executeRawUnsafe(sql, orgId);
+        resolvedInPass += 1;
+      } catch (err) {
+        if (isForeignKeyConstraintError(err)) {
+          nextPending.push(tableName);
+          continue;
+        }
+        throw err;
+      }
+    }
+
+    if (!nextPending.length) return true;
+    if (resolvedInPass === 0) {
+      const blocked = nextPending.join(", ");
+      throw new Error(`ORG_PURGE_FK_BLOCKED:${blocked}`);
+    }
+    if (pass > 12) {
+      const blocked = nextPending.join(", ");
+      throw new Error(`ORG_PURGE_TOO_MANY_PASSES:${blocked}`);
+    }
+    pending = nextPending;
+  }
+  return true;
+}
+
+async function deleteUserRefTablesWithDependencyRetry({ userIds, refs }) {
+  if (!Array.isArray(userIds) || !userIds.length) return true;
+
+  let pending = Array.from(
+    new Set(
+      (Array.isArray(refs) ? refs : [])
+        .filter((row) => row?.tableName && row?.columnName)
+        .map((row) => `${row.tableName}::${row.columnName}`)
+    )
+  );
+  let pass = 0;
+
+  while (pending.length) {
+    pass += 1;
+    const nextPending = [];
+    let resolvedInPass = 0;
+
+    for (const signature of pending) {
+      const [tableName, columnName] = signature.split("::");
+      try {
+        const sql = `DELETE FROM ${quotePgIdentifier("public")}.${quotePgIdentifier(tableName)} WHERE ${quotePgIdentifier(columnName)} = ANY($1::int[])`;
+        await prisma.$executeRawUnsafe(sql, userIds);
+        resolvedInPass += 1;
+      } catch (err) {
+        if (isForeignKeyConstraintError(err)) {
+          nextPending.push(signature);
+          continue;
+        }
+        throw err;
+      }
+    }
+
+    if (!nextPending.length) return true;
+    if (resolvedInPass === 0) {
+      const blocked = nextPending.join(", ");
+      throw new Error(`USER_PURGE_FK_BLOCKED:${blocked}`);
+    }
+    if (pass > 12) {
+      const blocked = nextPending.join(", ");
+      throw new Error(`USER_PURGE_TOO_MANY_PASSES:${blocked}`);
+    }
+    pending = nextPending;
+  }
+
+  return true;
+}
+
 async function listBaseTablesWithColumn(columnName) {
   const rows = await prisma.$queryRawUnsafe(
     `
@@ -859,20 +954,20 @@ async function purgeDemoWorkspaceByOrgId(orgId) {
     .map((row) => Number(row.id || 0))
     .filter((id) => Number.isFinite(id) && id > 0);
 
-  const orgScopedTables = await listBaseTablesWithColumn("orgId");
-  for (const tableName of orgScopedTables) {
-    if (tableName === "Organization" || tableName === "User") continue;
-    const sql = `DELETE FROM ${quotePgIdentifier("public")}.${quotePgIdentifier(tableName)} WHERE "orgId" = $1`;
-    await prisma.$executeRawUnsafe(sql, normalizedOrgId);
-  }
+  const orgScopedTables = (await listBaseTablesWithColumn("orgId")).filter(
+    (tableName) => tableName !== "Organization" && tableName !== "User"
+  );
+  await deleteOrgScopedTablesWithDependencyRetry({
+    orgId: normalizedOrgId,
+    tables: orgScopedTables,
+  });
 
   if (userIds.length) {
     const userRefTables = await listForeignKeysToUserId();
-    for (const { tableName, columnName } of userRefTables) {
-      if (tableName === "User") continue;
-      const sql = `DELETE FROM ${quotePgIdentifier("public")}.${quotePgIdentifier(tableName)} WHERE ${quotePgIdentifier(columnName)} = ANY($1::int[])`;
-      await prisma.$executeRawUnsafe(sql, userIds);
-    }
+    await deleteUserRefTablesWithDependencyRetry({
+      userIds,
+      refs: userRefTables.filter((row) => row.tableName !== "User"),
+    });
   }
 
   await prisma.user.deleteMany({
