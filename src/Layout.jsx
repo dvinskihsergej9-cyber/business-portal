@@ -29,12 +29,48 @@ const PLAN_TITLES = {
   "trial-30": "\u041f\u0440\u043e\u0431\u043d\u044b\u0439",
   "platform-owner": "\u0412\u043b\u0430\u0434\u0435\u043b\u0435\u0446 \u043f\u043b\u0430\u0442\u0444\u043e\u0440\u043c\u044b",
 };
+const DEMO_EMAIL_SUFFIX = "@demo.skladonline.local";
+const DEMO_ORG_PREFIX = "demo-";
+const DEMO_LOCK_PREFIX = "demo-lock-";
 
 function formatPaidUntilDate(value) {
   if (!value) return "\u2014";
   const date = new Date(value);
   if (Number.isNaN(date.getTime())) return "\u2014";
   return date.toLocaleDateString("ru-RU");
+}
+
+function isDemoUserAccount(user) {
+  if (!user) return false;
+  const email = String(user?.email || "").trim().toLowerCase();
+  const orgCode = String(user?.organization?.code || "").trim().toLowerCase();
+  const byEmail = email.endsWith(DEMO_EMAIL_SUFFIX);
+  const byOrgCode =
+    orgCode.startsWith(DEMO_ORG_PREFIX) && !orgCode.startsWith(DEMO_LOCK_PREFIX);
+  return byEmail || byOrgCode;
+}
+
+function buildDemoUpgradeRegisterUrl(user) {
+  const params = new URLSearchParams();
+  params.set("from_demo", "1");
+  params.set("next", "/pricing");
+
+  const email = String(user?.email || "").trim().toLowerCase();
+  if (email && !email.endsWith(DEMO_EMAIL_SUFFIX)) {
+    params.set("email", email);
+  }
+
+  const fullName = String(user?.name || "").trim();
+  if (fullName) {
+    params.set("name", fullName);
+  }
+
+  const companyName = String(user?.organization?.name || "").trim();
+  if (companyName && !companyName.toLowerCase().startsWith("\u0434\u0435\u043c\u043e-\u0441\u043a\u043b\u0430\u0434")) {
+    params.set("companyName", companyName);
+  }
+
+  return `/register?${params.toString()}`;
 }
 
 function openDatePicker(input) {
@@ -141,6 +177,7 @@ export default function Layout() {
   const location = useLocation();
   const [isMobile, setIsMobile] = useState(false);
   const [mobilePlanSheetOpen, setMobilePlanSheetOpen] = useState(false);
+  const [demoOfferDismissed, setDemoOfferDismissed] = useState(false);
 
   const menu = useMemo(
     () => [
@@ -200,6 +237,12 @@ export default function Layout() {
   const showMobilePlanBadge =
     isMobile && location.pathname === "/warehouse" && !sectionParam && Boolean(user);
   const mobilePlanBadgeText = planTitle;
+  const isDemoUser = useMemo(() => isDemoUserAccount(user), [user]);
+  const demoUpgradeRegisterUrl = useMemo(
+    () => buildDemoUpgradeRegisterUrl(user),
+    [user]
+  );
+  const showDemoUpgradeBanner = Boolean(user && isDemoUser && !demoOfferDismissed);
 
   useEffect(() => {
     const media = window.matchMedia("(max-width: 768px)");
@@ -214,6 +257,10 @@ export default function Layout() {
       setMobilePlanSheetOpen(false);
     }
   }, [showMobilePlanBadge, mobilePlanSheetOpen]);
+
+  useEffect(() => {
+    setDemoOfferDismissed(false);
+  }, [user?.id, user?.orgId]);
 
   useEffect(() => {
     const onDocumentClick = (event) => {
@@ -272,6 +319,10 @@ export default function Layout() {
   const handleMobilePlanPricingOpen = () => {
     setMobilePlanSheetOpen(false);
     handlePricingOpen();
+  };
+
+  const handleDemoUpgradeStart = () => {
+    navigate(demoUpgradeRegisterUrl);
   };
 
   const handleBack = () => {
@@ -437,6 +488,34 @@ export default function Layout() {
           style={isMobile ? { ...styles.content, ...styles.contentMobile } : styles.content}
           className="portal-surface"
         >
+          {showDemoUpgradeBanner && (
+            <section style={isMobile ? styles.demoBannerMobile : styles.demoBanner}>
+              <div style={styles.demoBannerTextWrap}>
+                <div style={styles.demoBannerTitle}>
+                  \u0414\u0435\u043c\u043e \u0434\u043e\u0441\u0442\u0443\u043f: \u043f\u0435\u0440\u0435\u0439\u0434\u0438\u0442\u0435 \u043d\u0430 \u043f\u043e\u043b\u043d\u0443\u044e \u0432\u0435\u0440\u0441\u0438\u044e
+                </div>
+                <div style={styles.demoBannerSubtitle}>
+                  \u0417\u0430\u0440\u0435\u0433\u0438\u0441\u0442\u0440\u0438\u0440\u0443\u0435\u043c \u0432\u0430\u0448 \u043f\u043e\u0441\u0442\u043e\u044f\u043d\u043d\u044b\u0439 \u0430\u043a\u043a\u0430\u0443\u043d\u0442 \u0438 \u0441\u0440\u0430\u0437\u0443 \u043e\u0442\u043a\u0440\u043e\u0435\u043c \u043e\u043f\u043b\u0430\u0442\u0443 \u0442\u0430\u0440\u0438\u0444\u0430.
+                </div>
+              </div>
+              <div style={styles.demoBannerActions}>
+                <button
+                  type="button"
+                  style={styles.demoBannerPrimaryBtn}
+                  onClick={handleDemoUpgradeStart}
+                >
+                  \u041a\u0443\u043f\u0438\u0442\u044c \u043f\u043e\u043b\u043d\u044b\u0439 \u0434\u043e\u0441\u0442\u0443\u043f
+                </button>
+                <button
+                  type="button"
+                  style={styles.demoBannerSecondaryBtn}
+                  onClick={() => setDemoOfferDismissed(true)}
+                >
+                  \u041f\u043e\u0437\u0436\u0435
+                </button>
+              </div>
+            </section>
+          )}
           <Outlet />
         </main>
       </div>
@@ -824,6 +903,76 @@ const styles = {
   },
   contentMobile: {
     paddingBottom: "calc(env(safe-area-inset-bottom, 0px) + 108px)",
+  },
+  demoBanner: {
+    margin: "12px 14px 8px",
+    borderRadius: 14,
+    border: "1px solid #86d8a3",
+    background:
+      "linear-gradient(180deg, rgba(236, 253, 245, 0.96) 0%, rgba(220, 252, 231, 0.98) 100%)",
+    boxShadow: "0 12px 24px rgba(22, 163, 74, 0.18)",
+    padding: "12px 14px",
+    display: "flex",
+    alignItems: "center",
+    justifyContent: "space-between",
+    gap: 14,
+    flexWrap: "wrap",
+  },
+  demoBannerMobile: {
+    margin: "8px 8px 4px",
+    borderRadius: 12,
+    border: "1px solid #86d8a3",
+    background:
+      "linear-gradient(180deg, rgba(236, 253, 245, 0.96) 0%, rgba(220, 252, 231, 0.98) 100%)",
+    boxShadow: "0 10px 20px rgba(22, 163, 74, 0.16)",
+    padding: "10px 10px",
+    display: "grid",
+    gap: 8,
+  },
+  demoBannerTextWrap: {
+    minWidth: 220,
+    flex: 1,
+  },
+  demoBannerTitle: {
+    fontSize: 15,
+    fontWeight: 800,
+    color: "#14532d",
+    lineHeight: 1.25,
+  },
+  demoBannerSubtitle: {
+    marginTop: 4,
+    fontSize: 12,
+    color: "#166534",
+    lineHeight: 1.35,
+  },
+  demoBannerActions: {
+    display: "inline-flex",
+    alignItems: "center",
+    flexWrap: "wrap",
+    gap: 8,
+  },
+  demoBannerPrimaryBtn: {
+    borderRadius: 10,
+    border: "1px solid #16a34a",
+    background: "#16a34a",
+    color: "#ffffff",
+    minHeight: 38,
+    padding: "8px 12px",
+    fontSize: 13,
+    fontWeight: 700,
+    cursor: "pointer",
+    boxShadow: "0 8px 16px rgba(22, 163, 74, 0.22)",
+  },
+  demoBannerSecondaryBtn: {
+    borderRadius: 10,
+    border: "1px solid #86efac",
+    background: "#f0fdf4",
+    color: "#166534",
+    minHeight: 38,
+    padding: "8px 12px",
+    fontSize: 13,
+    fontWeight: 700,
+    cursor: "pointer",
   },
   mobileBottomNav: {
     position: "fixed",

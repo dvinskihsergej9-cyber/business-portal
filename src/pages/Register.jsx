@@ -1,5 +1,5 @@
 ﻿import { useEffect, useMemo, useState } from "react";
-import { Link, useNavigate } from "react-router-dom";
+import { Link, useLocation, useNavigate } from "react-router-dom";
 import { useAuth } from "../context/AuthContext";
 
 const ERROR_MESSAGES = {
@@ -101,6 +101,7 @@ const CONSENT_VERSION = "register-2026-03-18";
 export default function Register() {
   const { register, verifyRegistrationCode, resendRegistrationCode } = useAuth();
   const navigate = useNavigate();
+  const location = useLocation();
 
   const [step, setStep] = useState("register");
   const [form, setForm] = useState(INITIAL_FORM);
@@ -114,6 +115,20 @@ export default function Register() {
     () => findPhoneCountry(form.phoneCountry),
     [form.phoneCountry]
   );
+  const registerPreset = useMemo(() => {
+    const params = new URLSearchParams(location.search || "");
+    const nextRaw = String(params.get("next") || "").trim();
+    const nextAfterVerify =
+      nextRaw.startsWith("/") && !nextRaw.startsWith("//")
+        ? nextRaw
+        : "/dashboard";
+    return {
+      nextAfterVerify,
+      email: String(params.get("email") || "").trim().toLowerCase(),
+      name: String(params.get("name") || "").trim(),
+      companyName: String(params.get("companyName") || "").trim(),
+    };
+  }, [location.search]);
 
   useEffect(() => {
     if (resendCooldown <= 0) return;
@@ -122,6 +137,22 @@ export default function Register() {
     }, 1000);
     return () => window.clearTimeout(timer);
   }, [resendCooldown]);
+
+  useEffect(() => {
+    if (
+      !registerPreset.email &&
+      !registerPreset.name &&
+      !registerPreset.companyName
+    ) {
+      return;
+    }
+    setForm((prev) => ({
+      ...prev,
+      email: registerPreset.email || prev.email,
+      name: registerPreset.name || prev.name,
+      companyName: registerPreset.companyName || prev.companyName,
+    }));
+  }, [registerPreset.email, registerPreset.name, registerPreset.companyName]);
 
   const canSubmitRegister = useMemo(() => {
     if (
@@ -241,7 +272,7 @@ export default function Register() {
       return;
     }
 
-    navigate("/dashboard");
+    navigate(registerPreset.nextAfterVerify);
   };
 
   const handleResend = async () => {
