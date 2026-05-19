@@ -983,7 +983,17 @@ async function listEntityIdsByOrgInTable({ tableName, orgId }) {
   if (!Number.isFinite(normalizedOrgId) || normalizedOrgId <= 0) return [];
 
   const sql = `SELECT "id" FROM ${quotePgIdentifier("public")}.${quotePgIdentifier(normalizedTable)} WHERE "orgId" = $1`;
-  const rows = await prisma.$queryRawUnsafe(sql, normalizedOrgId);
+  let rows = [];
+  try {
+    rows = await prisma.$queryRawUnsafe(sql, normalizedOrgId);
+  } catch (err) {
+    const dbCode = String(err?.meta?.code || "").toUpperCase();
+    const message = String(err?.message || "").toLowerCase();
+    if (dbCode === "42703" || message.includes("column \"id\" does not exist")) {
+      return [];
+    }
+    throw err;
+  }
   return Array.isArray(rows)
     ? rows
         .map((row) => Number(row?.id || 0))
