@@ -979,6 +979,57 @@ async function purgeDemoWorkspaceByOrgId(orgId) {
   return true;
 }
 
+async function fallbackSoftDeleteTenant(orgId) {
+  const normalizedOrgId = Number(orgId || 0);
+  if (!Number.isFinite(normalizedOrgId) || normalizedOrgId <= 0) return false;
+
+  const users = await prisma.user.findMany({
+    where: { orgId: normalizedOrgId },
+    select: { id: true, isSystemOwner: true },
+    orderBy: { id: "asc" },
+  });
+  const hasSystemOwnerUser = users.some((row) => row.isSystemOwner === true);
+  if (hasSystemOwnerUser) {
+    throw new Error("TENANT_DELETE_SYSTEM_OWNER_FORBIDDEN");
+  }
+
+  await prisma.$transaction(async (tx) => {
+    for (const account of users) {
+      const suffix =
+        String(Date.now()) +
+        "_" +
+        normalizedOrgId +
+        "_" +
+        account.id +
+        "_" +
+        Math.floor(Math.random() * 1000000);
+      await tx.user.update({
+        where: { id: account.id },
+        data: {
+          email: "deleted_" + suffix + "@local.invalid",
+          username: "deleted_" + suffix,
+          isActive: false,
+          passwordVisible: null,
+          permissionsJson: null,
+          tokenVersion: { increment: 1 },
+        },
+      });
+    }
+
+    await tx.inviteToken.updateMany({
+      where: { orgId: normalizedOrgId, usedAt: null },
+      data: { usedAt: new Date() },
+    });
+
+    await tx.organization.update({
+      where: { id: normalizedOrgId },
+      data: { isActive: false },
+    });
+  });
+
+  return true;
+}
+
 async function ensureDemoPortalUsers({ orgId, workspaceKey, now }) {
   const normalizedOrgId = Number(orgId || 0);
   if (!normalizedOrgId) return false;
@@ -14147,14 +14198,24 @@ app.delete("/api/admin/tenants/:id", auth, requireAdmin, requireSystemOwner, asy
       });
     }
 
-    await purgeDemoWorkspaceByOrgId(tenant.id);
+    let mode = "hard";
+    try {
+      await purgeDemoWorkspaceByOrgId(tenant.id);
+    } catch (purgeError) {
+      console.error("[TENANT_DELETE] hard delete failed, fallback to soft delete:", {
+        tenantId: tenant.id,
+        message: purgeError?.message || null,
+        code: purgeError?.code || null,
+      });
+      await fallbackSoftDeleteTenant(tenant.id);
+      mode = "soft";
+    }
 
-    res.json({ ok: true });
+    res.json({ ok: true, mode });
   } catch (err) {
     console.error("tenant delete error:", err);
     res.status(500).json({
-      message:
-        "\u041e\u0448\u0438\u0431\u043a\u0430 \u0441\u0435\u0440\u0432\u0435\u0440\u0430 \u043f\u0440\u0438 \u0443\u0434\u0430\u043b\u0435\u043d\u0438\u0438 \u043a\u043b\u0438\u0435\u043d\u0442\u0430.",
+      message: `TENANT_DELETE_ERROR: ${String(err?.message || "UNKNOWN")}`,
     });
   }
 });
