@@ -1008,6 +1008,7 @@ async function fallbackSoftDeleteTenant(orgId) {
         data: {
           email: "deleted_" + suffix + "@local.invalid",
           username: "deleted_" + suffix,
+          orgId: null,
           isActive: false,
           passwordVisible: null,
           permissionsJson: null,
@@ -13513,8 +13514,14 @@ app.get("/api/users", auth, requireAdmin, async (req, res) => {
 
     const users = await prisma.user.findMany({
       where: req.user.isSystemOwner
-        ? { isActive: true }
-        : { orgId: req.user.orgId, isActive: true },
+        ? {
+            isActive: true,
+            organization: { isActive: true },
+          }
+        : {
+            orgId: req.user.orgId,
+            isActive: true,
+          },
       orderBy: { id: "asc" },
       select: {
         id: true,
