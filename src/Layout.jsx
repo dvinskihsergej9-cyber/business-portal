@@ -389,13 +389,15 @@ export default function Layout() {
             >
               {subscriptionStatusText}
             </div>
-            <button
-              type="button"
-              style={styles.userSubscriptionBtn}
-              onClick={handlePricingOpen}
-            >
-              Тариф и оплата
-            </button>
+            {!isDemoUser && (
+              <button
+                type="button"
+                style={styles.userSubscriptionBtn}
+                onClick={handlePricingOpen}
+              >
+                Тариф и оплата
+              </button>
+            )}
           </div>
         )}
 
@@ -546,13 +548,15 @@ export default function Layout() {
             >
               {subscriptionStatusText}
             </div>
-            <button
-              type="button"
-              style={styles.mobilePlanSheetBtn}
-              onClick={handleMobilePlanPricingOpen}
-            >
-              Тариф и оплата
-            </button>
+            {!isDemoUser && (
+              <button
+                type="button"
+                style={styles.mobilePlanSheetBtn}
+                onClick={handleMobilePlanPricingOpen}
+              >
+                Тариф и оплата
+              </button>
+            )}
           </section>
         </>
       )}
