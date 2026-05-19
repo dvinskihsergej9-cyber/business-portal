@@ -932,8 +932,11 @@ async function listBaseTablesWithColumn(columnName) {
     : [];
 }
 
-async function listForeignKeysToUserId() {
-  const rows = await prisma.$queryRawUnsafe(`
+async function listForeignKeysToTableId(targetTableName) {
+  const tableName = String(targetTableName || "").trim();
+  if (!tableName) return [];
+  const rows = await prisma.$queryRawUnsafe(
+    `
     SELECT DISTINCT tc.table_name, kcu.column_name
     FROM information_schema.table_constraints tc
     JOIN information_schema.key_column_usage kcu
@@ -948,11 +951,13 @@ async function listForeignKeysToUserId() {
     WHERE tc.constraint_type = 'FOREIGN KEY'
       AND tc.table_schema = 'public'
       AND ccu.table_schema = 'public'
-      AND ccu.table_name = 'User'
+      AND ccu.table_name = $1
       AND ccu.column_name = 'id'
       AND t.table_type = 'BASE TABLE'
     ORDER BY tc.table_name ASC
-  `);
+  `,
+    tableName
+  );
   return Array.isArray(rows)
     ? rows
         .map((row) => ({
@@ -963,35 +968,52 @@ async function listForeignKeysToUserId() {
     : [];
 }
 
+async function listForeignKeysToUserId() {
+  return listForeignKeysToTableId("User");
+}
+
 async function listForeignKeysToOrganizationId() {
-  const rows = await prisma.$queryRawUnsafe(`
-    SELECT DISTINCT tc.table_name, kcu.column_name
-    FROM information_schema.table_constraints tc
-    JOIN information_schema.key_column_usage kcu
-      ON tc.constraint_name = kcu.constraint_name
-     AND tc.table_schema = kcu.table_schema
-    JOIN information_schema.constraint_column_usage ccu
-      ON ccu.constraint_name = tc.constraint_name
-     AND ccu.table_schema = tc.table_schema
-    JOIN information_schema.tables t
-      ON t.table_schema = tc.table_schema
-     AND t.table_name = tc.table_name
-    WHERE tc.constraint_type = 'FOREIGN KEY'
-      AND tc.table_schema = 'public'
-      AND ccu.table_schema = 'public'
-      AND ccu.table_name = 'Organization'
-      AND ccu.column_name = 'id'
-      AND t.table_type = 'BASE TABLE'
-    ORDER BY tc.table_name ASC
-  `);
+  return listForeignKeysToTableId("Organization");
+}
+
+async function listEntityIdsByOrgInTable({ tableName, orgId }) {
+  const normalizedOrgId = Number(orgId || 0);
+  const normalizedTable = String(tableName || "").trim();
+  if (!normalizedTable) return [];
+  if (!Number.isFinite(normalizedOrgId) || normalizedOrgId <= 0) return [];
+
+  const sql = `SELECT "id" FROM ${quotePgIdentifier("public")}.${quotePgIdentifier(normalizedTable)} WHERE "orgId" = $1`;
+  const rows = await prisma.$queryRawUnsafe(sql, normalizedOrgId);
   return Array.isArray(rows)
     ? rows
-        .map((row) => ({
-          tableName: String(row?.table_name || "").trim(),
-          columnName: String(row?.column_name || "").trim(),
-        }))
-        .filter((row) => row.tableName && row.columnName)
+        .map((row) => Number(row?.id || 0))
+        .filter((id) => Number.isFinite(id) && id > 0)
     : [];
+}
+
+async function purgeForeignKeyDependentsForOrgTables({ orgId, tables }) {
+  const tableNames = Array.from(new Set((Array.isArray(tables) ? tables : []).filter(Boolean)));
+  if (!tableNames.length) return true;
+
+  for (const targetTable of tableNames) {
+    const entityIds = await listEntityIdsByOrgInTable({
+      tableName: targetTable,
+      orgId,
+    });
+    if (!entityIds.length) continue;
+
+    const refs = (await listForeignKeysToTableId(targetTable)).filter(
+      (row) => row.tableName !== targetTable
+    );
+    if (!refs.length) continue;
+
+    await deleteUserRefTablesWithDependencyRetry({
+      userIds: entityIds,
+      refs,
+    });
+  }
+
+  return true;
 }
 
 async function isDemoFingerprintLocked(fingerprint) {
@@ -1043,6 +1065,13 @@ async function purgeDemoWorkspaceByOrgId(orgId) {
       row.tableName !== "User" &&
       !orgScopedSet.has(row.tableName)
   );
+
+  // Some child tables reference entities like Item by FK and may contain rows with
+  // missing/legacy orgId values. Remove those dependents by parent ids first.
+  await purgeForeignKeyDependentsForOrgTables({
+    orgId: normalizedOrgId,
+    tables: orgScopedTables,
+  });
 
   await deleteOrgScopedTablesWithDependencyRetry({
     orgId: normalizedOrgId,
