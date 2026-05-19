@@ -994,8 +994,11 @@ async function listEntityIdsByOrgInTable({ tableName, orgId }) {
 async function purgeForeignKeyDependentsForOrgTables({ orgId, tables }) {
   const tableNames = Array.from(new Set((Array.isArray(tables) ? tables : []).filter(Boolean)));
   if (!tableNames.length) return true;
+  const tablesWithId = new Set(await listBaseTablesWithColumn("id"));
 
   for (const targetTable of tableNames) {
+    if (!tablesWithId.has(targetTable)) continue;
+
     const entityIds = await listEntityIdsByOrgInTable({
       tableName: targetTable,
       orgId,
