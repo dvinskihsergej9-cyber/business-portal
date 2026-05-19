@@ -790,7 +790,7 @@ async function deleteOrgScopedTablesWithDependencyRetry({ orgId, tables }) {
     for (const tableName of pending) {
       try {
         const sql = `DELETE FROM ${quotePgIdentifier("public")}.${quotePgIdentifier(tableName)} WHERE "orgId" = $1`;
-        await prisma.$executeRawUnsafe(sql, orgId);
+        await prismaBase.$executeRawUnsafe(sql, orgId);
         resolvedInPass += 1;
       } catch (err) {
         if (isForeignKeyConstraintError(err)) {
@@ -837,7 +837,7 @@ async function deleteOrgRefTablesWithDependencyRetry({ orgId, refs }) {
       const [tableName, columnName] = signature.split("::");
       try {
         const sql = `DELETE FROM ${quotePgIdentifier("public")}.${quotePgIdentifier(tableName)} WHERE ${quotePgIdentifier(columnName)} = $1`;
-        await prisma.$executeRawUnsafe(sql, normalizedOrgId);
+        await prismaBase.$executeRawUnsafe(sql, normalizedOrgId);
         resolvedInPass += 1;
       } catch (err) {
         if (isForeignKeyConstraintError(err)) {
@@ -884,7 +884,7 @@ async function deleteUserRefTablesWithDependencyRetry({ userIds, refs }) {
       const [tableName, columnName] = signature.split("::");
       try {
         const sql = `DELETE FROM ${quotePgIdentifier("public")}.${quotePgIdentifier(tableName)} WHERE ${quotePgIdentifier(columnName)} = ANY($1::int[])`;
-        await prisma.$executeRawUnsafe(sql, userIds);
+        await prismaBase.$executeRawUnsafe(sql, userIds);
         resolvedInPass += 1;
       } catch (err) {
         if (isForeignKeyConstraintError(err)) {
@@ -911,7 +911,7 @@ async function deleteUserRefTablesWithDependencyRetry({ userIds, refs }) {
 }
 
 async function listBaseTablesWithColumn(columnName) {
-  const rows = await prisma.$queryRawUnsafe(
+  const rows = await prismaBase.$queryRawUnsafe(
     `
       SELECT DISTINCT c.table_name
       FROM information_schema.columns c
@@ -935,7 +935,7 @@ async function listBaseTablesWithColumn(columnName) {
 async function listForeignKeysToTableId(targetTableName) {
   const tableName = String(targetTableName || "").trim();
   if (!tableName) return [];
-  const rows = await prisma.$queryRawUnsafe(
+  const rows = await prismaBase.$queryRawUnsafe(
     `
     SELECT DISTINCT tc.table_name, kcu.column_name
     FROM information_schema.table_constraints tc
@@ -985,7 +985,7 @@ async function listEntityIdsByOrgInTable({ tableName, orgId }) {
   const sql = `SELECT "id" FROM ${quotePgIdentifier("public")}.${quotePgIdentifier(normalizedTable)} WHERE "orgId" = $1`;
   let rows = [];
   try {
-    rows = await prisma.$queryRawUnsafe(sql, normalizedOrgId);
+    rows = await prismaBase.$queryRawUnsafe(sql, normalizedOrgId);
   } catch (err) {
     const dbCode = String(err?.meta?.code || "").toUpperCase();
     const message = String(err?.message || "").toLowerCase();
@@ -1032,7 +1032,7 @@ async function purgeForeignKeyDependentsForOrgTables({ orgId, tables }) {
 async function isDemoFingerprintLocked(fingerprint) {
   const code = getDemoFingerprintLockCode(fingerprint);
   if (!code) return false;
-  const marker = await prisma.organization.findUnique({
+  const marker = await prismaBase.organization.findUnique({
     where: { code },
     select: { id: true },
   });
@@ -1042,7 +1042,7 @@ async function isDemoFingerprintLocked(fingerprint) {
 async function rememberDemoFingerprintLock(fingerprint) {
   const code = getDemoFingerprintLockCode(fingerprint);
   if (!code) return null;
-  return prisma.organization.upsert({
+  return prismaBase.organization.upsert({
     where: { code },
     create: {
       name: `DEMO_LOCK_${code.slice(-DEMO_FINGERPRINT_LENGTH)}`,
@@ -1060,7 +1060,7 @@ async function purgeDemoWorkspaceByOrgId(orgId) {
   const normalizedOrgId = Number(orgId || 0);
   if (!Number.isFinite(normalizedOrgId) || normalizedOrgId <= 0) return false;
 
-  const usersInOrg = await prisma.user.findMany({
+  const usersInOrg = await prismaBase.user.findMany({
     where: { orgId: normalizedOrgId },
     select: { id: true },
   });
@@ -1111,15 +1111,15 @@ async function purgeDemoWorkspaceByOrgId(orgId) {
   });
 
   if (userIds.length) {
-    await prisma.user.deleteMany({
+    await prismaBase.user.deleteMany({
       where: { id: { in: userIds } },
     });
   } else {
-    await prisma.user.deleteMany({
+    await prismaBase.user.deleteMany({
       where: { orgId: normalizedOrgId },
     });
   }
-  await prisma.organization.deleteMany({
+  await prismaBase.organization.deleteMany({
     where: { id: normalizedOrgId },
   });
   return true;
