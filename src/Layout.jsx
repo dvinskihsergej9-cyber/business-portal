@@ -177,7 +177,6 @@ export default function Layout() {
   const location = useLocation();
   const [isMobile, setIsMobile] = useState(false);
   const [mobilePlanSheetOpen, setMobilePlanSheetOpen] = useState(false);
-  const [demoOfferDismissed, setDemoOfferDismissed] = useState(false);
 
   const menu = useMemo(
     () => [
@@ -242,7 +241,7 @@ export default function Layout() {
     () => buildDemoUpgradeRegisterUrl(user),
     [user]
   );
-  const showDemoUpgradeBanner = Boolean(user && isDemoUser && !demoOfferDismissed);
+  const showDemoUpgradeBanner = Boolean(user && isDemoUser);
 
   useEffect(() => {
     const media = window.matchMedia("(max-width: 768px)");
@@ -257,10 +256,6 @@ export default function Layout() {
       setMobilePlanSheetOpen(false);
     }
   }, [showMobilePlanBadge, mobilePlanSheetOpen]);
-
-  useEffect(() => {
-    setDemoOfferDismissed(false);
-  }, [user?.id, user?.orgId]);
 
   useEffect(() => {
     const onDocumentClick = (event) => {
@@ -505,13 +500,6 @@ export default function Layout() {
                   onClick={handleDemoUpgradeStart}
                 >
                   Купить полный доступ
-                </button>
-                <button
-                  type="button"
-                  style={styles.demoBannerSecondaryBtn}
-                  onClick={() => setDemoOfferDismissed(true)}
-                >
-                  Позже
                 </button>
               </div>
             </section>
@@ -962,17 +950,6 @@ const styles = {
     fontWeight: 700,
     cursor: "pointer",
     boxShadow: "0 8px 16px rgba(22, 163, 74, 0.22)",
-  },
-  demoBannerSecondaryBtn: {
-    borderRadius: 10,
-    border: "1px solid #86efac",
-    background: "#f0fdf4",
-    color: "#166534",
-    minHeight: 38,
-    padding: "8px 12px",
-    fontSize: 13,
-    fontWeight: 700,
-    cursor: "pointer",
   },
   mobileBottomNav: {
     position: "fixed",
