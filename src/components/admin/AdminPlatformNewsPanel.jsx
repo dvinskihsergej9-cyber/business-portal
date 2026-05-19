@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
+﻿import { useCallback, useEffect, useMemo, useState } from "react";
 import { apiFetch, normalizeErrorMessage } from "../../apiConfig";
 
 const PRIORITY_OPTIONS = [
@@ -23,9 +23,11 @@ export default function AdminPlatformNewsPanel() {
   const [title, setTitle] = useState("");
   const [message, setMessage] = useState("");
   const [priority, setPriority] = useState("NORMAL");
+  const [editingId, setEditingId] = useState(null);
 
   const [loading, setLoading] = useState(false);
   const [sending, setSending] = useState(false);
+  const [deletingId, setDeletingId] = useState(null);
   const [error, setError] = useState("");
   const [success, setSuccess] = useState("");
   const [items, setItems] = useState([]);
@@ -34,6 +36,13 @@ export default function AdminPlatformNewsPanel() {
   const limit = 20;
 
   const totalPages = useMemo(() => Math.max(1, Math.ceil((Number(total) || 0) / limit)), [total]);
+
+  const resetForm = useCallback(() => {
+    setTitle("");
+    setMessage("");
+    setPriority("NORMAL");
+    setEditingId(null);
+  }, []);
 
   const loadHistory = useCallback(async () => {
     try {
@@ -66,7 +75,7 @@ export default function AdminPlatformNewsPanel() {
     loadHistory();
   }, [loadHistory]);
 
-  const handlePublish = async () => {
+  const handleSave = async () => {
     try {
       const preparedTitle = String(title || "").trim();
       const preparedMessage = String(message || "").trim();
@@ -83,8 +92,11 @@ export default function AdminPlatformNewsPanel() {
       setError("");
       setSuccess("");
 
-      const res = await apiFetch("/admin/platform-news/publish", {
-        method: "POST",
+      const endpoint = editingId ? `/admin/platform-news/${editingId}` : "/admin/platform-news/publish";
+      const method = editingId ? "PUT" : "POST";
+
+      const res = await apiFetch(endpoint, {
+        method,
         headers: {
           Authorization: `Bearer ${localStorage.getItem("token") || ""}`,
           "Content-Type": "application/json",
@@ -98,28 +110,90 @@ export default function AdminPlatformNewsPanel() {
 
       const data = await res.json().catch(() => ({}));
       if (!res.ok) {
-        throw new Error(data?.message || "Не удалось отправить новость.");
+        throw new Error(
+          data?.message || (editingId ? "Не удалось обновить новость." : "Не удалось отправить новость.")
+        );
       }
 
-      const sentCount = Number(data?.sentCount || 0);
-      const totalRecipients = Number(data?.totalRecipients || 0);
-      const failedCount = Number(data?.failedCount || 0);
-      const warningText = String(data?.warning || "").trim();
+      if (editingId) {
+        setSuccess("Новость обновлена.");
+      } else {
+        const sentCount = Number(data?.sentCount || 0);
+        const totalRecipients = Number(data?.totalRecipients || 0);
+        const failedCount = Number(data?.failedCount || 0);
+        const warningText = String(data?.warning || "").trim();
 
-      setSuccess(
-        warningText ||
-          `Новость отправлена: ${sentCount} из ${totalRecipients}.` +
-            (failedCount > 0 ? ` Ошибок: ${failedCount}.` : "")
-      );
+        setSuccess(
+          warningText ||
+            `Новость отправлена: ${sentCount} из ${totalRecipients}.` +
+              (failedCount > 0 ? ` Ошибок: ${failedCount}.` : "")
+        );
+      }
 
+      resetForm();
       setPage(1);
       await loadHistory();
     } catch (err) {
-      setError(normalizeErrorMessage(err, "Не удалось отправить новость."));
+      setError(
+        normalizeErrorMessage(
+          err,
+          editingId ? "Не удалось обновить новость." : "Не удалось отправить новость."
+        )
+      );
     } finally {
       setSending(false);
     }
   };
+
+  const handleStartEdit = useCallback((item) => {
+    const itemId = Number(item?.id || 0);
+    if (!itemId) return;
+    setEditingId(itemId);
+    setTitle(String(item?.title || ""));
+    setMessage(String(item?.message || ""));
+    setPriority(String(item?.priority || "NORMAL"));
+    setError("");
+    setSuccess("");
+  }, []);
+
+  const handleDelete = useCallback(
+    async (item) => {
+      const itemId = Number(item?.id || 0);
+      if (!itemId) return;
+      const confirmed = window.confirm("Удалить опубликованную новость?");
+      if (!confirmed) return;
+
+      try {
+        setDeletingId(itemId);
+        setError("");
+        setSuccess("");
+
+        const res = await apiFetch(`/admin/platform-news/${itemId}`, {
+          method: "DELETE",
+          headers: {
+            Authorization: `Bearer ${localStorage.getItem("token") || ""}`,
+          },
+        });
+
+        const data = await res.json().catch(() => ({}));
+        if (!res.ok) {
+          throw new Error(data?.message || "Не удалось удалить новость.");
+        }
+
+        if (editingId === itemId) {
+          resetForm();
+        }
+
+        setSuccess("Новость удалена.");
+        await loadHistory();
+      } catch (err) {
+        setError(normalizeErrorMessage(err, "Не удалось удалить новость."));
+      } finally {
+        setDeletingId(null);
+      }
+    },
+    [editingId, loadHistory, resetForm]
+  );
 
   return (
     <div className="admin-console__card admin-panel">
@@ -173,24 +247,22 @@ export default function AdminPlatformNewsPanel() {
           <button
             type="button"
             className="admin-btn admin-btn--primary"
-            onClick={handlePublish}
+            onClick={handleSave}
             disabled={sending}
           >
-            {sending ? "Отправка..." : "Опубликовать и отправить"}
+            {sending ? "Сохранение..." : editingId ? "Сохранить изменения" : "Опубликовать и отправить"}
           </button>
           <button
             type="button"
             className="admin-btn admin-btn--ghost"
             onClick={() => {
-              setTitle("");
-              setMessage("");
-              setPriority("NORMAL");
+              resetForm();
               setError("");
               setSuccess("");
             }}
             disabled={sending}
           >
-            Очистить
+            {editingId ? "Отменить редактирование" : "Очистить"}
           </button>
         </div>
       </div>
@@ -198,9 +270,7 @@ export default function AdminPlatformNewsPanel() {
       {error ? <div className="admin-alert admin-alert--error">{error}</div> : null}
       {success ? <div className="admin-muted">{success}</div> : null}
 
-      <div className="admin-console__card-title admin-panel__section-title">
-        История рассылок
-      </div>
+      <div className="admin-console__card-title admin-panel__section-title">История рассылок</div>
       {loading ? <div className="admin-muted">Загрузка...</div> : null}
 
       <div className="admin-table-wrapper" style={{ marginTop: 10 }}>
@@ -211,6 +281,7 @@ export default function AdminPlatformNewsPanel() {
               <th>Заголовок</th>
               <th>Приоритет</th>
               <th>Получатели</th>
+              <th>Действия</th>
             </tr>
           </thead>
           <tbody>
@@ -226,11 +297,31 @@ export default function AdminPlatformNewsPanel() {
                   {Number(item.sentCount || 0)} / {Number(item.totalRecipients || 0)}
                   {Number(item.failedCount || 0) > 0 ? ` (ошибок: ${item.failedCount})` : ""}
                 </td>
+                <td data-label="Действия">
+                  <div className="admin-table__actions" style={{ margin: 0 }}>
+                    <button
+                      type="button"
+                      className="admin-btn admin-btn--ghost"
+                      onClick={() => handleStartEdit(item)}
+                      disabled={sending || deletingId === item.id}
+                    >
+                      Редактировать
+                    </button>
+                    <button
+                      type="button"
+                      className="admin-btn admin-btn--danger"
+                      onClick={() => handleDelete(item)}
+                      disabled={sending || deletingId === item.id}
+                    >
+                      {deletingId === item.id ? "Удаление..." : "Удалить"}
+                    </button>
+                  </div>
+                </td>
               </tr>
             ))}
             {!items.length ? (
               <tr>
-                <td colSpan={4} className="admin-muted">
+                <td colSpan={5} className="admin-muted">
                   Рассылок пока нет.
                 </td>
               </tr>
@@ -257,7 +348,7 @@ export default function AdminPlatformNewsPanel() {
           disabled={loading || page >= totalPages}
           onClick={() => setPage((prev) => prev + 1)}
         >
-          Вперед
+          Вперёд
         </button>
       </div>
     </div>

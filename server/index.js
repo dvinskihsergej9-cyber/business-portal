@@ -14935,6 +14935,116 @@ app.post("/api/admin/platform-news/publish", auth, requireAdmin, requireSystemOw
   }
 });
 
+app.put("/api/admin/platform-news/:id", auth, requireAdmin, requireSystemOwner, async (req, res) => {
+  try {
+    if (!hasPermission(req.user, PERMISSION_KEYS.ADMIN_TENANTS)) {
+      return res.status(403).json({ message: "Нет доступа к разделу." });
+    }
+
+    const newsId = Number(req.params.id);
+    if (!newsId || Number.isNaN(newsId)) {
+      return res.status(400).json({ message: "BAD_NEWS_ID" });
+    }
+
+    const rawTitle = String(req.body?.title || "").trim();
+    const rawMessage = String(req.body?.message || "").trim();
+    const rawPriority = String(req.body?.priority || "").trim().toUpperCase();
+
+    if (!rawTitle) {
+      return res.status(400).json({ message: "Введите заголовок новости." });
+    }
+    if (!rawMessage) {
+      return res.status(400).json({ message: "Введите текст новости." });
+    }
+
+    const title = rawTitle.slice(0, 140);
+    const message = rawMessage.slice(0, 4000);
+    const priority = ["LOW", "NORMAL", "HIGH"].includes(rawPriority) ? rawPriority : "NORMAL";
+
+    const existing = await runWithoutTenantScope(() =>
+      prismaBase.warehouseNotification.findFirst({
+        where: {
+          id: newsId,
+          userId: req.user.id,
+          type: PLATFORM_NEWS_BROADCAST_TYPE,
+        },
+      })
+    );
+
+    if (!existing) {
+      return res.status(404).json({ message: "NEWS_NOT_FOUND" });
+    }
+
+    const existingMeta =
+      existing?.payloadJson && typeof existing.payloadJson === "object" ? existing.payloadJson : {};
+
+    const updated = await runWithoutTenantScope(() =>
+      prismaBase.warehouseNotification.update({
+        where: { id: existing.id },
+        data: {
+          payloadJson: {
+            ...existingMeta,
+            title,
+            message,
+            priority,
+            editedAt: new Date().toISOString(),
+          },
+        },
+      })
+    );
+
+    const meta = updated?.payloadJson && typeof updated.payloadJson === "object" ? updated.payloadJson : {};
+    return res.json({
+      ok: true,
+      item: {
+        id: updated.id,
+        createdAt: updated.createdAt,
+        title: String(meta.title || title),
+        message: String(meta.message || message),
+        priority: String(meta.priority || priority),
+        sentCount: Number(meta.sentCount || 0),
+        totalRecipients: Number(meta.totalRecipients || 0),
+        failedCount: Number(meta.failedCount || 0),
+      },
+    });
+  } catch (err) {
+    console.error("platform news update error:", err);
+    return res.status(500).json({ message: "Не удалось обновить новость." });
+  }
+});
+
+app.delete("/api/admin/platform-news/:id", auth, requireAdmin, requireSystemOwner, async (req, res) => {
+  try {
+    if (!hasPermission(req.user, PERMISSION_KEYS.ADMIN_TENANTS)) {
+      return res.status(403).json({ message: "Нет доступа к разделу." });
+    }
+
+    const newsId = Number(req.params.id);
+    if (!newsId || Number.isNaN(newsId)) {
+      return res.status(400).json({ message: "BAD_NEWS_ID" });
+    }
+
+    const deleted = await runWithoutTenantScope(() =>
+      prismaBase.warehouseNotification.deleteMany({
+        where: {
+          id: newsId,
+          userId: req.user.id,
+          type: PLATFORM_NEWS_BROADCAST_TYPE,
+        },
+      })
+    );
+
+    if (Number(deleted?.count || 0) <= 0) {
+      return res.status(404).json({ message: "NEWS_NOT_FOUND" });
+    }
+
+    return res.json({ ok: true });
+  } catch (err) {
+    console.error("platform news delete error:", err);
+    return res.status(500).json({ message: "Не удалось удалить новость." });
+  }
+});
+
 app.get("/api/platform-news", auth, async (req, res) => {
   try {
     const limitRaw = Number(req.query.limit || 30);
