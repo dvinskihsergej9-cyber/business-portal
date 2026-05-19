@@ -815,6 +815,54 @@ async function deleteOrgScopedTablesWithDependencyRetry({ orgId, tables }) {
   return true;
 }
 
+async function deleteOrgRefTablesWithDependencyRetry({ orgId, refs }) {
+  const normalizedOrgId = Number(orgId || 0);
+  if (!Number.isFinite(normalizedOrgId) || normalizedOrgId <= 0) return true;
+
+  let pending = Array.from(
+    new Set(
+      (Array.isArray(refs) ? refs : [])
+        .filter((row) => row?.tableName && row?.columnName)
+        .map((row) => `${row.tableName}::${row.columnName}`)
+    )
+  );
+  let pass = 0;
+
+  while (pending.length) {
+    pass += 1;
+    const nextPending = [];
+    let resolvedInPass = 0;
+
+    for (const signature of pending) {
+      const [tableName, columnName] = signature.split("::");
+      try {
+        const sql = `DELETE FROM ${quotePgIdentifier("public")}.${quotePgIdentifier(tableName)} WHERE ${quotePgIdentifier(columnName)} = $1`;
+        await prisma.$executeRawUnsafe(sql, normalizedOrgId);
+        resolvedInPass += 1;
+      } catch (err) {
+        if (isForeignKeyConstraintError(err)) {
+          nextPending.push(signature);
+          continue;
+        }
+        throw err;
+      }
+    }
+
+    if (!nextPending.length) return true;
+    if (resolvedInPass === 0) {
+      const blocked = nextPending.join(", ");
+      throw new Error(`ORG_REF_PURGE_FK_BLOCKED:${blocked}`);
+    }
+    if (pass > 12) {
+      const blocked = nextPending.join(", ");
+      throw new Error(`ORG_REF_PURGE_TOO_MANY_PASSES:${blocked}`);
+    }
+    pending = nextPending;
+  }
+
+  return true;
+}
+
 async function deleteUserRefTablesWithDependencyRetry({ userIds, refs }) {
   if (!Array.isArray(userIds) || !userIds.length) return true;
 
@@ -915,6 +963,37 @@ async function listForeignKeysToUserId() {
     : [];
 }
 
+async function listForeignKeysToOrganizationId() {
+  const rows = await prisma.$queryRawUnsafe(`
+    SELECT DISTINCT tc.table_name, kcu.column_name
+    FROM information_schema.table_constraints tc
+    JOIN information_schema.key_column_usage kcu
+      ON tc.constraint_name = kcu.constraint_name
+     AND tc.table_schema = kcu.table_schema
+    JOIN information_schema.constraint_column_usage ccu
+      ON ccu.constraint_name = tc.constraint_name
+     AND ccu.table_schema = tc.table_schema
+    JOIN information_schema.tables t
+      ON t.table_schema = tc.table_schema
+     AND t.table_name = tc.table_name
+    WHERE tc.constraint_type = 'FOREIGN KEY'
+      AND tc.table_schema = 'public'
+      AND ccu.table_schema = 'public'
+      AND ccu.table_name = 'Organization'
+      AND ccu.column_name = 'id'
+      AND t.table_type = 'BASE TABLE'
+    ORDER BY tc.table_name ASC
+  `);
+  return Array.isArray(rows)
+    ? rows
+        .map((row) => ({
+          tableName: String(row?.table_name || "").trim(),
+          columnName: String(row?.column_name || "").trim(),
+        }))
+        .filter((row) => row.tableName && row.columnName)
+    : [];
+}
+
 async function isDemoFingerprintLocked(fingerprint) {
   const code = getDemoFingerprintLockCode(fingerprint);
   if (!code) return false;
@@ -957,9 +1036,21 @@ async function purgeDemoWorkspaceByOrgId(orgId) {
   const orgScopedTables = (await listBaseTablesWithColumn("orgId")).filter(
     (tableName) => tableName !== "Organization" && tableName !== "User"
   );
+  const orgScopedSet = new Set(orgScopedTables);
+  const orgRefTables = (await listForeignKeysToOrganizationId()).filter(
+    (row) =>
+      row.tableName !== "Organization" &&
+      row.tableName !== "User" &&
+      !orgScopedSet.has(row.tableName)
+  );
+
   await deleteOrgScopedTablesWithDependencyRetry({
     orgId: normalizedOrgId,
     tables: orgScopedTables,
+  });
+  await deleteOrgRefTablesWithDependencyRetry({
+    orgId: normalizedOrgId,
+    refs: orgRefTables,
   });
 
   if (userIds.length) {
@@ -970,64 +1061,19 @@ async function purgeDemoWorkspaceByOrgId(orgId) {
     });
   }
 
+  // A final pass is needed after user purge because some tables can be indirectly
+  // blocked by user-linked rows that are removed only at this stage.
+  await deleteOrgRefTablesWithDependencyRetry({
+    orgId: normalizedOrgId,
+    refs: orgRefTables,
+  });
+
   await prisma.user.deleteMany({
     where: { orgId: normalizedOrgId },
   });
   await prisma.organization.deleteMany({
     where: { id: normalizedOrgId },
   });
-  return true;
-}
-
-async function fallbackSoftDeleteTenant(orgId) {
-  const normalizedOrgId = Number(orgId || 0);
-  if (!Number.isFinite(normalizedOrgId) || normalizedOrgId <= 0) return false;
-
-  const users = await prisma.user.findMany({
-    where: { orgId: normalizedOrgId },
-    select: { id: true, isSystemOwner: true },
-    orderBy: { id: "asc" },
-  });
-  const hasSystemOwnerUser = users.some((row) => row.isSystemOwner === true);
-  if (hasSystemOwnerUser) {
-    throw new Error("TENANT_DELETE_SYSTEM_OWNER_FORBIDDEN");
-  }
-
-  await prisma.$transaction(async (tx) => {
-    for (const account of users) {
-      const suffix =
-        String(Date.now()) +
-        "_" +
-        normalizedOrgId +
-        "_" +
-        account.id +
-        "_" +
-        Math.floor(Math.random() * 1000000);
-      await tx.user.update({
-        where: { id: account.id },
-        data: {
-          email: "deleted_" + suffix + "@local.invalid",
-          username: "deleted_" + suffix,
-          orgId: null,
-          isActive: false,
-          passwordVisible: null,
-          permissionsJson: null,
-          tokenVersion: { increment: 1 },
-        },
-      });
-    }
-
-    await tx.inviteToken.updateMany({
-      where: { orgId: normalizedOrgId, usedAt: null },
-      data: { usedAt: new Date() },
-    });
-
-    await tx.organization.update({
-      where: { id: normalizedOrgId },
-      data: { isActive: false },
-    });
-  });
-
   return true;
 }
 
@@ -14233,20 +14279,8 @@ app.delete("/api/admin/tenants/:id", auth, requireAdmin, requireSystemOwner, asy
       });
     }
 
-    let mode = "hard";
-    try {
-      await purgeDemoWorkspaceByOrgId(tenant.id);
-    } catch (purgeError) {
-      console.error("[TENANT_DELETE] hard delete failed, fallback to soft delete:", {
-        tenantId: tenant.id,
-        message: purgeError?.message || null,
-        code: purgeError?.code || null,
-      });
-      await fallbackSoftDeleteTenant(tenant.id);
-      mode = "soft";
-    }
-
-    res.json({ ok: true, mode });
+    await purgeDemoWorkspaceByOrgId(tenant.id);
+    res.json({ ok: true, mode: "hard" });
   } catch (err) {
     console.error("tenant delete error:", err);
     res.status(500).json({
