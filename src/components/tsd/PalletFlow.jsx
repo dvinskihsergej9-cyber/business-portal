@@ -694,8 +694,7 @@ export default function PalletFlow({
   const [activeReceivePalletCodes, setActiveReceivePalletCodes] = useState([]);
   const [storeReceiveScopeLocked, setStoreReceiveScopeLocked] = useState(false);
   const locationControlLastSyncedKeyRef = useRef("");
-  const strictStepLock =
-    activeTab === "store" || (activeTab === "dispatch" && dispatchStep !== "setup");
+  const strictStepLock = activeTab === "dispatch" && dispatchStep !== "setup";
 
   const clearAlerts = () => {
     setError("");
