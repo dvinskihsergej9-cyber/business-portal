@@ -14379,16 +14379,19 @@ app.post("/api/admin/tenants", auth, requireAdmin, requireSystemOwner, async (re
       return res.status(400).json({ message: "USERNAME_ALREADY_EXISTS" });
     }
 
-    const tenant = await prisma.organization.create({
+    const tenant = await runWithoutTenantScope(() =>
+      prismaBase.organization.create({
       data: {
         name: tenantName,
         code: makeTenantCode(tenantName),
         isActive: true,
       },
-    });
+      })
+    );
 
     const hash = await bcrypt.hash(password, 10);
-    const adminUser = await prisma.user.create({
+    const adminUser = await runWithoutTenantScope(() =>
+      prismaBase.user.create({
       data: {
         email: technicalEmail,
         username: normalizedLogin,
@@ -14410,7 +14413,8 @@ app.post("/api/admin/tenants", auth, requireAdmin, requireSystemOwner, async (re
         role: true,
         orgId: true,
       },
-    });
+      })
+    );
 
     res.json({
       ok: true,
