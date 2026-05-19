@@ -496,6 +496,26 @@ const OWNER_BOOTSTRAP_PASSWORD = String(
 ).trim();
 const PORTAL_ALLOWED_ROLES = Object.freeze(["EMPLOYEE", "ADMIN"]);
 const OWNER_PRIMARY_NAME = "Сергей Двинских";
+const DEMO_STAFF_USERS = Object.freeze([
+  {
+    suffix: "receiver",
+    name: "Иван Петров",
+    role: "EMPLOYEE",
+    password: "DemoRecv24!",
+  },
+  {
+    suffix: "picker",
+    name: "Алексей Морозов",
+    role: "EMPLOYEE",
+    password: "DemoPick24!",
+  },
+  {
+    suffix: "operator",
+    name: "Ольга Смирнова",
+    role: "EMPLOYEE",
+    password: "DemoOps24!",
+  },
+]);
 
 function normalizeEmail(value) {
   return String(value || "").trim().toLowerCase();
@@ -720,6 +740,45 @@ async function runDemoSeedStep(label, fn) {
   }
 }
 
+async function ensureDemoPortalUsers({ orgId, workspaceKey, now }) {
+  const normalizedOrgId = Number(orgId || 0);
+  if (!normalizedOrgId) return false;
+
+  for (const row of DEMO_STAFF_USERS) {
+    const email = `${workspaceKey}-${row.suffix}@${DEMO_EMAIL_DOMAIN}`;
+    const hash = await bcrypt.hash(row.password, 10);
+    const username = `demo_${normalizedOrgId}_${row.suffix}`.slice(0, 32);
+    await prisma.user.upsert({
+      where: { email },
+      create: {
+        email,
+        username,
+        password: hash,
+        passwordHash: hash,
+        passwordVisible: row.password,
+        name: row.name,
+        role: row.role,
+        orgId: normalizedOrgId,
+        isActive: true,
+        emailVerifiedAt: now,
+      },
+      update: {
+        username,
+        password: hash,
+        passwordHash: hash,
+        passwordVisible: row.password,
+        name: row.name,
+        role: row.role,
+        orgId: normalizedOrgId,
+        isActive: true,
+        emailVerifiedAt: now,
+      },
+    });
+  }
+
+  return true;
+}
+
 async function findDemoUserByFingerprint(fingerprint) {
   const normalized = String(fingerprint || "")
     .trim()
@@ -846,6 +905,15 @@ async function buildExistingDemoWorkspaceSession(demoUserId) {
     where: { id: freshUser.orgId || 0 },
     select: { id: true, code: true },
   });
+  if (org?.id && org?.code) {
+    await runDemoSeedStep("demo.portalUsers.ensure", () =>
+      ensureDemoPortalUsers({
+        orgId: org.id,
+        workspaceKey: String(org.code || ""),
+        now,
+      })
+    );
+  }
 
   const token = createToken(freshUser);
   const userPayload = await getUserPayload(freshUser.id);
@@ -1173,46 +1241,9 @@ async function seedDemoWorkspaceData({ orgId, userId, workspaceKey, now }) {
     })
   );
 
-  await runDemoSeedStep("demo.portalUsers.createMany", async () => {
-    const staffRows = [
-      {
-        suffix: "receiver",
-        name: "Иван Петров",
-        role: "EMPLOYEE",
-        password: "DemoRecv24!",
-      },
-      {
-        suffix: "picker",
-        name: "Алексей Морозов",
-        role: "EMPLOYEE",
-        password: "DemoPick24!",
-      },
-      {
-        suffix: "operator",
-        name: "Ольга Смирнова",
-        role: "EMPLOYEE",
-        password: "DemoOps24!",
-      },
-    ];
-    const prepared = [];
-    for (const row of staffRows) {
-      const hash = await bcrypt.hash(row.password, 10);
-      prepared.push({
-        email: `${workspaceKey}-${row.suffix}@${DEMO_EMAIL_DOMAIN}`,
-        username: `${workspaceKey.slice(0, 12)}-${row.suffix}`.slice(0, 32),
-        password: hash,
-        passwordHash: hash,
-        passwordVisible: row.password,
-        name: row.name,
-        role: row.role,
-        orgId,
-        isActive: true,
-        emailVerifiedAt: now,
-      });
-    }
-    await prisma.user.createMany({ data: prepared });
-    return true;
-  });
+  await runDemoSeedStep("demo.portalUsers.ensure", () =>
+    ensureDemoPortalUsers({ orgId, workspaceKey, now })
+  );
 
   await runDemoSeedStep("employee.createMany", () =>
     prisma.employee.createMany({
