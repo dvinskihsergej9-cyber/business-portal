@@ -14935,6 +14935,45 @@ app.post("/api/admin/platform-news/publish", auth, requireAdmin, requireSystemOw
   }
 });
 
+app.post("/api/admin/platform-news/bulk-delete", auth, requireAdmin, requireSystemOwner, async (req, res) => {
+  try {
+    if (!hasPermission(req.user, PERMISSION_KEYS.ADMIN_TENANTS)) {
+      return res.status(403).json({ message: "Нет доступа к разделу." });
+    }
+
+    const rawIds = Array.isArray(req.body?.ids) ? req.body.ids : [];
+    const ids = Array.from(
+      new Set(
+        rawIds
+          .map((value) => Number(value))
+          .filter((value) => Number.isFinite(value) && value > 0)
+      )
+    ).slice(0, 500);
+
+    if (!ids.length) {
+      return res.status(400).json({ message: "BAD_NEWS_IDS" });
+    }
+
+    const deleted = await runWithoutTenantScope(() =>
+      prismaBase.warehouseNotification.deleteMany({
+        where: {
+          id: { in: ids },
+          userId: req.user.id,
+          type: PLATFORM_NEWS_BROADCAST_TYPE,
+        },
+      })
+    );
+
+    return res.json({
+      ok: true,
+      deletedCount: Number(deleted?.count || 0),
+    });
+  } catch (err) {
+    console.error("platform news bulk delete error:", err);
+    return res.status(500).json({ message: "Не удалось удалить выбранные новости." });
+  }
+});
+
 app.put("/api/admin/platform-news/:id", auth, requireAdmin, requireSystemOwner, async (req, res) => {
   try {
     if (!hasPermission(req.user, PERMISSION_KEYS.ADMIN_TENANTS)) {

@@ -28,6 +28,8 @@ export default function AdminPlatformNewsPanel() {
   const [loading, setLoading] = useState(false);
   const [sending, setSending] = useState(false);
   const [deletingId, setDeletingId] = useState(null);
+  const [deletingSelected, setDeletingSelected] = useState(false);
+  const [selectedIds, setSelectedIds] = useState([]);
   const [error, setError] = useState("");
   const [success, setSuccess] = useState("");
   const [items, setItems] = useState([]);
@@ -62,6 +64,10 @@ export default function AdminPlatformNewsPanel() {
 
       setItems(Array.isArray(data?.items) ? data.items : []);
       setTotal(Number(data?.total) || 0);
+      setSelectedIds((prev) => {
+        const visible = new Set((Array.isArray(data?.items) ? data.items : []).map((row) => Number(row?.id || 0)));
+        return prev.filter((id) => visible.has(id));
+      });
     } catch (err) {
       setError(normalizeErrorMessage(err, "Не удалось загрузить историю новостей."));
       setItems([]);
@@ -195,6 +201,72 @@ export default function AdminPlatformNewsPanel() {
     [editingId, loadHistory, resetForm]
   );
 
+  const visibleIds = useMemo(
+    () => items.map((item) => Number(item?.id || 0)).filter((id) => Number.isFinite(id) && id > 0),
+    [items]
+  );
+  const selectedSet = useMemo(() => new Set(selectedIds), [selectedIds]);
+  const allVisibleSelected = useMemo(
+    () => visibleIds.length > 0 && visibleIds.every((id) => selectedSet.has(id)),
+    [visibleIds, selectedSet]
+  );
+
+  const toggleOne = useCallback((id) => {
+    const normalizedId = Number(id || 0);
+    if (!normalizedId) return;
+    setSelectedIds((prev) =>
+      prev.includes(normalizedId)
+        ? prev.filter((value) => value !== normalizedId)
+        : [...prev, normalizedId]
+    );
+  }, []);
+
+  const toggleAllVisible = useCallback(() => {
+    setSelectedIds((prev) => {
+      const prevSet = new Set(prev);
+      const shouldSelectAll = !visibleIds.every((id) => prevSet.has(id));
+      if (shouldSelectAll) {
+        for (const id of visibleIds) prevSet.add(id);
+      } else {
+        for (const id of visibleIds) prevSet.delete(id);
+      }
+      return Array.from(prevSet);
+    });
+  }, [visibleIds]);
+
+  const handleDeleteSelected = useCallback(async () => {
+    if (!selectedIds.length) return;
+    const confirmed = window.confirm(`Удалить выбранные новости: ${selectedIds.length} шт.?`);
+    if (!confirmed) return;
+    try {
+      setDeletingSelected(true);
+      setError("");
+      setSuccess("");
+
+      const res = await apiFetch("/admin/platform-news/bulk-delete", {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${localStorage.getItem("token") || ""}`,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({ ids: selectedIds }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        throw new Error(data?.message || "Не удалось удалить выбранные новости.");
+      }
+
+      const deletedCount = Number(data?.deletedCount || 0);
+      setSelectedIds([]);
+      setSuccess(`Удалено новостей: ${deletedCount}.`);
+      await loadHistory();
+    } catch (err) {
+      setError(normalizeErrorMessage(err, "Не удалось удалить выбранные новости."));
+    } finally {
+      setDeletingSelected(false);
+    }
+  }, [selectedIds, loadHistory]);
+
   return (
     <div className="admin-console__card admin-panel">
       <div className="admin-console__card-title">Новости платформы</div>
@@ -272,11 +344,29 @@ export default function AdminPlatformNewsPanel() {
 
       <div className="admin-console__card-title admin-panel__section-title">История рассылок</div>
       {loading ? <div className="admin-muted">Загрузка...</div> : null}
+      <div className="admin-table__actions" style={{ marginTop: 10 }}>
+        <button
+          type="button"
+          className="admin-btn admin-btn--danger"
+          disabled={deletingSelected || sending || selectedIds.length === 0}
+          onClick={handleDeleteSelected}
+        >
+          {deletingSelected ? "Удаление..." : `Удалить выбранные (${selectedIds.length})`}
+        </button>
+      </div>
 
       <div className="admin-table-wrapper" style={{ marginTop: 10 }}>
         <table className="admin-table">
           <thead>
             <tr>
+              <th style={{ width: 44 }}>
+                <input
+                  type="checkbox"
+                  checked={allVisibleSelected}
+                  onChange={toggleAllVisible}
+                  aria-label="Выделить все новости"
+                />
+              </th>
               <th>Дата</th>
               <th>Заголовок</th>
               <th>Приоритет</th>
@@ -287,6 +377,14 @@ export default function AdminPlatformNewsPanel() {
           <tbody>
             {items.map((item) => (
               <tr key={item.id}>
+                <td data-label="Выбор">
+                  <input
+                    type="checkbox"
+                    checked={selectedSet.has(Number(item.id))}
+                    onChange={() => toggleOne(item.id)}
+                    aria-label={`Выделить новость ${item.id}`}
+                  />
+                </td>
                 <td data-label="Дата">{formatDateTime(item.createdAt)}</td>
                 <td data-label="Заголовок">
                   <div className="admin-table__title">{item.title || "-"}</div>
@@ -303,7 +401,7 @@ export default function AdminPlatformNewsPanel() {
                       type="button"
                       className="admin-btn admin-btn--ghost"
                       onClick={() => handleStartEdit(item)}
-                      disabled={sending || deletingId === item.id}
+                      disabled={sending || deletingSelected || deletingId === item.id}
                     >
                       Редактировать
                     </button>
@@ -311,7 +409,7 @@ export default function AdminPlatformNewsPanel() {
                       type="button"
                       className="admin-btn admin-btn--danger"
                       onClick={() => handleDelete(item)}
-                      disabled={sending || deletingId === item.id}
+                      disabled={sending || deletingSelected || deletingId === item.id}
                     >
                       {deletingId === item.id ? "Удаление..." : "Удалить"}
                     </button>
@@ -321,7 +419,7 @@ export default function AdminPlatformNewsPanel() {
             ))}
             {!items.length ? (
               <tr>
-                <td colSpan={5} className="admin-muted">
+                <td colSpan={6} className="admin-muted">
                   Рассылок пока нет.
                 </td>
               </tr>
