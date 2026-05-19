@@ -7775,9 +7775,37 @@ app.post("/api/register", async (req, res) => {
     }
 
     const hash = await bcrypt.hash(password, 10);
-    const existing = await prisma.user.findUnique({ where: { email: normalizedEmail } });
+    const existing = await prisma.user.findUnique({
+      where: { email: normalizedEmail },
+      select: {
+        id: true,
+        orgId: true,
+        isActive: true,
+        isSystemOwner: true,
+        emailVerifiedAt: true,
+        organization: {
+          select: {
+            id: true,
+            isActive: true,
+          },
+        },
+      },
+    });
 
-    if (existing?.emailVerifiedAt) {
+    if (existing?.isSystemOwner === true) {
+      return res.status(400).json({ message: "OWNER_EMAIL_RESERVED" });
+    }
+
+    const existingOrgActive =
+      existing?.orgId && existing?.organization
+        ? Boolean(existing.organization.isActive)
+        : false;
+    const existingBlocksRegistration =
+      Boolean(existing?.isActive) &&
+      Boolean(existingOrgActive) &&
+      Boolean(existing?.emailVerifiedAt);
+
+    if (existingBlocksRegistration) {
       return res.status(400).json({ message: "EMAIL_ALREADY_EXISTS" });
     }
 
@@ -7785,7 +7813,7 @@ app.post("/api/register", async (req, res) => {
 
     if (existing) {
       let orgId = existing.orgId || null;
-      if (!orgId) {
+      if (!orgId || !existingOrgActive) {
         const createdOrg = await prisma.organization.create({
           data: {
             name: normalizedCompanyName || normalizedName || normalizedEmail,
