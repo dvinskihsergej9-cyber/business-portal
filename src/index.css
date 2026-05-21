@@ -710,6 +710,22 @@ tr:last-child td {
   line-height: 1.2;
 }
 
+.warehouse-home-summary__item--datetime {
+  align-items: start;
+}
+
+.warehouse-home-summary__item--datetime .warehouse-home-summary__value {
+  justify-self: end;
+}
+
+.warehouse-home-summary__item--datetime .warehouse-home-summary__hint {
+  justify-self: end;
+  color: #0f172a;
+  font-size: 20px;
+  font-weight: 800;
+  line-height: 1;
+}
+
 .warehouse-grid {
   display: grid;
   grid-template-columns: repeat(3, minmax(0, 1fr));

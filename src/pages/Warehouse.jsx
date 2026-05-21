@@ -1108,7 +1108,7 @@ export default function Warehouse({
   useEffect(() => {
     const timerId = window.setInterval(() => {
       setWarehouseNow(new Date());
-    }, 60 * 1000);
+    }, 1000);
 
     return () => window.clearInterval(timerId);
   }, []);
@@ -2799,6 +2799,7 @@ export default function Warehouse({
         label: "Дата и время",
         value: warehouseDateLabel,
         hint: warehouseTimeLabel,
+        variant: "datetime",
       },
     ],
     [
@@ -2929,7 +2930,12 @@ export default function Warehouse({
         <div className="warehouse-section">
           <div className="warehouse-home-summary" aria-label="Сводка склада">
             {warehouseOverviewStats.map((item) => (
-              <div key={item.label} className="warehouse-home-summary__item">
+              <div
+                key={item.label}
+                className={`warehouse-home-summary__item${
+                  item.variant ? ` warehouse-home-summary__item--${item.variant}` : ""
+                }`}
+              >
                 <span className="warehouse-home-summary__label">{item.label}</span>
                 <span className="warehouse-home-summary__value">{item.value}</span>
                 <span className="warehouse-home-summary__hint">{item.hint}</span>
