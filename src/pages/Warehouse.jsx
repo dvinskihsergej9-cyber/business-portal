@@ -2731,6 +2731,64 @@ export default function Warehouse({
     [sectionCards, sectionSet]
   );
 
+  const activeWarehouseTasksCount = useMemo(() => {
+    const taskMap = new Map();
+    [...taskMyList, ...taskAllList].forEach((task) => {
+      if (task?.id != null) {
+        taskMap.set(task.id, task);
+      }
+    });
+    return Array.from(taskMap.values()).filter((task) => {
+      const status = String(task?.status || "").toUpperCase();
+      return status !== "DONE" && status !== "COMPLETED" && status !== "CANCELLED";
+    }).length;
+  }, [taskAllList, taskMyList]);
+
+  const warehouseOverviewStats = useMemo(
+    () => [
+      {
+        label: "Активные задачи",
+        value: tasksLoading ? "..." : activeWarehouseTasksCount,
+        hint: "в работе и новых",
+      },
+      {
+        label: "Товары",
+        value: inventoryLoading ? "..." : inventoryItems.length,
+        hint: "в номенклатуре",
+      },
+      {
+        label: "Остатки",
+        value: inventoryLoading ? "..." : inventoryStock.length,
+        hint: "позиций на складе",
+      },
+      {
+        label: "Разделы",
+        value: visibleSectionCards.length,
+        hint: "доступно в меню",
+      },
+    ],
+    [
+      activeWarehouseTasksCount,
+      inventoryItems.length,
+      inventoryLoading,
+      inventoryStock.length,
+      tasksLoading,
+      visibleSectionCards.length,
+    ]
+  );
+
+  const warehouseQuickActions = useMemo(
+    () =>
+      [
+        { key: "tasks", label: "Создать задачу", hint: "исполнитель, срок, контроль" },
+        { key: "inventory", label: "Проверить остатки", hint: "товары и доступное количество" },
+        { key: "items", label: "Печать QR товара", hint: "этикетки для склада" },
+        { key: "tsd", label: "Открыть ТСД", hint: "сканирование и операции" },
+        { key: "crossdock", label: "Кросс-докинг", hint: "паллеты, маршрут, отгрузка" },
+      ].filter((action) => sectionSet.has(action.key)),
+    [sectionSet]
+  );
+
   const openSection = useCallback((sectionKey) => {
     setSection(sectionKey);
     const params = new URLSearchParams(location.search || "");
@@ -2827,7 +2885,7 @@ export default function Warehouse({
 
   return (
 
-    <div className="page">
+    <div className={"page" + (!section ? " page--warehouse-home" : "")}>
 
       {sections.length === 0 && (
         <div className="card" style={{ marginBottom: 16 }}>
@@ -2845,23 +2903,70 @@ export default function Warehouse({
 
       {!section && (
         <div className="warehouse-section">
-          <div className="warehouse-grid">
-            {visibleSectionCards.map((card) => (
-              <button
-                key={card.key}
-                type="button"
-                className="warehouse-card"
-                onClick={() => openSection(card.key)}
-              >
-                <div className="warehouse-card__icon">
-                  <WarehouseTileIcon name={card.key} />
-                </div>
-                <div className="warehouse-card__body">
-                  <div className="warehouse-card__title">{card.title}</div>
-                  <div className="warehouse-card__subtitle">{card.subtitle}</div>
-                </div>
-              </button>
-            ))}
+          <div className="warehouse-home-layout">
+            <aside className="warehouse-home-panel warehouse-home-panel--summary" aria-label="Сводка склада">
+              <div className="warehouse-home-panel__eyebrow">Сегодня</div>
+              <div className="warehouse-home-panel__title">Пульс склада</div>
+              <div className="warehouse-home-panel__text">
+                Быстрая сводка по доступным разделам и текущим данным.
+              </div>
+              <div className="warehouse-home-stats">
+                {warehouseOverviewStats.map((item) => (
+                  <div key={item.label} className="warehouse-home-stat">
+                    <div className="warehouse-home-stat__value">{item.value}</div>
+                    <div>
+                      <div className="warehouse-home-stat__label">{item.label}</div>
+                      <div className="warehouse-home-stat__hint">{item.hint}</div>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </aside>
+
+            <div className="warehouse-grid">
+              {visibleSectionCards.map((card) => (
+                <button
+                  key={card.key}
+                  type="button"
+                  className="warehouse-card"
+                  onClick={() => openSection(card.key)}
+                >
+                  <div className="warehouse-card__icon">
+                    <WarehouseTileIcon name={card.key} />
+                  </div>
+                  <div className="warehouse-card__body">
+                    <div className="warehouse-card__title">{card.title}</div>
+                    <div className="warehouse-card__subtitle">{card.subtitle}</div>
+                  </div>
+                </button>
+              ))}
+            </div>
+
+            <aside className="warehouse-home-panel warehouse-home-panel--actions" aria-label="Быстрые действия">
+              <div className="warehouse-home-panel__eyebrow">Действия</div>
+              <div className="warehouse-home-panel__title">Быстрый старт</div>
+              <div className="warehouse-home-actions">
+                {warehouseQuickActions.map((action) => (
+                  <button
+                    key={action.key}
+                    type="button"
+                    className="warehouse-home-action"
+                    onClick={() => openSection(action.key)}
+                  >
+                    <span className="warehouse-home-action__icon">
+                      <WarehouseTileIcon name={action.key} />
+                    </span>
+                    <span className="warehouse-home-action__body">
+                      <span className="warehouse-home-action__label">{action.label}</span>
+                      <span className="warehouse-home-action__hint">{action.hint}</span>
+                    </span>
+                  </button>
+                ))}
+              </div>
+              <div className="warehouse-home-note">
+                Разделы открываются в один клик, без поиска по меню.
+              </div>
+            </aside>
           </div>
         </div>
       )}
