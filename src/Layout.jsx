@@ -356,23 +356,24 @@ export default function Layout() {
 
   return (
     <div style={rootStyle}>
-      <aside style={sidebarStyle}>
-        <div style={styles.logoBlock}>
+      <aside style={sidebarStyle} className="portal-sidebar">
+        <div style={styles.logoBlock} className="portal-sidebar__logo-block">
           <img
             src={APP_LOGO_SRC}
             alt="Логотип"
             style={styles.logoMarkImage}
+            className="portal-sidebar__logo-image"
             loading="eager"
             decoding="sync"
           />
-          <div>
+          <div className="portal-sidebar__logo-copy">
             <div style={styles.logoTitle}>СкладОнлайн</div>
             <div style={styles.logoSubtitle}>Внутренний сервис компании</div>
           </div>
         </div>
 
         {user && (
-          <div style={styles.userCard}>
+          <div style={styles.userCard} className="portal-sidebar__user-card">
             <div style={styles.userName}>{user.name}</div>
             <div style={styles.userEmail}>{user.login || user.username || user.email}</div>
             <div style={styles.userRole}>{user.role}</div>
@@ -406,6 +407,7 @@ export default function Layout() {
             <NavLink
               key={item.to}
               to={item.to}
+              className="portal-sidebar__nav-link"
               style={({ isActive }) =>
                 isActive
                   ? { ...styles.navItem, ...styles.navItemActive }
@@ -423,7 +425,7 @@ export default function Layout() {
         </nav>
       </aside>
 
-      <div style={styles.main}>
+      <div style={styles.main} className="portal-main">
         <header
           style={isMobile ? styles.topBarMobile : styles.topBar}
           className="portal-topbar"

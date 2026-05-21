@@ -400,6 +400,118 @@ tr:last-child td {
 
 /* ====== РџРѕРґСЂР°Р·РґРµР»С‹ СЃРєР»Р°РґР° (РєР°СЂС‚РѕС‡РєРё) ====== */
 
+@media (min-width: 769px) {
+  .portal-sidebar {
+    position: fixed !important;
+    top: 0;
+    left: 0;
+    bottom: 0;
+    z-index: 80;
+    width: 72px !important;
+    min-height: 100vh;
+    height: 100vh;
+    overflow-x: hidden;
+    overflow-y: hidden;
+    padding: 16px 10px !important;
+    transition:
+      width 0.22s ease,
+      padding 0.22s ease,
+      box-shadow 0.22s ease;
+  }
+
+  .portal-sidebar:hover,
+  .portal-sidebar:focus-within {
+    width: 272px !important;
+    padding: 20px 16px !important;
+    overflow-y: auto;
+    box-shadow: 12px 0 32px rgba(35, 83, 176, 0.14) !important;
+  }
+
+  .portal-main {
+    margin-left: 72px;
+    min-width: 0;
+  }
+
+  .portal-sidebar::after {
+    content: "";
+    position: absolute;
+    top: 50%;
+    right: 7px;
+    width: 3px;
+    height: 42px;
+    border-radius: 999px;
+    background: rgba(37, 99, 235, 0.28);
+    transform: translateY(-50%);
+    transition: opacity 0.16s ease;
+    pointer-events: none;
+  }
+
+  .portal-sidebar:hover::after,
+  .portal-sidebar:focus-within::after {
+    opacity: 0;
+  }
+
+  .portal-sidebar__logo-block,
+  .portal-sidebar__logo-image,
+  .portal-sidebar__logo-copy,
+  .portal-sidebar__user-card,
+  .portal-sidebar__nav-link,
+  .sidebar-nav span {
+    transition:
+      opacity 0.18s ease,
+      width 0.18s ease,
+      max-width 0.18s ease,
+      transform 0.18s ease,
+      gap 0.18s ease;
+  }
+
+  .portal-sidebar:not(:hover):not(:focus-within) .portal-sidebar__logo-block {
+    justify-content: center !important;
+    gap: 0 !important;
+    padding: 6px !important;
+    margin-bottom: 18px !important;
+  }
+
+  .portal-sidebar:not(:hover):not(:focus-within) .portal-sidebar__logo-image {
+    width: 46px !important;
+    height: 46px !important;
+    border-radius: 10px !important;
+  }
+
+  .portal-sidebar:not(:hover):not(:focus-within) .portal-sidebar__logo-copy {
+    width: 0;
+    max-width: 0;
+    opacity: 0;
+    overflow: hidden;
+    pointer-events: none;
+    transform: translateX(-8px);
+  }
+
+  .portal-sidebar:not(:hover):not(:focus-within) .portal-sidebar__user-card {
+    display: none !important;
+  }
+
+  .portal-sidebar:not(:hover):not(:focus-within) .sidebar-nav {
+    margin-top: 8px !important;
+  }
+
+  .portal-sidebar:not(:hover):not(:focus-within) .portal-sidebar__nav-link {
+    justify-content: center !important;
+    gap: 0 !important;
+    padding: 10px !important;
+  }
+
+  .portal-sidebar:not(:hover):not(:focus-within) .sidebar-nav span {
+    width: 0;
+    max-width: 0;
+    opacity: 0;
+    overflow: hidden;
+    pointer-events: none;
+    transform: translateX(-8px);
+    white-space: nowrap;
+  }
+}
+
 .warehouse-subcards {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
