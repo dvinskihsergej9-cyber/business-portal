@@ -1960,3 +1960,25 @@
     grid-template-columns: 1fr;
   }
 }
+
+.portal-surface--warehouse-tsd {
+  background: #ffffff;
+}
+
+.portal-surface--warehouse-tsd .page > .tsd-section {
+  border: 0;
+  background: #ffffff;
+  box-shadow: none;
+  backdrop-filter: none;
+  padding: 0;
+}
+
+.portal-surface--warehouse-tsd .tsd-page {
+  min-height: calc(100vh - 96px);
+  background: #ffffff;
+}
+
+.portal-surface--warehouse-tsd .tsd-page::before,
+.portal-surface--warehouse-tsd .tsd-page::after {
+  display: none;
+}

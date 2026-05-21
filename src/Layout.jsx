@@ -497,6 +497,9 @@ export default function Layout() {
             "portal-surface" +
             (location.pathname === "/warehouse" && !sectionParam
               ? " portal-surface--warehouse-home"
+              : "") +
+            (location.pathname === "/warehouse" && sectionParam === "tsd"
+              ? " portal-surface--warehouse-tsd"
               : "")
           }
         >
