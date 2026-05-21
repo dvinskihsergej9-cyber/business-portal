@@ -597,19 +597,30 @@ tr:last-child td {
   /* РїРµСЂРµРѕРїСЂРµРґРµР»СЏРµРј Р±Р°Р·РѕРІСѓСЋ РєРЅРѕРїРєСѓ */
   color: var(--text);
   font-weight: 500;
+  position: relative;
+  transform: translateZ(0);
+  transform-origin: center;
 
   transition:
-    background 0.15s ease,
-    border-color 0.15s ease,
-    box-shadow 0.15s ease,
-    transform 0.08s ease;
+    background 0.2s ease,
+    border-color 0.2s ease,
+    box-shadow 0.24s ease,
+    transform 0.18s ease;
+  will-change: transform;
 }
 
 .warehouse-card:hover {
-  background: #f3f4f6;
-  border-color: #d1d5db;
-  box-shadow: 0 2px 4px rgba(15, 23, 42, 0.06);
-  transform: translateY(-1px);
+  background: #ffffff;
+  border-color: #93c5fd;
+  box-shadow:
+    0 18px 34px rgba(37, 99, 235, 0.18),
+    0 6px 14px rgba(15, 23, 42, 0.08);
+  transform: translateY(-7px) scale(1.035);
+  z-index: 2;
+}
+
+.warehouse-card:active {
+  transform: translateY(-3px) scale(1.015);
 }
 
 .warehouse-card--active {
@@ -1221,6 +1232,21 @@ input[type="number"] {
 
 .task-photo-preview__modal {
   width: min(980px, 96vw);
+}
+
+@media (prefers-reduced-motion: reduce), (hover: none) {
+  .warehouse-card {
+    transition:
+      background 0.15s ease,
+      border-color 0.15s ease,
+      box-shadow 0.15s ease;
+    will-change: auto;
+  }
+
+  .warehouse-card:hover,
+  .warehouse-card:active {
+    transform: none;
+  }
 }
 
 .task-photo-preview--backdrop {
