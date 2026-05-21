@@ -1966,11 +1966,12 @@
 }
 
 .portal-surface--warehouse-tsd .page > .tsd-section {
-  border: 0;
+  border: 1px solid rgba(147, 197, 253, 0.82);
+  border-radius: 22px;
   background: #ffffff;
-  box-shadow: none;
+  box-shadow: 0 18px 44px rgba(37, 99, 235, 0.1);
   backdrop-filter: none;
-  padding: 0;
+  padding: 12px;
 }
 
 .portal-surface--warehouse-tsd .tsd-page {
