@@ -420,7 +420,7 @@ tr:last-child td {
   }
 
   .portal-sidebar:hover,
-  .portal-sidebar:focus-within {
+  .portal-sidebar:hover {
     width: 272px !important;
     padding: 20px 16px !important;
     overflow-y: auto;
@@ -447,7 +447,7 @@ tr:last-child td {
   }
 
   .portal-sidebar:hover::after,
-  .portal-sidebar:focus-within::after {
+  .portal-sidebar:hover::after {
     opacity: 0;
   }
 
@@ -465,20 +465,20 @@ tr:last-child td {
       gap 0.18s ease;
   }
 
-  .portal-sidebar:not(:hover):not(:focus-within) .portal-sidebar__logo-block {
+  .portal-sidebar:not(:hover) .portal-sidebar__logo-block {
     justify-content: center !important;
     gap: 0 !important;
     padding: 6px !important;
     margin-bottom: 18px !important;
   }
 
-  .portal-sidebar:not(:hover):not(:focus-within) .portal-sidebar__logo-image {
+  .portal-sidebar:not(:hover) .portal-sidebar__logo-image {
     width: 46px !important;
     height: 46px !important;
     border-radius: 10px !important;
   }
 
-  .portal-sidebar:not(:hover):not(:focus-within) .portal-sidebar__logo-copy {
+  .portal-sidebar:not(:hover) .portal-sidebar__logo-copy {
     width: 0;
     max-width: 0;
     opacity: 0;
@@ -487,7 +487,7 @@ tr:last-child td {
     transform: translateX(-8px);
   }
 
-  .portal-sidebar:not(:hover):not(:focus-within) .portal-sidebar__user-card {
+  .portal-sidebar:not(:hover) .portal-sidebar__user-card {
     position: relative;
     display: flex !important;
     align-items: center;
@@ -506,11 +506,11 @@ tr:last-child td {
     opacity: 1;
   }
 
-  .portal-sidebar:not(:hover):not(:focus-within) .portal-sidebar__user-card > * {
+  .portal-sidebar:not(:hover) .portal-sidebar__user-card > * {
     display: none !important;
   }
 
-  .portal-sidebar:not(:hover):not(:focus-within) .portal-sidebar__user-card::before {
+  .portal-sidebar:not(:hover) .portal-sidebar__user-card::before {
     content: "";
     width: 30px;
     height: 30px;
@@ -523,7 +523,7 @@ tr:last-child td {
     box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.8);
   }
 
-  .portal-sidebar:not(:hover):not(:focus-within) .portal-sidebar__user-card::after {
+  .portal-sidebar:not(:hover) .portal-sidebar__user-card::after {
     content: "";
     position: absolute;
     right: 7px;
@@ -536,22 +536,22 @@ tr:last-child td {
     box-shadow: 0 0 0 1px rgba(34, 197, 94, 0.28);
   }
 
-  .portal-sidebar:not(:hover):not(:focus-within) .portal-sidebar__user-card--inactive::after {
+  .portal-sidebar:not(:hover) .portal-sidebar__user-card--inactive::after {
     background: #f59e0b;
     box-shadow: 0 0 0 1px rgba(245, 158, 11, 0.28);
   }
 
-  .portal-sidebar:not(:hover):not(:focus-within) .sidebar-nav {
+  .portal-sidebar:not(:hover) .sidebar-nav {
     margin-top: 8px !important;
   }
 
-  .portal-sidebar:not(:hover):not(:focus-within) .portal-sidebar__nav-link {
+  .portal-sidebar:not(:hover) .portal-sidebar__nav-link {
     justify-content: center !important;
     gap: 0 !important;
     padding: 10px !important;
   }
 
-  .portal-sidebar:not(:hover):not(:focus-within) .sidebar-nav span {
+  .portal-sidebar:not(:hover) .sidebar-nav span {
     width: 0;
     max-width: 0;
     opacity: 0;
