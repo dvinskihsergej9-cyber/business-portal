@@ -481,22 +481,7 @@ tr:last-child td {
   margin-bottom: 20px;
 }
 
-.page--warehouse-home {
-  max-width: min(1480px, calc(100vw - 40px));
-  position: relative;
-  isolation: isolate;
-  border-radius: 18px;
-}
-
-.page--warehouse-home::before {
-  content: "";
-  position: absolute;
-  top: -18px;
-  bottom: -52px;
-  left: 50%;
-  width: 100vw;
-  z-index: -1;
-  transform: translateX(-50%);
+.portal-surface--warehouse-home {
   background:
     radial-gradient(circle at 16% 12%, rgba(147, 197, 253, 0.26), transparent 32%),
     radial-gradient(circle at 86% 22%, rgba(125, 211, 252, 0.2), transparent 30%),
@@ -512,7 +497,10 @@ tr:last-child td {
     34px 34px,
     auto;
   box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.76);
-  pointer-events: none;
+}
+
+.page--warehouse-home {
+  max-width: min(1480px, calc(100vw - 40px));
 }
 
 .warehouse-home-summary {

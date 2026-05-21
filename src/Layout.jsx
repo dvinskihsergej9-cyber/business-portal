@@ -483,7 +483,12 @@ export default function Layout() {
 
         <main
           style={isMobile ? { ...styles.content, ...styles.contentMobile } : styles.content}
-          className="portal-surface"
+          className={
+            "portal-surface" +
+            (location.pathname === "/warehouse" && !sectionParam
+              ? " portal-surface--warehouse-home"
+              : "")
+          }
         >
           {showDemoUpgradeBanner && (
             <section style={isMobile ? styles.demoBannerMobile : styles.demoBanner}>
