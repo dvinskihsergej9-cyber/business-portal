@@ -535,7 +535,7 @@ export default function AdminWarehousePanel() {
           }
           onClick={() => setActiveTab("orders")}
         >
-          Заказы
+          Отгрузка клиентам
         </button>
       </div>
 
@@ -835,7 +835,7 @@ export default function AdminWarehousePanel() {
       {!loading && activeTab === "orders" && (
         <div className="admin-form">
           <div className="admin-label" style={{ fontWeight: 700 }}>
-            Заказы
+            Отгрузка клиентам
           </div>
           <div className="admin-label" style={{ fontWeight: 600 }}>
             Импорт заказов из Excel
