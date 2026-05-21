@@ -668,14 +668,8 @@ tr:last-child td {
 .warehouse-home-summary {
   display: grid;
   grid-template-columns: repeat(4, minmax(0, 1fr));
-  gap: 10px;
-  margin-bottom: 14px;
-  padding: 10px;
-  border: 1px solid #bfdbfe;
-  border-radius: 14px;
-  background:
-    linear-gradient(135deg, rgba(255, 255, 255, 0.86), rgba(239, 246, 255, 0.72));
-  box-shadow: 0 12px 28px rgba(35, 83, 176, 0.1);
+  gap: 12px;
+  margin-bottom: 16px;
 }
 
 .warehouse-home-summary__item {
@@ -684,10 +678,15 @@ tr:last-child td {
   align-items: baseline;
   column-gap: 10px;
   row-gap: 2px;
-  border: 1px solid #dbeafe;
-  border-radius: 10px;
-  background: rgba(255, 255, 255, 0.76);
-  padding: 10px 12px;
+  border: 1px solid rgba(147, 197, 253, 0.66);
+  border-radius: 14px;
+  background:
+    linear-gradient(135deg, rgba(255, 255, 255, 0.68), rgba(239, 246, 255, 0.46));
+  box-shadow:
+    0 12px 26px rgba(35, 83, 176, 0.09),
+    inset 0 1px 0 rgba(255, 255, 255, 0.74);
+  backdrop-filter: blur(8px);
+  padding: 12px 14px;
 }
 
 .warehouse-home-summary__label {
