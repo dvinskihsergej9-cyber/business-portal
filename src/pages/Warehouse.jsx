@@ -217,8 +217,6 @@ const TASK_ATTACHMENT_ALLOWED_TYPES = new Set([
   "image/png",
   "image/webp",
 ]);
-const TASK_TIME_ZONE = "Europe/Moscow";
-
 function formatTaskDateTime(value) {
   if (!value) return "-";
   const date = new Date(value);
@@ -229,7 +227,6 @@ function formatTaskDateTime(value) {
     year: "numeric",
     hour: "2-digit",
     minute: "2-digit",
-    timeZone: TASK_TIME_ZONE,
   });
 }
 

@@ -11,6 +11,14 @@ const normalizeLoginInput = (value) =>
     .replace(/\s+/g, "_")
     .toLowerCase();
 
+const getBrowserTimeZone = () => {
+  try {
+    return Intl.DateTimeFormat().resolvedOptions().timeZone || "";
+  } catch {
+    return "";
+  }
+};
+
 export function AuthProvider({ children }) {
   const [user, setUser] = useState(() => {
     const saved = localStorage.getItem("user");
@@ -322,6 +330,30 @@ export function AuthProvider({ children }) {
     bindPushForSession(token, false, true);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [user?.id]);
+
+  useEffect(() => {
+    if (!user?.id) return;
+    const token = localStorage.getItem("token");
+    const timeZone = getBrowserTimeZone();
+    if (!token || !timeZone || user.timeZone === timeZone) return;
+
+    apiFetch("/me/timezone", {
+      method: "PUT",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${token}`,
+      },
+      body: JSON.stringify({ timeZone }),
+    })
+      .then((res) => (res.ok ? res.json() : null))
+      .then((data) => {
+        const nextUser = data?.user;
+        if (!nextUser?.id) return;
+        setUser(nextUser);
+        localStorage.setItem("user", JSON.stringify(nextUser));
+      })
+      .catch(() => null);
+  }, [user?.id, user?.timeZone]);
 
   const value = {
     user,

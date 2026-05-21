@@ -2,6 +2,14 @@ import { API_BASE } from "../apiConfig";
 
 const RETRY_DELAYS_MS = [0, 700, 1800];
 
+function getBrowserTimeZone() {
+  try {
+    return Intl.DateTimeFormat().resolvedOptions().timeZone || "";
+  } catch {
+    return "";
+  }
+}
+
 function urlBase64ToUint8Array(base64String) {
   const padding = "=".repeat((4 - (base64String.length % 4)) % 4);
   const base64 = (base64String + padding).replace(/-/g, "+").replace(/_/g, "/");
@@ -102,7 +110,10 @@ export async function ensurePushSubscription({
           Authorization: `Bearer ${token}`,
           "Content-Type": "application/json",
         },
-        body: JSON.stringify(subscription),
+        body: JSON.stringify({
+          subscription: subscription.toJSON ? subscription.toJSON() : subscription,
+          timeZone: getBrowserTimeZone(),
+        }),
       });
 
       if (saveRes.ok) {

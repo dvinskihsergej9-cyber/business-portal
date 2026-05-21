@@ -65,6 +65,34 @@ const JWT_EXPIRES_IN = "7d";
 const MARKETING_UNSUBSCRIBE_SECRET =
   process.env.MARKETING_UNSUBSCRIBE_SECRET || JWT_SECRET;
 
+function normalizeTimeZone(value) {
+  const timeZone = String(value || "").trim();
+  if (!timeZone || timeZone.length > 80) return null;
+  try {
+    new Intl.DateTimeFormat("ru-RU", { timeZone }).format(new Date());
+    return timeZone;
+  } catch {
+    return null;
+  }
+}
+
+function formatDateTimeRu(value, timeZoneInput = null) {
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return "-";
+  const timeZone = normalizeTimeZone(timeZoneInput);
+  const options = {
+    day: "2-digit",
+    month: "2-digit",
+    year: "numeric",
+    hour: "2-digit",
+    minute: "2-digit",
+  };
+  if (timeZone) {
+    options.timeZone = timeZone;
+  }
+  return date.toLocaleString("ru-RU", options);
+}
+
 function createToken(user) {
   return jwt.sign(
     {
@@ -126,6 +154,7 @@ async function auth(req, res, next) {
       email: user.email,
       role: user.role,
       orgId: user.orgId || null,
+      timeZone: normalizeTimeZone(user.timeZone),
       isSystemOwner,
       subscriptionPlan,
       subscriptionFeatures,
@@ -2399,14 +2428,15 @@ async function sendMailWithTimeout(transport, payload) {
   throw lastError || new Error("MAIL_TIMEOUT");
 }
 
-function parsePushSubscription(input) {
+function parsePushSubscription(input, options = {}) {
   const endpoint = String(input?.endpoint || "").trim();
   const p256dh = String(input?.keys?.p256dh || "").trim();
   const auth = String(input?.keys?.auth || "").trim();
+  const timeZone = normalizeTimeZone(options.timeZone || input?.timeZone);
   if (!endpoint || !p256dh || !auth) {
     return null;
   }
-  return { endpoint, p256dh, auth };
+  return { endpoint, p256dh, auth, timeZone };
 }
 
 async function sendWebPushToUser(orgId, userId, payload) {
@@ -5688,6 +5718,7 @@ async function getUserPayload(userId) {
       name: true,
       role: true,
       isSystemOwner: true,
+      timeZone: true,
       permissionsJson: true,
       orgId: true,
       createdAt: true,
@@ -7486,8 +7517,6 @@ async function sendSafetyReminders() {
 
 // ================== НАПОМИНАНИЯ ПО ЗАДАЧАМ СКЛАДА ==================
 
-const WAREHOUSE_TASK_TIME_ZONE = "Europe/Moscow";
-
 async function checkWarehouseTaskNotifications() {
   try {
     const now = new Date();
@@ -7505,6 +7534,8 @@ async function checkWarehouseTaskNotifications() {
         lastReminderAt: true,
         executorUserId: true,
         assignerId: true,
+        executorUser: { select: { timeZone: true } },
+        assigner: { select: { timeZone: true } },
       },
     });
 
@@ -7523,18 +7554,10 @@ async function checkWarehouseTaskNotifications() {
         ? (now.getTime() - last.getTime()) / (1000 * 60)
         : Infinity;
 
-      const dueStr = due.toLocaleString("ru-RU", {
-        day: "2-digit",
-        month: "2-digit",
-        year: "numeric",
-        hour: "2-digit",
-        minute: "2-digit",
-        timeZone: WAREHOUSE_TASK_TIME_ZONE,
-      });
-
       // 1) За 10 минут до срока — одно напоминание (только исполнителю).
       if (diffMinutes <= 10 && diffMinutes > 0 && !task.lastReminderAt) {
         if (task.executorUserId) {
+          const dueStr = formatDateTimeRu(due, task.executorUser?.timeZone);
           await createWarehouseNotification({
             orgId: task.orgId,
             userId: task.executorUserId,
@@ -7564,6 +7587,7 @@ async function checkWarehouseTaskNotifications() {
 
       if (shouldSendOverdue) {
         if (task.executorUserId) {
+          const dueStr = formatDateTimeRu(due, task.executorUser?.timeZone);
           await createWarehouseNotification({
             orgId: task.orgId,
             userId: task.executorUserId,
@@ -7576,6 +7600,7 @@ async function checkWarehouseTaskNotifications() {
         }
 
         if (task.assignerId && task.assignerId !== task.executorUserId) {
+          const dueStr = formatDateTimeRu(due, task.assigner?.timeZone);
           await createWarehouseNotification({
             orgId: task.orgId,
             userId: task.assignerId,
@@ -8394,6 +8419,26 @@ app.get("/api/profile", auth, async (req, res) => {
     } catch (err) {
       console.error("me error:", err);
       res.status(500).json({ message: "ME_LOAD_ERROR" });
+    }
+  });
+
+  app.put("/api/me/timezone", auth, async (req, res) => {
+    try {
+      const timeZone = normalizeTimeZone(req.body?.timeZone);
+      if (!timeZone) {
+        return res.status(400).json({ message: "Некорректный часовой пояс." });
+      }
+
+      await prisma.user.update({
+        where: { id: req.user.id },
+        data: { timeZone },
+      });
+
+      const userPayload = await getUserPayload(req.user.id);
+      res.json({ ok: true, user: userPayload });
+    } catch (err) {
+      console.error("me timezone update error:", err);
+      res.status(500).json({ message: "Не удалось сохранить часовой пояс." });
     }
   });
 
@@ -16615,7 +16660,9 @@ app.post("/api/notifications/push/subscribe", auth, async (req, res) => {
       return res.status(400).json({ message: "Push-уведомления пока не настроены." });
     }
 
-    const subscription = parsePushSubscription(req.body?.subscription || req.body);
+    const subscription = parsePushSubscription(req.body?.subscription || req.body, {
+      timeZone: req.body?.timeZone,
+    });
     if (!subscription) {
       return res.status(400).json({ message: "Некорректные данные push-подписки." });
     }
@@ -16625,6 +16672,7 @@ app.post("/api/notifications/push/subscribe", auth, async (req, res) => {
       userId: req.user.id,
       p256dh: subscription.p256dh,
       auth: subscription.auth,
+      timeZone: subscription.timeZone || req.user.timeZone || null,
       userAgent: String(req.headers["user-agent"] || "").slice(0, 255),
     };
 

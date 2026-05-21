@@ -34,6 +34,7 @@ model User {
   tokenVersion            Int           @default(0)
   isActive                Boolean       @default(true)
   isSystemOwner           Boolean       @default(false)
+  timeZone                String?
   orgId                   Int?
   organization            Organization? @relation(fields: [orgId], references: [id])
   emailVerifiedAt         DateTime?
@@ -565,6 +566,7 @@ model PushSubscription {
   endpoint         String    @unique
   p256dh           String
   auth             String
+  timeZone         String?
   userAgent        String?
   createdAt        DateTime  @default(now())
   updatedAt        DateTime  @updatedAt
