@@ -25521,6 +25521,22 @@ async function ensureEmailVerificationStorageReady() {
   console.log("[EMAIL_VERIFY_BOOTSTRAP] EmailVerificationCode table is ready.");
 }
 
+async function ensureUserTimeZoneStorageReady() {
+  if (!isPostgresDatabaseUrl()) {
+    return;
+  }
+
+  await prismaBase.$executeRawUnsafe(`
+    ALTER TABLE "User" ADD COLUMN IF NOT EXISTS "timeZone" TEXT;
+  `);
+
+  await prismaBase.$executeRawUnsafe(`
+    ALTER TABLE "PushSubscription" ADD COLUMN IF NOT EXISTS "timeZone" TEXT;
+  `);
+
+  console.log("[TIMEZONE_BOOTSTRAP] User and PushSubscription timeZone columns are ready.");
+}
+
 async function ensurePalletDiscrepancyStorageReady() {
   if (!isPostgresDatabaseUrl()) {
     return;
@@ -26876,6 +26892,12 @@ async function bootstrapServer() {
     await ensureEmailVerificationStorageReady();
   } catch (err) {
     console.error("[EMAIL_VERIFY_BOOTSTRAP] error:", err);
+  }
+
+  try {
+    await ensureUserTimeZoneStorageReady();
+  } catch (err) {
+    console.error("[TIMEZONE_BOOTSTRAP] error:", err);
   }
 
   try {
