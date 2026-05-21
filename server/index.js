@@ -7486,6 +7486,8 @@ async function sendSafetyReminders() {
 
 // ================== НАПОМИНАНИЯ ПО ЗАДАЧАМ СКЛАДА ==================
 
+const WAREHOUSE_TASK_TIME_ZONE = "Europe/Moscow";
+
 async function checkWarehouseTaskNotifications() {
   try {
     const now = new Date();
@@ -7527,6 +7529,7 @@ async function checkWarehouseTaskNotifications() {
         year: "numeric",
         hour: "2-digit",
         minute: "2-digit",
+        timeZone: WAREHOUSE_TASK_TIME_ZONE,
       });
 
       // 1) За 10 минут до срока — одно напоминание (только исполнителю).
