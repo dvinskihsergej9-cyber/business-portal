@@ -373,7 +373,15 @@ export default function Layout() {
         </div>
 
         {user && (
-          <div style={styles.userCard} className="portal-sidebar__user-card">
+          <div
+            style={styles.userCard}
+            className={
+              "portal-sidebar__user-card " +
+              (subscriptionActive
+                ? "portal-sidebar__user-card--active"
+                : "portal-sidebar__user-card--inactive")
+            }
+          >
             <div style={styles.userName}>{user.name}</div>
             <div style={styles.userEmail}>{user.login || user.username || user.email}</div>
             <div style={styles.userRole}>{user.role}</div>
