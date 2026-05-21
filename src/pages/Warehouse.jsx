@@ -460,6 +460,7 @@ export default function Warehouse({
   });
 
   const [taskExecutors, setTaskExecutors] = useState([]);
+  const [taskExecutorsLoading, setTaskExecutorsLoading] = useState(false);
 
 
 
@@ -515,6 +516,8 @@ export default function Warehouse({
   const [taskResponsePhotoFiles, setTaskResponsePhotoFiles] = useState({});
   const [taskPhotoPreview, setTaskPhotoPreview] = useState(null);
   const [taskDetailsId, setTaskDetailsId] = useState(null);
+
+  const [warehouseNow, setWarehouseNow] = useState(() => new Date());
 
 
 
@@ -836,9 +839,11 @@ export default function Warehouse({
   const loadTaskExecutors = async () => {
     if (!isWarehouseManager) {
       setTaskExecutors([]);
+      setTaskExecutorsLoading(false);
       return;
     }
     try {
+      setTaskExecutorsLoading(true);
       const res = await fetch(`${API}/warehouse/tasks/executors`, {
         headers: authHeaders,
       });
@@ -850,6 +855,8 @@ export default function Warehouse({
     } catch (e) {
       console.error(e);
       setTaskError(e.message || "Ошибка загрузки исполнителей");
+    } finally {
+      setTaskExecutorsLoading(false);
     }
   };
 
@@ -1088,6 +1095,9 @@ export default function Warehouse({
     if (canTasks) {
       loadTasks();
     }
+    if (canTasks && isWarehouseManager) {
+      loadTaskExecutors();
+    }
     if (canInventory || canMovement || canSuppliers) {
       loadInventory();
     }
@@ -1096,7 +1106,15 @@ export default function Warehouse({
     }
 
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [canRequests, canTasks, canInventory, canMovement, canSuppliers]);
+  }, [canRequests, canTasks, canInventory, canMovement, canSuppliers, isWarehouseManager]);
+
+  useEffect(() => {
+    const timerId = window.setInterval(() => {
+      setWarehouseNow(new Date());
+    }, 60 * 1000);
+
+    return () => window.clearInterval(timerId);
+  }, []);
 
 
 
@@ -2744,6 +2762,25 @@ export default function Warehouse({
     }).length;
   }, [taskAllList, taskMyList]);
 
+  const warehouseDateLabel = useMemo(
+    () =>
+      new Intl.DateTimeFormat("ru-RU", {
+        day: "2-digit",
+        month: "2-digit",
+        year: "numeric",
+      }).format(warehouseNow),
+    [warehouseNow]
+  );
+
+  const warehouseTimeLabel = useMemo(
+    () =>
+      new Intl.DateTimeFormat("ru-RU", {
+        hour: "2-digit",
+        minute: "2-digit",
+      }).format(warehouseNow),
+    [warehouseNow]
+  );
+
   const warehouseOverviewStats = useMemo(
     () => [
       {
@@ -2757,23 +2794,25 @@ export default function Warehouse({
         hint: "номенклатура",
       },
       {
-        label: "Остатки",
-        value: inventoryLoading ? "..." : inventoryStock.length,
-        hint: "позиции",
+        label: "Сотрудники",
+        value: taskExecutorsLoading ? "..." : taskExecutors.length,
+        hint: "пользователи",
       },
       {
-        label: "Разделы",
-        value: visibleSectionCards.length,
-        hint: "доступно",
+        label: "Дата и время",
+        value: warehouseDateLabel,
+        hint: warehouseTimeLabel,
       },
     ],
     [
       activeWarehouseTasksCount,
       inventoryItems.length,
       inventoryLoading,
-      inventoryStock.length,
+      taskExecutors.length,
+      taskExecutorsLoading,
       tasksLoading,
-      visibleSectionCards.length,
+      warehouseDateLabel,
+      warehouseTimeLabel,
     ]
   );
 
