@@ -21279,6 +21279,7 @@ app.post("/api/inventory/movements", auth, async (req, res) => {
 app.get("/api/inventory/movements", auth, async (req, res) => {
   try {
     const limit = Number(req.query.limit) || 100;
+    const itemId = Number(req.query.itemId || 0);
     const fromDateTime = parseDateInput(
       req.query.fromDateTime || req.query.fromDate
     );
@@ -21286,6 +21287,9 @@ app.get("/api/inventory/movements", auth, async (req, res) => {
       req.query.toDateTime || req.query.toDate
     );
     const where = {};
+    if (itemId > 0) {
+      where.itemId = itemId;
+    }
     if (fromDateTime || toDateTime) {
       where.createdAt = {};
       if (fromDateTime) where.createdAt.gte = fromDateTime;
@@ -21300,7 +21304,10 @@ app.get("/api/inventory/movements", auth, async (req, res) => {
 
     const movements = await prisma.stockMovement.findMany({
       where,
-      orderBy: [{ createdAt: "asc" }, { id: "asc" }],
+      orderBy:
+        itemId > 0
+          ? [{ createdAt: "desc" }, { id: "desc" }]
+          : [{ createdAt: "asc" }, { id: "asc" }],
       take: limit,
       include: {
         item: true,
