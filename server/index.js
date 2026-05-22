@@ -244,10 +244,36 @@ const PICKING_MODE_VALUES = new Set([
   PICKING_MODE_SCAN_EACH,
   PICKING_MODE_MANUAL_QTY,
 ]);
+const WAREHOUSE_CARD_ORDER_KEYS = new Set([
+  "tasks",
+  "inventory",
+  "holds",
+  "movement",
+  "revision",
+  "suppliers",
+  "locations",
+  "items",
+  "queue",
+  "tsd",
+  "crossdock",
+]);
 
 function normalizePickingMode(value) {
   const mode = String(value || "").trim().toUpperCase();
   return PICKING_MODE_VALUES.has(mode) ? mode : PICKING_MODE_SCAN_EACH;
+}
+
+function normalizeWarehouseCardOrder(value) {
+  const input = Array.isArray(value) ? value : [];
+  const seen = new Set();
+  const result = [];
+  for (const item of input) {
+    const key = String(item || "").trim();
+    if (!WAREHOUSE_CARD_ORDER_KEYS.has(key) || seen.has(key)) continue;
+    seen.add(key);
+    result.push(key);
+  }
+  return result;
 }
 
 let orgRuntimeSettingsReadyPromise = null;
@@ -468,6 +494,120 @@ async function setOrgBillingAutoRenewEnabled(orgIdInput, enabledInput, options =
     enabled
   ).catch(() => null);
   return enabled;
+}
+
+let userRuntimeSettingsReadyPromise = null;
+let userRuntimeSettingsTableAvailable = true;
+async function ensureUserRuntimeSettingsTable() {
+  if (!userRuntimeSettingsTableAvailable) return false;
+  if (!userRuntimeSettingsReadyPromise) {
+    userRuntimeSettingsReadyPromise = (async () => {
+      try {
+        await prisma.$executeRawUnsafe(`
+          CREATE TABLE IF NOT EXISTS "UserRuntimeSetting" (
+            "userId" INTEGER PRIMARY KEY,
+            "warehouseCardOrderJson" TEXT,
+            "updatedAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP
+          );
+        `);
+        await prisma.$executeRawUnsafe(`
+          ALTER TABLE "UserRuntimeSetting"
+          ADD COLUMN IF NOT EXISTS "warehouseCardOrderJson" TEXT;
+        `);
+        userRuntimeSettingsTableAvailable = true;
+        return true;
+      } catch (err) {
+        if (
+          isPermissionDeniedForSchema(err, "public") ||
+          isPermissionDeniedForTable(err, "UserRuntimeSetting")
+        ) {
+          userRuntimeSettingsTableAvailable = false;
+          console.warn(
+            "[USER_SETTINGS] UserRuntimeSetting table unavailable. Falling back to local settings."
+          );
+          return false;
+        }
+        throw err;
+      }
+    })();
+  }
+  return userRuntimeSettingsReadyPromise;
+}
+
+async function getUserWarehouseCardOrder(userIdInput) {
+  const userId = Number(userIdInput);
+  if (!userId || Number.isNaN(userId)) return [];
+  const tableReady = await ensureUserRuntimeSettingsTable();
+  if (!tableReady) return [];
+  try {
+    const rows = await prisma.$queryRawUnsafe(
+      `SELECT "warehouseCardOrderJson" FROM "UserRuntimeSetting" WHERE "userId" = $1 LIMIT 1`,
+      userId
+    );
+    const raw = Array.isArray(rows) && rows[0] ? rows[0].warehouseCardOrderJson : null;
+    if (!raw) return [];
+    return normalizeWarehouseCardOrder(JSON.parse(raw));
+  } catch (err) {
+    if (
+      isMissingRelationError(err, "UserRuntimeSetting") ||
+      isMissingColumnError(err, "warehouseCardOrderJson", "UserRuntimeSetting") ||
+      isPermissionDeniedForSchema(err, "public") ||
+      isPermissionDeniedForTable(err, "UserRuntimeSetting")
+    ) {
+      userRuntimeSettingsTableAvailable = false;
+      return [];
+    }
+    console.error("warehouse card order parse/get error:", err);
+    return [];
+  }
+}
+
+async function setUserWarehouseCardOrder(userIdInput, orderInput) {
+  const userId = Number(userIdInput);
+  if (!userId || Number.isNaN(userId)) {
+    const err = new Error("USER_REQUIRED");
+    err.code = "USER_REQUIRED";
+    throw err;
+  }
+  const order = normalizeWarehouseCardOrder(orderInput);
+  const tableReady = await ensureUserRuntimeSettingsTable();
+  if (!tableReady) {
+    const err = new Error("USER_SETTINGS_UNAVAILABLE");
+    err.code = "USER_SETTINGS_UNAVAILABLE";
+    throw err;
+  }
+  try {
+    await prisma.$executeRawUnsafe(
+      `
+        INSERT INTO "UserRuntimeSetting" (
+          "userId",
+          "warehouseCardOrderJson",
+          "updatedAt"
+        )
+        VALUES ($1, $2, NOW())
+        ON CONFLICT ("userId")
+        DO UPDATE SET
+          "warehouseCardOrderJson" = EXCLUDED."warehouseCardOrderJson",
+          "updatedAt" = NOW()
+      `,
+      userId,
+      JSON.stringify(order)
+    );
+  } catch (err) {
+    if (
+      isMissingRelationError(err, "UserRuntimeSetting") ||
+      isMissingColumnError(err, "warehouseCardOrderJson", "UserRuntimeSetting") ||
+      isPermissionDeniedForSchema(err, "public") ||
+      isPermissionDeniedForTable(err, "UserRuntimeSetting")
+    ) {
+      userRuntimeSettingsTableAvailable = false;
+      const unavailable = new Error("USER_SETTINGS_UNAVAILABLE");
+      unavailable.code = "USER_SETTINGS_UNAVAILABLE";
+      throw unavailable;
+    }
+    throw err;
+  }
+  return order;
 }
 
 
@@ -13525,6 +13665,29 @@ app.put("/api/settings/picking-mode", auth, async (req, res) => {
     }
     console.error("picking mode put error:", err);
     return res.status(500).json({ message: "PICKING_MODE_SAVE_ERROR" });
+  }
+});
+
+app.get("/api/settings/warehouse-card-order", auth, async (req, res) => {
+  try {
+    const order = await getUserWarehouseCardOrder(req.user.id);
+    return res.json({ order });
+  } catch (err) {
+    console.error("warehouse card order get error:", err);
+    return res.status(500).json({ message: "WAREHOUSE_CARD_ORDER_GET_ERROR" });
+  }
+});
+
+app.put("/api/settings/warehouse-card-order", auth, async (req, res) => {
+  try {
+    const order = await setUserWarehouseCardOrder(req.user.id, req.body?.order);
+    return res.json({ order });
+  } catch (err) {
+    if (err?.code === "USER_SETTINGS_UNAVAILABLE") {
+      return res.status(503).json({ message: "USER_SETTINGS_UNAVAILABLE" });
+    }
+    console.error("warehouse card order put error:", err);
+    return res.status(500).json({ message: "WAREHOUSE_CARD_ORDER_SAVE_ERROR" });
   }
 });
 

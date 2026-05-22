@@ -2764,15 +2764,60 @@ export default function Warehouse({
   ]);
 
   useEffect(() => {
+    let cancelled = false;
+    let localOrder = [];
     try {
       const raw = window.localStorage.getItem(warehouseCardOrderStorageKey);
       const parsed = raw ? JSON.parse(raw) : [];
-      setWarehouseCardOrder(Array.isArray(parsed) ? parsed.filter(Boolean) : []);
+      localOrder = Array.isArray(parsed) ? parsed.filter(Boolean) : [];
+      setWarehouseCardOrder(localOrder);
     } catch (e) {
       console.error("Ошибка чтения порядка карточек склада", e);
       setWarehouseCardOrder([]);
     }
-  }, [warehouseCardOrderStorageKey]);
+
+    if (token) {
+      fetch(`${API}/settings/warehouse-card-order`, {
+        headers: { Authorization: `Bearer ${token}` },
+      })
+        .then((res) => (res.ok ? res.json() : null))
+        .then((data) => {
+          if (cancelled) return;
+          const serverOrder = Array.isArray(data?.order)
+            ? data.order.filter(Boolean)
+            : [];
+          if (!serverOrder.length) {
+            if (localOrder.length) {
+              fetch(`${API}/settings/warehouse-card-order`, {
+                method: "PUT",
+                headers: {
+                  Authorization: `Bearer ${token}`,
+                  "Content-Type": "application/json",
+                },
+                body: JSON.stringify({ order: localOrder }),
+              }).catch(() => null);
+            }
+            return;
+          }
+          setWarehouseCardOrder(serverOrder);
+          try {
+            window.localStorage.setItem(
+              warehouseCardOrderStorageKey,
+              JSON.stringify(serverOrder)
+            );
+          } catch {
+            // local cache is optional
+          }
+        })
+        .catch((e) => {
+          console.error("Ошибка загрузки порядка карточек склада", e);
+        });
+    }
+
+    return () => {
+      cancelled = true;
+    };
+  }, [token, warehouseCardOrderStorageKey]);
 
   const saveWarehouseCardOrder = useCallback(
     (nextOrder) => {
@@ -2786,8 +2831,20 @@ export default function Warehouse({
       } catch (e) {
         console.error("Ошибка сохранения порядка карточек склада", e);
       }
+      if (token) {
+        fetch(`${API}/settings/warehouse-card-order`, {
+          method: "PUT",
+          headers: {
+            Authorization: `Bearer ${token}`,
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({ order: normalizedOrder }),
+        }).catch((e) => {
+          console.error("Ошибка синхронизации порядка карточек склада", e);
+        });
+      }
     },
-    [warehouseCardOrderStorageKey]
+    [token, warehouseCardOrderStorageKey]
   );
 
   const visibleSectionCards = useMemo(
