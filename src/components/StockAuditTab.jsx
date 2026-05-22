@@ -10,6 +10,20 @@ const MOVEMENT_TYPE_LABELS = {
   ADJUSTMENT: "Корректировка",
 };
 
+const formatMovementQuantity = (row, unit) => {
+  const quantity = Number(row?.quantity) || 0;
+  let signedQuantity = quantity;
+
+  if (row?.type === "INCOME") {
+    signedQuantity = Math.abs(quantity);
+  } else if (row?.type === "ISSUE") {
+    signedQuantity = -Math.abs(quantity);
+  }
+
+  const sign = signedQuantity > 0 ? "+" : "";
+  return `${sign}${signedQuantity} ${unit || ""}`.trim();
+};
+
 /**
  * Печатная форма инвентаризации (акт ревизионной проверки)
  * includeZero = true  -> печатать все позиции
@@ -619,8 +633,10 @@ export default function StockAuditTab() {
                               </span>
                             </div>
                             <div className="stock-item-logs-row__qty">
-                              {row.type === "ISSUE" ? "-" : "+"}
-                              {row.quantity} {row.item?.unit || logItem.unit || ""}
+                              {formatMovementQuantity(
+                                row,
+                                row.item?.unit || logItem.unit || ""
+                              )}
                             </div>
                             {row.comment && (
                               <div className="stock-item-logs-row__comment">
