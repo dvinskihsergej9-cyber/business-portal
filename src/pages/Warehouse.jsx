@@ -517,6 +517,7 @@ export default function Warehouse({
   const [taskEventsById, setTaskEventsById] = useState({});
   const [taskEventsLoadingId, setTaskEventsLoadingId] = useState(null);
   const [taskEventsError, setTaskEventsError] = useState("");
+  const [taskLogsVisible, setTaskLogsVisible] = useState(false);
 
   const [warehouseNow, setWarehouseNow] = useState(() => new Date());
   const [warehouseCardOrder, setWarehouseCardOrder] = useState([]);
@@ -1964,12 +1965,13 @@ export default function Warehouse({
   const openTaskDetails = (taskId) => {
     const normalizedTaskId = Number(taskId);
     setTaskDetailsId(normalizedTaskId);
-    loadTaskEvents(normalizedTaskId);
+    setTaskLogsVisible(false);
   };
 
   const closeTaskDetails = () => {
     setTaskDetailsId(null);
     setTaskEventsError("");
+    setTaskLogsVisible(false);
   };
 
   const taskDetails = useMemo(() => {
@@ -4324,14 +4326,35 @@ export default function Warehouse({
                           <h2 className="modal__title">
                             Задача №{taskDetails.id}: {taskDetails.title || "Без названия"}
                           </h2>
-                          <button
-                            type="button"
-                            className="modal__close"
-                            aria-label="Закрыть детали задачи"
-                            onClick={closeTaskDetails}
-                          >
-                            ×
-                          </button>
+                          <div className="task-details-modal__header-actions">
+                            <button
+                              type="button"
+                              className={`btn btn--ghost btn--sm task-details-logs-btn${
+                                taskLogsVisible ? " task-details-logs-btn--active" : ""
+                              }`}
+                              onClick={() => {
+                                const nextVisible = !taskLogsVisible;
+                                setTaskLogsVisible(nextVisible);
+                                if (
+                                  nextVisible &&
+                                  !taskEventsById[taskDetails.id] &&
+                                  taskEventsLoadingId !== taskDetails.id
+                                ) {
+                                  loadTaskEvents(taskDetails.id);
+                                }
+                              }}
+                            >
+                              Логи
+                            </button>
+                            <button
+                              type="button"
+                              className="modal__close"
+                              aria-label="Закрыть детали задачи"
+                              onClick={closeTaskDetails}
+                            >
+                              ×
+                            </button>
+                          </div>
                         </div>
 
                         <div className="modal__body task-details-modal__body">
@@ -4439,38 +4462,40 @@ export default function Warehouse({
                             )}
                           </div>
 
-                          <div className="task-details-section">
-                            <div className="task-details-label">История задачи</div>
-                            {taskEventsLoadingId === taskDetails.id ? (
-                              <div className="text-muted">Загрузка истории...</div>
-                            ) : taskEventsError ? (
-                              <div className="alert alert--danger" style={{ margin: 0 }}>
-                                {taskEventsError}
-                              </div>
-                            ) : taskDetailsEvents.length === 0 ? (
-                              <div className="text-muted">История пока пустая</div>
-                            ) : (
-                              <div className="task-events-timeline">
-                                {taskDetailsEvents.map((event) => (
-                                  <div
-                                    key={`${event.id}-${event.eventType}`}
-                                    className="task-events-timeline__item"
-                                  >
-                                    <div className="task-events-timeline__dot" />
-                                    <div className="task-events-timeline__content">
-                                      <div className="task-events-timeline__message">
-                                        {event.message || "Событие по задаче"}
-                                      </div>
-                                      <div className="task-events-timeline__meta">
-                                        {formatTaskDateTime(event.createdAt)}
-                                        {event.actorName ? `, ${event.actorName}` : ""}
+                          {taskLogsVisible && (
+                            <div className="task-details-section">
+                              <div className="task-details-label">История задачи</div>
+                              {taskEventsLoadingId === taskDetails.id ? (
+                                <div className="text-muted">Загрузка истории...</div>
+                              ) : taskEventsError ? (
+                                <div className="alert alert--danger" style={{ margin: 0 }}>
+                                  {taskEventsError}
+                                </div>
+                              ) : taskDetailsEvents.length === 0 ? (
+                                <div className="text-muted">История пока пустая</div>
+                              ) : (
+                                <div className="task-events-timeline">
+                                  {taskDetailsEvents.map((event) => (
+                                    <div
+                                      key={`${event.id}-${event.eventType}`}
+                                      className="task-events-timeline__item"
+                                    >
+                                      <div className="task-events-timeline__dot" />
+                                      <div className="task-events-timeline__content">
+                                        <div className="task-events-timeline__message">
+                                          {event.message || "Событие по задаче"}
+                                        </div>
+                                        <div className="task-events-timeline__meta">
+                                          {formatTaskDateTime(event.createdAt)}
+                                          {event.actorName ? `, ${event.actorName}` : ""}
+                                        </div>
                                       </div>
                                     </div>
-                                  </div>
-                                ))}
-                              </div>
-                            )}
-                          </div>
+                                  ))}
+                                </div>
+                              )}
+                            </div>
+                          )}
 
                           {taskDetailsCanEdit && (
                             <div className="task-details-section">

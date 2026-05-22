@@ -5316,6 +5316,23 @@ input[type="number"] {
   width: min(980px, 96vw);
 }
 
+.task-details-modal__header-actions {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  margin-left: auto;
+}
+
+.task-details-logs-btn {
+  min-height: 34px;
+}
+
+.task-details-logs-btn--active {
+  background: #eff6ff;
+  color: #1754db;
+  border-color: #93c5fd;
+}
+
 .task-details-modal__body {
   display: grid;
   gap: 14px;
