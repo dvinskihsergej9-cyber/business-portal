@@ -31,6 +31,7 @@ import crossdockImage from "../assets/warehouse/crossdock.png";
 
 const API = API_BASE;
 const PURCHASE_ORDERS_CACHE_KEY = "warehouse_purchase_orders_cache_v1";
+const WAREHOUSE_CARD_ORDER_STORAGE_PREFIX = "warehouse_card_order_v1";
 
 const WAREHOUSE_EMOJI = {
   requests: "📦",
@@ -515,6 +516,9 @@ export default function Warehouse({
   const [taskDetailsId, setTaskDetailsId] = useState(null);
 
   const [warehouseNow, setWarehouseNow] = useState(() => new Date());
+  const [warehouseCardOrder, setWarehouseCardOrder] = useState([]);
+  const [warehouseCardOrderEditing, setWarehouseCardOrderEditing] = useState(false);
+  const [warehouseCardDragKey, setWarehouseCardDragKey] = useState("");
 
 
 
@@ -2741,9 +2745,68 @@ export default function Warehouse({
     []
   );
 
+  const warehouseCardOrderStorageKey = useMemo(() => {
+    const orgKey =
+      user?.orgId ??
+      user?.organizationId ??
+      user?.companyId ??
+      user?.organization?.id ??
+      "org";
+    const userKey = user?.id ?? user?.email ?? "user";
+    return `${WAREHOUSE_CARD_ORDER_STORAGE_PREFIX}:${orgKey}:${userKey}`;
+  }, [
+    user?.companyId,
+    user?.email,
+    user?.id,
+    user?.orgId,
+    user?.organization?.id,
+    user?.organizationId,
+  ]);
+
+  useEffect(() => {
+    try {
+      const raw = window.localStorage.getItem(warehouseCardOrderStorageKey);
+      const parsed = raw ? JSON.parse(raw) : [];
+      setWarehouseCardOrder(Array.isArray(parsed) ? parsed.filter(Boolean) : []);
+    } catch (e) {
+      console.error("Ошибка чтения порядка карточек склада", e);
+      setWarehouseCardOrder([]);
+    }
+  }, [warehouseCardOrderStorageKey]);
+
+  const saveWarehouseCardOrder = useCallback(
+    (nextOrder) => {
+      const normalizedOrder = Array.isArray(nextOrder) ? nextOrder.filter(Boolean) : [];
+      setWarehouseCardOrder(normalizedOrder);
+      try {
+        window.localStorage.setItem(
+          warehouseCardOrderStorageKey,
+          JSON.stringify(normalizedOrder)
+        );
+      } catch (e) {
+        console.error("Ошибка сохранения порядка карточек склада", e);
+      }
+    },
+    [warehouseCardOrderStorageKey]
+  );
+
   const visibleSectionCards = useMemo(
-    () => sectionCards.filter((card) => sectionSet.has(card.key)),
-    [sectionCards, sectionSet]
+    () => {
+      const visibleCards = sectionCards.filter((card) => sectionSet.has(card.key));
+      if (!warehouseCardOrder.length) {
+        return visibleCards;
+      }
+      const visibleByKey = new Map(visibleCards.map((card) => [card.key, card]));
+      const orderedCards = warehouseCardOrder
+        .map((cardKey) => visibleByKey.get(cardKey))
+        .filter(Boolean);
+      const orderedKeys = new Set(orderedCards.map((card) => card.key));
+      return [
+        ...orderedCards,
+        ...visibleCards.filter((card) => !orderedKeys.has(card.key)),
+      ];
+    },
+    [sectionCards, sectionSet, warehouseCardOrder]
   );
 
   const activeWarehouseTasksCount = useMemo(() => {
@@ -2830,6 +2893,70 @@ export default function Warehouse({
     );
     window.scrollTo({ top: 0, left: 0, behavior: "auto" });
   }, [location.pathname, location.search, navigate]);
+
+  const handleWarehouseCardDragStart = useCallback(
+    (event, cardKey) => {
+      if (!warehouseCardOrderEditing) {
+        return;
+      }
+      setWarehouseCardDragKey(cardKey);
+      event.dataTransfer.effectAllowed = "move";
+      event.dataTransfer.setData("text/plain", cardKey);
+    },
+    [warehouseCardOrderEditing]
+  );
+
+  const handleWarehouseCardDragOver = useCallback(
+    (event) => {
+      if (!warehouseCardOrderEditing) {
+        return;
+      }
+      event.preventDefault();
+      event.dataTransfer.dropEffect = "move";
+    },
+    [warehouseCardOrderEditing]
+  );
+
+  const handleWarehouseCardDrop = useCallback(
+    (event, targetKey) => {
+      if (!warehouseCardOrderEditing) {
+        return;
+      }
+      event.preventDefault();
+      const sourceKey =
+        warehouseCardDragKey || event.dataTransfer.getData("text/plain");
+      if (!sourceKey || sourceKey === targetKey) {
+        setWarehouseCardDragKey("");
+        return;
+      }
+
+      const currentOrder = visibleSectionCards.map((card) => card.key);
+      const sourceIndex = currentOrder.indexOf(sourceKey);
+      const targetIndex = currentOrder.indexOf(targetKey);
+      if (sourceIndex < 0 || targetIndex < 0) {
+        setWarehouseCardDragKey("");
+        return;
+      }
+
+      const nextOrder = [...currentOrder];
+      const [movedKey] = nextOrder.splice(sourceIndex, 1);
+      nextOrder.splice(targetIndex, 0, movedKey);
+      saveWarehouseCardOrder(nextOrder);
+      setWarehouseCardDragKey("");
+    },
+    [
+      saveWarehouseCardOrder,
+      visibleSectionCards,
+      warehouseCardDragKey,
+      warehouseCardOrderEditing,
+    ]
+  );
+
+  const resetWarehouseCardOrder = useCallback(() => {
+    saveWarehouseCardOrder([]);
+    setWarehouseCardOrderEditing(false);
+    setWarehouseCardDragKey("");
+  }, [saveWarehouseCardOrder]);
 
   const closeSection = useCallback(() => {
     setSection("");
@@ -2943,13 +3070,65 @@ export default function Warehouse({
             ))}
           </div>
 
+          <div className="warehouse-card-order-tools" aria-label="Настройка порядка карточек">
+            {warehouseCardOrderEditing ? (
+              <>
+                <span className="warehouse-card-order-tools__hint">
+                  Перетащите карточки мышью
+                </span>
+                <button
+                  type="button"
+                  className="warehouse-card-order-tools__btn"
+                  onClick={() => {
+                    setWarehouseCardOrderEditing(false);
+                    setWarehouseCardDragKey("");
+                  }}
+                >
+                  Готово
+                </button>
+                <button
+                  type="button"
+                  className="warehouse-card-order-tools__btn warehouse-card-order-tools__btn--ghost"
+                  onClick={resetWarehouseCardOrder}
+                >
+                  Сброс
+                </button>
+              </>
+            ) : (
+              <button
+                type="button"
+                className="warehouse-card-order-tools__icon"
+                aria-label="Настроить порядок карточек"
+                title="Настроить порядок карточек"
+                onClick={() => setWarehouseCardOrderEditing(true)}
+              >
+                <svg viewBox="0 0 24 24" aria-hidden="true">
+                  <path d="M8 7h12M8 12h12M8 17h12M4 7h.01M4 12h.01M4 17h.01" />
+                </svg>
+              </button>
+            )}
+          </div>
+
           <div className="warehouse-grid warehouse-grid--home">
             {visibleSectionCards.map((card) => (
               <button
                 key={card.key}
                 type="button"
-                className="warehouse-card"
-                onClick={() => openSection(card.key)}
+                className={`warehouse-card${
+                  warehouseCardOrderEditing ? " warehouse-card--reorder" : ""
+                }${
+                  warehouseCardDragKey === card.key ? " warehouse-card--dragging" : ""
+                }`}
+                draggable={warehouseCardOrderEditing}
+                onDragStart={(event) => handleWarehouseCardDragStart(event, card.key)}
+                onDragOver={handleWarehouseCardDragOver}
+                onDrop={(event) => handleWarehouseCardDrop(event, card.key)}
+                onDragEnd={() => setWarehouseCardDragKey("")}
+                onClick={() => {
+                  if (!warehouseCardOrderEditing) {
+                    openSection(card.key);
+                  }
+                }}
               >
                 <div className="warehouse-card__icon">
                   <WarehouseTileIcon name={card.key} />
@@ -2958,6 +3137,11 @@ export default function Warehouse({
                   <div className="warehouse-card__title">{card.title}</div>
                   <div className="warehouse-card__subtitle">{card.subtitle}</div>
                 </div>
+                {warehouseCardOrderEditing && (
+                  <span className="warehouse-card__drag-handle" aria-hidden="true">
+                    |||
+                  </span>
+                )}
               </button>
             ))}
           </div>

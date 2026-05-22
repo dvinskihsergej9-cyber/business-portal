@@ -726,6 +726,62 @@ tr:last-child td {
   line-height: 1;
 }
 
+.warehouse-card-order-tools {
+  display: flex;
+  justify-content: flex-end;
+  align-items: center;
+  gap: 8px;
+  min-height: 36px;
+  margin: -4px 0 10px;
+}
+
+.warehouse-card-order-tools__hint {
+  color: #64748b;
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.warehouse-card-order-tools__icon,
+.warehouse-card-order-tools__btn {
+  border: 1px solid rgba(147, 197, 253, 0.78);
+  background: rgba(255, 255, 255, 0.78);
+  color: #1d4ed8;
+  box-shadow: 0 10px 24px rgba(37, 99, 235, 0.1);
+  backdrop-filter: blur(8px);
+}
+
+.warehouse-card-order-tools__icon {
+  width: 36px;
+  height: 36px;
+  border-radius: 12px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
+}
+
+.warehouse-card-order-tools__icon svg {
+  width: 19px;
+  height: 19px;
+  fill: none;
+  stroke: currentColor;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  stroke-width: 2;
+}
+
+.warehouse-card-order-tools__btn {
+  min-height: 34px;
+  border-radius: 12px;
+  padding: 0 12px;
+  font-size: 12px;
+  font-weight: 800;
+}
+
+.warehouse-card-order-tools__btn--ghost {
+  color: #475569;
+}
+
 .warehouse-grid {
   display: grid;
   grid-template-columns: repeat(3, minmax(0, 1fr));
@@ -760,6 +816,10 @@ tr:last-child td {
 @media (max-width: 900px) {
   .warehouse-home-summary {
     grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .warehouse-card-order-tools {
+    display: none;
   }
 
   .warehouse-grid,
@@ -816,6 +876,33 @@ tr:last-child td {
 
 .warehouse-card:active {
   transform: translateY(-7px) scale(1.035);
+}
+
+.warehouse-card--reorder {
+  cursor: grab;
+  outline: 1px dashed rgba(37, 99, 235, 0.35);
+  outline-offset: 3px;
+}
+
+.warehouse-card--reorder:hover {
+  transform: translateY(-5px) scale(1.025);
+}
+
+.warehouse-card--reorder:active {
+  cursor: grabbing;
+}
+
+.warehouse-card--dragging {
+  opacity: 0.58;
+  transform: scale(0.985);
+}
+
+.warehouse-card__drag-handle {
+  margin-left: auto;
+  color: #60a5fa;
+  font-size: 16px;
+  font-weight: 900;
+  letter-spacing: -2px;
 }
 
 .warehouse-card--active {
