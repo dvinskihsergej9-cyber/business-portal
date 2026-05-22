@@ -1,28 +1,8 @@
 import { useEffect, useState } from "react";
-import { createPortal } from "react-dom";
 import { API_BASE } from "../apiConfig";
 import { openHtmlDocumentInNewTab } from "../utils/openInNewTab";
 
 const API = API_BASE;
-const MOVEMENT_TYPE_LABELS = {
-  INCOME: "Приход",
-  ISSUE: "Расход",
-  ADJUSTMENT: "Корректировка",
-};
-
-const formatMovementQuantity = (row, unit) => {
-  const quantity = Number(row?.quantity) || 0;
-  let signedQuantity = quantity;
-
-  if (row?.type === "INCOME") {
-    signedQuantity = Math.abs(quantity);
-  } else if (row?.type === "ISSUE") {
-    signedQuantity = -Math.abs(quantity);
-  }
-
-  const sign = signedQuantity > 0 ? "+" : "";
-  return `${sign}${signedQuantity} ${unit || ""}`.trim();
-};
 
 /**
  * Печатная форма инвентаризации (акт ревизионной проверки)
@@ -226,10 +206,6 @@ export default function StockAuditTab() {
   const [error, setError] = useState("");
   const [search, setSearch] = useState("");
   const [includeZeroInPrint, setIncludeZeroInPrint] = useState(false);
-  const [logItem, setLogItem] = useState(null);
-  const [logRows, setLogRows] = useState([]);
-  const [logsLoading, setLogsLoading] = useState(false);
-  const [logsError, setLogsError] = useState("");
 
   useEffect(() => {
     const load = async () => {
@@ -271,44 +247,6 @@ export default function StockAuditTab() {
       return;
     }
     openInventoryAuditActWindow(items, includeZeroInPrint);
-  };
-
-  const openItemLogs = async (item) => {
-    if (!item?.id) return;
-
-    setLogItem(item);
-    setLogRows([]);
-    setLogsError("");
-    setLogsLoading(true);
-
-    try {
-      const params = new URLSearchParams();
-      params.set("itemId", String(item.id));
-      params.set("limit", "100");
-
-      const res = await fetch(`${API}/inventory/movements?${params.toString()}`, {
-        headers: authHeaders,
-      });
-      const data = await res.json().catch(() => null);
-
-      if (!res.ok) {
-        throw new Error(data?.message || "Ошибка загрузки логов по товару.");
-      }
-
-      setLogRows(Array.isArray(data) ? data : []);
-    } catch (e) {
-      console.error(e);
-      setLogsError(e?.message || "Ошибка загрузки логов по товару.");
-    } finally {
-      setLogsLoading(false);
-    }
-  };
-
-  const closeItemLogs = () => {
-    setLogItem(null);
-    setLogRows([]);
-    setLogsError("");
-    setLogsLoading(false);
   };
 
   const trimmedSearch = search.trim().toLowerCase();
@@ -444,15 +382,6 @@ export default function StockAuditTab() {
                   >
                     Макс.
                   </th>
-                  <th
-                    style={{
-                      border: "1px solid #d4d4d4",
-                      padding: "4px 6px",
-                      width: 80,
-                    }}
-                  >
-                    Логи
-                  </th>
                 </tr>
               </thead>
               <tbody>
@@ -534,135 +463,12 @@ export default function StockAuditTab() {
                     >
                       {it.maxStock ?? "-"}
                     </td>
-                    <td
-                      data-label="logs"
-                      style={{
-                        border: "1px solid #e0e0e0",
-                        padding: "3px 4px",
-                        textAlign: "center",
-                      }}
-                    >
-                      <button
-                        type="button"
-                        className="btn btn--ghost btn--sm"
-                        onClick={() => openItemLogs(it)}
-                      >
-                        Логи
-                      </button>
-                    </td>
                   </tr>
                 ))}
               </tbody>
             </table>
           </div>
         )}
-        {logItem &&
-          typeof document !== "undefined" &&
-          createPortal(
-            <div className="modal-backdrop" onClick={closeItemLogs}>
-              <div
-                className="modal modal--wide stock-item-logs-modal"
-                onClick={(event) => event.stopPropagation()}
-              >
-                <div className="modal__header">
-                  <h2 className="modal__title">
-                    Логи товара: {logItem.name || "Без названия"}
-                  </h2>
-                  <button
-                    type="button"
-                    className="modal__close"
-                    aria-label="Закрыть логи товара"
-                    onClick={closeItemLogs}
-                  >
-                    ×
-                  </button>
-                </div>
-
-                <div className="modal__body stock-item-logs-modal__body">
-                  <div className="stock-item-logs-summary">
-                    <div>
-                      <span>Артикул</span>
-                      <strong>{logItem.sku || "-"}</strong>
-                    </div>
-                    <div>
-                      <span>Остаток</span>
-                      <strong>
-                        {logItem.currentStock ?? 0} {logItem.unit || ""}
-                      </strong>
-                    </div>
-                    <div>
-                      <span>Единица</span>
-                      <strong>{logItem.unit || "-"}</strong>
-                    </div>
-                  </div>
-
-                  {logsError && (
-                    <div className="alert alert--danger" style={{ margin: 0 }}>
-                      {logsError}
-                    </div>
-                  )}
-
-                  {logsLoading ? (
-                    <p>Загрузка логов...</p>
-                  ) : !logRows.length ? (
-                    <p className="text-muted">По этому товару движений пока нет.</p>
-                  ) : (
-                    <div className="stock-item-logs-list">
-                      {logRows.map((row) => {
-                        const author =
-                          row.createdBy?.name || row.createdBy?.email || "";
-                        const date = row.createdAt
-                          ? new Date(row.createdAt).toLocaleString("ru-RU", {
-                              day: "2-digit",
-                              month: "2-digit",
-                              year: "numeric",
-                              hour: "2-digit",
-                              minute: "2-digit",
-                            })
-                          : "-";
-
-                        return (
-                          <div key={row.id} className="stock-item-logs-row">
-                            <div className="stock-item-logs-row__main">
-                              <strong>
-                                {MOVEMENT_TYPE_LABELS[row.type] || row.type}
-                              </strong>
-                              <span>
-                                {date}
-                                {author ? `, ${author}` : ""}
-                              </span>
-                            </div>
-                            <div className="stock-item-logs-row__qty">
-                              {formatMovementQuantity(
-                                row,
-                                row.item?.unit || logItem.unit || ""
-                              )}
-                            </div>
-                            {row.comment && (
-                              <div className="stock-item-logs-row__comment">
-                                {row.comment}
-                              </div>
-                            )}
-                          </div>
-                        );
-                      })}
-                    </div>
-                  )}
-                </div>
-
-                <div className="task-details-footer">
-                  <button
-                    type="button"
-                    className="btn btn--ghost"
-                    onClick={closeItemLogs}
-                  >
-                    Закрыть
-                  </button>
-                </div>
-              </div>
-            </div>,
-            document.body
-          )}
       </div>
     </div>
   );
