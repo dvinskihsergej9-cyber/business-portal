@@ -514,6 +514,9 @@ export default function Warehouse({
   const [taskResponsePhotoFiles, setTaskResponsePhotoFiles] = useState({});
   const [taskPhotoPreview, setTaskPhotoPreview] = useState(null);
   const [taskDetailsId, setTaskDetailsId] = useState(null);
+  const [taskEventsById, setTaskEventsById] = useState({});
+  const [taskEventsLoadingId, setTaskEventsLoadingId] = useState(null);
+  const [taskEventsError, setTaskEventsError] = useState("");
 
   const [warehouseNow, setWarehouseNow] = useState(() => new Date());
   const [warehouseCardOrder, setWarehouseCardOrder] = useState([]);
@@ -1830,6 +1833,9 @@ export default function Warehouse({
       setTaskResponseDrafts((prev) => ({ ...prev, [taskId]: "" }));
       setTaskResponsePhotoFiles((prev) => ({ ...prev, [taskId]: [] }));
       await loadTasks();
+      if (Number(taskDetailsId) === taskId) {
+        await loadTaskEvents(taskId);
+      }
     } catch (e) {
       console.error(e);
       setTaskError(e.message || "Ошибка обновления задачи.");
@@ -1930,12 +1936,40 @@ export default function Warehouse({
         (task && Number(task.executorUserId) === Number(user?.id))
     );
 
+  const loadTaskEvents = async (taskId) => {
+    const normalizedTaskId = Number(taskId);
+    if (!normalizedTaskId) return;
+    setTaskEventsLoadingId(normalizedTaskId);
+    setTaskEventsError("");
+    try {
+      const res = await fetch(`${API}/warehouse/tasks/${normalizedTaskId}/events`, {
+        headers: { Authorization: authHeaders.Authorization },
+      });
+      const data = await readResponsePayload(res);
+      if (!res.ok) {
+        throw new Error(data?.message || "Ошибка загрузки истории задачи.");
+      }
+      setTaskEventsById((prev) => ({
+        ...prev,
+        [normalizedTaskId]: Array.isArray(data?.events) ? data.events : [],
+      }));
+    } catch (e) {
+      console.error(e);
+      setTaskEventsError(e.message || "Ошибка загрузки истории задачи.");
+    } finally {
+      setTaskEventsLoadingId(null);
+    }
+  };
+
   const openTaskDetails = (taskId) => {
-    setTaskDetailsId(Number(taskId));
+    const normalizedTaskId = Number(taskId);
+    setTaskDetailsId(normalizedTaskId);
+    loadTaskEvents(normalizedTaskId);
   };
 
   const closeTaskDetails = () => {
     setTaskDetailsId(null);
+    setTaskEventsError("");
   };
 
   const taskDetails = useMemo(() => {
@@ -1956,6 +1990,10 @@ export default function Warehouse({
   const taskDetailsResponseFiles =
     taskDetails && Array.isArray(taskResponsePhotoFiles[taskDetails.id])
       ? taskResponsePhotoFiles[taskDetails.id]
+      : [];
+  const taskDetailsEvents =
+    taskDetails && Array.isArray(taskEventsById[taskDetails.id])
+      ? taskEventsById[taskDetails.id]
       : [];
   const taskDetailsHasResponseDraft = taskDetails
     ? Object.prototype.hasOwnProperty.call(taskResponseDrafts, taskDetails.id)
@@ -4397,6 +4435,39 @@ export default function Warehouse({
                                 {taskDetails.responseAuthorName
                                   ? `, ${taskDetails.responseAuthorName}`
                                   : ""}
+                              </div>
+                            )}
+                          </div>
+
+                          <div className="task-details-section">
+                            <div className="task-details-label">История задачи</div>
+                            {taskEventsLoadingId === taskDetails.id ? (
+                              <div className="text-muted">Загрузка истории...</div>
+                            ) : taskEventsError ? (
+                              <div className="alert alert--danger" style={{ margin: 0 }}>
+                                {taskEventsError}
+                              </div>
+                            ) : taskDetailsEvents.length === 0 ? (
+                              <div className="text-muted">История пока пустая</div>
+                            ) : (
+                              <div className="task-events-timeline">
+                                {taskDetailsEvents.map((event) => (
+                                  <div
+                                    key={`${event.id}-${event.eventType}`}
+                                    className="task-events-timeline__item"
+                                  >
+                                    <div className="task-events-timeline__dot" />
+                                    <div className="task-events-timeline__content">
+                                      <div className="task-events-timeline__message">
+                                        {event.message || "Событие по задаче"}
+                                      </div>
+                                      <div className="task-events-timeline__meta">
+                                        {formatTaskDateTime(event.createdAt)}
+                                        {event.actorName ? `, ${event.actorName}` : ""}
+                                      </div>
+                                    </div>
+                                  </div>
+                                ))}
                               </div>
                             )}
                           </div>

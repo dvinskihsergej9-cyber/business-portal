@@ -152,6 +152,7 @@ async function auth(req, res, next) {
     req.user = {
       id: user.id,
       email: user.email,
+      name: user.name,
       role: user.role,
       orgId: user.orgId || null,
       timeZone: normalizeTimeZone(user.timeZone),
@@ -16264,6 +16265,20 @@ async function createWarehouseTaskFromRequest(request, assignerId) {
       `[Warehouse] \u0441\u043e\u0437\u0434\u0430\u043d\u0430 \u0437\u0430\u0434\u0430\u0447\u0430 ${task.id} \u043f\u043e \u0437\u0430\u044f\u0432\u043a\u0435 ${request.id}`
     );
 
+    await createWarehouseTaskEvent({
+      orgId: request.orgId || null,
+      taskId: task.id,
+      eventType: "CREATED_FROM_REQUEST",
+      actorUserId: assignerId,
+      actorName: task.assigner?.name || task.assigner?.email || null,
+      message: `Задача создана автоматически по заявке склада #${request.id}.`,
+      meta: {
+        requestId: request.id,
+        title: task.title,
+        itemCount: Array.isArray(request.items) ? request.items.length : 0,
+      },
+    });
+
     return task;
   } catch (err) {
     console.error("[createWarehouseTaskFromRequest] error:", err);
@@ -16286,6 +16301,150 @@ const WAREHOUSE_TASK_STATUS_LABELS = {
   DONE: "Выполнена",
   CANCELLED: "Отменена",
 };
+
+let warehouseTaskEventsReadyPromise = null;
+let warehouseTaskEventsTableAvailable = true;
+async function ensureWarehouseTaskEventsTable() {
+  if (!warehouseTaskEventsTableAvailable) return false;
+  if (!warehouseTaskEventsReadyPromise) {
+    warehouseTaskEventsReadyPromise = (async () => {
+      try {
+        await prisma.$executeRawUnsafe(`
+          CREATE TABLE IF NOT EXISTS "WarehouseTaskEvent" (
+            "id" SERIAL PRIMARY KEY,
+            "orgId" INTEGER,
+            "taskId" INTEGER NOT NULL,
+            "eventType" TEXT NOT NULL,
+            "actorUserId" INTEGER,
+            "actorName" TEXT,
+            "message" TEXT NOT NULL,
+            "metaJson" TEXT,
+            "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP
+          );
+        `);
+        await prisma.$executeRawUnsafe(`
+          CREATE INDEX IF NOT EXISTS "WarehouseTaskEvent_taskId_createdAt_idx"
+          ON "WarehouseTaskEvent" ("taskId", "createdAt");
+        `);
+        await prisma.$executeRawUnsafe(`
+          CREATE INDEX IF NOT EXISTS "WarehouseTaskEvent_orgId_taskId_idx"
+          ON "WarehouseTaskEvent" ("orgId", "taskId");
+        `);
+        warehouseTaskEventsTableAvailable = true;
+        return true;
+      } catch (err) {
+        if (
+          isPermissionDeniedForSchema(err, "public") ||
+          isPermissionDeniedForTable(err, "WarehouseTaskEvent")
+        ) {
+          warehouseTaskEventsTableAvailable = false;
+          console.warn("[TASK_EVENTS] WarehouseTaskEvent table unavailable.");
+          return false;
+        }
+        throw err;
+      }
+    })();
+  }
+  return warehouseTaskEventsReadyPromise;
+}
+
+function getTaskActorName(user) {
+  return String(user?.name || user?.email || "Пользователь").trim();
+}
+
+async function createWarehouseTaskEvent({
+  orgId,
+  taskId,
+  eventType,
+  actorUserId,
+  actorName,
+  message,
+  meta,
+}) {
+  const normalizedTaskId = Number(taskId);
+  if (!normalizedTaskId) return null;
+  const tableReady = await ensureWarehouseTaskEventsTable();
+  if (!tableReady) return null;
+  try {
+    const rows = await prisma.$queryRawUnsafe(
+      `
+        INSERT INTO "WarehouseTaskEvent" (
+          "orgId",
+          "taskId",
+          "eventType",
+          "actorUserId",
+          "actorName",
+          "message",
+          "metaJson",
+          "createdAt"
+        )
+        VALUES ($1, $2, $3, $4, $5, $6, $7, NOW())
+        RETURNING "id", "orgId", "taskId", "eventType", "actorUserId", "actorName", "message", "metaJson", "createdAt"
+      `,
+      orgId == null ? null : Number(orgId),
+      normalizedTaskId,
+      String(eventType || "NOTE").trim() || "NOTE",
+      actorUserId == null ? null : Number(actorUserId),
+      actorName ? String(actorName).slice(0, 180) : null,
+      String(message || "Событие по задаче").slice(0, 1000),
+      meta == null ? null : JSON.stringify(meta)
+    );
+    return Array.isArray(rows) && rows[0] ? mapWarehouseTaskEventForResponse(rows[0]) : null;
+  } catch (err) {
+    if (
+      isMissingRelationError(err, "WarehouseTaskEvent") ||
+      isPermissionDeniedForSchema(err, "public") ||
+      isPermissionDeniedForTable(err, "WarehouseTaskEvent")
+    ) {
+      warehouseTaskEventsTableAvailable = false;
+      return null;
+    }
+    console.error("warehouse task event create error:", err);
+    return null;
+  }
+}
+
+function mapWarehouseTaskEventForResponse(event) {
+  if (!event) return event;
+  let meta = null;
+  if (event.metaJson) {
+    try {
+      meta = JSON.parse(event.metaJson);
+    } catch {
+      meta = null;
+    }
+  }
+  return { ...event, meta };
+}
+
+async function listWarehouseTaskEvents(taskIdInput) {
+  const taskId = Number(taskIdInput);
+  if (!taskId) return [];
+  const tableReady = await ensureWarehouseTaskEventsTable();
+  if (!tableReady) return [];
+  try {
+    const rows = await prisma.$queryRawUnsafe(
+      `
+        SELECT "id", "orgId", "taskId", "eventType", "actorUserId", "actorName", "message", "metaJson", "createdAt"
+        FROM "WarehouseTaskEvent"
+        WHERE "taskId" = $1
+        ORDER BY "createdAt" ASC, "id" ASC
+      `,
+      taskId
+    );
+    return Array.isArray(rows) ? rows.map(mapWarehouseTaskEventForResponse) : [];
+  } catch (err) {
+    if (
+      isMissingRelationError(err, "WarehouseTaskEvent") ||
+      isPermissionDeniedForSchema(err, "public") ||
+      isPermissionDeniedForTable(err, "WarehouseTaskEvent")
+    ) {
+      warehouseTaskEventsTableAvailable = false;
+      return [];
+    }
+    throw err;
+  }
+}
 
 const TASK_PHOTO_MAX_COUNT = 5;
 const TASK_PHOTO_MAX_BYTES = 2 * 1024 * 1024;
@@ -16407,6 +16566,21 @@ app.post("/api/warehouse/tasks", auth, async (req, res) => {
         assignerId: req.user.id,
       },
       include: WAREHOUSE_TASK_INCLUDE,
+    });
+
+    await createWarehouseTaskEvent({
+      orgId: req.user.orgId || null,
+      taskId: task.id,
+      eventType: "CREATED",
+      actorUserId: req.user.id,
+      actorName: getTaskActorName(req.user),
+      message: `Создана задача${task.executorName ? ` для ${task.executorName}` : ""}.`,
+      meta: {
+        title: task.title,
+        dueDate: task.dueDate,
+        executorUserId: task.executorUserId,
+        taskPhotoCount: normalizedTaskPhotos.length,
+      },
     });
 
     let pushDelivery = null;
@@ -16535,6 +16709,69 @@ app.get("/api/warehouse/tasks", auth, async (req, res) => {
   }
 });
 
+app.get("/api/warehouse/tasks/:id/events", auth, async (req, res) => {
+  try {
+    const id = Number(req.params.id);
+    if (!id) {
+      return res.status(400).json({ message: "Некорректный идентификатор задачи." });
+    }
+
+    const task = await prisma.warehouseTask.findUnique({
+      where: { id },
+      select: {
+        id: true,
+        orgId: true,
+        assignerId: true,
+        executorUserId: true,
+        createdAt: true,
+        title: true,
+      },
+    });
+    if (!task) {
+      return res.status(404).json({ message: "Задача не найдена." });
+    }
+
+    if (
+      !req.user.isSystemOwner &&
+      task.orgId != null &&
+      req.user.orgId != null &&
+      Number(task.orgId) !== Number(req.user.orgId)
+    ) {
+      return res.status(403).json({ message: "Нет доступа к задаче." });
+    }
+
+    const manager = canManageWarehouseTasks(req.user);
+    const isExecutor = Number(task.executorUserId) === Number(req.user.id);
+    const isAssigner = Number(task.assignerId) === Number(req.user.id);
+    if (!manager && !isExecutor && !isAssigner) {
+      return res.status(403).json({ message: "Нет доступа к истории задачи." });
+    }
+
+    const events = await listWarehouseTaskEvents(id);
+    if (!events.length) {
+      return res.json({
+        events: [
+          {
+            id: `fallback-created-${task.id}`,
+            orgId: task.orgId || null,
+            taskId: task.id,
+            eventType: "CREATED",
+            actorUserId: task.assignerId || null,
+            actorName: null,
+            message: "Задача создана.",
+            meta: { fallback: true },
+            createdAt: task.createdAt,
+          },
+        ],
+      });
+    }
+    return res.json({ events });
+  } catch (err) {
+    console.error("warehouse task events error:", err);
+    return res.status(500).json({ message: "Ошибка загрузки истории задачи." });
+  }
+});
+
 // смена статуса задачи (через портал, не через бота)
 app.put("/api/warehouse/tasks/:id/status", auth, async (req, res) => {
   try {
@@ -16590,6 +16827,21 @@ app.put("/api/warehouse/tasks/:id/status", auth, async (req, res) => {
     }
 
     if (existing.status !== updated.status) {
+      await createWarehouseTaskEvent({
+        orgId: updated.orgId || req.user.orgId || null,
+        taskId: updated.id,
+        eventType: "STATUS_CHANGED",
+        actorUserId: req.user.id,
+        actorName: getTaskActorName(req.user),
+        message: `Статус изменен: ${
+          WAREHOUSE_TASK_STATUS_LABELS[existing.status] || existing.status
+        } -> ${WAREHOUSE_TASK_STATUS_LABELS[updated.status] || updated.status}.`,
+        meta: {
+          fromStatus: existing.status,
+          toStatus: updated.status,
+        },
+      });
+
       if (updated.assignerId && updated.assignerId !== req.user.id) {
         await createWarehouseNotification({
           orgId: req.user.orgId || null,
@@ -16681,6 +16933,23 @@ app.put("/api/warehouse/tasks/:id/response", auth, async (req, res) => {
         responseAuthorName: req.user.name || req.user.email || null,
       },
       include: WAREHOUSE_TASK_INCLUDE,
+    });
+
+    await createWarehouseTaskEvent({
+      orgId: updated.orgId || req.user.orgId || null,
+      taskId: updated.id,
+      eventType: "RESPONSE_UPDATED",
+      actorUserId: req.user.id,
+      actorName: getTaskActorName(req.user),
+      message: `Добавлен ответ по задаче${
+        normalizedResponsePhotos.length
+          ? ` и ${normalizedResponsePhotos.length} фото`
+          : ""
+      }.`,
+      meta: {
+        hasText: Boolean(responseText),
+        responsePhotoCount: normalizedResponsePhotos.length,
+      },
     });
 
     if (updated.assignerId && updated.assignerId !== req.user.id) {

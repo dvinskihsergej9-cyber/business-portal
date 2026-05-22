@@ -5399,6 +5399,49 @@ input[type="number"] {
   flex-wrap: wrap;
 }
 
+.task-events-timeline {
+  display: grid;
+  gap: 10px;
+  border: 1px solid #dbeafe;
+  border-radius: 12px;
+  background: linear-gradient(180deg, #ffffff 0%, #f8fbff 100%);
+  padding: 12px;
+}
+
+.task-events-timeline__item {
+  display: grid;
+  grid-template-columns: 14px minmax(0, 1fr);
+  gap: 10px;
+  align-items: start;
+}
+
+.task-events-timeline__dot {
+  width: 9px;
+  height: 9px;
+  margin-top: 5px;
+  border-radius: 999px;
+  background: #2563eb;
+  box-shadow: 0 0 0 4px rgba(37, 99, 235, 0.12);
+}
+
+.task-events-timeline__content {
+  display: grid;
+  gap: 3px;
+}
+
+.task-events-timeline__message {
+  color: #0f172a;
+  font-size: 13px;
+  font-weight: 700;
+  line-height: 1.35;
+}
+
+.task-events-timeline__meta {
+  color: #64748b;
+  font-size: 12px;
+  line-height: 1.35;
+}
+
 .task-details-footer {
   display: flex;
   justify-content: flex-end;
