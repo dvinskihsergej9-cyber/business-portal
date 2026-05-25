@@ -9,7 +9,6 @@ import {
 
 const API = API_BASE;
 const ALL_ROLES = ["EMPLOYEE", "ADMIN"];
-const CREATED_USER_PASSWORDS_KEY = "bp.createdUserPasswords.v1";
 
 const FALLBACK_PERMISSION_CATALOG = {
   groups: PERMISSION_GROUPS,
@@ -86,17 +85,6 @@ function generatePassword(length = 12) {
   return chars.join("");
 }
 
-function readCreatedPasswords() {
-  try {
-    const raw = localStorage.getItem(CREATED_USER_PASSWORDS_KEY);
-    if (!raw) return {};
-    const parsed = JSON.parse(raw);
-    return parsed && typeof parsed === "object" ? parsed : {};
-  } catch {
-    return {};
-  }
-}
-
 async function copyText(value) {
   const text = String(value || "");
   if (!text) return;
@@ -136,7 +124,6 @@ export default function UserManagement() {
   const [createError, setCreateError] = useState("");
   const [createSuccess, setCreateSuccess] = useState("");
   const createErrorRef = useRef(null);
-  const [createdPasswords, setCreatedPasswords] = useState(() => readCreatedPasswords());
   const [pendingScrollUserId, setPendingScrollUserId] = useState(null);
   const [copiedUserId, setCopiedUserId] = useState(null);
   const userRowRefs = useRef({});
@@ -194,20 +181,6 @@ export default function UserManagement() {
       next[row.id] = buildPermissionDraft(row);
     }
     setPermissionDrafts(next);
-  };
-
-  const cachePasswordForUser = (account, rawPassword) => {
-    const value = String(rawPassword || "");
-    if (!value) return;
-    const keys = [account?.id, account?.login, account?.username, account?.email];
-    setCreatedPasswords((prev) => {
-      const next = { ...prev };
-      for (const key of keys) {
-        if (key === null || key === undefined || key === "") continue;
-        next[key] = value;
-      }
-      return next;
-    });
   };
 
   const resetCreateForm = () => {
@@ -300,14 +273,6 @@ export default function UserManagement() {
     node.scrollIntoView({ behavior: "smooth", block: "center" });
     setPendingScrollUserId(null);
   }, [users, pendingScrollUserId]);
-
-  useEffect(() => {
-    try {
-      localStorage.setItem(CREATED_USER_PASSWORDS_KEY, JSON.stringify(createdPasswords));
-    } catch {
-      // ignore storage write errors
-    }
-  }, [createdPasswords]);
 
   useEffect(
     () => () => {
@@ -411,16 +376,6 @@ export default function UserManagement() {
       const createdUserId = data?.user?.id || null;
       const createdLogin = data?.user?.login || login;
       const createdPassword = data?.user?.initialPassword || password;
-      cachePasswordForUser(
-        {
-          id: createdUserId,
-          login: createdLogin,
-          username: data?.user?.username || null,
-          email: data?.user?.email || null,
-        },
-        createdPassword
-      );
-
       setCreateSuccess(
         `Сотрудник "${createdLogin}" создан. Пароль: ${createdPassword}`
       );
@@ -474,14 +429,6 @@ export default function UserManagement() {
         delete next[targetUser.id];
         return next;
       });
-      setCreatedPasswords((prev) => {
-        const next = { ...prev };
-        delete next[targetUser.id];
-        if (targetUser.login) delete next[targetUser.login];
-        if (targetUser.username) delete next[targetUser.username];
-        if (targetUser.email) delete next[targetUser.email];
-        return next;
-      });
       setCreateSuccess(
         "\u0421\u043e\u0442\u0440\u0443\u0434\u043d\u0438\u043a \"" + loginLabel + "\" \u0443\u0434\u0430\u043b\u0451\u043d."
       );
@@ -498,19 +445,18 @@ export default function UserManagement() {
     }
   };
 
-  const handleCopyCredentials = async (targetUser, userId = null) => {
+  const handleCopyLogin = async (targetUser, userId = null) => {
     const login = String(
       targetUser?.login || targetUser?.username || targetUser?.email || ""
     ).trim();
-    const password = String(targetUser?.passwordVisible || "").trim();
 
-    if (!login || !password || password === "-") {
-      setError("Не удалось скопировать: логин или пароль пустой.");
+    if (!login || login === "-") {
+      setError("Не удалось скопировать: логин пустой.");
       return;
     }
 
     try {
-      await copyText(`Логин: ${login}\nПароль: ${password}`);
+      await copyText(`Логин: ${login}`);
       setError("");
       if (userId) {
         setCopiedUserId(userId);
@@ -521,7 +467,7 @@ export default function UserManagement() {
         document.activeElement.blur();
       }
     } catch (err) {
-      setError("Не удалось скопировать логин и пароль.");
+      setError("Не удалось скопировать логин.");
     }
   };
 
@@ -871,7 +817,6 @@ export default function UserManagement() {
                 <th style={thStyle}>ID</th>
                 <th style={thStyle}>Имя</th>
                 <th style={thStyle}>Логин</th>
-                <th style={thStyle}>Пароль</th>
                 <th style={thStyle}>Компания</th>
                 <th style={thStyle}>Роль</th>
                 <th style={thStyle}>Создан</th>
@@ -886,13 +831,6 @@ export default function UserManagement() {
                   ? draft.permissions
                   : [];
                 const userLogin = u.login || u.username || u.email || "-";
-                const userPassword =
-                  u.passwordVisible ||
-                  createdPasswords[u.id] ||
-                  createdPasswords[u.login] ||
-                  createdPasswords[u.username] ||
-                  createdPasswords[u.email] ||
-                  "-";
                 const organizationName =
                   String(u?.organization?.name || "").trim() || "-";
 
@@ -911,9 +849,6 @@ export default function UserManagement() {
                       </td>
                       <td data-label="Логин" style={tdStyle}>
                         {userLogin}
-                      </td>
-                      <td data-label="Пароль" style={tdStyle}>
-                        {userPassword}
                       </td>
                       <td data-label="Компания" style={tdStyle}>
                         {organizationName}
@@ -947,27 +882,25 @@ export default function UserManagement() {
                               "admin-btn admin-btn--ghost admin-copy-btn" +
                               (copiedUserId === u.id ? " admin-copy-btn--copied" : "")
                             }
-                            title="Скопировать логин и пароль"
-                            aria-label="Скопировать логин и пароль"
+                            title="Скопировать логин"
+                            aria-label="Скопировать логин"
                             onClick={() =>
-                              handleCopyCredentials(
+                              handleCopyLogin(
                                 {
                                   login: userLogin === "-" ? "" : userLogin,
                                   username: u.username,
                                   email: u.email,
-                                  passwordVisible:
-                                    userPassword === "-" ? "" : userPassword,
                                 },
                                 u.id
                               )
                             }
-                            disabled={userPassword === "-"}
+                            disabled={userLogin === "-"}
                           >
                             Скопировать
                           </button>
                           {copiedUserId === u.id ? (
                             <span className="admin-copy-toast">
-                              Скопировано логин и пароль
+                              Скопирован логин
                             </span>
                           ) : null}
                         </div>
@@ -1002,7 +935,7 @@ export default function UserManagement() {
                     </tr>
                     {isExpanded && (
                       <tr>
-                        <td style={{ ...tdStyle, background: "#fafcff" }} colSpan={8}>
+                        <td style={{ ...tdStyle, background: "#fafcff" }} colSpan={7}>
                           <div className="admin-users-expanded-permissions">
                             <div className="admin-users-expanded-permissions__toolbar">
                               <select
@@ -1086,4 +1019,5 @@ const tdStyle = {
   padding: 8,
   borderTop: "1px solid #e5e7eb",
 };
+
 

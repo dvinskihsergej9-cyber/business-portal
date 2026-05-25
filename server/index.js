@@ -47,7 +47,13 @@ let prisma = prismaBase;
 const requestContext = new AsyncLocalStorage();
 
 // для загрузки файлов в память (будем читать Excel из буфера)
-const upload = multer({ storage: multer.memoryStorage() });
+const upload = multer({
+  storage: multer.memoryStorage(),
+  limits: {
+    // hard-limit импортируемых файлов, чтобы не убить процесс по памяти
+    fileSize: 5 * 1024 * 1024,
+  },
+});
 
 app.use(cors());
 app.use(express.json({ limit: "6mb" }));
@@ -60,7 +66,11 @@ app.use((req, res, next) => {
 
 // ================== JWT / АВТОРИЗАЦИЯ ==================
 
-const JWT_SECRET = process.env.JWT_SECRET || "super-secret-key"; // в .env в бою
+const JWT_SECRET = String(process.env.JWT_SECRET || "").trim();
+if (!JWT_SECRET) {
+  console.error("[AUTH_CONFIG] JWT_SECRET не задан. Сервер остановлен.");
+  process.exit(1);
+}
 const JWT_EXPIRES_IN = "7d";
 const MARKETING_UNSUBSCRIBE_SECRET =
   process.env.MARKETING_UNSUBSCRIBE_SECRET || JWT_SECRET;
@@ -631,6 +641,8 @@ const emailVerifyResendRate = new Map();
 const emailVerifyGlobalRate = [];
 const demoCreateRate = new Map();
 const demoCreateGlobalRate = [];
+const loginRateByIp = new Map();
+const loginRateByLogin = new Map();
 
 const DEMO_WORKSPACE_TTL_HOURS = Math.max(
   1,
@@ -655,6 +667,18 @@ const DEMO_CREATE_COOLDOWN_MS = Math.max(
 const DEMO_CREATE_GLOBAL_LIMIT = Math.max(
   5,
   Number(process.env.DEMO_CREATE_GLOBAL_LIMIT || 60)
+);
+const LOGIN_RATE_WINDOW_MS = Math.max(
+  60_000,
+  Number(process.env.LOGIN_RATE_WINDOW_MS || 10 * 60 * 1000)
+);
+const LOGIN_RATE_MAX_PER_IP = Math.max(
+  10,
+  Number(process.env.LOGIN_RATE_MAX_PER_IP || 40)
+);
+const LOGIN_RATE_MAX_PER_LOGIN = Math.max(
+  5,
+  Number(process.env.LOGIN_RATE_MAX_PER_LOGIN || 12)
 );
 
 const FRONTEND_URL = process.env.FRONTEND_URL || "http://localhost:5173";
@@ -838,6 +862,26 @@ function trimRateWindow(rateList, now = Date.now(), ttlMs = DEMO_CREATE_COOLDOWN
   while (rateList.length && now - rateList[0] > ttlMs) {
     rateList.shift();
   }
+}
+
+function consumeRateLimitToken(rateMap, key, options = {}) {
+  const normalizedKey = String(key || "").trim();
+  if (!normalizedKey) return true;
+  const now = Date.now();
+  const windowMs = Math.max(1_000, Number(options.windowMs || 60_000));
+  const limit = Math.max(1, Number(options.limit || 10));
+  const existing = rateMap.get(normalizedKey);
+
+  if (!existing || now >= existing.resetAt) {
+    rateMap.set(normalizedKey, { count: 1, resetAt: now + windowMs });
+    return true;
+  }
+  if (existing.count >= limit) {
+    return false;
+  }
+  existing.count += 1;
+  rateMap.set(normalizedKey, existing);
+  return true;
 }
 
 function buildDemoPassword() {
@@ -1310,7 +1354,6 @@ async function ensureDemoPortalUsers({ orgId, workspaceKey, now }) {
         username,
         password: hash,
         passwordHash: hash,
-        passwordVisible: row.password,
         name: row.name,
         role: row.role,
         orgId: normalizedOrgId,
@@ -1321,7 +1364,6 @@ async function ensureDemoPortalUsers({ orgId, workspaceKey, now }) {
         username,
         password: hash,
         passwordHash: hash,
-        passwordVisible: row.password,
         name: row.name,
         role: row.role,
         orgId: normalizedOrgId,
@@ -1355,7 +1397,6 @@ async function findDemoUserByFingerprint(fingerprint) {
       id: true,
       email: true,
       username: true,
-      passwordVisible: true,
       orgId: true,
       organization: {
         select: {
@@ -1371,6 +1412,7 @@ async function findDemoUserByFingerprint(fingerprint) {
 async function buildExistingDemoWorkspaceSession(demoUserId) {
   const now = new Date();
   let paidUntilIso = null;
+  let nextPassword = null;
   const freshUser = await prisma.$transaction(async (tx) => {
     const current = await tx.user.findUnique({
       where: { id: Number(demoUserId || 0) },
@@ -1380,7 +1422,6 @@ async function buildExistingDemoWorkspaceSession(demoUserId) {
         username: true,
         password: true,
         passwordHash: true,
-        passwordVisible: true,
         name: true,
         role: true,
         orgId: true,
@@ -1407,21 +1448,15 @@ async function buildExistingDemoWorkspaceSession(demoUserId) {
       return null;
     }
     paidUntilIso = paidUntil.toISOString();
-
-    const updates = {};
-    if (!current.passwordVisible) {
-      const nextPassword = buildDemoPassword();
-      const nextHash = await bcrypt.hash(nextPassword, 10);
-      updates.password = nextHash;
-      updates.passwordHash = nextHash;
-      updates.passwordVisible = nextPassword;
-    }
-    if (Object.keys(updates).length) {
-      await tx.user.update({
-        where: { id: current.id },
-        data: updates,
-      });
-    }
+    nextPassword = buildDemoPassword();
+    const nextHash = await bcrypt.hash(nextPassword, 10);
+    await tx.user.update({
+      where: { id: current.id },
+      data: {
+        password: nextHash,
+        passwordHash: nextHash,
+      },
+    });
 
     return tx.user.findUnique({
       where: { id: current.id },
@@ -1432,7 +1467,6 @@ async function buildExistingDemoWorkspaceSession(demoUserId) {
         orgId: true,
         isSystemOwner: true,
         tokenVersion: true,
-        passwordVisible: true,
       },
     });
   });
@@ -1461,7 +1495,7 @@ async function buildExistingDemoWorkspaceSession(demoUserId) {
     demo: {
       workspace: String(org?.code || ""),
       email: freshUser.email || null,
-      password: freshUser.passwordVisible || null,
+      password: nextPassword,
       expiresAt: paidUntilIso,
       ttlHours: DEMO_WORKSPACE_TTL_HOURS,
       organizationId: Number(org?.id || 0) || null,
@@ -2041,7 +2075,6 @@ async function createDemoWorkspace(options = {}) {
         username: demoUsername,
         password: hash,
         passwordHash: hash,
-        passwordVisible: demoPassword,
         name: "Демо Администратор",
         role: "ADMIN",
         orgId: org.id,
@@ -8095,7 +8128,6 @@ app.post("/api/register", async (req, res) => {
           name: normalizedName,
           password: hash,
           passwordHash: hash,
-          passwordVisible: String(password),
           role: "ADMIN",
           orgId,
           isActive: true,
@@ -8119,7 +8151,6 @@ app.post("/api/register", async (req, res) => {
           email: normalizedEmail,
           password: hash,
           passwordHash: hash,
-          passwordVisible: String(password),
           name: normalizedName,
           role: "ADMIN",
           orgId: org.id,
@@ -8189,11 +8220,26 @@ app.post("/api/register", async (req, res) => {
 app.post("/api/login", async (req, res) => {
   const { login, email, password } = req.body || {};
   const normalizedLogin = normalizeLogin(login || email);
+  const clientIp = getClientIp(req) || "unknown";
 
   if (!normalizedLogin || !password) {
     return res
       .status(400)
       .json({ message: "Логин и пароль обязательны" });
+  }
+
+  const ipAllowed = consumeRateLimitToken(loginRateByIp, clientIp, {
+    limit: LOGIN_RATE_MAX_PER_IP,
+    windowMs: LOGIN_RATE_WINDOW_MS,
+  });
+  const loginAllowed = consumeRateLimitToken(loginRateByLogin, normalizedLogin, {
+    limit: LOGIN_RATE_MAX_PER_LOGIN,
+    windowMs: LOGIN_RATE_WINDOW_MS,
+  });
+  if (!ipAllowed || !loginAllowed) {
+    return res.status(429).json({
+      message: "Слишком много попыток входа. Подождите 10 минут.",
+    });
   }
 
   const fail = (status, message) => {
@@ -8240,7 +8286,7 @@ app.post("/api/login", async (req, res) => {
         const nextHash = await bcrypt.hash(password, 10);
         await prisma.user.update({
           where: { id: user.id },
-          data: { password: nextHash, passwordHash: nextHash, passwordVisible: String(password) },
+          data: { password: nextHash, passwordHash: nextHash },
         });
       }
     }
@@ -8291,6 +8337,7 @@ app.post("/api/login", async (req, res) => {
   while (true) {
     try {
       const payload = await runLoginAttempt();
+      loginRateByLogin.delete(normalizedLogin);
       return res.json(payload);
     } catch (err) {
       if (Number(err?.status) >= 400 && Number(err?.status) < 500) {
@@ -13825,7 +13872,6 @@ function toManagedUserPayload(user, planId = null) {
     username: user.username || null,
     login: user.username || user.email,
     name: user.name,
-    passwordVisible: user.passwordVisible || null,
     role: user.role,
     orgId: user.orgId ?? null,
     organization: user.organization || null,
@@ -13864,7 +13910,6 @@ app.get("/api/users", auth, requireAdmin, async (req, res) => {
         email: true,
         username: true,
         name: true,
-        passwordVisible: true,
         role: true,
         isSystemOwner: true,
         permissionsJson: true,
@@ -13993,7 +14038,6 @@ app.post("/api/users", auth, requireAdmin, async (req, res) => {
         username: normalizedLogin,
         password: hash,
         passwordHash: hash,
-        passwordVisible: normalizedPassword,
         name: normalizedName || normalizedLogin,
         role: nextRole,
         isActive: true,
@@ -14006,7 +14050,6 @@ app.post("/api/users", auth, requireAdmin, async (req, res) => {
         email: true,
         username: true,
         name: true,
-        passwordVisible: true,
         role: true,
         isSystemOwner: true,
         permissionsJson: true,
@@ -14270,7 +14313,6 @@ app.put("/api/users/:id/role", auth, requireAdmin, async (req, res) => {
         email: true,
         username: true,
         name: true,
-        passwordVisible: true,
         role: true,
         isSystemOwner: true,
         permissionsJson: true,
@@ -14337,7 +14379,6 @@ app.put("/api/users/:id/permissions", auth, requireAdmin, async (req, res) => {
         email: true,
         username: true,
         name: true,
-        passwordVisible: true,
         role: true,
         isSystemOwner: true,
         permissionsJson: true,
@@ -14418,7 +14459,6 @@ app.delete("/api/users/:id", auth, requireAdmin, async (req, res) => {
         email: deletedEmail,
         username: deletedUsername,
         isActive: false,
-        passwordVisible: null,
         permissionsJson: null,
         tokenVersion: { increment: 1 },
       },
@@ -14455,7 +14495,6 @@ app.get("/api/admin/tenants", auth, requireAdmin, requireSystemOwner, async (req
             name: true,
             username: true,
             email: true,
-            passwordVisible: true,
           },
         },
       },
@@ -14478,7 +14517,7 @@ app.get("/api/admin/tenants", auth, requireAdmin, requireSystemOwner, async (req
         adminUserId: admin?.id || null,
         adminName: admin?.name || null,
         adminLogin: admin?.username || admin?.email || null,
-        adminPassword: admin?.passwordVisible || null,
+        adminPassword: null,
         subscription: subscription
           ? {
               plan: subscription.plan,
@@ -14611,7 +14650,6 @@ app.post("/api/admin/tenants", auth, requireAdmin, requireSystemOwner, async (re
         username: normalizedLogin,
         password: hash,
         passwordHash: hash,
-        passwordVisible: password,
         name: adminName,
         role: "ADMIN",
         isActive: true,
@@ -14622,7 +14660,6 @@ app.post("/api/admin/tenants", auth, requireAdmin, requireSystemOwner, async (re
         id: true,
         email: true,
         username: true,
-        passwordVisible: true,
         name: true,
         role: true,
         orgId: true,
@@ -14636,7 +14673,7 @@ app.post("/api/admin/tenants", auth, requireAdmin, requireSystemOwner, async (re
       user: {
         ...adminUser,
         login: adminUser.username || adminUser.email,
-        adminPassword: adminUser.passwordVisible || password,
+        adminPassword: password,
         initialPassword: password,
       },
     });
@@ -15694,7 +15731,6 @@ app.post("/api/auth/accept-invite", async (req, res) => {
           role: invite.role,
           password: passwordHash,
           passwordHash,
-          passwordVisible: String(password),
           orgId: inviteOrgId || existingUser.orgId || null,
           isActive: true,
           emailVerifiedAt: now,
@@ -15708,7 +15744,6 @@ app.post("/api/auth/accept-invite", async (req, res) => {
           role: invite.role,
           password: passwordHash,
           passwordHash,
-          passwordVisible: String(password),
           orgId: inviteOrgId || null,
           isActive: true,
           emailVerifiedAt: now,
@@ -15816,7 +15851,6 @@ app.post("/api/auth/reset-password", async (req, res) => {
         data: {
           password: hash,
           passwordHash: hash,
-          passwordVisible: String(newPassword),
           tokenVersion: { increment: 1 },
         },
       });
@@ -19953,6 +19987,9 @@ app.post("/api/warehouse/qr/print", auth, async (req, res) => {
     const qrBuf = await renderQrPng(qrValue);
     const qrImg = `data:image/png;base64,${qrBuf.toString("base64")}`;
     const isLabel = String(layout).toLowerCase() === "label";
+    const safeTitle = escapeHtml(title);
+    const safeSubtitle = subtitle ? escapeHtml(subtitle) : "";
+    const safeCode = escapeHtml(visibleCode || qrValue);
 
     const html = `
       <html>
@@ -19980,10 +20017,10 @@ app.post("/api/warehouse/qr/print", auth, async (req, res) => {
               .map(
                 () => `
               <div class="label ${kind === "location" ? "label--location" : ""}">
-                <div class="title">${title}</div>
-                ${subtitle ? `<div class="subtitle">${subtitle}</div>` : ""}
+                <div class="title">${safeTitle}</div>
+                ${safeSubtitle ? `<div class="subtitle">${safeSubtitle}</div>` : ""}
                 <img class="qr" src="${qrImg}" />
-                <div class="code">${visibleCode || qrValue}</div>
+                <div class="code">${safeCode}</div>
               </div>
             `
               )
@@ -20242,11 +20279,11 @@ app.post("/api/warehouse/labels/print", auth, async (req, res) => {
                 if (r.kind === "location") {
                   return `
                     <div class="label ${isLabel ? "label--label" : ""} label--location">
-                      <div class="title">${r.title}</div>
-                      ${r.meta ? `<div class="meta">${r.meta}</div>` : ""}
+                      <div class="title">${escapeHtml(r.title)}</div>
+                      ${r.meta ? `<div class="meta">${escapeHtml(r.meta)}</div>` : ""}
                       <div class="content">
                         ${r.qrImg ? `<img class="qr qr--big" src="${r.qrImg}" />` : ""}
-                        ${r.code ? `<div class="barcode-label">${r.code}</div>` : ""}
+                        ${r.code ? `<div class="barcode-label">${escapeHtml(r.code)}</div>` : ""}
                       </div>
                       <div class="print-date">Печать: ${new Date().toLocaleDateString("ru-RU")}</div>
                     </div>
@@ -20254,12 +20291,12 @@ app.post("/api/warehouse/labels/print", auth, async (req, res) => {
                 }
                 return `
                   <div class="label ${isLabel ? "label--label" : ""}">
-                    <div class="title">${r.title}</div>
-                    ${r.sku ? `<div class="sku">Артикул: ${r.sku}</div>` : ""}
+                    <div class="title">${escapeHtml(r.title)}</div>
+                    ${r.sku ? `<div class="sku">Артикул: ${escapeHtml(r.sku)}</div>` : ""}
                     <div class="content">
                       <div>
                         ${r.barcodeImg ? `<img class="barcode" src="${r.barcodeImg}" />` : ""}
-                        ${r.code ? `<div class="barcode-label">${r.code}</div>` : ""}
+                        ${r.code ? `<div class="barcode-label">${escapeHtml(r.code)}</div>` : ""}
                       </div>
                       ${r.qrImg ? `<img class="qr" src="${r.qrImg}" />` : ""}
                     </div>
@@ -25721,7 +25758,6 @@ async function ensureOwnerAdminAccount() {
         isSystemOwner: true,
         isActive: true,
         orgId: ownerOrg.id,
-        passwordVisible: null,
       },
     });
     await prisma.user.updateMany({
@@ -25759,7 +25795,6 @@ async function ensureOwnerAdminAccount() {
         isActive: true,
         orgId: ownerOrg.id,
         emailVerifiedAt: owner.emailVerifiedAt || new Date(),
-        passwordVisible: null,
       },
     });
     await prisma.user.updateMany({
@@ -25790,7 +25825,6 @@ async function ensureOwnerAdminAccount() {
       email: normalizedEmail,
       password: ownerHash,
       passwordHash: ownerHash,
-      passwordVisible: null,
       name: OWNER_PRIMARY_NAME,
       role: "ADMIN",
       isSystemOwner: true,

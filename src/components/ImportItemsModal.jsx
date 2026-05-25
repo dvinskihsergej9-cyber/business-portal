@@ -1,6 +1,6 @@
 ﻿import { useRef, useState } from "react";
 import { createPortal } from "react-dom";
-import * as XLSX from "xlsx";
+import ExcelJS from "exceljs";
 import { API_BASE } from "../apiConfig";
 
 const ITEM_HEADER_ALIASES = {
@@ -49,9 +49,16 @@ export default function ImportItemsModal({ onClose, onImportSuccess }) {
 
     try {
       const data = await file.arrayBuffer();
-      const workbook = XLSX.read(data);
-      const worksheet = workbook.Sheets[workbook.SheetNames[0]];
-      const jsonData = XLSX.utils.sheet_to_json(worksheet, { header: 1 });
+      const workbook = new ExcelJS.Workbook();
+      await workbook.xlsx.load(data);
+      const worksheet = workbook.worksheets[0];
+      const jsonData = [];
+      const rowCount = worksheet?.rowCount || 0;
+      for (let rowNumber = 1; rowNumber <= rowCount; rowNumber += 1) {
+        const row = worksheet.getRow(rowNumber);
+        const values = Array.isArray(row.values) ? row.values.slice(1) : [];
+        jsonData.push(values);
+      }
 
       const headerRow = jsonData[0] || [];
       const headerMap = headerRow.map((cell) => {
