@@ -110,6 +110,7 @@ export default function UserManagement() {
   const [loading, setLoading] = useState(true);
   const [savingId, setSavingId] = useState(null);
   const [passwordSavingId, setPasswordSavingId] = useState(null);
+  const [resetPasswordId, setResetPasswordId] = useState(null);
   const [permissionSavingId, setPermissionSavingId] = useState(null);
   const [expandedUserId, setExpandedUserId] = useState(null);
   const [error, setError] = useState("");
@@ -468,6 +469,50 @@ export default function UserManagement() {
       }
     } catch (err) {
       setError("Не удалось скопировать логин.");
+    }
+  };
+
+  const handleResetUserPassword = async (targetUser) => {
+    if (!targetUser?.id || targetUser?.isSystemOwner) return;
+
+    const loginLabel =
+      targetUser.login || targetUser.username || targetUser.email || ("ID " + targetUser.id);
+    const generated = generatePassword(12);
+    const nextPasswordRaw = window.prompt(
+      `Новый пароль для "${loginLabel}" (минимум 8 символов):`,
+      generated
+    );
+    if (nextPasswordRaw === null) return;
+    const nextPassword = String(nextPasswordRaw || "");
+    if (nextPassword.length < 8) {
+      setError("Пароль должен быть не короче 8 символов.");
+      return;
+    }
+
+    setResetPasswordId(targetUser.id);
+    setError("");
+    setCreateError("");
+    setCreateSuccess("");
+
+    try {
+      const res = await fetch(`${API}/users/${targetUser.id}/password`, {
+        method: "PUT",
+        headers,
+        body: JSON.stringify({ password: nextPassword }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        throw new Error(data?.message || "Ошибка смены пароля сотрудника.");
+      }
+
+      const issuedPassword = String(data?.initialPassword || nextPassword);
+      await copyText(`Логин: ${loginLabel}\nПароль: ${issuedPassword}`).catch(() => {});
+      setCreateSuccess(`Новый пароль для "${loginLabel}": ${issuedPassword}`);
+    } catch (e) {
+      console.error(e);
+      setError(normalizeErrorMessage(e, "Ошибка смены пароля сотрудника."));
+    } finally {
+      setResetPasswordId(null);
     }
   };
 
@@ -910,6 +955,16 @@ export default function UserManagement() {
                           className="admin-btn admin-btn--primary"
                         >
                           {savingId === u.id ? "Сохранение..." : "Сохранить роль"}
+                        </button>
+                        <button
+                          type="button"
+                          className="admin-btn admin-btn--secondary"
+                          onClick={() => handleResetUserPassword(u)}
+                          disabled={u.isSystemOwner || resetPasswordId === u.id}
+                        >
+                          {resetPasswordId === u.id
+                            ? "Сброс..."
+                            : "Сбросить пароль"}
                         </button>
                         <button
                           type="button"

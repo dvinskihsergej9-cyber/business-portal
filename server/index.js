@@ -14404,6 +14404,55 @@ app.put("/api/users/:id/permissions", auth, requireAdmin, async (req, res) => {
   }
 });
 
+app.put("/api/users/:id/password", auth, requireAdmin, async (req, res) => {
+  try {
+    const id = Number(req.params.id);
+    if (!id || Number.isNaN(id)) {
+      return res.status(400).json({ message: "Некорректный идентификатор пользователя" });
+    }
+
+    const normalizedPassword = String(req.body?.password || "");
+    if (normalizedPassword.length < 8) {
+      return res.status(400).json({ message: "Пароль должен быть не короче 8 символов." });
+    }
+
+    const target = await prisma.user.findUnique({
+      where: { id },
+      select: { id: true, orgId: true, isSystemOwner: true, isActive: true },
+    });
+    if (!target) {
+      return res.status(404).json({ message: "Пользователь не найден" });
+    }
+    if (target.isSystemOwner === true) {
+      return res.status(403).json({ message: "Системному владельцу нельзя сбрасывать пароль здесь" });
+    }
+    if (!target.isActive) {
+      return res.status(400).json({ message: "Пользователь неактивен" });
+    }
+    if (!req.user.isSystemOwner && target.orgId !== req.user.orgId) {
+      return res.status(403).json({ message: "Нельзя менять пароль пользователя из другой организации" });
+    }
+
+    const nextHash = await bcrypt.hash(normalizedPassword, 10);
+    await prisma.user.update({
+      where: { id },
+      data: {
+        password: nextHash,
+        passwordHash: nextHash,
+        tokenVersion: { increment: 1 },
+      },
+    });
+
+    return res.json({
+      ok: true,
+      initialPassword: normalizedPassword,
+    });
+  } catch (err) {
+    console.error("reset managed user password error:", err);
+    return res.status(500).json({ message: "Ошибка сервера при смене пароля" });
+  }
+});
+
 app.delete("/api/users/:id", auth, requireAdmin, async (req, res) => {
   try {
     const id = Number(req.params.id);
