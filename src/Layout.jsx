@@ -346,6 +346,10 @@ export default function Layout() {
   const sidebarStyle = isMobile
     ? { ...styles.sidebar, display: "none" }
     : styles.sidebar;
+  const canManageBilling =
+    user?.isSystemOwner === true ||
+    (Array.isArray(user?.roles) && user.roles.includes("ADMIN")) ||
+    user?.role === "ADMIN";
   const canUseSupport = Boolean(user && user.role === "ADMIN");
   const supportBtnStyle = isMobile
     ? { ...styles.headerSupportBtn, ...styles.headerTopBtnMobile, ...styles.headerSupportBtnMobile }
@@ -398,7 +402,7 @@ export default function Layout() {
             >
               {subscriptionStatusText}
             </div>
-            {!isDemoUser && (
+            {!isDemoUser && canManageBilling && (
               <button
                 type="button"
                 style={styles.userSubscriptionBtn}
@@ -566,7 +570,7 @@ export default function Layout() {
             >
               {subscriptionStatusText}
             </div>
-            {!isDemoUser && (
+            {!isDemoUser && canManageBilling && (
               <button
                 type="button"
                 style={styles.mobilePlanSheetBtn}

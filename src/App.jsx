@@ -218,7 +218,7 @@ function AppRoutesWithBackground() {
           <Route
             path="/pricing"
             element={
-              <ProtectedRoute requirePaid={false}>
+              <ProtectedRoute requirePaid={false} roles={["ADMIN"]}>
                 <Pricing />
               </ProtectedRoute>
             }
@@ -226,7 +226,7 @@ function AppRoutesWithBackground() {
           <Route
             path="/subscribe/return"
             element={
-              <ProtectedRoute requirePaid={false}>
+              <ProtectedRoute requirePaid={false} roles={["ADMIN"]}>
                 <SubscribeReturn />
               </ProtectedRoute>
             }
