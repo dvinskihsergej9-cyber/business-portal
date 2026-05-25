@@ -7818,7 +7818,9 @@ async function sendDailyLowStockSummary(options = {}) {
   const targetOrgId = Number(options?.orgId || 0) || null;
   const lowItems = await getLowStockItems();
   const now = new Date();
-  const dateStr = now.toLocaleDateString("ru-RU");
+  const dateStr = now.toLocaleDateString("ru-RU", {
+    timeZone: "Europe/Moscow",
+  });
   const summary = {
     date: dateStr,
     targetOrgId,
@@ -25532,6 +25534,39 @@ app.put("/api/supplier-trucks/:id/status", auth, async (req, res) => {
 
 // ================== ПЕРИОДИЧЕСКИЕ ЗАДАЧИ ==================
 
+const LOW_STOCK_REPORT_TZ = "Europe/Moscow";
+const LOW_STOCK_REPORT_HOUR_MSK = 21;
+
+function getDatePartsInTimeZone(date, timeZone) {
+  const parts = new Intl.DateTimeFormat("en-GB", {
+    timeZone,
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+    hour: "2-digit",
+    minute: "2-digit",
+    hourCycle: "h23",
+  }).formatToParts(date);
+
+  const get = (type) => Number(parts.find((part) => part.type === type)?.value || 0);
+  const year = get("year");
+  const month = get("month");
+  const day = get("day");
+  const hour = get("hour");
+  const minute = get("minute");
+  const dayKey = `${String(year).padStart(4, "0")}-${String(month).padStart(2, "0")}-${String(
+    day
+  ).padStart(2, "0")}`;
+  return {
+    year,
+    month,
+    day,
+    hour,
+    minute,
+    dayKey,
+  };
+}
+
 // дата, за которую уже отправлен ежедневный отчёт по остаткам (формат "YYYY-MM-DD")
 let lastLowStockReportDate = null;
 
@@ -27147,14 +27182,15 @@ async function startBackgroundTasks() {
       console.error("ошибка в checkWarehouseTaskNotifications:", err)
     );
 
-    // 2) В 18:00 отправляем сводку по остаткам
+    // 2) В 21:00 по МСК отправляем сводку по остаткам.
+    // Если сервер был недоступен в точке 21:00, отправляем позже в этот же день один раз.
     const now = new Date();
-    const hours = now.getHours(); // 0..23
-    const minutes = now.getMinutes(); // 0..59
-    const todayKey = now.toISOString().slice(0, 10); // "YYYY-MM-DD"
+    const msk = getDatePartsInTimeZone(now, LOW_STOCK_REPORT_TZ);
+    const isMskDispatchTime = msk.hour === LOW_STOCK_REPORT_HOUR_MSK && msk.minute === 0;
+    const isMskCatchupWindow = msk.hour > LOW_STOCK_REPORT_HOUR_MSK;
 
-    if (hours === 18 && minutes === 0 && lastLowStockReportDate !== todayKey) {
-      lastLowStockReportDate = todayKey;
+    if ((isMskDispatchTime || isMskCatchupWindow) && lastLowStockReportDate !== msk.dayKey) {
+      lastLowStockReportDate = msk.dayKey;
 
       sendDailyLowStockSummary().catch((err) =>
         console.error("ошибка в sendDailyLowStockSummary:", err)
