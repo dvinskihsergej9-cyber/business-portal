@@ -403,6 +403,14 @@ export const normalizeErrorMessage = (err, fallback = "Не удалось вы�
   return message;
 };
 
+const RETRYABLE_METHODS = new Set(["GET", "HEAD", "OPTIONS"]);
+const RETRYABLE_STATUS_CODES = new Set([502, 503, 504]);
+
+const sleep = (ms) =>
+  new Promise((resolve) => {
+    setTimeout(resolve, ms);
+  });
+
 export const apiFetch = async (path, options = {}) => {
   const normalizedPath = path.startsWith("/") ? path : `/${path}`;
   if (import.meta.env.DEV && normalizedPath.startsWith("/api/")) {
@@ -412,45 +420,89 @@ export const apiFetch = async (path, options = {}) => {
     );
   }
 
-  const controller = new AbortController();
   const {
     signal: externalSignal,
     timeoutMs,
+    retryCount,
+    retryDelayMs,
     suppressGlobalError = false,
     ...restOptions
   } = options || {};
+  const method = String(restOptions?.method || "GET")
+    .trim()
+    .toUpperCase();
+  const normalizedRetryCount =
+    Number.isFinite(Number(retryCount)) && Number(retryCount) >= 0
+      ? Number(retryCount)
+      : RETRYABLE_METHODS.has(method)
+        ? 1
+        : 0;
+  const normalizedRetryDelayMs =
+    Number.isFinite(Number(retryDelayMs)) && Number(retryDelayMs) >= 0
+      ? Number(retryDelayMs)
+      : 350;
   const normalizedTimeoutMs =
     Number.isFinite(Number(timeoutMs)) && Number(timeoutMs) > 0
       ? Number(timeoutMs)
       : API_TIMEOUT_MS;
-  const timeoutId = setTimeout(() => controller.abort(), normalizedTimeoutMs);
-  if (externalSignal) {
-    if (externalSignal.aborted) {
-      controller.abort();
-    } else {
-      externalSignal.addEventListener("abort", () => controller.abort(), {
-        once: true,
+  for (let attempt = 0; attempt <= normalizedRetryCount; attempt += 1) {
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), normalizedTimeoutMs);
+    if (externalSignal) {
+      if (externalSignal.aborted) {
+        controller.abort();
+      } else {
+        externalSignal.addEventListener("abort", () => controller.abort(), {
+          once: true,
+        });
+      }
+    }
+
+    try {
+      const response = await fetch(`${API_BASE}${normalizedPath}`, {
+        ...restOptions,
+        signal: controller.signal,
       });
+
+      const shouldRetryByStatus =
+        attempt < normalizedRetryCount &&
+        RETRYABLE_METHODS.has(method) &&
+        RETRYABLE_STATUS_CODES.has(Number(response.status));
+      if (shouldRetryByStatus) {
+        await sleep(normalizedRetryDelayMs * (attempt + 1));
+        continue;
+      }
+
+      return response;
+    } catch (err) {
+      const shouldRetryByError =
+        attempt < normalizedRetryCount &&
+        RETRYABLE_METHODS.has(method) &&
+        (err?.name === "AbortError" || err instanceof TypeError);
+
+      if (shouldRetryByError) {
+        await sleep(normalizedRetryDelayMs * (attempt + 1));
+        continue;
+      }
+
+      const message =
+        err?.name === "AbortError"
+          ? "Не удалось подключиться к серверу."
+          : normalizeErrorMessage(err, "Не удалось подключиться к серверу.");
+      if (!suppressGlobalError) {
+        showGlobalError(message);
+      }
+      throw new Error(message);
+    } finally {
+      clearTimeout(timeoutId);
     }
   }
 
-  try {
-    return await fetch(`${API_BASE}${normalizedPath}`, {
-      ...restOptions,
-      signal: controller.signal,
-    });
-  } catch (err) {
-    const message =
-      err?.name === "AbortError"
-        ? "Не удалось подключиться к серверу."
-        : normalizeErrorMessage(err, "Не удалось подключиться к серверу.");
-    if (!suppressGlobalError) {
-      showGlobalError(message);
-    }
-    throw new Error(message);
-  } finally {
-    clearTimeout(timeoutId);
+  const fallbackMessage = "Не удалось подключиться к серверу.";
+  if (!suppressGlobalError) {
+    showGlobalError(fallbackMessage);
   }
+  throw new Error(fallbackMessage);
 };
 
 

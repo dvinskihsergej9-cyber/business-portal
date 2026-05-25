@@ -39,6 +39,21 @@ export function AuthProvider({ children }) {
     }).catch(() => null);
   };
 
+  const warmApiConnection = (token) => {
+    const authHeader = token
+      ? {
+          Authorization: `Bearer ${token}`,
+        }
+      : {};
+
+    apiFetch("/billing/config", {
+      headers: authHeader,
+      suppressGlobalError: true,
+      timeoutMs: 5000,
+      retryCount: 1,
+    }).catch(() => null);
+  };
+
   // Автоматически подтягиваем пользователя по токену.
   useEffect(() => {
     const token = localStorage.getItem("token");
@@ -63,6 +78,7 @@ export function AuthProvider({ children }) {
           const data = await res.json();
           setUser(data);
           localStorage.setItem("user", JSON.stringify(data));
+          warmApiConnection(token);
         }
       } catch (e) {
         console.error("Ошибка автоавторизации:", e);
@@ -105,6 +121,7 @@ export function AuthProvider({ children }) {
       localStorage.setItem("user", JSON.stringify(data.user));
       setUser(data.user);
       bindPushForSession(data.token, true, true);
+      warmApiConnection(data.token);
 
       return { ok: true };
     } catch (e) {
@@ -130,6 +147,7 @@ export function AuthProvider({ children }) {
       localStorage.setItem("user", JSON.stringify(data.user));
       setUser(data.user);
       bindPushForSession(data.token, false, true);
+      warmApiConnection(data.token);
       return { ok: true, demo: data.demo || null };
     } catch (e) {
       console.error("Start demo error:", e);
@@ -159,6 +177,7 @@ export function AuthProvider({ children }) {
       localStorage.setItem("user", JSON.stringify(data));
       setUser(data);
       bindPushForSession(token, false, true);
+      warmApiConnection(token);
       return { ok: true };
     } catch (e) {
       localStorage.removeItem("token");
@@ -238,6 +257,7 @@ export function AuthProvider({ children }) {
       localStorage.setItem("user", JSON.stringify(data.user));
       setUser(data.user);
       bindPushForSession(data.token, true, true);
+      warmApiConnection(data.token);
 
       return { ok: true };
     } catch (e) {
