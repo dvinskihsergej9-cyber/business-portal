@@ -21310,52 +21310,39 @@ app.post("/api/inventory/movements", auth, async (req, res) => {
       fallbackUserId: req.user?.id || null,
     });
 
-    // ===== ПРОВЕРКА ОСТАТКА ПЕРЕД СОЗДАНИЕМ ДВИЖЕНИЯ =====
-    let stockInfo;
-    try {
-      stockInfo = await calculateStockAfterMovement(
-        itemIdNum,
+    const movement = await prisma.$transaction(async (tx) => {
+      const created = await stockService.createMovementInTx(tx, {
         type,
-        normalizedQty
-      );
-    } catch (e) {
-      if (e.code === "ITEM_NOT_FOUND") {
-        return res.status(404).json({ message: "Товар не найден" });
-      }
-      console.error("calculateStockAfterMovement error:", e);
-      return res
-        .status(500)
-        .json({ message: "Ошибка при расчёте остатка по товару" });
-    }
-
-    if (stockInfo.newStock < 0) {
-      return res.status(400).json({
-        message: `Недостаточно остатка. На складе ${stockInfo.current} шт., вы пытаетесь списать ${normalizedQty} шт.`,
-      });
-    }
-    // ===== КОНЕЦ ПРОВЕРКИ ОСТАТКА =====
-
-    const movement = await prisma.stockMovement.create({
-      data: {
         itemId: itemIdNum,
-        type,
-        quantity: normalizedQty,
+        qty: normalizedQty,
         comment: comment?.trim() || null,
         pricePerUnit: priceValue,
-        createdById: req.user.id,
-      },
-      include: {
-        item: true,
-        createdBy: {
-          select: { id: true, name: true, email: true },
+        userId: req.user.id,
+      });
+      return tx.stockMovement.findUnique({
+        where: { id: created.id },
+        include: {
+          item: true,
+          createdBy: {
+            select: { id: true, name: true, email: true },
+          },
         },
-      },
+      });
     });
 
-    scheduleAutoReorderCheck(movement.itemId);
+    scheduleAutoReorderCheck(movement?.itemId || itemIdNum);
     res.status(201).json(movement);
   } catch (err) {
     if (tryHandleSkuItemFrozenError(res, err)) return;
+    if (err?.code === "INSUFFICIENT_QTY") {
+      return res.status(400).json({ message: "Недостаточно остатка по товару" });
+    }
+    if (err?.code === "BAD_QTY") {
+      return res.status(400).json({ message: "Количество указано некорректно" });
+    }
+    if (err?.code === "BAD_REQUEST") {
+      return res.status(400).json({ message: "Некорректные данные движения" });
+    }
     console.error("create movement error:", err);
     res.status(500).json({
       message: "Ошибка сервера при создании движения по складу",
@@ -22261,6 +22248,12 @@ app.put("/api/purchase-orders/:id/status", auth, async (req, res) => {
       });
     }
 
+    assertStatusTransition(PURCHASE_ORDER_STATUS_TRANSITIONS, {
+      fromStatus: String(order.status || ""),
+      toStatus: String(status || ""),
+      errorCode: "PO_BAD_STATUS_TRANSITION",
+    });
+
     let emailResult = null;
     if (status === "SENT") {
       const orgProfile = await prisma.orgProfile.findFirst({
@@ -22380,6 +22373,13 @@ app.put("/api/purchase-orders/:id/status", auth, async (req, res) => {
 
     res.json(updated);
   } catch (err) {
+    if (err?.code === "PO_BAD_STATUS_TRANSITION") {
+      return res.status(409).json({
+        message: "\u041d\u0435\u043a\u043e\u0440\u0440\u0435\u043a\u0442\u043d\u044b\u0439 \u043f\u0435\u0440\u0435\u0445\u043e\u0434 \u0441\u0442\u0430\u0442\u0443\u0441\u0430 \u0437\u0430\u043a\u0430\u0437\u0430",
+        fromStatus: err.fromStatus || null,
+        toStatus: err.toStatus || null,
+      });
+    }
     if (tryHandleSkuItemFrozenError(res, err)) return;
     console.error("update purchase order status error:", err);
     res
@@ -22425,6 +22425,12 @@ app.post("/api/purchase-orders/:id/receive", auth, async (req, res) => {
       return res
         .status(400)
         .json({ message: "Этот заказ уже был проведён по складу" });
+    }
+    if (!["SENT", "PARTIAL"].includes(String(order.status || ""))) {
+      return res.status(409).json({
+        message: "Заказ нельзя принимать в текущем статусе",
+        status: order.status || null,
+      });
     }
 
     // Проверка на уже созданные движения по этому заказу
@@ -22548,6 +22554,12 @@ app.post("/api/purchase-orders/:id/receive", auth, async (req, res) => {
         ? "PARTIAL"
         : order.status;
 
+    assertStatusTransition(PURCHASE_ORDER_STATUS_TRANSITIONS, {
+      fromStatus: String(order.status || ""),
+      toStatus: String(nextStatus || ""),
+      errorCode: "PO_BAD_STATUS_TRANSITION",
+    });
+
     await prisma.purchaseOrder.update({
       where: { id: order.id },
       data: {
@@ -22567,6 +22579,13 @@ app.post("/api/purchase-orders/:id/receive", auth, async (req, res) => {
       discrepancies,
     });
   } catch (err) {
+    if (err?.code === "PO_BAD_STATUS_TRANSITION") {
+      return res.status(409).json({
+        message: "Некорректный переход статуса заказа при приёмке",
+        fromStatus: err.fromStatus || null,
+        toStatus: err.toStatus || null,
+      });
+    }
     if (tryHandleSkuItemFrozenError(res, err)) return;
     console.error("purchase-order receive error:", err);
     res
@@ -22607,7 +22626,9 @@ app.post("/api/warehouse/receiving/:poId/confirm", auth, async (req, res) => {
     if (!order) {
       return res.status(404).json({ message: "PO_NOT_FOUND" });
     }
-
+    if (order.status === "DRAFT") {
+      return res.status(409).json({ message: "PO_NOT_SENT" });
+    }
     if (order.status === "RECEIVED" || order.status === "CLOSED") {
       return res.status(400).json({ message: "PO_ALREADY_RECEIVED" });
     }
@@ -22876,6 +22897,9 @@ app.post("/api/warehouse/receiving/:poId/finalize", auth, async (req, res) => {
     if (!order) {
       return res.status(404).json({ message: "PO_NOT_FOUND" });
     }
+    if (order.status === "DRAFT") {
+      return res.status(409).json({ message: "PO_NOT_SENT" });
+    }
 
     const effectiveOrgId = order.orgId || req.user?.orgId || null;
     const linkedTruck = await findActiveTruckForOrder(order.number, [
@@ -22954,6 +22978,12 @@ app.post("/api/warehouse/receiving/:poId/finalize", auth, async (req, res) => {
           ? "PARTIAL"
           : refreshed.status;
 
+      assertStatusTransition(PURCHASE_ORDER_STATUS_TRANSITIONS, {
+        fromStatus: String(refreshed.status || ""),
+        toStatus: String(nextStatus || ""),
+        errorCode: "PO_BAD_STATUS_TRANSITION",
+      });
+
       if (
         nextStatus !== refreshed.status ||
         !refreshed.orgId ||
@@ -23000,6 +23030,13 @@ app.post("/api/warehouse/receiving/:poId/finalize", auth, async (req, res) => {
 
     res.json({ ok: true, order: updatedOrder || { id: poId } });
   } catch (err) {
+    if (err?.code === "PO_BAD_STATUS_TRANSITION") {
+      return res.status(409).json({
+        message: "PO_BAD_STATUS_TRANSITION",
+        fromStatus: err.fromStatus || null,
+        toStatus: err.toStatus || null,
+      });
+    }
     console.error("po receiving finalize error:", err);
     if (err.code === "TENANT_NOT_FOUND") {
       return res.status(409).json({ message: "TENANT_NOT_FOUND" });
@@ -23856,6 +23893,41 @@ function parseSalesOrderStatusesCsv(value) {
   return Array.from(new Set(statuses));
 }
 
+const SALES_ORDER_STATUS_TRANSITIONS = {
+  NEW: ["IN_PICKING", "CANCELLED"],
+  IN_PICKING: ["NEW", "PICKED", "PACKED", "CANCELLED"],
+  PICKED: ["IN_PICKING", "PACKED", "READY_TO_SHIP", "CANCELLED"],
+  PACKED: ["IN_PICKING", "READY_TO_SHIP", "CANCELLED"],
+  READY_TO_SHIP: ["SHIPPED", "CANCELLED"],
+  SHIPPED: [],
+  CANCELLED: [],
+};
+
+const PURCHASE_ORDER_STATUS_TRANSITIONS = {
+  DRAFT: ["SENT", "CLOSED"],
+  SENT: ["PARTIAL", "RECEIVED", "CLOSED"],
+  PARTIAL: ["RECEIVED", "CLOSED"],
+  RECEIVED: ["CLOSED"],
+  CLOSED: [],
+};
+
+function isAllowedStatusTransition(transitionMap, fromStatus, toStatus) {
+  if (!fromStatus || !toStatus) return false;
+  if (fromStatus === toStatus) return true;
+  const nextStatuses = transitionMap[fromStatus];
+  if (!Array.isArray(nextStatuses)) return false;
+  return nextStatuses.includes(toStatus);
+}
+
+function assertStatusTransition(transitionMap, { fromStatus, toStatus, errorCode }) {
+  if (isAllowedStatusTransition(transitionMap, fromStatus, toStatus)) return;
+  const err = new Error(errorCode || "BAD_STATUS_TRANSITION");
+  err.code = errorCode || "BAD_STATUS_TRANSITION";
+  err.fromStatus = fromStatus;
+  err.toStatus = toStatus;
+  throw err;
+}
+
 function sanitizeOptionalText(value, maxLength = 255) {
   if (value == null) return null;
   const textValue = String(value).trim();
@@ -24167,11 +24239,17 @@ app.post("/api/orders/:id/admin-close-shortage", auth, async (req, res) => {
         .filter(Boolean)
         .join("\n")
         .trim();
+      const nextStatus = "CANCELLED";
+      assertStatusTransition(SALES_ORDER_STATUS_TRANSITIONS, {
+        fromStatus: String(order.status || ""),
+        toStatus: nextStatus,
+        errorCode: "ORDER_BAD_STATUS_TRANSITION",
+      });
 
       const updated = await tx.salesOrder.update({
         where: { id },
         data: {
-          status: "CANCELLED",
+          status: nextStatus,
           completedAt: new Date(),
           deliveryComment: nextComment,
         },
@@ -24180,6 +24258,21 @@ app.post("/api/orders/:id/admin-close-shortage", auth, async (req, res) => {
           lines: { include: { item: true }, orderBy: { id: "asc" } },
         },
       });
+
+      if (order.status !== nextStatus) {
+        await writeOrderStatusHistory(tx, {
+          orderId: id,
+          orgId: updated.orgId || req.user?.orgId || null,
+          fromStatus: order.status,
+          toStatus: nextStatus,
+          eventType: "CANCEL",
+          actorUserId: req.user?.id || null,
+          metaJson: buildOrderStatusHistoryMeta({
+            reason,
+            source: "ADMIN_SHORTAGE_CLOSE",
+          }),
+        });
+      }
 
       return {
         order: updated,
@@ -24198,6 +24291,9 @@ app.post("/api/orders/:id/admin-close-shortage", auth, async (req, res) => {
     }
     if (err.code === "ORDER_NO_ACTIVE_SKIPS") {
       return res.status(409).json({ message: "ORDER_NO_ACTIVE_SKIPS" });
+    }
+    if (err.code === "ORDER_BAD_STATUS_TRANSITION") {
+      return res.status(409).json({ message: "ORDER_BAD_STATUS_TRANSITION" });
     }
 
     console.error("orders admin close shortage error:", err);
@@ -24732,14 +24828,21 @@ app.post("/api/orders/:id/take", auth, async (req, res) => {
         throw err;
       }
 
-      return tx.salesOrder.update({
+      const nextStatus =
+        order.status === "NEW" || order.status === "IN_PICKING"
+          ? "IN_PICKING"
+          : order.status;
+      assertStatusTransition(SALES_ORDER_STATUS_TRANSITIONS, {
+        fromStatus: String(order.status || ""),
+        toStatus: String(nextStatus || ""),
+        errorCode: "ORDER_BAD_STATUS_TRANSITION",
+      });
+
+      const savedOrder = await tx.salesOrder.update({
         where: { id },
         data: {
           assignedToUserId: req.user.id,
-          status:
-            order.status === "NEW" || order.status === "IN_PICKING"
-              ? "IN_PICKING"
-              : order.status,
+          status: nextStatus,
           takenAt: order.takenAt || new Date(),
         },
         include: {
@@ -24747,6 +24850,18 @@ app.post("/api/orders/:id/take", auth, async (req, res) => {
           lines: { include: { item: true }, orderBy: { id: "asc" } },
         },
       });
+
+      if (order.status !== nextStatus) {
+        await writeOrderStatusHistory(tx, {
+          orderId: id,
+          orgId: savedOrder.orgId || req.user?.orgId || null,
+          fromStatus: order.status,
+          toStatus: nextStatus,
+          eventType: "TAKE",
+          actorUserId: req.user?.id || null,
+        });
+      }
+      return savedOrder;
     });
 
     res.json({ ok: true, order: updated });
@@ -24761,6 +24876,9 @@ app.post("/api/orders/:id/take", auth, async (req, res) => {
       return res.status(409).json({
         message: `\u0417\u0430\u043a\u0430\u0437 \u0443\u0436\u0435 \u0432 \u0440\u0430\u0431\u043e\u0442\u0435 \u0443 \u0441\u043e\u0442\u0440\u0443\u0434\u043d\u0438\u043a\u0430: ${err.assigneeName}.`,
       });
+    }
+    if (err.code === "ORDER_BAD_STATUS_TRANSITION") {
+      return res.status(409).json({ message: "ORDER_BAD_STATUS_TRANSITION" });
     }
     console.error("orders take error:", err);
     res.status(500).json({ message: "\u041e\u0448\u0438\u0431\u043a\u0430 \u043f\u0440\u0438 \u0432\u0437\u044f\u0442\u0438\u0438 \u0437\u0430\u043a\u0430\u0437\u0430." });
@@ -24813,8 +24931,13 @@ app.post("/api/orders/:id/release", auth, async (req, res) => {
       const pickedStarted = (order.lines || []).some((line) => Number(line.pickedQty) > 0);
       const nextStatus =
         order.status === "IN_PICKING" && !pickedStarted ? "NEW" : order.status;
+      assertStatusTransition(SALES_ORDER_STATUS_TRANSITIONS, {
+        fromStatus: String(order.status || ""),
+        toStatus: String(nextStatus || ""),
+        errorCode: "ORDER_BAD_STATUS_TRANSITION",
+      });
 
-      return tx.salesOrder.update({
+      const savedOrder = await tx.salesOrder.update({
         where: { id },
         data: {
           assignedToUserId: null,
@@ -24825,6 +24948,18 @@ app.post("/api/orders/:id/release", auth, async (req, res) => {
           lines: { include: { item: true }, orderBy: { id: "asc" } },
         },
       });
+
+      if (order.status !== nextStatus) {
+        await writeOrderStatusHistory(tx, {
+          orderId: id,
+          orgId: savedOrder.orgId || req.user?.orgId || null,
+          fromStatus: order.status,
+          toStatus: nextStatus,
+          eventType: "RELEASE",
+          actorUserId: req.user?.id || null,
+        });
+      }
+      return savedOrder;
     });
 
     res.json({ ok: true, order: updated });
@@ -24837,6 +24972,9 @@ app.post("/api/orders/:id/release", auth, async (req, res) => {
     }
     if (err.code === "NOT_ALLOWED") {
       return res.status(403).json({ message: "\u042d\u0442\u043e\u0442 \u0437\u0430\u043a\u0430\u0437 \u0437\u0430\u043a\u0440\u0435\u043f\u043b\u0435\u043d \u0437\u0430 \u0434\u0440\u0443\u0433\u0438\u043c \u0441\u043e\u0442\u0440\u0443\u0434\u043d\u0438\u043a\u043e\u043c." });
+    }
+    if (err.code === "ORDER_BAD_STATUS_TRANSITION") {
+      return res.status(409).json({ message: "ORDER_BAD_STATUS_TRANSITION" });
     }
     console.error("orders release error:", err);
     res.status(500).json({ message: "\u041e\u0448\u0438\u0431\u043a\u0430 \u043f\u0440\u0438 \u0432\u043e\u0437\u0432\u0440\u0430\u0442\u0435 \u0437\u0430\u043a\u0430\u0437\u0430 \u0432 \u043e\u0447\u0435\u0440\u0435\u0434\u044c." });
@@ -24904,10 +25042,16 @@ app.get("/api/orders/:id/current", auth, async (req, res) => {
         );
 
       if (current.status === "IN_PICKING" && fullyPicked) {
-        return tx.salesOrder.update({
+        const nextStatus = "PICKED";
+        assertStatusTransition(SALES_ORDER_STATUS_TRANSITIONS, {
+          fromStatus: String(current.status || ""),
+          toStatus: nextStatus,
+          errorCode: "ORDER_BAD_STATUS_TRANSITION",
+        });
+        const savedOrder = await tx.salesOrder.update({
           where: { id },
           data: {
-            status: "PICKED",
+            status: nextStatus,
             pickedAt: current.pickedAt || new Date(),
           },
           include: {
@@ -24915,6 +25059,15 @@ app.get("/api/orders/:id/current", auth, async (req, res) => {
             lines: { include: { item: true }, orderBy: { id: "asc" } },
           },
         });
+        await writeOrderStatusHistory(tx, {
+          orderId: id,
+          orgId: savedOrder.orgId || req.user?.orgId || null,
+          fromStatus: current.status,
+          toStatus: nextStatus,
+          eventType: "AUTO_PICK_COMPLETE",
+          actorUserId: req.user?.id || null,
+        });
+        return savedOrder;
       }
 
       return current;
@@ -24929,6 +25082,9 @@ app.get("/api/orders/:id/current", auth, async (req, res) => {
       return res
         .status(403)
         .json({ message: "Заказ закреплен за другим сотрудником." });
+    }
+    if (err.code === "ORDER_BAD_STATUS_TRANSITION") {
+      return res.status(409).json({ message: "ORDER_BAD_STATUS_TRANSITION" });
     }
     console.error("orders current error:", err);
     return res.status(500).json({ message: "ORDER_CURRENT_ERROR" });
@@ -25108,10 +25264,31 @@ app.post("/api/orders/:id/pick-confirm", auth, async (req, res) => {
       });
       const fullyPicked = freshLines.every((row) => Number(row.pickedQty) >= Number(row.qty));
       if (fullyPicked) {
+        const currentOrderState = await tx.salesOrder.findUnique({
+          where: { id: orderId },
+          select: { status: true, orgId: true },
+        });
+        const fromStatus = String(currentOrderState?.status || order.status || "");
+        const nextStatus = "PICKED";
+        assertStatusTransition(SALES_ORDER_STATUS_TRANSITIONS, {
+          fromStatus,
+          toStatus: nextStatus,
+          errorCode: "ORDER_BAD_STATUS_TRANSITION",
+        });
         await tx.salesOrder.update({
           where: { id: orderId },
           data: { status: "PICKED", pickedAt: new Date() },
         });
+        if (fromStatus !== nextStatus) {
+          await writeOrderStatusHistory(tx, {
+            orderId,
+            orgId: currentOrderState?.orgId || req.user?.orgId || null,
+            fromStatus,
+            toStatus: nextStatus,
+            eventType: "PICK_COMPLETE",
+            actorUserId: req.user?.id || null,
+          });
+        }
       }
 
       return tx.salesOrder.findUnique({
@@ -25136,6 +25313,9 @@ app.post("/api/orders/:id/pick-confirm", auth, async (req, res) => {
       return res
         .status(409)
         .json({ message: "Количество в ячейке заблокировано (Hold).", detail: err.detail || null });
+    }
+    if (err.code === "ORDER_BAD_STATUS_TRANSITION") {
+      return res.status(409).json({ message: "ORDER_BAD_STATUS_TRANSITION" });
     }
     if (err.code === "INSUFFICIENT_QTY") return res.status(400).json({ message: "Недостаточно товара в ячейке." });
     if (err?.code === "P2003") {
@@ -25188,36 +25368,81 @@ app.post("/api/orders/:id/pack", auth, async (req, res) => {
       return res.status(400).json({ message: "BOX_CODE_REQUIRED" });
     }
 
-    const order = await prisma.salesOrder.findUnique({
-      where: { id },
-      include: { lines: true },
-    });
-    if (!order) return res.status(404).json({ message: "ORDER_NOT_FOUND" });
-    if (order.assignedToUserId && order.assignedToUserId !== req.user.id) {
-      return res.status(403).json({ message: "NOT_ASSIGNED_TO_YOU" });
-    }
+    const updated = await prisma.$transaction(async (tx) => {
+      const order = await tx.salesOrder.findUnique({
+        where: { id },
+        include: { lines: true },
+      });
+      if (!order) {
+        const err = new Error("ORDER_NOT_FOUND");
+        err.code = "ORDER_NOT_FOUND";
+        throw err;
+      }
+      if (order.assignedToUserId && order.assignedToUserId !== req.user.id) {
+        const err = new Error("NOT_ASSIGNED_TO_YOU");
+        err.code = "NOT_ASSIGNED_TO_YOU";
+        throw err;
+      }
 
-    const allPicked = order.lines.every((row) => Number(row.pickedQty) >= Number(row.qty));
-    if (!allPicked) {
-      return res.status(400).json({ message: "ORDER_NOT_FULLY_PICKED" });
-    }
+      const allPicked = order.lines.every((row) => Number(row.pickedQty) >= Number(row.qty));
+      if (!allPicked) {
+        const err = new Error("ORDER_NOT_FULLY_PICKED");
+        err.code = "ORDER_NOT_FULLY_PICKED";
+        throw err;
+      }
 
-    const updated = await prisma.salesOrder.update({
-      where: { id },
-      data: {
-        status: "PACKED",
-        boxCode: String(boxCode),
-        boxType: boxType ? String(boxType) : null,
-        packedAt: new Date(),
-      },
-      include: {
-        assignedToUser: { select: { id: true, name: true, email: true } },
-        lines: { include: { item: true }, orderBy: { id: "asc" } },
-      },
+      const nextStatus = "PACKED";
+      assertStatusTransition(SALES_ORDER_STATUS_TRANSITIONS, {
+        fromStatus: String(order.status || ""),
+        toStatus: nextStatus,
+        errorCode: "ORDER_BAD_STATUS_TRANSITION",
+      });
+
+      const savedOrder = await tx.salesOrder.update({
+        where: { id },
+        data: {
+          status: nextStatus,
+          boxCode: String(boxCode),
+          boxType: boxType ? String(boxType) : null,
+          packedAt: new Date(),
+        },
+        include: {
+          assignedToUser: { select: { id: true, name: true, email: true } },
+          lines: { include: { item: true }, orderBy: { id: "asc" } },
+        },
+      });
+
+      if (order.status !== nextStatus) {
+        await writeOrderStatusHistory(tx, {
+          orderId: id,
+          orgId: savedOrder.orgId || req.user?.orgId || null,
+          fromStatus: order.status,
+          toStatus: nextStatus,
+          eventType: "PACK",
+          actorUserId: req.user?.id || null,
+          metaJson: buildOrderStatusHistoryMeta({
+            boxCode: String(boxCode),
+            boxType: boxType ? String(boxType) : null,
+          }),
+        });
+      }
+      return savedOrder;
     });
 
     res.json({ ok: true, order: updated });
   } catch (err) {
+    if (err.code === "ORDER_NOT_FOUND") {
+      return res.status(404).json({ message: "ORDER_NOT_FOUND" });
+    }
+    if (err.code === "NOT_ASSIGNED_TO_YOU") {
+      return res.status(403).json({ message: "NOT_ASSIGNED_TO_YOU" });
+    }
+    if (err.code === "ORDER_NOT_FULLY_PICKED") {
+      return res.status(400).json({ message: "ORDER_NOT_FULLY_PICKED" });
+    }
+    if (err.code === "ORDER_BAD_STATUS_TRANSITION") {
+      return res.status(409).json({ message: "ORDER_BAD_STATUS_TRANSITION" });
+    }
     console.error("orders pack error:", err);
     res.status(500).json({ message: "ORDER_PACK_ERROR" });
   }
@@ -25283,6 +25508,11 @@ app.post("/api/orders/:id/complete", auth, async (req, res) => {
 
       const nextStatus = "READY_TO_SHIP";
       const fromStatus = current.status;
+      assertStatusTransition(SALES_ORDER_STATUS_TRANSITIONS, {
+        fromStatus: String(fromStatus || ""),
+        toStatus: nextStatus,
+        errorCode: "ORDER_BAD_STATUS_TRANSITION",
+      });
 
       const savedOrder = await tx.salesOrder.update({
         where: { id },
@@ -25327,6 +25557,9 @@ app.post("/api/orders/:id/complete", auth, async (req, res) => {
     if (err.code === "ORDER_NOT_FOUND") {
       return res.status(404).json({ message: "ORDER_NOT_FOUND" });
     }
+    if (err.code === "ORDER_BAD_STATUS_TRANSITION") {
+      return res.status(409).json({ message: "ORDER_BAD_STATUS_TRANSITION" });
+    }
     console.error("orders complete error:", err);
     res.status(500).json({ message: "ORDER_COMPLETE_ERROR" });
   }
@@ -25369,6 +25602,11 @@ app.post("/api/orders/:id/ship", auth, async (req, res) => {
 
       const now = new Date();
       const nextStatus = "SHIPPED";
+      assertStatusTransition(SALES_ORDER_STATUS_TRANSITIONS, {
+        fromStatus: String(order.status || ""),
+        toStatus: nextStatus,
+        errorCode: "ORDER_BAD_STATUS_TRANSITION",
+      });
 
       const savedOrder = await tx.salesOrder.update({
         where: { id },
@@ -25415,6 +25653,9 @@ app.post("/api/orders/:id/ship", auth, async (req, res) => {
     }
     if (err.code === "ORDER_BAD_STATUS") {
       return res.status(409).json({ message: "ORDER_BAD_STATUS" });
+    }
+    if (err.code === "ORDER_BAD_STATUS_TRANSITION") {
+      return res.status(409).json({ message: "ORDER_BAD_STATUS_TRANSITION" });
     }
 
     console.error("orders ship error:", err);

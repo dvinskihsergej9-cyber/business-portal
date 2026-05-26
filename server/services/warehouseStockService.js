@@ -37,6 +37,13 @@ export function createWarehouseStockService(prisma, options = {}) {
     return sumMovements(movements);
   };
 
+  const getItemTotalQty = async (tx, itemId) => {
+    const movements = await tx.stockMovement.findMany({
+      where: { itemId },
+    });
+    return sumMovements(movements);
+  };
+
   const createMovementInTx = async (tx, data) => {
     const {
       opId,
@@ -82,6 +89,15 @@ export function createWarehouseStockService(prisma, options = {}) {
     if (type === "ISSUE" && locationId) {
       const current = await getItemLocationQty(tx, itemId, locationId);
       if (current < amount) {
+        const err = new Error("INSUFFICIENT_QTY");
+        err.code = "INSUFFICIENT_QTY";
+        throw err;
+      }
+    }
+
+    if (type === "ISSUE" && !locationId) {
+      const currentTotal = await getItemTotalQty(tx, itemId);
+      if (currentTotal < amount) {
         const err = new Error("INSUFFICIENT_QTY");
         err.code = "INSUFFICIENT_QTY";
         throw err;
