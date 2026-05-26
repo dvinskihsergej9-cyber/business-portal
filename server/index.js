@@ -4823,7 +4823,7 @@ function buildPurchaseOrderEmailText(order, templateText = null, orgProfile = nu
   if (senderLegalAddress) {
     senderDetailsLines.push(`Юридический адрес: ${senderLegalAddress}`);
   }
-  if (senderActualAddress && senderActualAddress !== senderLegalAddress) {
+  if (senderActualAddress) {
     senderDetailsLines.push(`Фактический адрес: ${senderActualAddress}`);
   }
   const senderDetailsText = senderDetailsLines.join("\n");

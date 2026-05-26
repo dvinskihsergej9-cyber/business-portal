@@ -1098,22 +1098,6 @@ export default function AdminWarehousePanel() {
                   />
                 </div>
               </div>
-              <div>
-                <label className="admin-label">
-                  {"Текст сообщения поставщику"}
-                </label>
-                <textarea
-                  className="admin-input"
-                  rows={3}
-                  value={itemForm.autoReorderMessage}
-                  onChange={(event) =>
-                    setItemForm((prev) => ({
-                      ...prev,
-                      autoReorderMessage: event.target.value,
-                    }))
-                  }
-                />
-              </div>
               {editItem.autoReorderActive && (
                 <label className="admin-checkbox" style={{ marginTop: 6 }}>
                   <input
