@@ -4772,12 +4772,18 @@ async function sendAutoReorderEmail({ to, subject, text }) {
   }
 }
 
-function buildPurchaseOrderEmailText(order, templateText = null) {
+function buildPurchaseOrderEmailText(order, templateText = null, orgProfile = null) {
   const number = order?.number || `PO-${order?.id || "?"}`;
   const date = order?.date
     ? new Date(order.date).toLocaleDateString("ru-RU")
     : new Date().toLocaleDateString("ru-RU");
   const supplierName = order?.supplier?.name || "поставщик";
+  const senderOrgName = sanitizeOptionalText(orgProfile?.orgName, 255);
+  const senderPhone = sanitizeOptionalText(orgProfile?.phone, 120);
+  const senderInn = sanitizeOptionalText(orgProfile?.inn, 64);
+  const senderKpp = sanitizeOptionalText(orgProfile?.kpp, 64);
+  const senderLegalAddress = sanitizeOptionalText(orgProfile?.legalAddress, 255);
+  const senderActualAddress = sanitizeOptionalText(orgProfile?.actualAddress, 255);
 
   const lines = Array.isArray(order?.items) ? order.items : [];
   const linesText = lines
@@ -4796,27 +4802,84 @@ function buildPurchaseOrderEmailText(order, templateText = null) {
     const price = Number(row?.price) || 0;
     return sum + qty * price;
   }, 0);
+  const totalAmountFormatted = totalAmount.toLocaleString("ru-RU");
+
+  const senderDetailsLines = [];
+  if (senderOrgName) {
+    senderDetailsLines.push(`Организация: ${senderOrgName}`);
+  }
+  if (senderPhone) {
+    senderDetailsLines.push(`Телефон: ${senderPhone}`);
+  }
+  if (senderInn || senderKpp) {
+    if (senderInn && senderKpp) {
+      senderDetailsLines.push(`ИНН/КПП: ${senderInn} / ${senderKpp}`);
+    } else if (senderInn) {
+      senderDetailsLines.push(`ИНН: ${senderInn}`);
+    } else {
+      senderDetailsLines.push(`КПП: ${senderKpp}`);
+    }
+  }
+  if (senderLegalAddress) {
+    senderDetailsLines.push(`Юридический адрес: ${senderLegalAddress}`);
+  }
+  if (senderActualAddress && senderActualAddress !== senderLegalAddress) {
+    senderDetailsLines.push(`Фактический адрес: ${senderActualAddress}`);
+  }
+  const senderDetailsText = senderDetailsLines.join("\n");
 
   const cleanTemplate = String(templateText || "").trim();
   if (cleanTemplate) {
     const hasLinesToken =
       /\{\{\s*lines\s*\}\}/i.test(cleanTemplate) ||
       /\{\{\s*позиции\s*\}\}/i.test(cleanTemplate);
+    const hasSenderDetailsToken =
+      /\{\{\s*senderDetails\s*\}\}/i.test(cleanTemplate) ||
+      /\{\{\s*реквизиты\s*\}\}/i.test(cleanTemplate);
     const placeholders = {
       supplierName,
       orderNumber: number,
       orderDate: date,
       lines: linesText || "-",
-      totalAmount: totalAmount.toLocaleString("ru-RU"),
+      totalAmount: totalAmountFormatted,
+      organizationName: senderOrgName || "",
+      orgName: senderOrgName || "",
+      phone: senderPhone || "",
+      inn: senderInn || "",
+      kpp: senderKpp || "",
+      legalAddress: senderLegalAddress || "",
+      actualAddress: senderActualAddress || "",
+      senderDetails: senderDetailsText || "",
       поставщик: supplierName,
       номерЗаказа: number,
       датаЗаказа: date,
       позиции: linesText || "-",
-      итого: totalAmount.toLocaleString("ru-RU"),
+      итого: totalAmountFormatted,
+      организация: senderOrgName || "",
+      телефон: senderPhone || "",
+      инн: senderInn || "",
+      кпп: senderKpp || "",
+      юрАдрес: senderLegalAddress || "",
+      фактАдрес: senderActualAddress || "",
+      реквизиты: senderDetailsText || "",
     };
+    const placeholdersLower = Object.fromEntries(
+      Object.entries(placeholders).map(([key, value]) => [
+        String(key).toLowerCase(),
+        value ?? "",
+      ])
+    );
 
     let rendered = cleanTemplate.replace(/\{\{\s*([^{}\s]+)\s*\}\}/g, (_, key) => {
-      return placeholders[key] ?? "";
+      const normalizedKey = String(key || "");
+      if (Object.prototype.hasOwnProperty.call(placeholders, normalizedKey)) {
+        return placeholders[normalizedKey] ?? "";
+      }
+      const fallbackKey = normalizedKey.toLowerCase();
+      if (Object.prototype.hasOwnProperty.call(placeholdersLower, fallbackKey)) {
+        return placeholdersLower[fallbackKey] ?? "";
+      }
+      return "";
     });
 
     if (!hasLinesToken) {
@@ -4825,6 +4888,17 @@ function buildPurchaseOrderEmailText(order, templateText = null) {
         "",
         "Позиции заказа:",
         linesText || "-",
+      ]
+        .filter(Boolean)
+        .join("\n");
+    }
+
+    if (!hasSenderDetailsToken && senderDetailsText) {
+      rendered = [
+        rendered.trim(),
+        "",
+        "Реквизиты заказчика:",
+        senderDetailsText,
       ]
         .filter(Boolean)
         .join("\n");
@@ -4843,8 +4917,15 @@ function buildPurchaseOrderEmailText(order, templateText = null) {
     "",
     "Просим подтвердить получение заказа и плановую дату поставки.",
     "",
+    ...(senderDetailsText
+      ? [
+          "Реквизиты заказчика:",
+          senderDetailsText,
+          "",
+        ]
+      : []),
     "С уважением,",
-    "СкладОнлайн",
+    senderOrgName || "СкладОнлайн",
   ].join("\n");
 }
 
@@ -22258,7 +22339,15 @@ app.put("/api/purchase-orders/:id/status", auth, async (req, res) => {
     if (status === "SENT") {
       const orgProfile = await prisma.orgProfile.findFirst({
         where: { orgId: order.orgId || req.user.orgId || null },
-        select: { purchaseOrderEmailTemplate: true },
+        select: {
+          purchaseOrderEmailTemplate: true,
+          orgName: true,
+          legalAddress: true,
+          actualAddress: true,
+          inn: true,
+          kpp: true,
+          phone: true,
+        },
       });
       const shouldSendEmail = sendEmail !== false;
       const preferredItem = (order.items || []).find(
@@ -22270,13 +22359,17 @@ app.put("/api/purchase-orders/:id/status", auth, async (req, res) => {
         String(order.supplier?.email || "").trim() ||
         null;
 
-      const subject = `\u0417\u0430\u043a\u0430\u0437 \u043f\u043e\u0441\u0442\u0430\u0432\u0449\u0438\u043a\u0443 ${order.number || `#${order.id}`}`;
+      const senderOrgName = sanitizeOptionalText(orgProfile?.orgName, 255);
+      const subject = senderOrgName
+        ? `\u0417\u0430\u043a\u0430\u0437 \u043f\u043e\u0441\u0442\u0430\u0432\u0449\u0438\u043a\u0443 ${order.number || `#${order.id}`} (${senderOrgName})`
+        : `\u0417\u0430\u043a\u0430\u0437 \u043f\u043e\u0441\u0442\u0430\u0432\u0449\u0438\u043a\u0443 ${order.number || `#${order.id}`}`;
       const text =
         String(emailMessage || "").trim() ||
         String(preferredItem?.item?.autoReorderMessage || "").trim() ||
         buildPurchaseOrderEmailText(
           order,
-          orgProfile?.purchaseOrderEmailTemplate || null
+          orgProfile?.purchaseOrderEmailTemplate || null,
+          orgProfile || null
         );
 
       if (!shouldSendEmail) {
