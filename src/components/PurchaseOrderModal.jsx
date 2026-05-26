@@ -1,7 +1,15 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { API_BASE, normalizeErrorMessage } from "../apiConfig";
 
 const API = API_BASE;
+
+function filterItemsBySupplier(items, supplierIdRaw) {
+  const supplierId = Number(supplierIdRaw);
+  if (!supplierId || Number.isNaN(supplierId)) return [];
+  return items.filter(
+    (it) => Number(it?.autoReorderSupplierId || 0) === supplierId
+  );
+}
 
 export default function PurchaseOrderModal({
   items = [], // [{ id, name, unit, orderQty, price }]
@@ -36,10 +44,52 @@ export default function PurchaseOrderModal({
 
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
+  const supplierItems = useMemo(
+    () => filterItemsBySupplier(items, form.supplierId),
+    [items, form.supplierId]
+  );
+  const supplierItemIds = useMemo(
+    () => new Set(supplierItems.map((it) => Number(it.id)).filter(Boolean)),
+    [supplierItems]
+  );
 
   const handleFormChange = (field, value) => {
     setForm((prev) => ({ ...prev, [field]: value }));
   };
+
+  const handleSupplierChange = (supplierIdValue) => {
+    handleFormChange("supplierId", supplierIdValue);
+    const scopedItemIds = new Set(
+      filterItemsBySupplier(items, supplierIdValue)
+        .map((it) => Number(it.id))
+        .filter(Boolean)
+    );
+
+    setRows((prev) => {
+      const kept = prev.filter((row) => {
+        const itemId = Number(row?.itemId || 0);
+        return !itemId || scopedItemIds.has(itemId);
+      });
+      if (kept.length > 0) return kept;
+
+      const fallback = prev[0] || {};
+      return [
+        {
+          ...fallback,
+          itemId: "",
+          name: "",
+          quantity: "",
+          price: "",
+        },
+      ];
+    });
+  };
+
+  useEffect(() => {
+    if (!form.supplierId) return;
+    handleSupplierChange(form.supplierId);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   const handleRowChange = (index, field, value) => {
     setRows((prev) =>
@@ -56,7 +106,7 @@ export default function PurchaseOrderModal({
 
   const handleSelectItem = (index, itemIdStr) => {
     const itemId = Number(itemIdStr) || null;
-    const src = items.find((it) => it.id === itemId);
+    const src = supplierItems.find((it) => it.id === itemId);
 
     setRows((prev) =>
       prev.map((row, i) =>
@@ -174,6 +224,14 @@ export default function PurchaseOrderModal({
         return { itemId, quantity, price };
       })
       .filter(Boolean);
+
+    const hasForeignItems = dbItems.some(
+      (row) => !supplierItemIds.has(Number(row.itemId))
+    );
+    if (hasForeignItems) {
+      setError("В заказ можно добавить только товар выбранного поставщика.");
+      return;
+    }
 
     if (dbItems.length === 0) {
       setError(
@@ -327,9 +385,7 @@ export default function PurchaseOrderModal({
                     <select
                       className="form__select"
                       value={form.supplierId}
-                      onChange={(e) =>
-                        handleFormChange("supplierId", e.target.value)
-                      }
+                      onChange={(e) => handleSupplierChange(e.target.value)}
                     >
                       <option value="">-- Выберите поставщика --</option>
                       {suppliers.map((s) => (
@@ -338,6 +394,11 @@ export default function PurchaseOrderModal({
                         </option>
                       ))}
                     </select>
+                    {form.supplierId && supplierItems.length === 0 && (
+                      <div className="text-muted" style={{ marginTop: 6 }}>
+                        У выбранного поставщика нет привязанных товаров.
+                      </div>
+                    )}
                   </div>
                 </div>
 
@@ -428,7 +489,7 @@ export default function PurchaseOrderModal({
                             }
                           >
                             <option value="">-- выберите товар --</option>
-                            {items.map((it) => (
+                            {supplierItems.map((it) => (
                               <option key={it.id} value={it.id}>
                                 {it.name}
                               </option>

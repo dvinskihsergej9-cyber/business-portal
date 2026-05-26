@@ -21712,6 +21712,41 @@ app.post("/api/purchase-orders", auth, async (req, res) => {
       });
     }
 
+    const uniqueItemIds = Array.from(
+      new Set(preparedItems.map((entry) => Number(entry.itemId)).filter(Boolean))
+    );
+    const sourceItems = await prisma.item.findMany({
+      where: {
+        id: { in: uniqueItemIds },
+      },
+      select: {
+        id: true,
+        name: true,
+        autoReorderSupplierId: true,
+      },
+    });
+    const sourceItemById = new Map(sourceItems.map((item) => [Number(item.id), item]));
+
+    for (const itemId of uniqueItemIds) {
+      if (!sourceItemById.has(Number(itemId))) {
+        return res.status(400).json({
+          message: "Некорректный товар в списке позиций",
+        });
+      }
+    }
+
+    for (const sourceItem of sourceItems) {
+      const linkedSupplierId = Number(sourceItem?.autoReorderSupplierId || 0);
+      if (linkedSupplierId !== supplierIdNum) {
+        return res.status(409).json({
+          message: `Товар \"${sourceItem?.name || `#${sourceItem?.id}`}\" не привязан к выбранному поставщику`,
+          itemId: Number(sourceItem?.id || 0) || null,
+          supplierId: supplierIdNum,
+          linkedSupplierId: linkedSupplierId || null,
+        });
+      }
+    }
+
     // Генерируем номер заказа: PO-00001, PO-00002, ...
     const nextNumber = await getNextPurchaseOrderNumber(req.user.orgId || null);
 
