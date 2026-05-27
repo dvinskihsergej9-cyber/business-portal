@@ -9,9 +9,11 @@ export default function NotificationBell() {
   const [unreadCount, setUnreadCount] = useState(0);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
-  const [actionById, setActionById] = useState({});
+  const [toasts, setToasts] = useState([]);
   const [isMobile, setIsMobile] = useState(false);
   const wrapperRef = useRef(null);
+  const toastIdRef = useRef(0);
+  const toastTimersRef = useRef(new Map());
   const navigate = useNavigate();
 
   const token = localStorage.getItem("token") || "";
@@ -159,6 +161,18 @@ export default function NotificationBell() {
     [authHeaders]
   );
 
+  const pushToast = useCallback((message, type = "success") => {
+    const text = String(message || "").trim();
+    if (!text) return;
+    const id = ++toastIdRef.current;
+    setToasts((prev) => [...prev, { id, message: text, type }]);
+    const timerId = window.setTimeout(() => {
+      setToasts((prev) => prev.filter((toast) => toast.id !== id));
+      toastTimersRef.current.delete(id);
+    }, 4200);
+    toastTimersRef.current.set(id, timerId);
+  }, []);
+
   useEffect(() => {
     if (!token) return;
     loadUnreadCount();
@@ -195,6 +209,15 @@ export default function NotificationBell() {
       // no-op: push может быть недоступен в браузере/окружении.
     });
   }, [ensurePushSubscription]);
+
+  useEffect(() => {
+    return () => {
+      for (const timerId of toastTimersRef.current.values()) {
+        clearTimeout(timerId);
+      }
+      toastTimersRef.current.clear();
+    };
+  }, []);
 
   return (
     <div ref={wrapperRef} style={{ position: "relative" }}>
@@ -321,25 +344,17 @@ export default function NotificationBell() {
                   if (!notificationId) return;
 
                   if (isLowStockNotification(item)) {
-                    setActionById((prev) => ({
-                      ...prev,
-                      [notificationId]: {
-                        status: "pending",
-                        message: "Формируем заказы поставщикам...",
-                      },
-                    }));
+                    pushToast("Формируем заказы поставщикам...", "info");
                     try {
                       const result = await createSupplierOrdersFromNotification(notificationId);
-                      const successMessage =
-                        String(result?.message || "").trim() || "Заказы поставщикам сформированы.";
+                      const createdOrders = Array.isArray(result?.createdOrders)
+                        ? result.createdOrders
+                        : [];
+                      const unresolvedItems = Array.isArray(result?.unresolvedItems)
+                        ? result.unresolvedItems
+                        : [];
+                      const createdCount = createdOrders.length;
 
-                      setActionById((prev) => ({
-                        ...prev,
-                        [notificationId]: {
-                          status: "success",
-                          message: successMessage,
-                        },
-                      }));
                       setItems((prev) =>
                         prev.map((entry) =>
                           entry.id === notificationId
@@ -354,21 +369,49 @@ export default function NotificationBell() {
                       if (!item.isRead) {
                         setUnreadCount((prev) => Math.max(0, prev - 1));
                       }
-                      if (item.linkUrl) {
-                        openNotificationLink(item.linkUrl);
+
+                      if (createdCount === 1) {
+                        const createdOrderId = Number(createdOrders[0]?.id || 0);
+                        pushToast("Заказ создан и открыт.", "success");
+                        if (createdOrderId > 0) {
+                          navigate(
+                            `/warehouse?section=suppliers&suppliersTab=orders&poId=${createdOrderId}`
+                          );
+                        } else {
+                          navigate("/warehouse?section=suppliers&suppliersTab=orders");
+                        }
+                        if (unresolvedItems.length > 0) {
+                          pushToast(
+                            `Требуют выбора поставщика: ${unresolvedItems.length}.`,
+                            "warning"
+                          );
+                        }
+                      } else if (createdCount > 1) {
+                        pushToast(`Создано заказов: ${createdCount}.`, "success");
+                        navigate("/warehouse?section=suppliers&suppliersTab=orders");
+                        if (unresolvedItems.length > 0) {
+                          pushToast(
+                            `Требуют выбора поставщика: ${unresolvedItems.length}.`,
+                            "warning"
+                          );
+                        }
+                      } else if (unresolvedItems.length > 0) {
+                        pushToast(
+                          `Заказы не созданы. Требуют выбора поставщика: ${unresolvedItems.length}.`,
+                          "warning"
+                        );
+                      } else {
+                        pushToast("Заказы не созданы: нет позиций ниже минимума.", "warning");
+                        if (item.linkUrl) {
+                          openNotificationLink(item.linkUrl);
+                        }
                       }
                       setOpen(false);
                     } catch (err) {
-                      setActionById((prev) => ({
-                        ...prev,
-                        [notificationId]: {
-                          status: "error",
-                          message: normalizeErrorMessage(
-                            err,
-                            "Не удалось сформировать заказы поставщикам."
-                          ),
-                        },
-                      }));
+                      pushToast(
+                        normalizeErrorMessage(err, "Не удалось сформировать заказы поставщикам."),
+                        "error"
+                      );
                     }
                     return;
                   }
@@ -409,24 +452,54 @@ export default function NotificationBell() {
                     ? new Date(item.createdAt).toLocaleString("ru-RU")
                     : ""}
                 </div>
-                {actionById[item.id]?.message && (
-                  <div
-                    style={{
-                      marginTop: 6,
-                      fontSize: 11,
-                      color:
-                        actionById[item.id]?.status === "error"
-                          ? "#b91c1c"
-                          : actionById[item.id]?.status === "pending"
-                            ? "#92400e"
-                            : "#166534",
-                    }}
-                  >
-                    {actionById[item.id].message}
-                  </div>
-                )}
               </button>
             ))}
+        </div>
+      )}
+      {toasts.length > 0 && (
+        <div
+          style={{
+            position: "fixed",
+            top: 76,
+            right: 10,
+            display: "flex",
+            flexDirection: "column",
+            gap: 8,
+            zIndex: 500,
+            maxWidth: "min(92vw, 420px)",
+          }}
+        >
+          {toasts.map((toast) => (
+            <div
+              key={toast.id}
+              style={{
+                borderRadius: 10,
+                border: "1px solid #e5e7eb",
+                background:
+                  toast.type === "error"
+                    ? "#fef2f2"
+                    : toast.type === "warning"
+                      ? "#fffbeb"
+                      : toast.type === "info"
+                        ? "#eff6ff"
+                        : "#f0fdf4",
+                color:
+                  toast.type === "error"
+                    ? "#991b1b"
+                    : toast.type === "warning"
+                      ? "#92400e"
+                      : toast.type === "info"
+                        ? "#1d4ed8"
+                        : "#166534",
+                boxShadow: "0 12px 24px rgba(15, 23, 42, 0.18)",
+                fontSize: 13,
+                padding: "10px 12px",
+                lineHeight: 1.35,
+              }}
+            >
+              {toast.message}
+            </div>
+          ))}
         </div>
       )}
     </div>

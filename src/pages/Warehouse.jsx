@@ -475,6 +475,8 @@ export default function Warehouse({
     );
     const taskViewParam = params.get("taskView");
     const crossdockTabParam = String(params.get("crossdockTab") || "").trim();
+    const suppliersTabParam = String(params.get("suppliersTab") || "").trim();
+    const poIdParam = Number(params.get("poId") || 0);
 
     if (sectionParam && sectionSet.has(sectionParam)) {
       setSection(sectionParam);
@@ -491,6 +493,17 @@ export default function Warehouse({
       (taskViewParam === "new" || taskViewParam === "journal")
     ) {
       setTaskView(taskViewParam);
+    }
+
+    if (sectionParam === "suppliers") {
+      if (suppliersTabParam === "suppliers" || suppliersTabParam === "orders") {
+        setSuppliersTab(suppliersTabParam);
+      } else {
+        setSuppliersTab("orders");
+      }
+      if (Number.isFinite(poIdParam) && poIdParam > 0) {
+        setRequestedPurchaseOrderId(poIdParam);
+      }
     }
   }, [location.search, sectionSet]);
 
@@ -647,6 +660,7 @@ export default function Warehouse({
   const [viewPurchaseOrderError, setViewPurchaseOrderError] = useState("");
   const [viewPurchaseOrderActionLoading, setViewPurchaseOrderActionLoading] = useState(false);
   const [viewPurchaseOrderActionNotice, setViewPurchaseOrderActionNotice] = useState("");
+  const [requestedPurchaseOrderId, setRequestedPurchaseOrderId] = useState(null);
 
   const [showReceiveModal, setShowReceiveModal] = useState(false);
 
@@ -2627,6 +2641,49 @@ export default function Warehouse({
     setViewPurchaseOrderLoading(false);
     setViewPurchaseOrderActionLoading(false);
   };
+
+  useEffect(() => {
+    const targetOrderId = Number(requestedPurchaseOrderId || 0);
+    if (!targetOrderId || Number.isNaN(targetOrderId)) return;
+    if (section !== "suppliers" || inventoryTab !== "suppliers" || suppliersTab !== "orders") {
+      return;
+    }
+    if (Number(viewPurchaseOrder?.id || 0) === targetOrderId) {
+      setRequestedPurchaseOrderId(null);
+      return;
+    }
+    if (viewPurchaseOrderLoading) return;
+
+    const fromList =
+      (purchaseOrders || []).find((order) => Number(order?.id || 0) === targetOrderId) || null;
+    if (!fromList && purchaseOrdersLoading) return;
+
+    handleViewPurchaseOrder(fromList || { id: targetOrderId });
+    setRequestedPurchaseOrderId(null);
+
+    const params = new URLSearchParams(location.search || "");
+    const poIdInQuery = Number(params.get("poId") || 0);
+    if (poIdInQuery === targetOrderId) {
+      params.delete("poId");
+      const nextQuery = params.toString();
+      navigate(`${location.pathname}${nextQuery ? `?${nextQuery}` : ""}`, {
+        replace: true,
+      });
+    }
+  }, [
+    requestedPurchaseOrderId,
+    section,
+    inventoryTab,
+    suppliersTab,
+    viewPurchaseOrder,
+    viewPurchaseOrderLoading,
+    purchaseOrders,
+    purchaseOrdersLoading,
+    handleViewPurchaseOrder,
+    location.pathname,
+    location.search,
+    navigate,
+  ]);
 
 
 
