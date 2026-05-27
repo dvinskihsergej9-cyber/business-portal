@@ -6872,10 +6872,25 @@ async function findActiveTruckForOrder(orderNumber, statuses = ["IN_QUEUE", "UNL
       status: { in: statuses },
       orderNumber: { not: null },
     },
-    orderBy: [{ arrivalAt: "asc" }, { id: "asc" }],
+    orderBy: [{ arrivalAt: "desc" }, { id: "desc" }],
   });
-  const match = trucks.find((truck) => isSameOrderNumber(truck.orderNumber, orderNumber));
-  return match || null;
+  const statusPriority = {
+    UNLOADING: 3,
+    IN_QUEUE: 2,
+    DONE: 1,
+  };
+  const matches = trucks.filter((truck) =>
+    isSameOrderNumber(truck.orderNumber, orderNumber)
+  );
+  if (matches.length === 0) return null;
+
+  matches.sort((a, b) => {
+    const pa = statusPriority[a.status] || 0;
+    const pb = statusPriority[b.status] || 0;
+    if (pa !== pb) return pb - pa;
+    return Number(b.id) - Number(a.id);
+  });
+  return matches[0] || null;
 }
 
 async function findStockItemForOrderLine(db, raw = {}) {
@@ -22562,7 +22577,10 @@ app.get("/api/warehouse/receiving/open-pos", auth, async (req, res) => {
     }
 
     const orders = await prisma.purchaseOrder.findMany({
-      where: { status: { in: ["DRAFT", "SENT", "PARTIAL"] } },
+      where: {
+        status: { in: ["DRAFT", "SENT", "PARTIAL"] },
+        OR: [{ receivingStage: null }, { receivingStage: { not: "FINALIZED" } }],
+      },
       orderBy: { date: "desc" },
       include: {
         supplier: true,
@@ -22574,16 +22592,39 @@ app.get("/api/warehouse/receiving/open-pos", auth, async (req, res) => {
 
     const activeTrucks = await prisma.supplierTruck.findMany({
       where: {
-        status: { in: ["IN_QUEUE", "UNLOADING"] },
+        status: { in: ["IN_QUEUE", "UNLOADING", "DONE"] },
         orderNumber: { not: null },
       },
-      orderBy: [{ arrivalAt: "asc" }, { id: "asc" }],
+      orderBy: [{ arrivalAt: "desc" }, { id: "desc" }],
     });
+    const TRUCK_STATUS_PRIORITY = {
+      UNLOADING: 3,
+      IN_QUEUE: 2,
+      DONE: 1,
+    };
     const trucksByNormalizedOrder = new Map();
     activeTrucks.forEach((truck) => {
       const key = normalizeOrderNumber(truck.orderNumber);
-      if (!key || trucksByNormalizedOrder.has(key)) return;
-      trucksByNormalizedOrder.set(key, truck);
+      if (!key) return;
+
+      const existing = trucksByNormalizedOrder.get(key);
+      if (!existing) {
+        trucksByNormalizedOrder.set(key, truck);
+        return;
+      }
+
+      const currentPriority = TRUCK_STATUS_PRIORITY[truck.status] || 0;
+      const existingPriority = TRUCK_STATUS_PRIORITY[existing.status] || 0;
+      if (currentPriority > existingPriority) {
+        trucksByNormalizedOrder.set(key, truck);
+        return;
+      }
+      if (
+        currentPriority === existingPriority &&
+        Number(truck.id) > Number(existing.id)
+      ) {
+        trucksByNormalizedOrder.set(key, truck);
+      }
     });
 
     const list = orders
@@ -22667,6 +22708,7 @@ app.post("/api/warehouse/receiving/:poId/take", auth, async (req, res) => {
     const linkedTruck = await findActiveTruckForOrder(order.number, [
       "IN_QUEUE",
       "UNLOADING",
+      "DONE",
     ]);
     if (!linkedTruck) {
       return res.status(409).json({
