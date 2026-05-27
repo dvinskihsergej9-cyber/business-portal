@@ -658,6 +658,7 @@ export default function Warehouse({
   const [viewPurchaseOrderError, setViewPurchaseOrderError] = useState("");
   const [viewPurchaseOrderActionLoading, setViewPurchaseOrderActionLoading] = useState(false);
   const [viewPurchaseOrderActionNotice, setViewPurchaseOrderActionNotice] = useState("");
+  const [purchaseOrderDeletingId, setPurchaseOrderDeletingId] = useState(null);
   const [requestedPurchaseOrderId, setRequestedPurchaseOrderId] = useState(null);
 
   const [showReceiveModal, setShowReceiveModal] = useState(false);
@@ -2802,6 +2803,53 @@ export default function Warehouse({
       setViewPurchaseOrderError(resolveErrorMessage(e, "\u041e\u0448\u0438\u0431\u043a\u0430 \u043e\u0442\u043f\u0440\u0430\u0432\u043a\u0438 \u0437\u0430\u043a\u0430\u0437\u0430 \u043f\u043e\u0441\u0442\u0430\u0432\u0449\u0438\u043a\u0443."));
     } finally {
       setViewPurchaseOrderActionLoading(false);
+    }
+  };
+  const canDeletePurchaseOrder = useCallback((order) => {
+    const status = String(order?.status || "").toUpperCase();
+    return status === "DRAFT" || status === "SENT";
+  }, []);
+
+  const handleDeletePurchaseOrder = async (order) => {
+    const orderId = Number(order?.id || 0);
+    if (!orderId) return;
+    if (!canDeletePurchaseOrder(order)) {
+      setPurchaseOrdersError("Удаление доступно только для заказов до приёмки на склад.");
+      return;
+    }
+
+    const orderLabel = String(order?.number || orderId);
+    const ok = window.confirm(`Удалить заказ поставщику №${orderLabel}?`);
+    if (!ok) return;
+
+    try {
+      setPurchaseOrdersError("");
+      setViewPurchaseOrderError("");
+      setViewPurchaseOrderActionNotice("");
+      setPurchaseOrderDeletingId(orderId);
+
+      const res = await fetch(`${API}/purchase-orders/${orderId}`, {
+        method: "DELETE",
+        headers: authHeaders,
+      });
+      const data = await readResponsePayload(res);
+      if (!res.ok) {
+        throw new Error((data && data.message) || "Ошибка удаления заказа поставщику.");
+      }
+
+      if (Number(viewPurchaseOrder?.id || 0) === orderId) {
+        handleCloseViewPurchaseOrder();
+      }
+
+      await loadPurchaseOrders();
+      await loadInventory();
+    } catch (e) {
+      console.error(e);
+      const message = resolveErrorMessage(e, "Ошибка удаления заказа поставщику.");
+      setPurchaseOrdersError(message);
+      setViewPurchaseOrderError(message);
+    } finally {
+      setPurchaseOrderDeletingId(null);
     }
   };
   const sortedPurchaseOrders = useMemo(() => {
@@ -5463,13 +5511,28 @@ export default function Warehouse({
                                   <td>{po.supplier?.name || "-"}</td>
                                   <td>{PO_STATUS_LABELS[po.status] || po.status}</td>
                                   <td>
-                                    <button
-                                      type="button"
-                                      className="btn btn--secondary btn--sm"
-                                      onClick={() => handleViewPurchaseOrder(po)}
-                                    >
-                                      Просмотреть
-                                    </button>
+                                    <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+                                      <button
+                                        type="button"
+                                        className="btn btn--secondary btn--sm"
+                                        onClick={() => handleViewPurchaseOrder(po)}
+                                        disabled={purchaseOrderDeletingId === Number(po.id)}
+                                      >
+                                        Просмотреть
+                                      </button>
+                                      {canDeletePurchaseOrder(po) ? (
+                                        <button
+                                          type="button"
+                                          className="btn btn--danger btn--sm"
+                                          onClick={() => handleDeletePurchaseOrder(po)}
+                                          disabled={purchaseOrderDeletingId !== null}
+                                        >
+                                          {purchaseOrderDeletingId === Number(po.id)
+                                            ? "Удаление..."
+                                            : "Удалить"}
+                                        </button>
+                                      ) : null}
+                                    </div>
                                   </td>
                                 </tr>
                               ))}
@@ -5509,9 +5572,22 @@ export default function Warehouse({
                                 type="button"
                                 className="btn btn--secondary btn--sm purchase-orders-mobile__action"
                                 onClick={() => handleViewPurchaseOrder(po)}
+                                disabled={purchaseOrderDeletingId === Number(po.id)}
                               >
                                 Просмотреть
                               </button>
+                              {canDeletePurchaseOrder(po) ? (
+                                <button
+                                  type="button"
+                                  className="btn btn--danger btn--sm purchase-orders-mobile__action"
+                                  onClick={() => handleDeletePurchaseOrder(po)}
+                                  disabled={purchaseOrderDeletingId !== null}
+                                >
+                                  {purchaseOrderDeletingId === Number(po.id)
+                                    ? "Удаление..."
+                                    : "Удалить"}
+                                </button>
+                              ) : null}
                             </div>
                           ))}
                         </div>
@@ -5711,16 +5787,28 @@ export default function Warehouse({
                     type="button"
                     className="btn"
                     onClick={() => handlePurchaseOrderStatusSent(viewPurchaseOrder.id)}
-                    disabled={viewPurchaseOrderActionLoading}
+                    disabled={viewPurchaseOrderActionLoading || purchaseOrderDeletingId !== null}
                   >
                     {viewPurchaseOrderActionLoading ? "\u041e\u0442\u043f\u0440\u0430\u0432\u043a\u0430..." : "\u041e\u0442\u043f\u0440\u0430\u0432\u0438\u0442\u044c \u043f\u043e\u0441\u0442\u0430\u0432\u0449\u0438\u043a\u0443"}
+                  </button>
+                )}
+                {canDeletePurchaseOrder(viewPurchaseOrder) && (
+                  <button
+                    type="button"
+                    className="btn btn--danger"
+                    onClick={() => handleDeletePurchaseOrder(viewPurchaseOrder)}
+                    disabled={viewPurchaseOrderActionLoading || purchaseOrderDeletingId !== null}
+                  >
+                    {purchaseOrderDeletingId === Number(viewPurchaseOrder?.id || 0)
+                      ? "Удаление..."
+                      : "Удалить заказ"}
                   </button>
                 )}
                 <button
                   type="button"
                   className="btn btn--ghost"
                   onClick={handleCloseViewPurchaseOrder}
-                  disabled={viewPurchaseOrderActionLoading}
+                  disabled={viewPurchaseOrderActionLoading || purchaseOrderDeletingId !== null}
                 >
                   {"\u0417\u0430\u043a\u0440\u044b\u0442\u044c"}
                 </button>

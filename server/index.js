@@ -22534,6 +22534,72 @@ app.get("/api/purchase-orders/:id", auth, async (req, res) => {
   }
 });
 
+// Удалить заказ поставщику (только до приёмки на склад)
+app.delete("/api/purchase-orders/:id", auth, async (req, res) => {
+  try {
+    if (!isWarehouseManager(req.user)) {
+      return res.status(403).json({ message: "Нет прав" });
+    }
+
+    const id = Number(req.params.id);
+    if (!id || Number.isNaN(id)) {
+      return res.status(400).json({ message: "Некорректный ID заказа" });
+    }
+
+    const order = await prisma.purchaseOrder.findUnique({
+      where: { id },
+      select: {
+        id: true,
+        status: true,
+      },
+    });
+
+    if (!order) {
+      return res.status(404).json({ message: "Заказ не найден" });
+    }
+
+    if (!["DRAFT", "SENT"].includes(String(order.status || ""))) {
+      return res.status(409).json({
+        message:
+          "Удаление возможно только для заказов в статусе Черновик или Отправлен поставщику",
+      });
+    }
+
+    const postedMovement = await prisma.stockMovement.findFirst({
+      where: {
+        comment: {
+          contains: `[PO#${id}]`,
+        },
+      },
+      select: { id: true },
+    });
+    if (postedMovement) {
+      return res.status(409).json({
+        message: "Заказ уже принят на склад и не может быть удалён",
+      });
+    }
+
+    await prisma.$transaction([
+      prisma.receivingDiscrepancy.deleteMany({
+        where: { purchaseOrderId: id },
+      }),
+      prisma.purchaseOrderItem.deleteMany({
+        where: { orderId: id },
+      }),
+      prisma.purchaseOrder.delete({
+        where: { id },
+      }),
+    ]);
+
+    return res.json({ ok: true, id });
+  } catch (err) {
+    console.error("delete purchase order error:", err);
+    return res
+      .status(500)
+      .json({ message: "Ошибка сервера при удалении заказа поставщику" });
+  }
+});
+
 // Excel-файл по уже сохранённому заказу поставщику
 
 // ===== Purchase Order: RECEIVE ACT (PRINT) =====
