@@ -16509,9 +16509,27 @@ async function ensureWarehouseTaskEventsTable() {
             "actorName" TEXT,
             "message" TEXT NOT NULL,
             "metaJson" TEXT,
-            "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP
+            "createdAt" TIMESTAMPTZ(3) NOT NULL DEFAULT CURRENT_TIMESTAMP
           );
         `);
+        const createdAtTypeRows = await prisma.$queryRawUnsafe(`
+          SELECT data_type
+          FROM information_schema.columns
+          WHERE table_schema = 'public'
+            AND table_name = 'WarehouseTaskEvent'
+            AND column_name = 'createdAt'
+          LIMIT 1
+        `);
+        const createdAtDataType = Array.isArray(createdAtTypeRows) && createdAtTypeRows[0]
+          ? String(createdAtTypeRows[0].data_type || "").toLowerCase()
+          : "";
+        if (createdAtDataType === "timestamp without time zone") {
+          await prisma.$executeRawUnsafe(`
+            ALTER TABLE "WarehouseTaskEvent"
+            ALTER COLUMN "createdAt" TYPE TIMESTAMPTZ(3)
+            USING "createdAt" AT TIME ZONE current_setting('TimeZone')
+          `);
+        }
         await prisma.$executeRawUnsafe(`
           CREATE INDEX IF NOT EXISTS "WarehouseTaskEvent_taskId_createdAt_idx"
           ON "WarehouseTaskEvent" ("taskId", "createdAt");
