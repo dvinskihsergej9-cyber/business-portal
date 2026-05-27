@@ -1117,7 +1117,7 @@ export default function AdminWarehousePanel() {
             <div className="admin-modal__actions">
               <button
                 type="button"
-                className="admin-btn admin-btn--ghost"
+                className="admin-btn admin-btn--secondary"
                 onClick={() => setEditItem(null)}
               >
                 Отмена
