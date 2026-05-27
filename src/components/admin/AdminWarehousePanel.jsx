@@ -1118,6 +1118,10 @@ export default function AdminWarehousePanel() {
               <button
                 type="button"
                 className="admin-btn admin-btn--secondary"
+                style={{
+                  background: "#dbe3f1",
+                  color: "#334155",
+                }}
                 onClick={() => setEditItem(null)}
               >
                 Отмена
@@ -1125,6 +1129,11 @@ export default function AdminWarehousePanel() {
               <button
                 type="button"
                 className="admin-btn admin-btn--primary"
+                style={{
+                  background: "linear-gradient(180deg, #2f73ff 0%, #1e54cb 100%)",
+                  color: "#ffffff",
+                  boxShadow: "0 8px 22px rgba(47, 115, 255, 0.28)",
+                }}
                 onClick={handleSaveItem}
                 disabled={saving}
               >
