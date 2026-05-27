@@ -22579,7 +22579,7 @@ app.get("/api/warehouse/receiving/open-pos", auth, async (req, res) => {
     const orders = await prisma.purchaseOrder.findMany({
       where: {
         status: { in: ["DRAFT", "SENT", "PARTIAL"] },
-        OR: [{ receivingStage: null }, { receivingStage: { not: "FINALIZED" } }],
+        receivingStage: { not: "FINALIZED" },
       },
       orderBy: { date: "desc" },
       include: {
