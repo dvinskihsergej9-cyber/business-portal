@@ -145,7 +145,14 @@ export default function NotificationBell() {
       });
       const data = await res.json().catch(() => ({}));
       if (!res.ok) {
-        throw new Error(data?.message || "Не удалось сформировать заказы поставщикам.");
+        const message = String(data?.message || "").trim();
+        const detail = String(data?.detail || "").trim();
+        const looksLikeCode = /^[A-Z0-9_]+$/.test(message);
+        throw new Error(
+          looksLikeCode && detail
+            ? detail
+            : message || "Не удалось сформировать заказы поставщикам."
+        );
       }
       return data || {};
     },

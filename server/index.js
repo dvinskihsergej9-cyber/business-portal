@@ -17523,31 +17523,80 @@ app.post("/api/notifications/:id/create-supplier-orders", auth, async (req, res)
       const supplierGroups = Array.from(groupedBySupplier.values()).sort(
         (a, b) => a.supplierId - b.supplierId
       );
+      const supplierIds = supplierGroups
+        .map((group) => Number(group?.supplierId || 0))
+        .filter((value) => Number.isFinite(value) && value > 0);
+      const suppliers = supplierIds.length
+        ? await tx.supplier.findMany({
+            where: { id: { in: supplierIds } },
+            select: { id: true, name: true },
+          })
+        : [];
+      const supplierById = new Map(
+        suppliers
+          .map((supplier) => [Number(supplier.id), supplier])
+          .filter((entry) => Number(entry[0]) > 0)
+      );
+
       for (const group of supplierGroups) {
-        const nextNumber = await getNextPurchaseOrderNumberInTx(tx, orgId);
-        const created = await tx.purchaseOrder.create({
-          data: {
-            orgId,
-            number: nextNumber,
-            date: new Date(),
-            status: "DRAFT",
-            comment: `[LOW_STOCK_NOTIFICATION#${id}] Автосоздано из уведомления`,
-            supplierId: group.supplierId,
-            createdById: req.user.id,
-            items: {
-              create: group.lines.map((line) => ({
+        const supplier = supplierById.get(Number(group.supplierId));
+        if (!supplier) {
+          for (const line of Array.isArray(group.lines) ? group.lines : []) {
+            unresolvedItems.push({
+              itemId: Number(line?.itemId || 0) || null,
+              name: String(line?.name || ""),
+              reason: "SUPPLIER_NOT_FOUND",
+              supplierId: Number(group.supplierId) || null,
+              requiredQty: Number(line?.quantity) || 0,
+            });
+          }
+          continue;
+        }
+
+        let created = null;
+        let attempts = 0;
+        while (!created && attempts < 5) {
+          attempts += 1;
+          const nextNumber = await getNextPurchaseOrderNumberInTx(tx, orgId);
+          try {
+            created = await tx.purchaseOrder.create({
+              data: {
                 orgId,
-                itemId: line.itemId,
-                quantity: line.quantity,
-                price: line.price,
-              })),
-            },
-          },
-          include: {
-            supplier: { select: { id: true, name: true } },
-            items: { select: { quantity: true } },
-          },
-        });
+                number: nextNumber,
+                date: new Date(),
+                status: "DRAFT",
+                comment: `[LOW_STOCK_NOTIFICATION#${id}] Автосоздано из уведомления`,
+                supplierId: group.supplierId,
+                createdById: req.user.id,
+                items: {
+                  create: group.lines.map((line) => ({
+                    orgId,
+                    itemId: line.itemId,
+                    quantity: line.quantity,
+                    price: line.price,
+                  })),
+                },
+              },
+              include: {
+                supplier: { select: { id: true, name: true } },
+                items: { select: { quantity: true } },
+              },
+            });
+          } catch (createErr) {
+            const isDuplicateOrderNumber =
+              createErr?.code === "P2002" &&
+              String(createErr?.meta?.target || "").includes("orgId") &&
+              String(createErr?.meta?.target || "").includes("number");
+            if (isDuplicateOrderNumber && attempts < 5) {
+              continue;
+            }
+            throw createErr;
+          }
+        }
+
+        if (!created) {
+          throw new Error("PO_NUMBER_RETRY_EXHAUSTED");
+        }
         createdOrders.push(summarizeOrder(created));
       }
 
@@ -17616,8 +17665,21 @@ app.post("/api/notifications/:id/create-supplier-orders", auth, async (req, res)
     if (err?.code === "NOTIFICATION_TYPE_NOT_SUPPORTED") {
       return res.status(409).json({ message: "Это уведомление нельзя обработать как заказ поставщику." });
     }
+    if (err?.code === "P2002") {
+      return res.status(409).json({
+        message: "Конфликт номера заказа. Повторите действие.",
+      });
+    }
+    if (String(err?.message || "") === "PO_NUMBER_RETRY_EXHAUSTED") {
+      return res.status(409).json({
+        message: "Не удалось подобрать свободный номер заказа. Повторите действие.",
+      });
+    }
     console.error("notifications create supplier orders error:", err);
-    return res.status(500).json({ message: "NOTIFICATION_SUPPLIER_ORDER_CREATE_ERROR" });
+    return res.status(500).json({
+      message: "NOTIFICATION_SUPPLIER_ORDER_CREATE_ERROR",
+      detail: String(err?.message || "").slice(0, 200),
+    });
   }
 });
 
