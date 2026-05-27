@@ -287,6 +287,42 @@ function normalizeWarehouseCardOrder(value) {
   return result;
 }
 
+async function ensureTimestamptzColumns(db, tableName, columnNames = []) {
+  const targetColumns = Array.isArray(columnNames)
+    ? columnNames.map((name) => String(name || "").trim()).filter(Boolean)
+    : [];
+  if (!targetColumns.length) return;
+
+  const rows = await db.$queryRawUnsafe(
+    `
+      SELECT column_name, data_type
+      FROM information_schema.columns
+      WHERE table_schema = 'public'
+        AND table_name = $1
+        AND column_name = ANY($2::text[])
+    `,
+    String(tableName || ""),
+    targetColumns
+  );
+  const dataTypeByColumn = new Map(
+    (Array.isArray(rows) ? rows : []).map((row) => [
+      String(row?.column_name || ""),
+      String(row?.data_type || "").toLowerCase(),
+    ])
+  );
+
+  for (const columnName of targetColumns) {
+    if (dataTypeByColumn.get(columnName) !== "timestamp without time zone") continue;
+    await db.$executeRawUnsafe(
+      `
+        ALTER TABLE "public"."${String(tableName)}"
+        ALTER COLUMN "${String(columnName)}" TYPE TIMESTAMPTZ(3)
+        USING "${String(columnName)}" AT TIME ZONE current_setting('TimeZone')
+      `
+    );
+  }
+}
+
 let orgRuntimeSettingsReadyPromise = null;
 let orgRuntimeSettingsTableAvailable = true;
 async function ensureOrgRuntimeSettingsTable() {
@@ -299,8 +335,8 @@ async function ensureOrgRuntimeSettingsTable() {
             "orgId" INTEGER PRIMARY KEY,
             "pickingMode" TEXT NOT NULL DEFAULT 'SCAN_EACH',
             "billingAutoRenewEnabled" BOOLEAN NOT NULL DEFAULT true,
-            "billingAutoRenewUpdatedAt" TIMESTAMP(3),
-            "updatedAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP
+            "billingAutoRenewUpdatedAt" TIMESTAMPTZ(3),
+            "updatedAt" TIMESTAMPTZ(3) NOT NULL DEFAULT CURRENT_TIMESTAMP
           );
         `);
         await prisma.$executeRawUnsafe(`
@@ -309,8 +345,12 @@ async function ensureOrgRuntimeSettingsTable() {
         `);
         await prisma.$executeRawUnsafe(`
           ALTER TABLE "OrgRuntimeSetting"
-          ADD COLUMN IF NOT EXISTS "billingAutoRenewUpdatedAt" TIMESTAMP(3);
+          ADD COLUMN IF NOT EXISTS "billingAutoRenewUpdatedAt" TIMESTAMPTZ(3);
         `);
+        await ensureTimestamptzColumns(prisma, "OrgRuntimeSetting", [
+          "billingAutoRenewUpdatedAt",
+          "updatedAt",
+        ]);
         orgRuntimeSettingsTableAvailable = true;
         return true;
       } catch (err) {
@@ -518,13 +558,14 @@ async function ensureUserRuntimeSettingsTable() {
           CREATE TABLE IF NOT EXISTS "UserRuntimeSetting" (
             "userId" INTEGER PRIMARY KEY,
             "warehouseCardOrderJson" TEXT,
-            "updatedAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP
+            "updatedAt" TIMESTAMPTZ(3) NOT NULL DEFAULT CURRENT_TIMESTAMP
           );
         `);
         await prisma.$executeRawUnsafe(`
           ALTER TABLE "UserRuntimeSetting"
           ADD COLUMN IF NOT EXISTS "warehouseCardOrderJson" TEXT;
         `);
+        await ensureTimestamptzColumns(prisma, "UserRuntimeSetting", ["updatedAt"]);
         userRuntimeSettingsTableAvailable = true;
         return true;
       } catch (err) {
@@ -16512,24 +16553,7 @@ async function ensureWarehouseTaskEventsTable() {
             "createdAt" TIMESTAMPTZ(3) NOT NULL DEFAULT CURRENT_TIMESTAMP
           );
         `);
-        const createdAtTypeRows = await prisma.$queryRawUnsafe(`
-          SELECT data_type
-          FROM information_schema.columns
-          WHERE table_schema = 'public'
-            AND table_name = 'WarehouseTaskEvent'
-            AND column_name = 'createdAt'
-          LIMIT 1
-        `);
-        const createdAtDataType = Array.isArray(createdAtTypeRows) && createdAtTypeRows[0]
-          ? String(createdAtTypeRows[0].data_type || "").toLowerCase()
-          : "";
-        if (createdAtDataType === "timestamp without time zone") {
-          await prisma.$executeRawUnsafe(`
-            ALTER TABLE "WarehouseTaskEvent"
-            ALTER COLUMN "createdAt" TYPE TIMESTAMPTZ(3)
-            USING "createdAt" AT TIME ZONE current_setting('TimeZone')
-          `);
-        }
+        await ensureTimestamptzColumns(prisma, "WarehouseTaskEvent", ["createdAt"]);
         await prisma.$executeRawUnsafe(`
           CREATE INDEX IF NOT EXISTS "WarehouseTaskEvent_taskId_createdAt_idx"
           ON "WarehouseTaskEvent" ("taskId", "createdAt");
@@ -27519,16 +27543,21 @@ async function ensureEmailVerificationStorageReady() {
       "id" SERIAL NOT NULL,
       "userId" INTEGER NOT NULL,
       "codeHash" TEXT NOT NULL,
-      "expiresAt" TIMESTAMP(3) NOT NULL,
+      "expiresAt" TIMESTAMPTZ(3) NOT NULL,
       "attempts" INTEGER NOT NULL DEFAULT 0,
-      "usedAt" TIMESTAMP(3),
+      "usedAt" TIMESTAMPTZ(3),
       "phone" TEXT,
       "companyName" TEXT,
       "note" TEXT,
-      "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+      "createdAt" TIMESTAMPTZ(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
       CONSTRAINT "EmailVerificationCode_pkey" PRIMARY KEY ("id")
     );
   `);
+  await ensureTimestamptzColumns(prismaBase, "EmailVerificationCode", [
+    "expiresAt",
+    "usedAt",
+    "createdAt",
+  ]);
 
   await prismaBase.$executeRawUnsafe(`
     CREATE INDEX IF NOT EXISTS "EmailVerificationCode_userId_createdAt_idx"
@@ -27620,17 +27649,24 @@ async function ensurePalletDiscrepancyStorageReady() {
       "palletId" INTEGER NOT NULL,
       "locationId" INTEGER,
       "status" "PalletDiscrepancyStatus" NOT NULL DEFAULT 'OPEN',
-      "detectedAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+      "detectedAt" TIMESTAMPTZ(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
       "detectedByUserId" INTEGER,
-      "lastCheckedAt" TIMESTAMP(3),
-      "closedAt" TIMESTAMP(3),
+      "lastCheckedAt" TIMESTAMPTZ(3),
+      "closedAt" TIMESTAMPTZ(3),
       "closedByUserId" INTEGER,
       "note" TEXT,
-      "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
-      "updatedAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+      "createdAt" TIMESTAMPTZ(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+      "updatedAt" TIMESTAMPTZ(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
       CONSTRAINT "PalletDiscrepancy_pkey" PRIMARY KEY ("id")
     );
   `);
+  await ensureTimestamptzColumns(prismaBase, "PalletDiscrepancy", [
+    "detectedAt",
+    "lastCheckedAt",
+    "closedAt",
+    "createdAt",
+    "updatedAt",
+  ]);
 
   await prismaBase.$executeRawUnsafe(`
     CREATE INDEX IF NOT EXISTS "PalletDiscrepancy_orgId_status_detectedAt_idx"
