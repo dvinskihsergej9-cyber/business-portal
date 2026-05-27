@@ -658,6 +658,14 @@ export default function Warehouse({
   const [viewPurchaseOrderError, setViewPurchaseOrderError] = useState("");
   const [viewPurchaseOrderActionLoading, setViewPurchaseOrderActionLoading] = useState(false);
   const [viewPurchaseOrderActionNotice, setViewPurchaseOrderActionNotice] = useState("");
+  const [viewPurchaseOrderEditMode, setViewPurchaseOrderEditMode] = useState(false);
+  const [viewPurchaseOrderEditSaving, setViewPurchaseOrderEditSaving] = useState(false);
+  const [viewPurchaseOrderEditForm, setViewPurchaseOrderEditForm] = useState({
+    supplierId: "",
+    plannedDate: "",
+    comment: "",
+    rows: [],
+  });
   const [purchaseOrderDeletingId, setPurchaseOrderDeletingId] = useState(null);
   const [requestedPurchaseOrderId, setRequestedPurchaseOrderId] = useState(null);
 
@@ -2598,23 +2606,173 @@ export default function Warehouse({
     }
   };
 
+  const toDateInputValue = (value) => {
+    if (!value) return "";
+    const date = new Date(value);
+    if (Number.isNaN(date.getTime())) return "";
+    const tzSafe = new Date(date.getTime() - date.getTimezoneOffset() * 60000);
+    return tzSafe.toISOString().slice(0, 10);
+  };
+
+  const buildPurchaseOrderEditRows = useCallback((order) => {
+    const sourceRows = Array.isArray(order?.items) ? order.items : [];
+    const rows = sourceRows
+      .map((row) => ({
+        itemId: String(Number(row?.itemId || 0) || ""),
+        quantity: String(Number(row?.quantity || 0) || ""),
+        price: String(Number(row?.price || 0) || ""),
+      }))
+      .filter((row) => row.itemId);
+    return rows.length
+      ? rows
+      : [
+          {
+            itemId: "",
+            quantity: "",
+            price: "",
+          },
+        ];
+  }, []);
+
+  const ensureInventoryItemsLoaded = useCallback(async () => {
+    let items = inventoryItems;
+    if (!items || items.length === 0) {
+      const res = await fetch(`${API}/inventory/items`, {
+        headers: { Authorization: authHeaders.Authorization },
+      });
+      const data = await readResponsePayload(res);
+      if (!res.ok) {
+        throw new Error((data && data.message) || "Ошибка загрузки товаров");
+      }
+      items = Array.isArray(data) ? data : [];
+      setInventoryItems(items);
+    }
+    return Array.isArray(items) ? items : [];
+  }, [inventoryItems, authHeaders.Authorization]);
+
+  const startPurchaseOrderEdit = useCallback(
+    async (order) => {
+      const sourceOrder = order || viewPurchaseOrder;
+      if (!sourceOrder?.id || String(sourceOrder?.status || "").toUpperCase() !== "DRAFT") {
+        return;
+      }
+      try {
+        await ensureInventoryItemsLoaded();
+      } catch (e) {
+        setViewPurchaseOrderError(
+          resolveErrorMessage(e, "Ошибка загрузки товаров для редактирования заказа.")
+        );
+        return;
+      }
+
+      setViewPurchaseOrderEditForm({
+        supplierId: String(sourceOrder?.supplierId || sourceOrder?.supplier?.id || ""),
+        plannedDate: toDateInputValue(sourceOrder?.plannedDate),
+        comment: String(sourceOrder?.comment || ""),
+        rows: buildPurchaseOrderEditRows(sourceOrder),
+      });
+      setViewPurchaseOrderError("");
+      setViewPurchaseOrderActionNotice("");
+      setViewPurchaseOrderEditMode(true);
+    },
+    [ensureInventoryItemsLoaded, viewPurchaseOrder, buildPurchaseOrderEditRows]
+  );
+
+  const cancelPurchaseOrderEdit = useCallback(() => {
+    setViewPurchaseOrderEditMode(false);
+    setViewPurchaseOrderEditSaving(false);
+  }, []);
+
+  const changePurchaseOrderEditField = useCallback((field, value) => {
+    setViewPurchaseOrderEditForm((prev) => ({ ...prev, [field]: value }));
+  }, []);
+
+  const changePurchaseOrderEditSupplier = useCallback(
+    (supplierIdValue) => {
+      const scopedItemIds = new Set(
+        (Array.isArray(inventoryItems) ? inventoryItems : [])
+          .filter((it) => Number(it?.autoReorderSupplierId || 0) === Number(supplierIdValue || 0))
+          .map((it) => String(Number(it.id || 0)))
+          .filter(Boolean)
+      );
+      setViewPurchaseOrderEditForm((prev) => {
+        const filteredRows = (Array.isArray(prev.rows) ? prev.rows : []).map((row) => {
+          const itemId = String(row?.itemId || "");
+          if (!itemId || scopedItemIds.has(itemId)) return row;
+          return {
+            ...row,
+            itemId: "",
+          };
+        });
+        return {
+          ...prev,
+          supplierId: supplierIdValue,
+          rows: filteredRows.length
+            ? filteredRows
+            : [
+                {
+                  itemId: "",
+                  quantity: "",
+                  price: "",
+                },
+              ],
+        };
+      });
+    },
+    [inventoryItems]
+  );
+
+  const changePurchaseOrderEditRow = useCallback((index, field, value) => {
+    setViewPurchaseOrderEditForm((prev) => ({
+      ...prev,
+      rows: (Array.isArray(prev.rows) ? prev.rows : []).map((row, i) =>
+        i === index
+          ? {
+              ...row,
+              [field]: value,
+            }
+          : row
+      ),
+    }));
+  }, []);
+
+  const addPurchaseOrderEditRow = useCallback(() => {
+    setViewPurchaseOrderEditForm((prev) => ({
+      ...prev,
+      rows: [
+        ...(Array.isArray(prev.rows) ? prev.rows : []),
+        {
+          itemId: "",
+          quantity: "",
+          price: "",
+        },
+      ],
+    }));
+  }, []);
+
+  const removePurchaseOrderEditRow = useCallback((index) => {
+    setViewPurchaseOrderEditForm((prev) => {
+      const nextRows = (Array.isArray(prev.rows) ? prev.rows : []).filter((_, i) => i !== index);
+      return {
+        ...prev,
+        rows: nextRows.length
+          ? nextRows
+          : [
+              {
+                itemId: "",
+                quantity: "",
+                price: "",
+              },
+            ],
+      };
+    });
+  }, []);
 
 
   const handleOpenPurchaseOrder = async () => {
     setInventoryError("");
     try {
-      let items = inventoryItems;
-      if (!items || items.length === 0) {
-        const res = await fetch(`${API}/inventory/items`, {
-          headers: { Authorization: authHeaders.Authorization },
-        });
-        const data = await res.json();
-        if (!res.ok) {
-          throw new Error(data.message || "Ошибка загрузки товаров");
-        }
-        items = Array.isArray(data) ? data : [];
-        setInventoryItems(items);
-      }
+      const items = await ensureInventoryItemsLoaded();
       setOrderItemsForModal(items);
       setShowOrderModal(true);
     } catch (e) {
@@ -2628,6 +2786,8 @@ export default function Warehouse({
     setViewPurchaseOrder(order);
     setViewPurchaseOrderError("");
     setViewPurchaseOrderActionNotice("");
+    setViewPurchaseOrderEditMode(false);
+    setViewPurchaseOrderEditSaving(false);
     setViewPurchaseOrderLoading(true);
     try {
       const res = await fetch(`${API}/purchase-orders/${order.id}`, {
@@ -2656,6 +2816,8 @@ export default function Warehouse({
     setViewPurchaseOrderActionNotice("");
     setViewPurchaseOrderLoading(false);
     setViewPurchaseOrderActionLoading(false);
+    setViewPurchaseOrderEditMode(false);
+    setViewPurchaseOrderEditSaving(false);
   };
 
   useEffect(() => {
@@ -2852,6 +3014,107 @@ export default function Warehouse({
       setPurchaseOrderDeletingId(null);
     }
   };
+  const savePurchaseOrderEdit = async () => {
+    const orderId = Number(viewPurchaseOrder?.id || 0);
+    if (!orderId) return;
+    if (String(viewPurchaseOrder?.status || "").toUpperCase() !== "DRAFT") {
+      setViewPurchaseOrderError("Редактирование доступно только для черновика.");
+      return;
+    }
+
+    try {
+      setViewPurchaseOrderEditSaving(true);
+      setViewPurchaseOrderError("");
+      setViewPurchaseOrderActionNotice("");
+
+      const supplierId = Number(viewPurchaseOrderEditForm?.supplierId || 0);
+      if (!supplierId || Number.isNaN(supplierId)) {
+        throw new Error("Выберите поставщика.");
+      }
+
+      const supplierItemIds = new Set(
+        (Array.isArray(inventoryItems) ? inventoryItems : [])
+          .filter((it) => Number(it?.autoReorderSupplierId || 0) === supplierId)
+          .map((it) => Number(it?.id || 0))
+          .filter((value) => Number.isFinite(value) && value > 0)
+      );
+
+      const rows = Array.isArray(viewPurchaseOrderEditForm?.rows)
+        ? viewPurchaseOrderEditForm.rows
+        : [];
+      const payloadRows = rows
+        .map((row) => {
+          const itemId = Number(row?.itemId || 0);
+          const quantity = Number(row?.quantity);
+          const price = Number(String(row?.price ?? "").replace(",", "."));
+          if (!itemId || Number.isNaN(itemId)) return null;
+          if (!Number.isFinite(quantity) || quantity <= 0) return null;
+          if (!Number.isFinite(price) || price < 0) return null;
+          return {
+            itemId,
+            quantity,
+            price,
+          };
+        })
+        .filter(Boolean);
+
+      const hasForeignItems = payloadRows.some(
+        (row) => !supplierItemIds.has(Number(row.itemId))
+      );
+      if (hasForeignItems) {
+        throw new Error("В заказ можно добавить только товар выбранного поставщика.");
+      }
+      if (!payloadRows.length) {
+        throw new Error("Добавьте хотя бы одну позицию с корректными количеством и ценой.");
+      }
+
+      const plannedDateRaw = String(viewPurchaseOrderEditForm?.plannedDate || "").trim();
+      let plannedDate = null;
+      if (plannedDateRaw) {
+        const parsed = new Date(plannedDateRaw);
+        if (Number.isNaN(parsed.getTime())) {
+          throw new Error("Некорректная плановая дата приемки.");
+        }
+        plannedDate = parsed.toISOString();
+      }
+
+      const res = await fetch(`${API}/purchase-orders/${orderId}`, {
+        method: "PUT",
+        headers: authHeaders,
+        body: JSON.stringify({
+          supplierId,
+          plannedDate,
+          comment: String(viewPurchaseOrderEditForm?.comment || "").trim() || null,
+          items: payloadRows,
+        }),
+      });
+      const data = await readResponsePayload(res);
+      if (!res.ok) {
+        throw new Error((data && data.message) || "Ошибка обновления заказа поставщику.");
+      }
+
+      setViewPurchaseOrder(data || viewPurchaseOrder);
+      setViewPurchaseOrderEditMode(false);
+      setViewPurchaseOrderActionNotice("Заказ обновлён.");
+      await loadPurchaseOrders();
+      await loadInventory();
+    } catch (e) {
+      console.error(e);
+      setViewPurchaseOrderError(resolveErrorMessage(e, "Ошибка обновления заказа поставщику."));
+    } finally {
+      setViewPurchaseOrderEditSaving(false);
+    }
+  };
+
+  const editSupplierItems = useMemo(
+    () =>
+      (Array.isArray(inventoryItems) ? inventoryItems : []).filter(
+        (it) =>
+          Number(it?.autoReorderSupplierId || 0) ===
+          Number(viewPurchaseOrderEditForm?.supplierId || 0)
+      ),
+    [inventoryItems, viewPurchaseOrderEditForm?.supplierId]
+  );
   const sortedPurchaseOrders = useMemo(() => {
     return [...purchaseOrders].sort((a, b) => {
       const da = a.createdAt ? new Date(a.createdAt).getTime() : 0;
@@ -5700,96 +5963,284 @@ export default function Warehouse({
                 </div>
               )}
 
-              <div className="grid-2" style={{ marginBottom: 12 }}>
-                <div className="card">
-                  <div className="card1c__body">
-                    <div><strong>Поставщик:</strong> {viewPurchaseOrder.supplier?.name || "-"}</div>
-                    <div>
-                      <strong>Статус:</strong>{" "}
-                      {PO_STATUS_LABELS[viewPurchaseOrder.status] || viewPurchaseOrder.status || "-"}
-                    </div>
-                    <div>
-                      <strong>Дата:</strong>{" "}
-                      {viewPurchaseOrder.date
-                        ? new Date(viewPurchaseOrder.date).toLocaleString("ru-RU")
-                        : "-"}
-                    </div>
-                    <div>
-                      <strong>План. приемка:</strong>{" "}
-                      {viewPurchaseOrder.plannedDate
-                        ? new Date(viewPurchaseOrder.plannedDate).toLocaleDateString("ru-RU")
-                        : "-"}
-                    </div>
-                    <div><strong>Комментарий:</strong> {viewPurchaseOrder.comment || "-"}</div>
-                  </div>
-                </div>
-              </div>
-
               {viewPurchaseOrderLoading ? (
                 <p>Загрузка заказа...</p>
-              ) : (
-                <div className="table-wrapper">
-                  <table className="table">
-                    <thead>
-                      <tr>
-                        <th>№</th>
-                        <th>Товар</th>
-                        <th>Артикул</th>
-                        <th>Ед.</th>
-                        <th>Заказано</th>
-                        <th>Получено</th>
-                        <th>Цена</th>
-                        <th>Сумма</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {(viewPurchaseOrder.items || []).map((row, index) => {
-                        const qty = Number(row.quantity) || 0;
-                        const price = Number(row.price) || 0;
-                        return (
-                          <tr key={row.id || `${row.itemId || "item"}-${index}`}>
-                            <td>{index + 1}</td>
-                            <td>{row.item?.name || "-"}</td>
-                            <td>{row.item?.sku || "-"}</td>
-                            <td>{row.item?.unit || "-"}</td>
-                            <td>{qty}</td>
-                            <td>{Number(row.receivedQty) || 0}</td>
-                            <td>
-                              {price.toLocaleString("ru-RU", {
-                                minimumFractionDigits: 2,
-                                maximumFractionDigits: 2,
-                              })}
-                            </td>
-                            <td>
-                              {(qty * price).toLocaleString("ru-RU", {
-                                minimumFractionDigits: 2,
-                                maximumFractionDigits: 2,
-                              })}
-                            </td>
-                          </tr>
-                        );
-                      })}
-                      {(viewPurchaseOrder.items || []).length === 0 && (
+              ) : viewPurchaseOrderEditMode ? (
+                <>
+                  <div className="grid-2" style={{ marginBottom: 12 }}>
+                    <div className="card">
+                      <div className="card1c__body">
+                        <div style={{ display: "grid", gap: 10 }}>
+                          <div>
+                            <strong>Поставщик</strong>
+                            <select
+                              className="form__select"
+                              value={viewPurchaseOrderEditForm.supplierId}
+                              onChange={(e) => changePurchaseOrderEditSupplier(e.target.value)}
+                              disabled={viewPurchaseOrderEditSaving}
+                              style={{ marginTop: 6 }}
+                            >
+                              <option value="">-- Выберите поставщика --</option>
+                              {suppliers.map((supplier) => (
+                                <option key={supplier.id} value={supplier.id}>
+                                  {supplier.name}
+                                </option>
+                              ))}
+                            </select>
+                          </div>
+                          <div>
+                            <strong>План. приемка</strong>
+                            <input
+                              type="date"
+                              className="form__input"
+                              value={viewPurchaseOrderEditForm.plannedDate}
+                              onChange={(e) => changePurchaseOrderEditField("plannedDate", e.target.value)}
+                              disabled={viewPurchaseOrderEditSaving}
+                              style={{ marginTop: 6 }}
+                            />
+                          </div>
+                          <div>
+                            <strong>Комментарий</strong>
+                            <input
+                              type="text"
+                              className="form__input"
+                              value={viewPurchaseOrderEditForm.comment}
+                              onChange={(e) => changePurchaseOrderEditField("comment", e.target.value)}
+                              disabled={viewPurchaseOrderEditSaving}
+                              placeholder="Комментарий к заказу"
+                              style={{ marginTop: 6 }}
+                            />
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+
+                  <div className="table-wrapper">
+                    <table className="table">
+                      <thead>
                         <tr>
-                          <td colSpan={8} style={{ textAlign: "center", color: "#6b7280" }}>
-                            Позиции заказа отсутствуют.
+                          <th>№</th>
+                          <th>Товар</th>
+                          <th>Количество</th>
+                          <th>Цена</th>
+                          <th>Сумма</th>
+                          <th></th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {(viewPurchaseOrderEditForm.rows || []).map((row, index) => {
+                          const qty = Number(row?.quantity || 0) || 0;
+                          const price = Number(String(row?.price || "").replace(",", ".")) || 0;
+                          return (
+                            <tr key={`edit-row-${index}`}>
+                              <td>{index + 1}</td>
+                              <td>
+                                <select
+                                  className="form__select form__select--sm"
+                                  value={row?.itemId || ""}
+                                  onChange={(e) =>
+                                    changePurchaseOrderEditRow(index, "itemId", e.target.value)
+                                  }
+                                  disabled={viewPurchaseOrderEditSaving}
+                                >
+                                  <option value="">-- выберите товар --</option>
+                                  {editSupplierItems.map((it) => (
+                                    <option key={it.id} value={it.id}>
+                                      {it.name}
+                                    </option>
+                                  ))}
+                                </select>
+                              </td>
+                              <td>
+                                <input
+                                  type="number"
+                                  className="form__input form__input--sm"
+                                  value={row?.quantity ?? ""}
+                                  onChange={(e) =>
+                                    changePurchaseOrderEditRow(index, "quantity", e.target.value)
+                                  }
+                                  min="0"
+                                  step="0.01"
+                                  disabled={viewPurchaseOrderEditSaving}
+                                />
+                              </td>
+                              <td>
+                                <input
+                                  type="number"
+                                  className="form__input form__input--sm"
+                                  value={row?.price ?? ""}
+                                  onChange={(e) =>
+                                    changePurchaseOrderEditRow(index, "price", e.target.value)
+                                  }
+                                  min="0"
+                                  step="0.01"
+                                  disabled={viewPurchaseOrderEditSaving}
+                                />
+                              </td>
+                              <td>
+                                {(qty * price).toLocaleString("ru-RU", {
+                                  minimumFractionDigits: 2,
+                                  maximumFractionDigits: 2,
+                                })}
+                              </td>
+                              <td>
+                                <button
+                                  type="button"
+                                  className="btn btn--ghost btn--sm"
+                                  onClick={() => removePurchaseOrderEditRow(index)}
+                                  disabled={viewPurchaseOrderEditSaving}
+                                >
+                                  Удалить
+                                </button>
+                              </td>
+                            </tr>
+                          );
+                        })}
+                        <tr>
+                          <td colSpan={6}>
+                            <button
+                              type="button"
+                              className="btn btn--secondary btn--sm"
+                              onClick={addPurchaseOrderEditRow}
+                              disabled={viewPurchaseOrderEditSaving}
+                            >
+                              + Добавить позицию
+                            </button>
                           </td>
                         </tr>
-                      )}
-                    </tbody>
-                  </table>
-                </div>
+                      </tbody>
+                    </table>
+                  </div>
+                </>
+              ) : (
+                <>
+                  <div className="grid-2" style={{ marginBottom: 12 }}>
+                    <div className="card">
+                      <div className="card1c__body">
+                        <div><strong>Поставщик:</strong> {viewPurchaseOrder.supplier?.name || "-"}</div>
+                        <div>
+                          <strong>Статус:</strong>{" "}
+                          {PO_STATUS_LABELS[viewPurchaseOrder.status] || viewPurchaseOrder.status || "-"}
+                        </div>
+                        <div>
+                          <strong>Дата:</strong>{" "}
+                          {viewPurchaseOrder.date
+                            ? new Date(viewPurchaseOrder.date).toLocaleString("ru-RU")
+                            : "-"}
+                        </div>
+                        <div>
+                          <strong>План. приемка:</strong>{" "}
+                          {viewPurchaseOrder.plannedDate
+                            ? new Date(viewPurchaseOrder.plannedDate).toLocaleDateString("ru-RU")
+                            : "-"}
+                        </div>
+                        <div><strong>Комментарий:</strong> {viewPurchaseOrder.comment || "-"}</div>
+                      </div>
+                    </div>
+                  </div>
+
+                  <div className="table-wrapper">
+                    <table className="table">
+                      <thead>
+                        <tr>
+                          <th>№</th>
+                          <th>Товар</th>
+                          <th>Артикул</th>
+                          <th>Ед.</th>
+                          <th>Заказано</th>
+                          <th>Получено</th>
+                          <th>Цена</th>
+                          <th>Сумма</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {(viewPurchaseOrder.items || []).map((row, index) => {
+                          const qty = Number(row.quantity) || 0;
+                          const price = Number(row.price) || 0;
+                          return (
+                            <tr key={row.id || `${row.itemId || "item"}-${index}`}>
+                              <td>{index + 1}</td>
+                              <td>{row.item?.name || "-"}</td>
+                              <td>{row.item?.sku || "-"}</td>
+                              <td>{row.item?.unit || "-"}</td>
+                              <td>{qty}</td>
+                              <td>{Number(row.receivedQty) || 0}</td>
+                              <td>
+                                {price.toLocaleString("ru-RU", {
+                                  minimumFractionDigits: 2,
+                                  maximumFractionDigits: 2,
+                                })}
+                              </td>
+                              <td>
+                                {(qty * price).toLocaleString("ru-RU", {
+                                  minimumFractionDigits: 2,
+                                  maximumFractionDigits: 2,
+                                })}
+                              </td>
+                            </tr>
+                          );
+                        })}
+                        {(viewPurchaseOrder.items || []).length === 0 && (
+                          <tr>
+                            <td colSpan={8} style={{ textAlign: "center", color: "#6b7280" }}>
+                              Позиции заказа отсутствуют.
+                            </td>
+                          </tr>
+                        )}
+                      </tbody>
+                    </table>
+                  </div>
+                </>
               )}
 
               <div className="modal__actions">
-                {viewPurchaseOrder.status === "DRAFT" && (
+                {viewPurchaseOrder.status === "DRAFT" && !viewPurchaseOrderEditMode && (
+                  <button
+                    type="button"
+                    className="btn btn--secondary"
+                    onClick={() => startPurchaseOrderEdit(viewPurchaseOrder)}
+                    disabled={
+                      viewPurchaseOrderActionLoading ||
+                      viewPurchaseOrderEditSaving ||
+                      purchaseOrderDeletingId !== null
+                    }
+                  >
+                    Редактировать
+                  </button>
+                )}
+                {viewPurchaseOrder.status === "DRAFT" && !viewPurchaseOrderEditMode && (
                   <button
                     type="button"
                     className="btn"
                     onClick={() => handlePurchaseOrderStatusSent(viewPurchaseOrder.id)}
-                    disabled={viewPurchaseOrderActionLoading || purchaseOrderDeletingId !== null}
+                    disabled={
+                      viewPurchaseOrderActionLoading ||
+                      viewPurchaseOrderEditSaving ||
+                      purchaseOrderDeletingId !== null
+                    }
                   >
                     {viewPurchaseOrderActionLoading ? "\u041e\u0442\u043f\u0440\u0430\u0432\u043a\u0430..." : "\u041e\u0442\u043f\u0440\u0430\u0432\u0438\u0442\u044c \u043f\u043e\u0441\u0442\u0430\u0432\u0449\u0438\u043a\u0443"}
+                  </button>
+                )}
+                {viewPurchaseOrderEditMode && (
+                  <button
+                    type="button"
+                    className="btn btn--primary"
+                    onClick={savePurchaseOrderEdit}
+                    disabled={viewPurchaseOrderEditSaving || purchaseOrderDeletingId !== null}
+                  >
+                    {viewPurchaseOrderEditSaving ? "Сохранение..." : "Сохранить изменения"}
+                  </button>
+                )}
+                {viewPurchaseOrderEditMode && (
+                  <button
+                    type="button"
+                    className="btn btn--ghost"
+                    onClick={cancelPurchaseOrderEdit}
+                    disabled={viewPurchaseOrderEditSaving || purchaseOrderDeletingId !== null}
+                  >
+                    Отмена редактирования
                   </button>
                 )}
                 {canDeletePurchaseOrder(viewPurchaseOrder) && (
@@ -5797,7 +6248,11 @@ export default function Warehouse({
                     type="button"
                     className="btn btn--danger"
                     onClick={() => handleDeletePurchaseOrder(viewPurchaseOrder)}
-                    disabled={viewPurchaseOrderActionLoading || purchaseOrderDeletingId !== null}
+                    disabled={
+                      viewPurchaseOrderActionLoading ||
+                      viewPurchaseOrderEditSaving ||
+                      purchaseOrderDeletingId !== null
+                    }
                   >
                     {purchaseOrderDeletingId === Number(viewPurchaseOrder?.id || 0)
                       ? "Удаление..."
@@ -5808,7 +6263,11 @@ export default function Warehouse({
                   type="button"
                   className="btn btn--ghost"
                   onClick={handleCloseViewPurchaseOrder}
-                  disabled={viewPurchaseOrderActionLoading || purchaseOrderDeletingId !== null}
+                  disabled={
+                    viewPurchaseOrderActionLoading ||
+                    viewPurchaseOrderEditSaving ||
+                    purchaseOrderDeletingId !== null
+                  }
                 >
                   {"\u0417\u0430\u043a\u0440\u044b\u0442\u044c"}
                 </button>

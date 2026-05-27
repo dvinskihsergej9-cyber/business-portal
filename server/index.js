@@ -22547,6 +22547,168 @@ app.get("/api/purchase-orders/:id", auth, async (req, res) => {
   }
 });
 
+// Обновить заказ поставщику (только черновик)
+app.put("/api/purchase-orders/:id", auth, async (req, res) => {
+  try {
+    if (!isWarehouseManager(req.user)) {
+      return res.status(403).json({ message: "Нет прав" });
+    }
+
+    const id = Number(req.params.id);
+    if (!id || Number.isNaN(id)) {
+      return res.status(400).json({ message: "Некорректный ID заказа" });
+    }
+
+    const { supplierId, plannedDate, comment, items } = req.body || {};
+
+    const order = await prisma.purchaseOrder.findUnique({
+      where: { id },
+      include: {
+        items: { select: { id: true, itemId: true, quantity: true, price: true } },
+      },
+    });
+
+    if (!order) {
+      return res.status(404).json({ message: "Заказ не найден" });
+    }
+    if (String(order.status || "") !== "DRAFT") {
+      return res.status(409).json({
+        message: "Редактирование доступно только для заказа в статусе Черновик",
+      });
+    }
+
+    const supplierIdNum = Number(supplierId);
+    if (!supplierIdNum || Number.isNaN(supplierIdNum)) {
+      return res.status(400).json({ message: "Нужно указать корректного поставщика" });
+    }
+    const supplier = await prisma.supplier.findUnique({
+      where: { id: supplierIdNum },
+      select: { id: true },
+    });
+    if (!supplier) {
+      return res.status(404).json({ message: "Поставщик не найден" });
+    }
+
+    if (!Array.isArray(items) || items.length === 0) {
+      return res.status(400).json({ message: "Нужно указать хотя бы одну позицию заказа" });
+    }
+
+    const preparedItems = [];
+    const seenItemIds = new Set();
+    for (const row of items) {
+      const itemId = Number(row?.itemId);
+      const qty = Number(row?.quantity);
+      const price = Number(String(row?.price ?? "").replace(",", "."));
+
+      if (!itemId || Number.isNaN(itemId)) {
+        return res.status(400).json({ message: "Некорректный товар в списке позиций" });
+      }
+      if (seenItemIds.has(itemId)) {
+        return res.status(400).json({ message: "Один и тот же товар нельзя добавлять дважды" });
+      }
+      seenItemIds.add(itemId);
+
+      if (!Number.isFinite(qty) || qty <= 0) {
+        return res.status(400).json({ message: "Количество по каждой позиции должно быть > 0" });
+      }
+      if (!Number.isFinite(price) || price < 0) {
+        return res.status(400).json({
+          message:
+            "Цена по каждой позиции должна быть числом (может быть 0, но не меньше)",
+        });
+      }
+
+      preparedItems.push({
+        itemId,
+        quantity: qty,
+        price,
+      });
+    }
+
+    const uniqueItemIds = Array.from(
+      new Set(preparedItems.map((entry) => Number(entry.itemId)).filter(Boolean))
+    );
+    const sourceItems = await prisma.item.findMany({
+      where: {
+        id: { in: uniqueItemIds },
+      },
+      select: {
+        id: true,
+        name: true,
+        autoReorderSupplierId: true,
+      },
+    });
+    const sourceItemById = new Map(sourceItems.map((item) => [Number(item.id), item]));
+
+    for (const itemId of uniqueItemIds) {
+      if (!sourceItemById.has(Number(itemId))) {
+        return res.status(400).json({ message: "Некорректный товар в списке позиций" });
+      }
+    }
+
+    for (const sourceItem of sourceItems) {
+      const linkedSupplierId = Number(sourceItem?.autoReorderSupplierId || 0);
+      if (linkedSupplierId !== supplierIdNum) {
+        return res.status(409).json({
+          message: `Товар \"${sourceItem?.name || `#${sourceItem?.id}`}\" не привязан к выбранному поставщику`,
+          itemId: Number(sourceItem?.id || 0) || null,
+          supplierId: supplierIdNum,
+          linkedSupplierId: linkedSupplierId || null,
+        });
+      }
+    }
+
+    await prisma.$transaction(async (tx) => {
+      await tx.purchaseOrder.update({
+        where: { id },
+        data: {
+          supplierId: supplierIdNum,
+          plannedDate: plannedDate ? new Date(plannedDate) : null,
+          comment: comment || null,
+        },
+      });
+      await tx.purchaseOrderItem.deleteMany({
+        where: { orderId: id },
+      });
+      await tx.purchaseOrderItem.createMany({
+        data: preparedItems.map((row) => ({
+          orgId: req.user.orgId || null,
+          orderId: id,
+          itemId: row.itemId,
+          quantity: row.quantity,
+          price: row.price,
+        })),
+      });
+    });
+
+    await applyPurchasePriceUpdates(
+      prisma,
+      buildPurchasePriceUpdates(preparedItems),
+      req.user.orgId || null
+    );
+
+    const updatedOrder = await prisma.purchaseOrder.findUnique({
+      where: { id },
+      include: {
+        supplier: true,
+        items: {
+          include: { item: true },
+        },
+        createdBy: {
+          select: { id: true, name: true, email: true },
+        },
+      },
+    });
+
+    return res.json(updatedOrder);
+  } catch (err) {
+    console.error("update purchase order error:", err);
+    return res
+      .status(500)
+      .json({ message: "Ошибка сервера при обновлении заказа поставщику" });
+  }
+});
+
 // Удалить заказ поставщику (только до приёмки на склад)
 app.delete("/api/purchase-orders/:id", auth, async (req, res) => {
   try {
@@ -28092,9 +28254,6 @@ async function checkAutoReorders(options = {}) {
 
       let order = existingDraft;
 
-      let isNewDraft = false;
-      let lineUpdated = false;
-
       if (!order) {
         const nextNumber = await getNextPurchaseOrderNumber(orgId);
         order = await prisma.purchaseOrder.create({
@@ -28118,7 +28277,6 @@ async function checkAutoReorders(options = {}) {
             },
           },
         });
-        isNewDraft = true;
       } else {
         if (existingLine) {
           await prisma.purchaseOrderItem.update({
@@ -28131,7 +28289,6 @@ async function checkAutoReorders(options = {}) {
                 0,
             },
           });
-          lineUpdated = true;
         } else {
           await prisma.purchaseOrderItem.create({
             data: {
@@ -28154,25 +28311,8 @@ async function checkAutoReorders(options = {}) {
           autoReorderLastOrderId: order.id,
         },
       });
-
-      const orderNumberLabel = order.number || `#${order.id}`;
-      const subject = isNewDraft
-        ? `Auto reorder: draft created ${orderNumberLabel}`
-        : `Auto reorder: draft updated ${orderNumberLabel}`;
-      const text =
-        `System ${isNewDraft ? "created" : "updated"} a draft supplier order.\n` +
-        `Item: ${item.name}\n` +
-        `Available qty: ${availableQty}\n` +
-        `Minimum: ${minQty}\n` +
-        `Order qty: ${orderQty}\n` +
-        `Supplier: ${supplier.name}\n` +
-        `Order number: ${orderNumberLabel}\n` +
-        `Line action: ${lineUpdated ? "quantity increased" : "line added"}\n\n` +
-        `Manual step required: open order and click \"Send to supplier\".`;
-
-      for (const email of adminEmails) {
-        await sendAutoReorderEmail({ to: email, subject, text });
-      }
+      // Шумные служебные письма о создании/обновлении черновика автозаказа отключены.
+      // Оставляем только периодический reminder-письма из ветки выше.
     }
   } catch (err) {
     console.error("AUTO_REORDER_CHECK_ERROR:", err);
