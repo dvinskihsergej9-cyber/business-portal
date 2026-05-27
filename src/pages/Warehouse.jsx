@@ -629,6 +629,7 @@ export default function Warehouse({
   const [supplierForm, setSupplierForm] = useState(EMPTY_SUPPLIER_FORM);
   const [editingSupplierId, setEditingSupplierId] = useState(null);
   const [supplierSaving, setSupplierSaving] = useState(false);
+  const [supplierDeletingId, setSupplierDeletingId] = useState(null);
 
 
 
@@ -2558,6 +2559,41 @@ export default function Warehouse({
       setSuppliersError(e.message);
     } finally {
       setSupplierSaving(false);
+    }
+  };
+
+  const handleDeleteSupplier = async (supplier) => {
+    const supplierId = Number(supplier?.id || 0);
+    if (!supplierId) return;
+
+    const supplierName = String(supplier?.name || "").trim() || `#${supplierId}`;
+    const confirmed = window.confirm(`Удалить поставщика "${supplierName}"?`);
+    if (!confirmed) return;
+
+    try {
+      setSuppliersError("");
+      setSupplierDeletingId(supplierId);
+
+      const res = await fetch(`${API}/suppliers/${supplierId}`, {
+        method: "DELETE",
+        headers: authHeaders,
+      });
+      const data = await readResponsePayload(res);
+      if (!res.ok) {
+        throw new Error(
+          (data && data.message) || "Ошибка удаления поставщика."
+        );
+      }
+
+      if (Number(editingSupplierId || 0) === supplierId) {
+        resetSupplierEditor();
+      }
+      await loadSuppliers();
+    } catch (e) {
+      console.error(e);
+      setSuppliersError(resolveErrorMessage(e, "Ошибка удаления поставщика."));
+    } finally {
+      setSupplierDeletingId(null);
     }
   };
 
@@ -5203,13 +5239,17 @@ export default function Warehouse({
                           type="button"
                           className="btn btn--secondary"
                           onClick={resetSupplierEditor}
-                          disabled={supplierSaving}
+                          disabled={supplierSaving || supplierDeletingId !== null}
                         >
                           Отмена редактирования
                         </button>
                       ) : null}
 
-                      <button type="submit" className="btn btn--primary" disabled={supplierSaving}>
+                      <button
+                        type="submit"
+                        className="btn btn--primary"
+                        disabled={supplierSaving || supplierDeletingId !== null}
+                      >
 
                         {supplierSaving
                           ? "Сохранение..."
@@ -5252,7 +5292,7 @@ export default function Warehouse({
                             <th>Телефон</th>
 
                             <th>Email</th>
-                            <th></th>
+                            <th>Действия</th>
 
                           </tr>
 
@@ -5274,13 +5314,26 @@ export default function Warehouse({
 
                               <td>{s.email || "-"}</td>
                               <td>
-                                <button
-                                  type="button"
-                                  className="btn btn--secondary btn--sm"
-                                  onClick={() => handleEditSupplier(s)}
-                                >
-                                  Редактировать
-                                </button>
+                                <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+                                  <button
+                                    type="button"
+                                    className="btn btn--secondary btn--sm"
+                                    onClick={() => handleEditSupplier(s)}
+                                    disabled={supplierSaving || supplierDeletingId !== null}
+                                  >
+                                    Редактировать
+                                  </button>
+                                  <button
+                                    type="button"
+                                    className="btn btn--danger btn--sm"
+                                    onClick={() => handleDeleteSupplier(s)}
+                                    disabled={supplierSaving || supplierDeletingId !== null}
+                                  >
+                                    {supplierDeletingId === Number(s.id)
+                                      ? "Удаление..."
+                                      : "Удалить"}
+                                  </button>
+                                </div>
                               </td>
 
                             </tr>
