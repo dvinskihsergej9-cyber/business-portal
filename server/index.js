@@ -17421,6 +17421,29 @@ app.post("/api/notifications/:id/create-supplier-orders", auth, async (req, res)
       const sourceItemById = new Map(
         sourceItems.map((item) => [Number(item.id), item]).filter((entry) => Number(entry[0]) > 0)
       );
+      const lastSupplierByItemId = new Map();
+      if (itemIds.length) {
+        const recentPoItems = await tx.purchaseOrderItem.findMany({
+          where: { itemId: { in: itemIds } },
+          orderBy: { id: "desc" },
+          select: {
+            itemId: true,
+            order: {
+              select: {
+                supplierId: true,
+              },
+            },
+          },
+          take: 800,
+        });
+        for (const row of recentPoItems) {
+          const itemId = Number(row?.itemId || 0);
+          const supplierId = Number(row?.order?.supplierId || 0);
+          if (!itemId || !supplierId) continue;
+          if (lastSupplierByItemId.has(itemId)) continue;
+          lastSupplierByItemId.set(itemId, supplierId);
+        }
+      }
 
       const unresolvedItems = [];
       const skippedItems = [];
@@ -17486,7 +17509,9 @@ app.post("/api/notifications/:id/create-supplier-orders", auth, async (req, res)
           continue;
         }
 
-        const supplierId = Number(sourceItem.autoReorderSupplierId || 0);
+        const directSupplierId = Number(sourceItem.autoReorderSupplierId || 0);
+        const fallbackSupplierId = Number(lastSupplierByItemId.get(itemId) || 0);
+        const supplierId = directSupplierId || fallbackSupplierId;
         if (!supplierId || Number.isNaN(supplierId)) {
           unresolvedItems.push({
             itemId,
@@ -17644,15 +17669,26 @@ app.post("/api/notifications/:id/create-supplier-orders", auth, async (req, res)
     });
 
     const createdCount = Array.isArray(result?.createdOrders) ? result.createdOrders.length : 0;
-    const unresolvedCount = Array.isArray(result?.unresolvedItems)
-      ? result.unresolvedItems.length
-      : 0;
+    const unresolvedItems = Array.isArray(result?.unresolvedItems) ? result.unresolvedItems : [];
+    const unresolvedCount = unresolvedItems.length;
+    const missingSupplierItems = unresolvedItems
+      .filter((item) => String(item?.reason || "") === "NO_SUPPLIER_LINK")
+      .map((item) => String(item?.name || "").trim())
+      .filter(Boolean);
+    const missingSupplierPreview = missingSupplierItems.slice(0, 3).join(", ");
+    const missingSupplierTail =
+      missingSupplierItems.length > 3 ? ` и ещё ${missingSupplierItems.length - 3}` : "";
+    const unresolvedText = unresolvedCount
+      ? missingSupplierItems.length
+        ? ` Требуют выбора поставщика: ${missingSupplierItems.length}${
+            missingSupplierPreview ? ` (${missingSupplierPreview}${missingSupplierTail})` : ""
+          }.`
+        : ` Проблемных позиций: ${unresolvedCount}.`
+      : "";
     const message = createdCount
-      ? `Создано заказов: ${createdCount}${
-          unresolvedCount ? `. Позиции без автозаказа: ${unresolvedCount}.` : "."
-        }`
+      ? `Создано заказов: ${createdCount}.${unresolvedText}`
       : unresolvedCount
-        ? `Заказы не созданы. Требуют выбора поставщика: ${unresolvedCount}.`
+        ? `Заказы не созданы.${unresolvedText}`
         : "Заказы не созданы: нет позиций ниже минимума.";
 
     return res.json({
