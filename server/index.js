@@ -26781,9 +26781,6 @@ async function checkDbReadyForBackground() {
 const AUTO_REORDER_INTERVAL_MS = Number(
   process.env.AUTO_REORDER_INTERVAL_MS || 5 * 60 * 1000
 );
-const AUTO_REORDER_REMINDER_MS = Number(
-  process.env.AUTO_REORDER_REMINDER_MS || 24 * 60 * 60 * 1000
-);
 const AUTO_REORDER_EVENT_DEBOUNCE_MS = Math.max(
   250,
   Number(process.env.AUTO_REORDER_EVENT_DEBOUNCE_MS || 1200)
@@ -28148,18 +28145,11 @@ async function checkAutoReorders(options = {}) {
     });
 
     const adminByOrg = new Map();
-    const adminEmailsByOrg = new Map();
     for (const admin of adminUsers) {
       const orgKey = Number.isFinite(Number(admin.orgId)) ? Number(admin.orgId) : null;
       if (orgKey == null) continue;
       if (!adminByOrg.has(orgKey)) {
         adminByOrg.set(orgKey, admin.id);
-      }
-      if (admin.email) {
-        if (!adminEmailsByOrg.has(orgKey)) {
-          adminEmailsByOrg.set(orgKey, []);
-        }
-        adminEmailsByOrg.get(orgKey).push(admin.email);
       }
     }
 
@@ -28168,7 +28158,6 @@ async function checkAutoReorders(options = {}) {
       if (orgId == null) continue;
 
       const adminUserId = adminByOrg.get(orgId) || null;
-      const adminEmails = adminEmailsByOrg.get(orgId) || [];
       const minQty = Number(item.autoReorderMin);
 
       if (!Number.isFinite(minQty) || minQty <= 0) continue;
@@ -28221,31 +28210,7 @@ async function checkAutoReorders(options = {}) {
         : null;
 
       if (item.autoReorderActive && existingLine) {
-        const lastReminderAt = item.autoReorderLastReminderAt
-          ? new Date(item.autoReorderLastReminderAt).getTime()
-          : 0;
-
-        if (Date.now() - lastReminderAt >= AUTO_REORDER_REMINDER_MS) {
-          const draftOrderId = existingDraft?.id || item.autoReorderLastOrderId;
-          const lastOrderInfo = draftOrderId
-            ? `\nDraft order ID: #${draftOrderId}`
-            : "";
-          const subject = `Auto reorder: action required for item \"${item.name}\"`;
-          const text =
-            `Item \"${item.name}\" is still below minimum.\n` +
-            `Available qty: ${availableQty}\nMinimum: ${minQty}` +
-            `${lastOrderInfo}\n\n` +
-            `Open \"Purchase Orders\" and confirm sending manually.`;
-
-          for (const email of adminEmails) {
-            await sendAutoReorderEmail({ to: email, subject, text });
-          }
-
-          await prisma.item.update({
-            where: { id: item.id },
-            data: { autoReorderLastReminderAt: new Date() },
-          });
-        }
+        // Reminder email отключён: не дублируем уведомления для админов.
         continue;
       }
 
