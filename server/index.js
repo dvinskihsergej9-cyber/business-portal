@@ -17353,24 +17353,31 @@ app.post("/api/notifications/:id/create-supplier-orders", auth, async (req, res)
           if (summary) orderedSummaries.push(summary);
         }
 
-        if (!notification.isRead) {
-          await tx.warehouseNotification.update({
-            where: { id: notification.id },
-            data: { isRead: true, readAt: new Date() },
-          });
-        }
+        const canReprocessBecauseOrdersMissing =
+          existingStatus === "no_orders" ||
+          existingOrderIds.length === 0 ||
+          orderedSummaries.length === 0;
 
-        return {
-          alreadyProcessed: true,
-          status: existingStatus || "processed",
-          createdOrders: orderedSummaries,
-          unresolvedItems: Array.isArray(existingProcessing?.unresolvedItems)
-            ? existingProcessing.unresolvedItems
-            : [],
-          skippedItems: Array.isArray(existingProcessing?.skippedItems)
-            ? existingProcessing.skippedItems
-            : [],
-        };
+        if (!canReprocessBecauseOrdersMissing) {
+          if (!notification.isRead) {
+            await tx.warehouseNotification.update({
+              where: { id: notification.id },
+              data: { isRead: true, readAt: new Date() },
+            });
+          }
+
+          return {
+            alreadyProcessed: true,
+            status: existingStatus || "processed",
+            createdOrders: orderedSummaries,
+            unresolvedItems: Array.isArray(existingProcessing?.unresolvedItems)
+              ? existingProcessing.unresolvedItems
+              : [],
+            skippedItems: Array.isArray(existingProcessing?.skippedItems)
+              ? existingProcessing.skippedItems
+              : [],
+          };
+        }
       }
 
       const payloadItems = Array.isArray(payload?.items) ? payload.items : [];
