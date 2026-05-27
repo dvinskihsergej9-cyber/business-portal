@@ -17638,6 +17638,9 @@ app.post("/api/notifications/:id/create-supplier-orders", auth, async (req, res)
         unresolvedItems,
         skippedItems,
       };
+    }, {
+      maxWait: 10_000,
+      timeout: 60_000,
     });
 
     const createdCount = Array.isArray(result?.createdOrders) ? result.createdOrders.length : 0;
@@ -17668,6 +17671,11 @@ app.post("/api/notifications/:id/create-supplier-orders", auth, async (req, res)
     if (err?.code === "P2002") {
       return res.status(409).json({
         message: "Конфликт номера заказа. Повторите действие.",
+      });
+    }
+    if (err?.code === "P2028") {
+      return res.status(409).json({
+        message: "Операция заняла слишком много времени. Повторите действие.",
       });
     }
     if (String(err?.message || "") === "PO_NUMBER_RETRY_EXHAUSTED") {
