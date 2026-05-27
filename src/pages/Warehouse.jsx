@@ -660,6 +660,7 @@ export default function Warehouse({
   const [viewPurchaseOrderError, setViewPurchaseOrderError] = useState("");
   const [viewPurchaseOrderActionLoading, setViewPurchaseOrderActionLoading] = useState(false);
   const [viewPurchaseOrderActionNotice, setViewPurchaseOrderActionNotice] = useState("");
+  const [viewPurchaseOrderLogsVisible, setViewPurchaseOrderLogsVisible] = useState(false);
   const [viewPurchaseOrderHistory, setViewPurchaseOrderHistory] = useState([]);
   const [viewPurchaseOrderHistoryLoading, setViewPurchaseOrderHistoryLoading] = useState(false);
   const [viewPurchaseOrderEditMode, setViewPurchaseOrderEditMode] = useState(false);
@@ -2815,6 +2816,7 @@ export default function Warehouse({
   const handleViewPurchaseOrder = async (order) => {
     if (!order?.id) return;
     setViewPurchaseOrder(order);
+    setViewPurchaseOrderLogsVisible(false);
     setViewPurchaseOrderError("");
     setViewPurchaseOrderActionNotice("");
     setViewPurchaseOrderEditMode(false);
@@ -2845,6 +2847,7 @@ export default function Warehouse({
 
   const handleCloseViewPurchaseOrder = () => {
     setViewPurchaseOrder(null);
+    setViewPurchaseOrderLogsVisible(false);
     setViewPurchaseOrderHistory([]);
     setViewPurchaseOrderError("");
     setViewPurchaseOrderActionNotice("");
@@ -6028,19 +6031,41 @@ export default function Warehouse({
       )}
 
       {viewPurchaseOrder && (
+        <>
         <div className="modal-backdrop">
           <div className="modal modal--wide">
             <div className="modal__header">
               <h2 className="modal__title">
                 Заказ поставщику №{viewPurchaseOrder.number || viewPurchaseOrder.id}
               </h2>
-              <button
-                type="button"
-                className="modal__close"
-                onClick={handleCloseViewPurchaseOrder}
-              >
-                ×
-              </button>
+              <div className="task-details-modal__header-actions">
+                <button
+                  type="button"
+                  className={`btn btn--ghost btn--sm task-details-logs-btn${
+                    viewPurchaseOrderLogsVisible ? " task-details-logs-btn--active" : ""
+                  }`}
+                  onClick={async () => {
+                    const nextVisible = !viewPurchaseOrderLogsVisible;
+                    setViewPurchaseOrderLogsVisible(nextVisible);
+                    if (
+                      nextVisible &&
+                      !viewPurchaseOrderHistoryLoading &&
+                      Number(viewPurchaseOrder?.id || 0) > 0
+                    ) {
+                      await loadPurchaseOrderHistory(Number(viewPurchaseOrder.id));
+                    }
+                  }}
+                >
+                  Логи
+                </button>
+                <button
+                  type="button"
+                  className="modal__close"
+                  onClick={handleCloseViewPurchaseOrder}
+                >
+                  ×
+                </button>
+              </div>
             </div>
 
             <div className="modal__body">
@@ -6286,53 +6311,6 @@ export default function Warehouse({
                 </>
               )}
 
-              <div className="card" style={{ marginTop: 12 }}>
-                <div className="card1c__body">
-                  <div style={{ fontWeight: 600, marginBottom: 8 }}>История изменений</div>
-                  {viewPurchaseOrderHistoryLoading ? (
-                    <p style={{ margin: 0 }}>Загрузка истории...</p>
-                  ) : viewPurchaseOrderHistory.length === 0 ? (
-                    <p className="text-muted" style={{ margin: 0 }}>
-                      История изменений пока пуста.
-                    </p>
-                  ) : (
-                    <div style={{ display: "grid", gap: 10 }}>
-                      {viewPurchaseOrderHistory.map((event) => (
-                        <div
-                          key={event.id}
-                          style={{
-                            border: "1px solid #e5e7eb",
-                            borderRadius: 10,
-                            padding: 10,
-                            background: "#f8fafc",
-                          }}
-                        >
-                          <div style={{ fontSize: 12, color: "#64748b", marginBottom: 4 }}>
-                            {(event.createdAt
-                              ? new Date(event.createdAt).toLocaleString("ru-RU")
-                              : "-") +
-                              " • " +
-                              (event.actor?.name || event.actor?.email || "Система")}
-                          </div>
-                          <div style={{ fontWeight: 600, marginBottom: 4 }}>
-                            {event.message || "Изменение заказа"}
-                          </div>
-                          {Array.isArray(event.changes) && event.changes.length > 0 ? (
-                            <div style={{ display: "grid", gap: 2 }}>
-                              {event.changes.map((line, idx) => (
-                                <div key={`${event.id}-ch-${idx}`} style={{ fontSize: 13 }}>
-                                  • {line}
-                                </div>
-                              ))}
-                            </div>
-                          ) : null}
-                        </div>
-                      ))}
-                    </div>
-                  )}
-                </div>
-              </div>
-
               <div className="modal__actions">
                 {viewPurchaseOrder.status === "DRAFT" && !viewPurchaseOrderEditMode && (
                   <button
@@ -6414,6 +6392,84 @@ export default function Warehouse({
             </div>
           </div>
         </div>
+        {viewPurchaseOrderLogsVisible && (
+          <div
+            className="modal-backdrop"
+            onClick={() => setViewPurchaseOrderLogsVisible(false)}
+          >
+            <div
+              className="modal modal--wide"
+              style={{ width: "min(920px, 96vw)" }}
+              onClick={(event) => event.stopPropagation()}
+            >
+              <div className="modal__header">
+                <h2 className="modal__title">
+                  Логи заказа №{viewPurchaseOrder.number || viewPurchaseOrder.id}
+                </h2>
+                <button
+                  type="button"
+                  className="modal__close"
+                  onClick={() => setViewPurchaseOrderLogsVisible(false)}
+                >
+                  ×
+                </button>
+              </div>
+              <div className="modal__body">
+                {viewPurchaseOrderHistoryLoading ? (
+                  <p style={{ margin: 0 }}>Загрузка истории...</p>
+                ) : viewPurchaseOrderHistory.length === 0 ? (
+                  <p className="text-muted" style={{ margin: 0 }}>
+                    История изменений пока пуста.
+                  </p>
+                ) : (
+                  <div style={{ display: "grid", gap: 10 }}>
+                    {viewPurchaseOrderHistory.map((event) => (
+                      <div
+                        key={event.id}
+                        style={{
+                          border: "1px solid #e5e7eb",
+                          borderRadius: 10,
+                          padding: 10,
+                          background: "#f8fafc",
+                        }}
+                      >
+                        <div style={{ fontSize: 12, color: "#64748b", marginBottom: 4 }}>
+                          {(event.createdAt
+                            ? new Date(event.createdAt).toLocaleString("ru-RU")
+                            : "-") +
+                            " • " +
+                            (event.actor?.name || event.actor?.email || "Система")}
+                        </div>
+                        <div style={{ fontWeight: 600, marginBottom: 4 }}>
+                          {event.message || "Изменение заказа"}
+                        </div>
+                        {Array.isArray(event.changes) && event.changes.length > 0 ? (
+                          <div style={{ display: "grid", gap: 2 }}>
+                            {event.changes.map((line, idx) => (
+                              <div key={`${event.id}-ch-${idx}`} style={{ fontSize: 13 }}>
+                                • {line}
+                              </div>
+                            ))}
+                          </div>
+                        ) : null}
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+              <div className="modal__actions">
+                <button
+                  type="button"
+                  className="btn btn--ghost"
+                  onClick={() => setViewPurchaseOrderLogsVisible(false)}
+                >
+                  Закрыть
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
+        </>
       )}
 
       {showOrderModal && (
