@@ -2300,6 +2300,30 @@ async function getNextPurchaseOrderNumber(orgId) {
   return "PO-" + String(lastSeq + 1).padStart(5, "0");
 }
 
+async function getNextPurchaseOrderNumberInTx(tx, orgId) {
+  const normalizedOrgId = orgId ? Number(orgId) : null;
+  const recentOrders = await tx.purchaseOrder.findMany({
+    where: {
+      orgId: normalizedOrgId,
+      number: { startsWith: "PO-" },
+    },
+    orderBy: { id: "desc" },
+    take: 50,
+    select: { number: true },
+  });
+
+  let lastSeq = 0;
+  for (const row of recentOrders) {
+    const match = /^PO-(\d+)$/i.exec(String(row?.number || "").trim());
+    if (match) {
+      lastSeq = Number(match[1]) || 0;
+      break;
+    }
+  }
+
+  return "PO-" + String(lastSeq + 1).padStart(5, "0");
+}
+
 prisma = prismaBase.$extends({
   query: {
     $allModels: {
@@ -17226,6 +17250,374 @@ app.post("/api/notifications/:id/read", auth, async (req, res) => {
   } catch (err) {
     console.error("notifications mark-read error:", err);
     res.status(500).json({ message: "Ошибка обновления уведомления." });
+  }
+});
+
+app.post("/api/notifications/:id/create-supplier-orders", auth, async (req, res) => {
+  try {
+    if (!isWarehouseManager(req.user)) {
+      return res.status(403).json({ message: "Нет прав" });
+    }
+
+    const id = Number(req.params.id);
+    if (!id || Number.isNaN(id)) {
+      return res.status(400).json({ message: "Некорректный идентификатор уведомления." });
+    }
+
+    const summarizeOrder = (order) => {
+      const lines = Array.isArray(order?.items) ? order.items : [];
+      const totalQty = lines.reduce((sum, row) => sum + (Number(row?.quantity) || 0), 0);
+      return {
+        id: Number(order?.id || 0) || null,
+        number: order?.number || null,
+        supplierId: Number(order?.supplierId || 0) || null,
+        supplierName: order?.supplier?.name || "",
+        itemsCount: lines.length,
+        totalQty: Math.round(totalQty),
+      };
+    };
+
+    const result = await prisma.$transaction(async (tx) => {
+      const lockRows = await tx.$queryRawUnsafe(
+        `SELECT id FROM "WarehouseNotification" WHERE id = $1 AND "userId" = $2 FOR UPDATE`,
+        id,
+        req.user.id
+      );
+      if (!Array.isArray(lockRows) || !lockRows.length) {
+        const err = new Error("NOTIFICATION_NOT_FOUND");
+        err.code = "NOTIFICATION_NOT_FOUND";
+        throw err;
+      }
+
+      const notification = await tx.warehouseNotification.findFirst({
+        where: { id, userId: req.user.id },
+      });
+      if (!notification) {
+        const err = new Error("NOTIFICATION_NOT_FOUND");
+        err.code = "NOTIFICATION_NOT_FOUND";
+        throw err;
+      }
+
+      const payload =
+        notification.payloadJson &&
+        typeof notification.payloadJson === "object" &&
+        !Array.isArray(notification.payloadJson)
+          ? notification.payloadJson
+          : {};
+      const payloadScope = String(payload?.scope || "")
+        .trim()
+        .toLowerCase();
+      if (notification.type !== "LOW_STOCK_SUMMARY" && payloadScope !== "low_stock_summary") {
+        const err = new Error("NOTIFICATION_TYPE_NOT_SUPPORTED");
+        err.code = "NOTIFICATION_TYPE_NOT_SUPPORTED";
+        throw err;
+      }
+
+      const existingProcessing =
+        payload?.processing &&
+        typeof payload.processing === "object" &&
+        !Array.isArray(payload.processing)
+          ? payload.processing
+          : null;
+      const existingStatus = String(existingProcessing?.status || "").trim().toLowerCase();
+      const isAlreadyProcessed = ["processed", "partial", "no_orders"].includes(existingStatus);
+
+      if (isAlreadyProcessed) {
+        const existingOrderIds = Array.from(
+          new Set(
+            (Array.isArray(existingProcessing?.createdOrderIds)
+              ? existingProcessing.createdOrderIds
+              : []
+            )
+              .map((value) => Number(value))
+              .filter((value) => Number.isFinite(value) && value > 0)
+          )
+        );
+        const existingOrders = existingOrderIds.length
+          ? await tx.purchaseOrder.findMany({
+              where: { id: { in: existingOrderIds } },
+              include: {
+                supplier: { select: { id: true, name: true } },
+                items: { select: { quantity: true } },
+              },
+            })
+          : [];
+        const orderById = new Map(
+          existingOrders
+            .map((order) => [Number(order.id), summarizeOrder(order)])
+            .filter((entry) => Number(entry[0]) > 0)
+        );
+        const orderedSummaries = [];
+        for (const orderId of existingOrderIds) {
+          const summary = orderById.get(orderId);
+          if (summary) orderedSummaries.push(summary);
+        }
+
+        if (!notification.isRead) {
+          await tx.warehouseNotification.update({
+            where: { id: notification.id },
+            data: { isRead: true, readAt: new Date() },
+          });
+        }
+
+        return {
+          alreadyProcessed: true,
+          status: existingStatus || "processed",
+          createdOrders: orderedSummaries,
+          unresolvedItems: Array.isArray(existingProcessing?.unresolvedItems)
+            ? existingProcessing.unresolvedItems
+            : [],
+          skippedItems: Array.isArray(existingProcessing?.skippedItems)
+            ? existingProcessing.skippedItems
+            : [],
+        };
+      }
+
+      const payloadItems = Array.isArray(payload?.items) ? payload.items : [];
+      const itemIds = Array.from(
+        new Set(
+          payloadItems
+            .map((entry) => Number(entry?.id))
+            .filter((value) => Number.isFinite(value) && value > 0)
+        )
+      );
+      const payloadItemById = new Map(
+        payloadItems
+          .map((entry) => [Number(entry?.id), entry])
+          .filter((entry) => Number.isFinite(entry[0]) && entry[0] > 0)
+      );
+
+      const receivingLocationIds = await getReceivingLocationIds(tx, req.user?.orgId || null);
+      const receivingLocationSet = new Set(
+        (Array.isArray(receivingLocationIds) ? receivingLocationIds : [])
+          .map((value) => Number(value))
+          .filter((value) => Number.isFinite(value) && value > 0)
+      );
+
+      const sourceItems = itemIds.length
+        ? await tx.item.findMany({
+            where: {
+              id: { in: itemIds },
+              category: "STOCK",
+            },
+            select: {
+              id: true,
+              name: true,
+              unit: true,
+              minStock: true,
+              defaultPrice: true,
+              autoReorderSupplierId: true,
+              autoReorderSupplier: { select: { id: true, name: true } },
+              movements: {
+                select: { type: true, quantity: true, locationId: true },
+              },
+              stockHolds: {
+                where: { status: "ACTIVE" },
+                select: { qty: true, locationId: true },
+              },
+            },
+          })
+        : [];
+      const sourceItemById = new Map(
+        sourceItems.map((item) => [Number(item.id), item]).filter((entry) => Number(entry[0]) > 0)
+      );
+
+      const unresolvedItems = [];
+      const skippedItems = [];
+      const groupedBySupplier = new Map();
+      const orgId = req.user.orgId || null;
+
+      for (const itemId of itemIds) {
+        const sourceItem = sourceItemById.get(itemId);
+        const payloadItem = payloadItemById.get(itemId) || null;
+        if (!sourceItem) {
+          unresolvedItems.push({
+            itemId,
+            name: String(payloadItem?.name || `#${itemId}`),
+            reason: "ITEM_NOT_FOUND",
+          });
+          continue;
+        }
+
+        const minFromItem = Number(sourceItem.minStock);
+        const minFromPayload = Number(payloadItem?.minStock);
+        const minStock = Number.isFinite(minFromItem) && minFromItem > 0
+          ? minFromItem
+          : Number.isFinite(minFromPayload) && minFromPayload > 0
+            ? minFromPayload
+            : 0;
+        if (!Number.isFinite(minStock) || minStock <= 0) {
+          skippedItems.push({
+            itemId,
+            name: String(sourceItem.name || `#${itemId}`),
+            reason: "MIN_STOCK_NOT_SET",
+          });
+          continue;
+        }
+
+        let currentQty = 0;
+        for (const movement of Array.isArray(sourceItem.movements) ? sourceItem.movements : []) {
+          const locationId = Number(movement?.locationId || 0);
+          if (!locationId || receivingLocationSet.has(locationId)) continue;
+          if (movement.type === "INCOME" || movement.type === "ADJUSTMENT") {
+            currentQty += Number(movement.quantity) || 0;
+          } else if (movement.type === "ISSUE") {
+            currentQty -= Number(movement.quantity) || 0;
+          }
+        }
+
+        const heldQty = (Array.isArray(sourceItem.stockHolds) ? sourceItem.stockHolds : []).reduce(
+          (sum, hold) => {
+            const locationId = Number(hold?.locationId || 0);
+            if (locationId && receivingLocationSet.has(locationId)) return sum;
+            return sum + (Number(hold?.qty) || 0);
+          },
+          0
+        );
+        const availableQty = Math.max(0, Math.round(currentQty - heldQty));
+        const deficitQty = Math.max(0, Math.ceil(minStock - availableQty));
+
+        if (deficitQty <= 0) {
+          skippedItems.push({
+            itemId,
+            name: String(sourceItem.name || `#${itemId}`),
+            reason: "ALREADY_ABOVE_MIN",
+          });
+          continue;
+        }
+
+        const supplierId = Number(sourceItem.autoReorderSupplierId || 0);
+        if (!supplierId || Number.isNaN(supplierId)) {
+          unresolvedItems.push({
+            itemId,
+            name: String(sourceItem.name || `#${itemId}`),
+            reason: "NO_SUPPLIER_LINK",
+            requiredQty: deficitQty,
+          });
+          continue;
+        }
+
+        if (!groupedBySupplier.has(supplierId)) {
+          groupedBySupplier.set(supplierId, {
+            supplierId,
+            supplierName: String(sourceItem.autoReorderSupplier?.name || ""),
+            lines: [],
+          });
+        }
+        groupedBySupplier.get(supplierId).lines.push({
+          itemId,
+          quantity: deficitQty,
+          price:
+            Number.isFinite(Number(sourceItem.defaultPrice)) && Number(sourceItem.defaultPrice) >= 0
+              ? Number(sourceItem.defaultPrice)
+              : 0,
+          name: String(sourceItem.name || `#${itemId}`),
+        });
+      }
+
+      if (orgId) {
+        await tx.$queryRawUnsafe("SELECT pg_advisory_xact_lock($1)", Number(orgId));
+      }
+
+      const createdOrders = [];
+      const supplierGroups = Array.from(groupedBySupplier.values()).sort(
+        (a, b) => a.supplierId - b.supplierId
+      );
+      for (const group of supplierGroups) {
+        const nextNumber = await getNextPurchaseOrderNumberInTx(tx, orgId);
+        const created = await tx.purchaseOrder.create({
+          data: {
+            orgId,
+            number: nextNumber,
+            date: new Date(),
+            status: "DRAFT",
+            comment: `[LOW_STOCK_NOTIFICATION#${id}] Автосоздано из уведомления`,
+            supplierId: group.supplierId,
+            createdById: req.user.id,
+            items: {
+              create: group.lines.map((line) => ({
+                orgId,
+                itemId: line.itemId,
+                quantity: line.quantity,
+                price: line.price,
+              })),
+            },
+          },
+          include: {
+            supplier: { select: { id: true, name: true } },
+            items: { select: { quantity: true } },
+          },
+        });
+        createdOrders.push(summarizeOrder(created));
+      }
+
+      const status =
+        createdOrders.length === 0
+          ? "no_orders"
+          : unresolvedItems.length > 0
+            ? "partial"
+            : "processed";
+      const processedAt = new Date().toISOString();
+      const updatedPayload = {
+        ...payload,
+        processing: {
+          status,
+          processedAt,
+          processedByUserId: req.user.id,
+          createdOrderIds: createdOrders
+            .map((order) => Number(order.id))
+            .filter((value) => Number.isFinite(value) && value > 0),
+          unresolvedItems,
+          skippedItems,
+          sourceItemsTotal: itemIds.length,
+        },
+      };
+
+      await tx.warehouseNotification.update({
+        where: { id: notification.id },
+        data: {
+          payloadJson: updatedPayload,
+          isRead: true,
+          readAt: notification.readAt || new Date(),
+        },
+      });
+
+      return {
+        alreadyProcessed: false,
+        status,
+        createdOrders,
+        unresolvedItems,
+        skippedItems,
+      };
+    });
+
+    const createdCount = Array.isArray(result?.createdOrders) ? result.createdOrders.length : 0;
+    const unresolvedCount = Array.isArray(result?.unresolvedItems)
+      ? result.unresolvedItems.length
+      : 0;
+    const message = createdCount
+      ? `Создано заказов: ${createdCount}${
+          unresolvedCount ? `. Позиции без автозаказа: ${unresolvedCount}.` : "."
+        }`
+      : unresolvedCount
+        ? `Заказы не созданы. Требуют выбора поставщика: ${unresolvedCount}.`
+        : "Заказы не созданы: нет позиций ниже минимума.";
+
+    return res.json({
+      ok: true,
+      notificationId: id,
+      ...result,
+      message,
+    });
+  } catch (err) {
+    if (err?.code === "NOTIFICATION_NOT_FOUND") {
+      return res.status(404).json({ message: "Уведомление не найдено." });
+    }
+    if (err?.code === "NOTIFICATION_TYPE_NOT_SUPPORTED") {
+      return res.status(409).json({ message: "Это уведомление нельзя обработать как заказ поставщику." });
+    }
+    console.error("notifications create supplier orders error:", err);
+    return res.status(500).json({ message: "NOTIFICATION_SUPPLIER_ORDER_CREATE_ERROR" });
   }
 });
 

@@ -1,6 +1,6 @@
 ﻿import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { API_BASE } from "../apiConfig";
+import { API_BASE, normalizeErrorMessage } from "../apiConfig";
 import { ensurePushSubscription as ensurePushSubscriptionShared } from "../utils/pushSubscription";
 
 export default function NotificationBell() {
@@ -9,6 +9,7 @@ export default function NotificationBell() {
   const [unreadCount, setUnreadCount] = useState(0);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
+  const [actionById, setActionById] = useState({});
   const [isMobile, setIsMobile] = useState(false);
   const wrapperRef = useRef(null);
   const navigate = useNavigate();
@@ -128,6 +129,27 @@ export default function NotificationBell() {
       window.location.href = linkUrl;
     },
     [navigate]
+  );
+
+  const isLowStockNotification = useCallback((item) => {
+    const type = String(item?.type || "").trim().toUpperCase();
+    const scope = String(item?.payloadJson?.scope || "").trim().toLowerCase();
+    return type === "LOW_STOCK_SUMMARY" || scope === "low_stock_summary";
+  }, []);
+
+  const createSupplierOrdersFromNotification = useCallback(
+    async (id) => {
+      const res = await fetch(`${API_BASE}/notifications/${id}/create-supplier-orders`, {
+        method: "POST",
+        headers: authHeaders,
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        throw new Error(data?.message || "Не удалось сформировать заказы поставщикам.");
+      }
+      return data || {};
+    },
+    [authHeaders]
   );
 
   useEffect(() => {
@@ -288,8 +310,64 @@ export default function NotificationBell() {
                 key={item.id}
                 type="button"
                 onClick={async () => {
+                  const notificationId = Number(item?.id || 0);
+                  if (!notificationId) return;
+
+                  if (isLowStockNotification(item)) {
+                    setActionById((prev) => ({
+                      ...prev,
+                      [notificationId]: {
+                        status: "pending",
+                        message: "Формируем заказы поставщикам...",
+                      },
+                    }));
+                    try {
+                      const result = await createSupplierOrdersFromNotification(notificationId);
+                      const successMessage =
+                        String(result?.message || "").trim() || "Заказы поставщикам сформированы.";
+
+                      setActionById((prev) => ({
+                        ...prev,
+                        [notificationId]: {
+                          status: "success",
+                          message: successMessage,
+                        },
+                      }));
+                      setItems((prev) =>
+                        prev.map((entry) =>
+                          entry.id === notificationId
+                            ? {
+                                ...entry,
+                                isRead: true,
+                                readAt: entry.readAt || new Date().toISOString(),
+                              }
+                            : entry
+                        )
+                      );
+                      if (!item.isRead) {
+                        setUnreadCount((prev) => Math.max(0, prev - 1));
+                      }
+                      if (item.linkUrl) {
+                        openNotificationLink(item.linkUrl);
+                      }
+                      setOpen(false);
+                    } catch (err) {
+                      setActionById((prev) => ({
+                        ...prev,
+                        [notificationId]: {
+                          status: "error",
+                          message: normalizeErrorMessage(
+                            err,
+                            "Не удалось сформировать заказы поставщикам."
+                          ),
+                        },
+                      }));
+                    }
+                    return;
+                  }
+
                   if (!item.isRead) {
-                    await markRead(item.id);
+                    await markRead(notificationId);
                   }
                   if (item.linkUrl) {
                     openNotificationLink(item.linkUrl);
@@ -324,6 +402,22 @@ export default function NotificationBell() {
                     ? new Date(item.createdAt).toLocaleString("ru-RU")
                     : ""}
                 </div>
+                {actionById[item.id]?.message && (
+                  <div
+                    style={{
+                      marginTop: 6,
+                      fontSize: 11,
+                      color:
+                        actionById[item.id]?.status === "error"
+                          ? "#b91c1c"
+                          : actionById[item.id]?.status === "pending"
+                            ? "#92400e"
+                            : "#166534",
+                    }}
+                  >
+                    {actionById[item.id].message}
+                  </div>
+                )}
               </button>
             ))}
         </div>
