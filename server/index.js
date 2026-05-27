@@ -17685,11 +17685,17 @@ app.post("/api/notifications/:id/create-supplier-orders", auth, async (req, res)
           }.`
         : ` Проблемных позиций: ${unresolvedCount}.`
       : "";
-    const message = createdCount
-      ? `Создано заказов: ${createdCount}.${unresolvedText}`
-      : unresolvedCount
-        ? `Заказы не созданы.${unresolvedText}`
-        : "Заказы не созданы: нет позиций ниже минимума.";
+    const message = result?.alreadyProcessed
+      ? createdCount
+        ? `Заказы уже были сформированы ранее: ${createdCount}.${unresolvedText}`
+        : unresolvedCount
+          ? `Заказы уже обрабатывались ранее.${unresolvedText}`
+          : "Заказы уже были обработаны ранее: новых позиций ниже минимума нет."
+      : createdCount
+        ? `Создано заказов: ${createdCount}.${unresolvedText}`
+        : unresolvedCount
+          ? `Заказы не созданы.${unresolvedText}`
+          : "Заказы не созданы: нет позиций ниже минимума.";
 
     return res.json({
       ok: true,

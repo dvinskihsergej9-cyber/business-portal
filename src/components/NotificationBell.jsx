@@ -354,6 +354,12 @@ export default function NotificationBell() {
                         ? result.unresolvedItems
                         : [];
                       const createdCount = createdOrders.length;
+                      const apiMessage = String(result?.message || "").trim();
+                      const unresolvedSupplierCount = unresolvedItems.filter(
+                        (entry) => String(entry?.reason || "").trim() === "NO_SUPPLIER_LINK"
+                      ).length;
+                      const unresolvedCount = unresolvedItems.length;
+                      const isAlreadyProcessed = Boolean(result?.alreadyProcessed);
 
                       setItems((prev) =>
                         prev.map((entry) =>
@@ -370,9 +376,22 @@ export default function NotificationBell() {
                         setUnreadCount((prev) => Math.max(0, prev - 1));
                       }
 
+                      const fallbackMessage =
+                        createdCount > 0
+                          ? `Создано заказов: ${createdCount}.`
+                          : unresolvedSupplierCount > 0
+                            ? `Заказы не созданы. Требуют выбора поставщика: ${unresolvedSupplierCount}.`
+                            : unresolvedCount > 0
+                              ? `Заказы не созданы. Проблемных позиций: ${unresolvedCount}.`
+                              : "Заказы не созданы: нет позиций ниже минимума.";
+                      const toastMessage = apiMessage || fallbackMessage;
+
                       if (createdCount === 1) {
                         const createdOrderId = Number(createdOrders[0]?.id || 0);
-                        pushToast("Заказ создан и открыт.", "success");
+                        pushToast(
+                          isAlreadyProcessed ? "Открыт ранее созданный заказ." : toastMessage,
+                          "success"
+                        );
                         if (createdOrderId > 0) {
                           navigate(
                             `/warehouse?section=suppliers&suppliersTab=orders&poId=${createdOrderId}`
@@ -380,28 +399,11 @@ export default function NotificationBell() {
                         } else {
                           navigate("/warehouse?section=suppliers&suppliersTab=orders");
                         }
-                        if (unresolvedItems.length > 0) {
-                          pushToast(
-                            `Требуют выбора поставщика: ${unresolvedItems.length}.`,
-                            "warning"
-                          );
-                        }
                       } else if (createdCount > 1) {
-                        pushToast(`Создано заказов: ${createdCount}.`, "success");
+                        pushToast(toastMessage, "success");
                         navigate("/warehouse?section=suppliers&suppliersTab=orders");
-                        if (unresolvedItems.length > 0) {
-                          pushToast(
-                            `Требуют выбора поставщика: ${unresolvedItems.length}.`,
-                            "warning"
-                          );
-                        }
-                      } else if (unresolvedItems.length > 0) {
-                        pushToast(
-                          `Заказы не созданы. Требуют выбора поставщика: ${unresolvedItems.length}.`,
-                          "warning"
-                        );
                       } else {
-                        pushToast("Заказы не созданы: нет позиций ниже минимума.", "warning");
+                        pushToast(toastMessage, "warning");
                         if (item.linkUrl) {
                           openNotificationLink(item.linkUrl);
                         }
