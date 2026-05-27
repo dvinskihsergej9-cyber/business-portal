@@ -17516,7 +17516,7 @@ app.post("/api/notifications/:id/create-supplier-orders", auth, async (req, res)
       }
 
       if (orgId) {
-        await tx.$queryRawUnsafe("SELECT pg_advisory_xact_lock($1)", Number(orgId));
+        await tx.$executeRawUnsafe("SELECT pg_advisory_xact_lock($1)", Number(orgId));
       }
 
       const createdOrders = [];
