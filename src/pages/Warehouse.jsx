@@ -648,6 +648,8 @@ export default function Warehouse({
   const [purchaseOrdersLoading, setPurchaseOrdersLoading] = useState(false);
 
   const [purchaseOrdersError, setPurchaseOrdersError] = useState("");
+  const [purchaseOrdersDateFrom, setPurchaseOrdersDateFrom] = useState("");
+  const [purchaseOrdersDateTo, setPurchaseOrdersDateTo] = useState("");
 
   const [showOrderModal, setShowOrderModal] = useState(false);
 
@@ -658,6 +660,8 @@ export default function Warehouse({
   const [viewPurchaseOrderError, setViewPurchaseOrderError] = useState("");
   const [viewPurchaseOrderActionLoading, setViewPurchaseOrderActionLoading] = useState(false);
   const [viewPurchaseOrderActionNotice, setViewPurchaseOrderActionNotice] = useState("");
+  const [viewPurchaseOrderHistory, setViewPurchaseOrderHistory] = useState([]);
+  const [viewPurchaseOrderHistoryLoading, setViewPurchaseOrderHistoryLoading] = useState(false);
   const [viewPurchaseOrderEditMode, setViewPurchaseOrderEditMode] = useState(false);
   const [viewPurchaseOrderEditSaving, setViewPurchaseOrderEditSaving] = useState(false);
   const [viewPurchaseOrderEditForm, setViewPurchaseOrderEditForm] = useState({
@@ -2781,6 +2785,33 @@ export default function Warehouse({
     }
   };
 
+  const loadPurchaseOrderHistory = useCallback(
+    async (orderId) => {
+      const id = Number(orderId || 0);
+      if (!id || Number.isNaN(id)) {
+        setViewPurchaseOrderHistory([]);
+        return;
+      }
+      setViewPurchaseOrderHistoryLoading(true);
+      try {
+        const res = await fetch(`${API}/purchase-orders/${id}/history`, {
+          headers: { Authorization: authHeaders.Authorization },
+        });
+        const data = await readResponsePayload(res);
+        if (!res.ok) {
+          throw new Error((data && data.message) || "Ошибка загрузки истории заказа.");
+        }
+        setViewPurchaseOrderHistory(Array.isArray(data) ? data : []);
+      } catch (e) {
+        console.error(e);
+        setViewPurchaseOrderHistory([]);
+      } finally {
+        setViewPurchaseOrderHistoryLoading(false);
+      }
+    },
+    [authHeaders.Authorization]
+  );
+
   const handleViewPurchaseOrder = async (order) => {
     if (!order?.id) return;
     setViewPurchaseOrder(order);
@@ -2799,7 +2830,9 @@ export default function Warehouse({
           (data && data.message) || "Ошибка загрузки заказа поставщику."
         );
       }
-      setViewPurchaseOrder(data || order);
+      const loadedOrder = data || order;
+      setViewPurchaseOrder(loadedOrder);
+      await loadPurchaseOrderHistory(Number(loadedOrder?.id || order?.id || 0));
     } catch (e) {
       console.error(e);
       setViewPurchaseOrderError(
@@ -2812,6 +2845,7 @@ export default function Warehouse({
 
   const handleCloseViewPurchaseOrder = () => {
     setViewPurchaseOrder(null);
+    setViewPurchaseOrderHistory([]);
     setViewPurchaseOrderError("");
     setViewPurchaseOrderActionNotice("");
     setViewPurchaseOrderLoading(false);
@@ -2960,6 +2994,7 @@ export default function Warehouse({
       }
 
       await loadPurchaseOrders();
+      await loadPurchaseOrderHistory(orderId);
     } catch (e) {
       console.error(e);
       setViewPurchaseOrderError(resolveErrorMessage(e, "\u041e\u0448\u0438\u0431\u043a\u0430 \u043e\u0442\u043f\u0440\u0430\u0432\u043a\u0438 \u0437\u0430\u043a\u0430\u0437\u0430 \u043f\u043e\u0441\u0442\u0430\u0432\u0449\u0438\u043a\u0443."));
@@ -3098,6 +3133,7 @@ export default function Warehouse({
       setViewPurchaseOrderActionNotice("Заказ обновлён.");
       await loadPurchaseOrders();
       await loadInventory();
+      await loadPurchaseOrderHistory(orderId);
     } catch (e) {
       console.error(e);
       setViewPurchaseOrderError(resolveErrorMessage(e, "Ошибка обновления заказа поставщику."));
@@ -3115,13 +3151,35 @@ export default function Warehouse({
       ),
     [inventoryItems, viewPurchaseOrderEditForm?.supplierId]
   );
+  const filteredPurchaseOrders = useMemo(() => {
+    const from = String(purchaseOrdersDateFrom || "").trim();
+    const to = String(purchaseOrdersDateTo || "").trim();
+    if (!from && !to) return Array.isArray(purchaseOrders) ? purchaseOrders : [];
+
+    const fromDate = from ? new Date(from) : null;
+    const toDate = to ? new Date(to) : null;
+    if (toDate && !Number.isNaN(toDate.getTime())) {
+      toDate.setHours(23, 59, 59, 999);
+    }
+
+    return (Array.isArray(purchaseOrders) ? purchaseOrders : []).filter((order) => {
+      const baseDate = order?.createdAt || order?.date;
+      if (!baseDate) return false;
+      const orderDate = new Date(baseDate);
+      if (Number.isNaN(orderDate.getTime())) return false;
+      if (fromDate && !Number.isNaN(fromDate.getTime()) && orderDate < fromDate) return false;
+      if (toDate && !Number.isNaN(toDate.getTime()) && orderDate > toDate) return false;
+      return true;
+    });
+  }, [purchaseOrders, purchaseOrdersDateFrom, purchaseOrdersDateTo]);
+
   const sortedPurchaseOrders = useMemo(() => {
-    return [...purchaseOrders].sort((a, b) => {
+    return [...filteredPurchaseOrders].sort((a, b) => {
       const da = a.createdAt ? new Date(a.createdAt).getTime() : 0;
       const db = b.createdAt ? new Date(b.createdAt).getTime() : 0;
       return db - da;
     });
-  }, [purchaseOrders]);
+  }, [filteredPurchaseOrders]);
 
   const groupedPurchaseOrders = useMemo(() => {
     const groups = [];
@@ -5708,6 +5766,36 @@ export default function Warehouse({
                       Создать заказ поставщику
 
                     </button>
+                    <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
+                      <span style={{ color: "#64748b", fontSize: 13 }}>Период:</span>
+                      <input
+                        type="date"
+                        className="form__input"
+                        value={purchaseOrdersDateFrom}
+                        onChange={(e) => setPurchaseOrdersDateFrom(e.target.value)}
+                        style={{ width: 160, minWidth: 140 }}
+                      />
+                      <span style={{ color: "#64748b", fontSize: 13 }}>—</span>
+                      <input
+                        type="date"
+                        className="form__input"
+                        value={purchaseOrdersDateTo}
+                        onChange={(e) => setPurchaseOrdersDateTo(e.target.value)}
+                        style={{ width: 160, minWidth: 140 }}
+                      />
+                      {(purchaseOrdersDateFrom || purchaseOrdersDateTo) && (
+                        <button
+                          type="button"
+                          className="btn btn--ghost btn--sm"
+                          onClick={() => {
+                            setPurchaseOrdersDateFrom("");
+                            setPurchaseOrdersDateTo("");
+                          }}
+                        >
+                          Сбросить
+                        </button>
+                      )}
+                    </div>
                   </div>
 
 
@@ -5736,7 +5824,11 @@ export default function Warehouse({
 
                   ) : sortedPurchaseOrders.length === 0 ? (
 
-                    <p className="text-muted">Заказов пока нет.</p>
+                    <p className="text-muted">
+                      {purchaseOrdersDateFrom || purchaseOrdersDateTo
+                        ? "По выбранному периоду заказов нет."
+                        : "Заказов пока нет."}
+                    </p>
 
                   ) : (
                     <>
@@ -6193,6 +6285,53 @@ export default function Warehouse({
                   </div>
                 </>
               )}
+
+              <div className="card" style={{ marginTop: 12 }}>
+                <div className="card1c__body">
+                  <div style={{ fontWeight: 600, marginBottom: 8 }}>История изменений</div>
+                  {viewPurchaseOrderHistoryLoading ? (
+                    <p style={{ margin: 0 }}>Загрузка истории...</p>
+                  ) : viewPurchaseOrderHistory.length === 0 ? (
+                    <p className="text-muted" style={{ margin: 0 }}>
+                      История изменений пока пуста.
+                    </p>
+                  ) : (
+                    <div style={{ display: "grid", gap: 10 }}>
+                      {viewPurchaseOrderHistory.map((event) => (
+                        <div
+                          key={event.id}
+                          style={{
+                            border: "1px solid #e5e7eb",
+                            borderRadius: 10,
+                            padding: 10,
+                            background: "#f8fafc",
+                          }}
+                        >
+                          <div style={{ fontSize: 12, color: "#64748b", marginBottom: 4 }}>
+                            {(event.createdAt
+                              ? new Date(event.createdAt).toLocaleString("ru-RU")
+                              : "-") +
+                              " • " +
+                              (event.actor?.name || event.actor?.email || "Система")}
+                          </div>
+                          <div style={{ fontWeight: 600, marginBottom: 4 }}>
+                            {event.message || "Изменение заказа"}
+                          </div>
+                          {Array.isArray(event.changes) && event.changes.length > 0 ? (
+                            <div style={{ display: "grid", gap: 2 }}>
+                              {event.changes.map((line, idx) => (
+                                <div key={`${event.id}-ch-${idx}`} style={{ fontSize: 13 }}>
+                                  • {line}
+                                </div>
+                              ))}
+                            </div>
+                          ) : null}
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              </div>
 
               <div className="modal__actions">
                 {viewPurchaseOrder.status === "DRAFT" && !viewPurchaseOrderEditMode && (

@@ -17171,6 +17171,8 @@ app.put("/api/warehouse/tasks/:id/response", auth, async (req, res) => {
 });
 
 // ================== УВЕДОМЛЕНИЯ ==================
+const INTERNAL_NOTIFICATION_TYPES = new Set(["PURCHASE_ORDER_AUDIT"]);
+const VISIBLE_NOTIFICATION_TYPES_EXCLUDE = Array.from(INTERNAL_NOTIFICATION_TYPES.values());
 
 app.get("/api/notifications", auth, async (req, res) => {
   try {
@@ -17181,6 +17183,7 @@ app.get("/api/notifications", auth, async (req, res) => {
 
     const where = {
       userId: req.user.id,
+      type: { notIn: VISIBLE_NOTIFICATION_TYPES_EXCLUDE },
       ...(unreadOnly ? { isRead: false } : {}),
     };
 
@@ -17193,6 +17196,7 @@ app.get("/api/notifications", auth, async (req, res) => {
       prisma.warehouseNotification.count({
         where: {
           userId: req.user.id,
+          type: { notIn: VISIBLE_NOTIFICATION_TYPES_EXCLUDE },
           isRead: false,
         },
       }),
@@ -17210,6 +17214,7 @@ app.get("/api/notifications/unread-count", auth, async (req, res) => {
     const unreadCount = await prisma.warehouseNotification.count({
       where: {
         userId: req.user.id,
+        type: { notIn: VISIBLE_NOTIFICATION_TYPES_EXCLUDE },
         isRead: false,
       },
     });
@@ -17676,6 +17681,28 @@ app.post("/api/notifications/:id/create-supplier-orders", auth, async (req, res)
     });
 
     const createdCount = Array.isArray(result?.createdOrders) ? result.createdOrders.length : 0;
+    if (!result?.alreadyProcessed && createdCount > 0) {
+      for (const createdOrder of result.createdOrders) {
+        const createdOrderId = Number(createdOrder?.id || 0);
+        if (!createdOrderId || Number.isNaN(createdOrderId)) continue;
+        try {
+          await appendPurchaseOrderHistory({
+            orgId: req.user.orgId || null,
+            actorUserId: req.user.id,
+            purchaseOrderId: createdOrderId,
+            event: "CREATE_FROM_NOTIFICATION",
+            message: `Заказ создан из уведомления низкого остатка (${createdOrder?.number || `#${createdOrderId}`}).`,
+            changes: [
+              `Поставщик: ${createdOrder?.supplierName || `#${createdOrder?.supplierId || "-"}`}`,
+              `Позиций: ${Number(createdOrder?.itemsCount || 0)}`,
+              `Суммарное кол-во: ${Number(createdOrder?.totalQty || 0)}`,
+            ],
+          });
+        } catch (historyErr) {
+          console.error("purchase order history append (notification create) error:", historyErr);
+        }
+      }
+    }
     const unresolvedItems = Array.isArray(result?.unresolvedItems) ? result.unresolvedItems : [];
     const unresolvedCount = unresolvedItems.length;
     const missingSupplierItems = unresolvedItems
@@ -17745,6 +17772,7 @@ app.post("/api/notifications/read-all", auth, async (req, res) => {
     const result = await prisma.warehouseNotification.updateMany({
       where: {
         userId: req.user.id,
+        type: { notIn: VISIBLE_NOTIFICATION_TYPES_EXCLUDE },
         isRead: false,
       },
       data: { isRead: true, readAt: new Date() },
@@ -22159,6 +22187,112 @@ async function applyPurchasePriceUpdates(db, updates = [], orgId = null) {
   }
 }
 
+const PURCHASE_ORDER_AUDIT_EVENT_TYPE = "PURCHASE_ORDER_AUDIT";
+
+function normalizePurchaseOrderHistoryValue(value) {
+  if (value === null || value === undefined) return "";
+  return String(value).trim();
+}
+
+function buildPurchaseOrderItemsSnapshot(items = []) {
+  const map = new Map();
+  for (const row of Array.isArray(items) ? items : []) {
+    const itemId = Number(row?.itemId || row?.item?.id || 0);
+    if (!itemId || Number.isNaN(itemId)) continue;
+    map.set(itemId, {
+      itemId,
+      name: normalizePurchaseOrderHistoryValue(row?.item?.name || row?.name || `#${itemId}`),
+      qty: Number(row?.quantity) || 0,
+      price: Number(row?.price) || 0,
+    });
+  }
+  return map;
+}
+
+function buildPurchaseOrderLineChanges(beforeItems = [], afterItems = []) {
+  const beforeMap = buildPurchaseOrderItemsSnapshot(beforeItems);
+  const afterMap = buildPurchaseOrderItemsSnapshot(afterItems);
+
+  let added = 0;
+  let removed = 0;
+  let changed = 0;
+  const details = [];
+
+  for (const [itemId, beforeRow] of beforeMap.entries()) {
+    if (!afterMap.has(itemId)) {
+      removed += 1;
+      details.push(`Удалена позиция: ${beforeRow.name}`);
+      continue;
+    }
+    const afterRow = afterMap.get(itemId);
+    const qtyChanged = Number(beforeRow.qty) !== Number(afterRow.qty);
+    const priceChanged =
+      Number(beforeRow.price).toFixed(2) !== Number(afterRow.price).toFixed(2);
+    if (qtyChanged || priceChanged) {
+      changed += 1;
+      const parts = [];
+      if (qtyChanged) {
+        parts.push(`кол-во ${beforeRow.qty} → ${afterRow.qty}`);
+      }
+      if (priceChanged) {
+        parts.push(`цена ${beforeRow.price.toFixed(2)} → ${afterRow.price.toFixed(2)}`);
+      }
+      details.push(`Изменена позиция: ${afterRow.name} (${parts.join(", ")})`);
+    }
+  }
+
+  for (const [itemId, afterRow] of afterMap.entries()) {
+    if (!beforeMap.has(itemId)) {
+      added += 1;
+      details.push(
+        `Добавлена позиция: ${afterRow.name} (кол-во ${afterRow.qty}, цена ${afterRow.price.toFixed(2)})`
+      );
+    }
+  }
+
+  return {
+    added,
+    removed,
+    changed,
+    details,
+  };
+}
+
+async function appendPurchaseOrderHistory({
+  orgId = null,
+  actorUserId,
+  purchaseOrderId,
+  event = "UPDATE",
+  message,
+  changes = [],
+  meta = null,
+}) {
+  const orderId = Number(purchaseOrderId || 0);
+  const userId = Number(actorUserId || 0);
+  if (!orderId || Number.isNaN(orderId) || !userId || Number.isNaN(userId)) return;
+  const text = normalizePurchaseOrderHistoryValue(message) || "Изменение заказа поставщику";
+
+  await prisma.warehouseNotification.create({
+    data: {
+      orgId: orgId || null,
+      userId,
+      type: PURCHASE_ORDER_AUDIT_EVENT_TYPE,
+      title: "История заказа поставщику",
+      message: text,
+      linkUrl: `/warehouse?section=suppliers&suppliersTab=orders&poId=${orderId}`,
+      payloadJson: {
+        scope: "purchase_order_history",
+        purchaseOrderId: orderId,
+        event,
+        changes: Array.isArray(changes) ? changes.slice(0, 50) : [],
+        meta: meta && typeof meta === "object" ? meta : null,
+      },
+      isRead: true,
+      readAt: new Date(),
+    },
+  });
+}
+
 // Создать заказ поставщику (запись в БД)
 app.post("/api/purchase-orders", auth, async (req, res) => {
   try {
@@ -22295,6 +22429,25 @@ app.post("/api/purchase-orders", auth, async (req, res) => {
       req.user.orgId || null
     );
 
+    try {
+      await appendPurchaseOrderHistory({
+        orgId: req.user.orgId || null,
+        actorUserId: req.user.id,
+        purchaseOrderId: order.id,
+        event: "CREATE",
+        message: `Заказ создан (${order.number || `#${order.id}`}).`,
+        changes: [
+          `Поставщик: ${order?.supplier?.name || `#${supplierIdNum}`}`,
+          `Позиций: ${Array.isArray(order?.items) ? order.items.length : 0}`,
+          `Комментарий: ${
+            normalizePurchaseOrderHistoryValue(order?.comment) || "не указан"
+          }`,
+        ],
+      });
+    } catch (historyErr) {
+      console.error("purchase order history append (create) error:", historyErr);
+    }
+
     res.status(201).json(order);
   } catch (err) {
     console.error("create purchase order error:", err);
@@ -22311,11 +22464,29 @@ app.get("/api/purchase-orders", auth, async (req, res) => {
       return res.status(403).json({ message: "Нет прав" });
     }
 
-    const { status } = req.query;
+    const { status, dateFrom, dateTo } = req.query;
 
     const where = {};
     if (status) {
       where.status = status;
+    }
+    const fromRaw = normalizePurchaseOrderHistoryValue(dateFrom);
+    const toRaw = normalizePurchaseOrderHistoryValue(dateTo);
+    if (fromRaw || toRaw) {
+      where.date = {};
+      if (fromRaw) {
+        const parsedFrom = new Date(fromRaw);
+        if (!Number.isNaN(parsedFrom.getTime())) {
+          where.date.gte = parsedFrom;
+        }
+      }
+      if (toRaw) {
+        const parsedTo = new Date(toRaw);
+        if (!Number.isNaN(parsedTo.getTime())) {
+          parsedTo.setHours(23, 59, 59, 999);
+          where.date.lte = parsedTo;
+        }
+      }
     }
 
     const orders = await prisma.purchaseOrder.findMany({
@@ -22547,6 +22718,77 @@ app.get("/api/purchase-orders/:id", auth, async (req, res) => {
   }
 });
 
+app.get("/api/purchase-orders/:id/history", auth, async (req, res) => {
+  try {
+    if (!isWarehouseManager(req.user)) {
+      return res.status(403).json({ message: "Нет прав" });
+    }
+
+    const id = Number(req.params.id);
+    if (!id || Number.isNaN(id)) {
+      return res.status(400).json({ message: "Некорректный ID заказа" });
+    }
+
+    const orderExists = await prisma.purchaseOrder.findUnique({
+      where: { id },
+      select: { id: true },
+    });
+    if (!orderExists) {
+      return res.status(404).json({ message: "Заказ не найден" });
+    }
+
+    const rows = await prisma.warehouseNotification.findMany({
+      where: {
+        orgId: req.user.orgId || null,
+        type: PURCHASE_ORDER_AUDIT_EVENT_TYPE,
+      },
+      include: {
+        user: {
+          select: { id: true, name: true, email: true },
+        },
+      },
+      orderBy: { createdAt: "asc" },
+      take: 800,
+    });
+
+    const history = rows
+      .filter((row) => {
+        const payload = row?.payloadJson;
+        if (!payload || typeof payload !== "object" || Array.isArray(payload)) {
+          return false;
+        }
+        const poId = Number(payload?.purchaseOrderId || 0);
+        return poId === id;
+      })
+      .map((row) => {
+        const payload = row?.payloadJson && typeof row.payloadJson === "object" ? row.payloadJson : {};
+        return {
+          id: row.id,
+          createdAt: row.createdAt,
+          message: row.message,
+          event: normalizePurchaseOrderHistoryValue(payload?.event || "UPDATE"),
+          changes: Array.isArray(payload?.changes)
+            ? payload.changes.map((entry) => String(entry))
+            : [],
+          actor: row?.user
+            ? {
+                id: row.user.id,
+                name: normalizePurchaseOrderHistoryValue(row.user.name || row.user.email || ""),
+                email: normalizePurchaseOrderHistoryValue(row.user.email || ""),
+              }
+            : null,
+        };
+      });
+
+    return res.json(history);
+  } catch (err) {
+    console.error("purchase order history error:", err);
+    return res
+      .status(500)
+      .json({ message: "Ошибка сервера при загрузке истории заказа поставщику" });
+  }
+});
+
 // Обновить заказ поставщику (только черновик)
 app.put("/api/purchase-orders/:id", auth, async (req, res) => {
   try {
@@ -22564,7 +22806,12 @@ app.put("/api/purchase-orders/:id", auth, async (req, res) => {
     const order = await prisma.purchaseOrder.findUnique({
       where: { id },
       include: {
-        items: { select: { id: true, itemId: true, quantity: true, price: true } },
+        supplier: { select: { id: true, name: true } },
+        items: {
+          include: {
+            item: { select: { id: true, name: true } },
+          },
+        },
       },
     });
 
@@ -22700,6 +22947,54 @@ app.put("/api/purchase-orders/:id", auth, async (req, res) => {
       },
     });
 
+    try {
+      const changeLines = [];
+      const beforeSupplierName = normalizePurchaseOrderHistoryValue(order?.supplier?.name);
+      const afterSupplierName = normalizePurchaseOrderHistoryValue(updatedOrder?.supplier?.name);
+      if (beforeSupplierName !== afterSupplierName) {
+        changeLines.push(`Поставщик: ${beforeSupplierName || "-"} → ${afterSupplierName || "-"}`);
+      }
+
+      const beforePlanned = order?.plannedDate
+        ? new Date(order.plannedDate).toLocaleDateString("ru-RU")
+        : "-";
+      const afterPlanned = updatedOrder?.plannedDate
+        ? new Date(updatedOrder.plannedDate).toLocaleDateString("ru-RU")
+        : "-";
+      if (beforePlanned !== afterPlanned) {
+        changeLines.push(`План. приёмка: ${beforePlanned} → ${afterPlanned}`);
+      }
+
+      const beforeComment = normalizePurchaseOrderHistoryValue(order?.comment);
+      const afterComment = normalizePurchaseOrderHistoryValue(updatedOrder?.comment);
+      if (beforeComment !== afterComment) {
+        changeLines.push(`Комментарий: ${beforeComment || "-"} → ${afterComment || "-"}`);
+      }
+
+      const lineDiff = buildPurchaseOrderLineChanges(order?.items || [], updatedOrder?.items || []);
+      if (lineDiff.added || lineDiff.removed || lineDiff.changed) {
+        changeLines.push(
+          `Позиции: +${lineDiff.added}, -${lineDiff.removed}, изменено ${lineDiff.changed}`
+        );
+        changeLines.push(...lineDiff.details.slice(0, 12));
+      }
+
+      if (changeLines.length === 0) {
+        changeLines.push("Изменений данных не зафиксировано.");
+      }
+
+      await appendPurchaseOrderHistory({
+        orgId: req.user.orgId || null,
+        actorUserId: req.user.id,
+        purchaseOrderId: id,
+        event: "UPDATE",
+        message: `Заказ обновлён (${updatedOrder?.number || `#${id}`}).`,
+        changes: changeLines,
+      });
+    } catch (historyErr) {
+      console.error("purchase order history append (update) error:", historyErr);
+    }
+
     return res.json(updatedOrder);
   } catch (err) {
     console.error("update purchase order error:", err);
@@ -22723,9 +23018,9 @@ app.delete("/api/purchase-orders/:id", auth, async (req, res) => {
 
     const order = await prisma.purchaseOrder.findUnique({
       where: { id },
-      select: {
-        id: true,
-        status: true,
+      include: {
+        supplier: { select: { id: true, name: true } },
+        items: { select: { id: true } },
       },
     });
 
@@ -22752,6 +23047,23 @@ app.delete("/api/purchase-orders/:id", auth, async (req, res) => {
       return res.status(409).json({
         message: "Заказ уже принят на склад и не может быть удалён",
       });
+    }
+
+    try {
+      await appendPurchaseOrderHistory({
+        orgId: req.user.orgId || null,
+        actorUserId: req.user.id,
+        purchaseOrderId: id,
+        event: "DELETE",
+        message: `Заказ удалён (${order?.number || `#${id}`}).`,
+        changes: [
+          `Статус перед удалением: ${String(order?.status || "-")}`,
+          `Поставщик: ${order?.supplier?.name || "-"}`,
+          `Позиций: ${Array.isArray(order?.items) ? order.items.length : 0}`,
+        ],
+      });
+    } catch (historyErr) {
+      console.error("purchase order history append (delete) error:", historyErr);
     }
 
     await prisma.$transaction([
@@ -23234,6 +23546,35 @@ app.put("/api/purchase-orders/:id/status", auth, async (req, res) => {
       },
     });
 
+    try {
+      const changes = [
+        `Статус: ${String(order?.status || "-")} → ${String(updated?.status || "-")}`,
+      ];
+      if (status === "SENT") {
+        if (emailResult?.emailSent) {
+          changes.push(
+            `Письмо поставщику отправлено${
+              emailResult?.emailRecipient ? `: ${emailResult.emailRecipient}` : ""
+            }`
+          );
+        } else if (emailResult?.emailSkippedReason) {
+          changes.push(`Письмо поставщику: ${emailResult.emailSkippedReason}`);
+        } else if (emailResult?.emailError) {
+          changes.push(`Ошибка отправки письма: ${emailResult.emailError}`);
+        }
+      }
+      await appendPurchaseOrderHistory({
+        orgId: req.user.orgId || null,
+        actorUserId: req.user.id,
+        purchaseOrderId: id,
+        event: "STATUS_CHANGE",
+        message: `Статус заказа изменён (${updated?.number || `#${id}`}).`,
+        changes,
+      });
+    } catch (historyErr) {
+      console.error("purchase order history append (status) error:", historyErr);
+    }
+
     if (status === "SENT") {
       return res.json({ ...updated, ...emailResult });
     }
@@ -23434,6 +23775,24 @@ app.post("/api/purchase-orders/:id/receive", auth, async (req, res) => {
         receivingStage: nextStatus === "RECEIVED" ? "FINALIZED" : "CONFIRMED",
       },
     });
+
+    try {
+      if (String(nextStatus || "") !== String(order.status || "")) {
+        await appendPurchaseOrderHistory({
+          orgId: req.user.orgId || null,
+          actorUserId: req.user.id,
+          purchaseOrderId: order.id,
+          event: "RECEIVE",
+          message: `Приёмка заказа выполнена (${order.number || `#${order.id}`}).`,
+          changes: [
+            `Статус: ${String(order.status || "-")} → ${String(nextStatus || "-")}`,
+            `Позиции с расхождениями: ${discrepancies.length}`,
+          ],
+        });
+      }
+    } catch (historyErr) {
+      console.error("purchase order history append (receive) error:", historyErr);
+    }
 
     return res.json({
       success: true,
