@@ -303,6 +303,14 @@ const PO_STATUS_LABELS = {
   CLOSED: "\u0417\u0430\u043a\u0440\u044b\u0442",
 };
 
+const EMPTY_SUPPLIER_FORM = {
+  name: "",
+  inn: "",
+  phone: "",
+  email: "",
+  comment: "",
+};
+
 
 export default function Warehouse({
   allowedSections,
@@ -618,20 +626,9 @@ export default function Warehouse({
   const [suppliersLoading, setSuppliersLoading] = useState(false);
 
   const [suppliersError, setSuppliersError] = useState("");
-
-  const [supplierForm, setSupplierForm] = useState({
-
-    name: "",
-
-    inn: "",
-
-    phone: "",
-
-    email: "",
-
-    comment: "",
-
-  });
+  const [supplierForm, setSupplierForm] = useState(EMPTY_SUPPLIER_FORM);
+  const [editingSupplierId, setEditingSupplierId] = useState(null);
+  const [supplierSaving, setSupplierSaving] = useState(false);
 
 
 
@@ -2498,88 +2495,70 @@ export default function Warehouse({
 
 
 
-  const handleCreateSupplier = async (e) => {
+  const resetSupplierEditor = useCallback(() => {
+    setEditingSupplierId(null);
+    setSupplierForm(EMPTY_SUPPLIER_FORM);
+  }, []);
 
+  const handleEditSupplier = useCallback((supplier) => {
+    if (!supplier?.id) return;
+    setEditingSupplierId(Number(supplier.id));
+    setSupplierForm({
+      name: supplier.name || "",
+      inn: supplier.inn || "",
+      phone: supplier.phone || "",
+      email: supplier.email || "",
+      comment: supplier.comment || "",
+    });
+    setSuppliersError("");
+  }, []);
+
+  const handleSaveSupplier = async (e) => {
     e.preventDefault();
-
     setSuppliersError("");
 
-
-
     try {
-
       if (!supplierForm.name.trim()) {
-
         return setSuppliersError("Название поставщика обязательно.");
-
       }
-
-
 
       const body = {
-
         name: supplierForm.name.trim(),
-
         inn: supplierForm.inn?.trim() || null,
-
         phone: supplierForm.phone?.trim() || null,
-
         email: supplierForm.email?.trim() || null,
-
         comment: supplierForm.comment || null,
-
       };
 
-
-
-      const res = await fetch(`${API}/suppliers`, {
-
-        method: "POST",
-
-        headers: authHeaders,
-
-        body: JSON.stringify(body),
-
-      });
-
-
+      setSupplierSaving(true);
+      const isEditing = Number.isFinite(Number(editingSupplierId)) && Number(editingSupplierId) > 0;
+      const res = await fetch(
+        isEditing ? `${API}/suppliers/${editingSupplierId}` : `${API}/suppliers`,
+        {
+          method: isEditing ? "PUT" : "POST",
+          headers: authHeaders,
+          body: JSON.stringify(body),
+        }
+      );
 
       const data = await res.json();
-
       if (!res.ok) {
-
-        throw new Error(data.message || "Ошибка создания поставщика");
-
+        throw new Error(
+          data.message ||
+            (isEditing
+              ? "Ошибка обновления поставщика"
+              : "Ошибка создания поставщика")
+        );
       }
 
-
-
-      setSupplierForm({
-
-        name: "",
-
-        inn: "",
-
-        phone: "",
-
-        email: "",
-
-        comment: "",
-
-      });
-
-
-
+      resetSupplierEditor();
       await loadSuppliers();
-
     } catch (e) {
-
       console.error(e);
-
       setSuppliersError(e.message);
-
+    } finally {
+      setSupplierSaving(false);
     }
-
   };
 
 
@@ -5066,7 +5045,7 @@ export default function Warehouse({
 
                   <form
 
-                    onSubmit={handleCreateSupplier}
+                    onSubmit={handleSaveSupplier}
 
                     className="form request-form-1c"
 
@@ -5219,10 +5198,24 @@ export default function Warehouse({
 
 
                     <div className="request-form-1c__actions">
+                      {editingSupplierId ? (
+                        <button
+                          type="button"
+                          className="btn btn--secondary"
+                          onClick={resetSupplierEditor}
+                          disabled={supplierSaving}
+                        >
+                          Отмена редактирования
+                        </button>
+                      ) : null}
 
-                      <button type="submit" className="btn btn--primary">
+                      <button type="submit" className="btn btn--primary" disabled={supplierSaving}>
 
-                        Сохранить поставщика
+                        {supplierSaving
+                          ? "Сохранение..."
+                          : editingSupplierId
+                            ? "Сохранить изменения"
+                            : "Сохранить поставщика"}
 
                       </button>
 
@@ -5259,6 +5252,7 @@ export default function Warehouse({
                             <th>Телефон</th>
 
                             <th>Email</th>
+                            <th></th>
 
                           </tr>
 
@@ -5279,6 +5273,15 @@ export default function Warehouse({
                               <td>{s.phone || "-"}</td>
 
                               <td>{s.email || "-"}</td>
+                              <td>
+                                <button
+                                  type="button"
+                                  className="btn btn--secondary btn--sm"
+                                  onClick={() => handleEditSupplier(s)}
+                                >
+                                  Редактировать
+                                </button>
+                              </td>
 
                             </tr>
 
