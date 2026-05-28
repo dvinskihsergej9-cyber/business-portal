@@ -5575,3 +5575,179 @@ input[type="number"] {
     justify-self: start;
   }
 }
+
+/* ===== Unified UI System (Phase 1) ===== */
+:root {
+  --ui-primary: #2f73ff;
+  --ui-primary-strong: #1754db;
+  --ui-primary-border: #1f55cd;
+  --ui-secondary-bg: #edf5ff;
+  --ui-secondary-bg-hover: #d9e8ff;
+  --ui-secondary-border: #b3d1ff;
+  --ui-danger: #dc2626;
+  --ui-danger-strong: #b91c1c;
+  --ui-danger-hover: #b91c1c;
+  --ui-ghost-bg: #ffffff;
+  --ui-ghost-border: rgba(145, 185, 243, 0.8);
+  --ui-ink: #0f172a;
+  --ui-muted: #64748b;
+  --ui-surface: #ffffff;
+  --ui-surface-soft: rgba(255, 255, 255, 0.92);
+  --ui-border: rgba(145, 185, 243, 0.35);
+  --ui-focus-ring: 0 0 0 2px rgba(47, 115, 255, 0.22);
+  --ui-shadow-sm: 0 8px 20px rgba(47, 115, 255, 0.18);
+  --ui-shadow-md: 0 14px 32px rgba(35, 83, 176, 0.16);
+  --ui-radius-sm: 10px;
+  --ui-radius-md: 12px;
+  --ui-radius-lg: 16px;
+}
+
+.portal-surface button,
+.portal-surface .btn {
+  border-radius: var(--ui-radius-md);
+  min-height: 40px;
+  padding: 10px 14px;
+  font-weight: 600;
+  border: 1px solid var(--ui-primary-border);
+  background: linear-gradient(180deg, var(--ui-primary) 0%, var(--ui-primary-strong) 100%);
+  color: #ffffff;
+  box-shadow: var(--ui-shadow-sm);
+  transition:
+    background-color 0.15s ease,
+    border-color 0.15s ease,
+    box-shadow 0.15s ease,
+    transform 0.15s ease;
+}
+
+.portal-surface button:hover:not(:disabled),
+.portal-surface .btn:hover:not(:disabled) {
+  background: linear-gradient(180deg, #2769f1 0%, #1549be 100%);
+  box-shadow: 0 10px 22px rgba(47, 115, 255, 0.24);
+}
+
+.portal-surface button:focus-visible,
+.portal-surface .btn:focus-visible,
+.portal-surface input:focus-visible,
+.portal-surface select:focus-visible,
+.portal-surface textarea:focus-visible {
+  outline: none;
+  box-shadow: var(--ui-focus-ring);
+}
+
+.portal-surface button:disabled,
+.portal-surface .btn:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+  box-shadow: none;
+}
+
+.portal-surface .btn--secondary {
+  background: var(--ui-secondary-bg);
+  color: #123ea3;
+  border: 1px solid var(--ui-secondary-border);
+  box-shadow: none;
+}
+
+.portal-surface .btn--secondary:hover:not(:disabled) {
+  background: var(--ui-secondary-bg-hover);
+}
+
+.portal-surface .btn--ghost {
+  background: var(--ui-ghost-bg);
+  color: var(--ui-primary-strong);
+  border: 1px solid var(--ui-ghost-border);
+  box-shadow: none;
+}
+
+.portal-surface .btn--ghost:hover:not(:disabled) {
+  background: #f8fbff;
+}
+
+.portal-surface .btn--danger {
+  background: linear-gradient(180deg, var(--ui-danger) 0%, var(--ui-danger-strong) 100%);
+  border-color: var(--ui-danger-strong);
+  color: #ffffff;
+  box-shadow: none;
+}
+
+.portal-surface .btn--danger:hover:not(:disabled) {
+  background: linear-gradient(180deg, var(--ui-danger-strong) 0%, #991b1b 100%);
+}
+
+.portal-surface .modal-backdrop {
+  background: rgba(15, 23, 42, 0.46);
+  backdrop-filter: blur(2px);
+}
+
+.portal-surface .modal {
+  border: 1px solid var(--ui-border);
+  border-radius: var(--ui-radius-lg);
+  background: var(--ui-surface);
+  box-shadow: var(--ui-shadow-md);
+}
+
+.portal-surface .modal__header {
+  padding: 10px 12px;
+  border-bottom: 1px solid rgba(148, 163, 184, 0.26);
+}
+
+.portal-surface .modal__body {
+  padding: 12px;
+}
+
+.portal-surface .modal__actions {
+  display: flex;
+  gap: 10px;
+  flex-wrap: wrap;
+  align-items: center;
+}
+
+.portal-surface .table-wrapper {
+  border-radius: var(--ui-radius-lg);
+  border: 1px solid rgba(157, 196, 252, 0.72);
+  background: rgba(255, 255, 255, 0.84);
+  box-shadow: 0 8px 20px rgba(35, 83, 176, 0.08);
+}
+
+.portal-surface table {
+  font-size: 14px;
+}
+
+.portal-surface th {
+  color: var(--ui-muted);
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+}
+
+.portal-surface td {
+  background: var(--ui-surface-soft);
+  border-top: 1px solid var(--ui-border);
+  border-bottom: 1px solid var(--ui-border);
+}
+
+.portal-surface .alert {
+  border-radius: var(--ui-radius-md);
+  border: 1px solid rgba(148, 163, 184, 0.28);
+  background: #f8fafc;
+  color: #1e293b;
+}
+
+.portal-surface .alert--success {
+  border-color: rgba(74, 222, 128, 0.42);
+  background: #f0fdf4;
+  color: #166534;
+}
+
+.portal-surface .alert--danger,
+.portal-surface .alert--error {
+  border-color: rgba(248, 113, 113, 0.45);
+  background: #fff1f2;
+  color: #991b1b;
+}
+
+@media (max-width: 640px) {
+  .portal-surface .modal__actions .btn {
+    width: 100%;
+  }
+}
