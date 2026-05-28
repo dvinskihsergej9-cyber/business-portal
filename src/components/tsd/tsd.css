@@ -1983,3 +1983,42 @@
 .portal-surface--warehouse-tsd .tsd-page::after {
   display: none;
 }
+
+/* Mobile receiving hardening: keep long supplier/order strings inside viewport */
+.tsd-header__context-value,
+.tsd-card__title,
+.tsd-card__meta {
+  overflow-wrap: anywhere;
+  word-break: break-word;
+}
+
+@media (max-width: 680px) {
+  .tsd-header__context {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .tsd-header__context .tsd-btn {
+    width: 100%;
+  }
+
+  .tsd-action-inline {
+    justify-content: stretch;
+  }
+
+  .tsd-action-inline .tsd-btn {
+    width: 100%;
+  }
+
+  .tsd-receiving-status {
+    position: static;
+    justify-self: start;
+    margin-top: 2px;
+  }
+
+  .tsd-receiving-line__pulse {
+    position: static;
+    justify-self: start;
+    margin-top: 2px;
+  }
+}
