@@ -282,8 +282,17 @@ export const normalizeErrorMessage = (err, fallback = "Не удалось вы�
   if (message === "PO_RECEIVING_FINALIZE_ERROR") {
     return "Ошибка сервера при завершении приемки.";
   }
+  if (message === "PO_RECEIVING_REJECT_ERROR") {
+    return "Ошибка сервера при отказе в приемке.";
+  }
   if (message === "PO_ALREADY_RECEIVED") {
     return "Заказ уже завершен.";
+  }
+  if (message === "PO_ALREADY_FINALIZED") {
+    return "Заказ уже закрыт.";
+  }
+  if (message === "REJECT_REASON_REQUIRED") {
+    return "Укажите причину отказа от приемки.";
   }
   if (message === "NO_ACTIVE_TRUCK") {
     return "Заказ не найден в активной очереди поставщиков.";

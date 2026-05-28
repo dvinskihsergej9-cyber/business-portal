@@ -3005,6 +3005,68 @@ export default function Warehouse({
       setViewPurchaseOrderActionLoading(false);
     }
   };
+  const canRejectPurchaseOrder = useCallback((order) => {
+    const status = String(order?.status || "").toUpperCase();
+    return status === "SENT" || status === "PARTIAL" || status === "DRAFT";
+  }, []);
+
+  const handlePurchaseOrderRejectReceiving = async (order) => {
+    const orderId = Number(order?.id || 0);
+    if (!orderId) return;
+    if (!canRejectPurchaseOrder(order)) {
+      setViewPurchaseOrderError("Отказ в приемке доступен только до закрытия заказа.");
+      return;
+    }
+
+    const reasonInput = window.prompt(
+      `Укажите причину отказа по заказу №${order.number || orderId}:`,
+      "Полный брак, отказ от приемки"
+    );
+    if (reasonInput == null) return;
+    const reason = String(reasonInput || "").trim();
+    if (!reason) {
+      setViewPurchaseOrderError("Укажите причину отказа от приемки.");
+      return;
+    }
+
+    const ok = window.confirm("Закрыть заказ без оприходования товара?");
+    if (!ok) return;
+
+    try {
+      setViewPurchaseOrderActionLoading(true);
+      setViewPurchaseOrderError("");
+      setViewPurchaseOrderActionNotice("");
+
+      const res = await fetch(`${API}/warehouse/receiving/${orderId}/reject`, {
+        method: "POST",
+        headers: authHeaders,
+        body: JSON.stringify({ reason }),
+      });
+      const data = await readResponsePayload(res);
+      if (!res.ok) {
+        throw new Error((data && data.message) || "Не удалось выполнить отказ в приемке.");
+      }
+
+      if (data?.order) {
+        setViewPurchaseOrder(data.order);
+      } else {
+        setViewPurchaseOrder((prev) =>
+          prev ? { ...prev, status: "CLOSED", receivingStage: "FINALIZED" } : prev
+        );
+      }
+      setViewPurchaseOrderActionNotice("Заказ закрыт без оприходования (отказ в приемке).");
+
+      await loadPurchaseOrders();
+      await loadPurchaseOrderHistory(orderId);
+    } catch (e) {
+      console.error(e);
+      setViewPurchaseOrderError(
+        resolveErrorMessage(e, "Не удалось выполнить отказ в приемке.")
+      );
+    } finally {
+      setViewPurchaseOrderActionLoading(false);
+    }
+  };
   const canDeletePurchaseOrder = useCallback((order) => {
     const status = String(order?.status || "").toUpperCase();
     return status === "DRAFT" || status === "SENT";
@@ -6338,6 +6400,20 @@ export default function Warehouse({
                     }
                   >
                     {viewPurchaseOrderActionLoading ? "\u041e\u0442\u043f\u0440\u0430\u0432\u043a\u0430..." : "\u041e\u0442\u043f\u0440\u0430\u0432\u0438\u0442\u044c \u043f\u043e\u0441\u0442\u0430\u0432\u0449\u0438\u043a\u0443"}
+                  </button>
+                )}
+                {canRejectPurchaseOrder(viewPurchaseOrder) && !viewPurchaseOrderEditMode && (
+                  <button
+                    type="button"
+                    className="btn btn--danger"
+                    onClick={() => handlePurchaseOrderRejectReceiving(viewPurchaseOrder)}
+                    disabled={
+                      viewPurchaseOrderActionLoading ||
+                      viewPurchaseOrderEditSaving ||
+                      purchaseOrderDeletingId !== null
+                    }
+                  >
+                    Отказ в приемке
                   </button>
                 )}
                 {viewPurchaseOrderEditMode && (

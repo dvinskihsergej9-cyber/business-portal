@@ -658,6 +658,66 @@ export default function ReceivingByPo({
     }
   };
 
+  const handleRejectReceiving = async () => {
+    if (!selectedPo) {
+      setState((prev) => ({
+        ...prev,
+        error: "Сначала выберите заказ.",
+      }));
+      return;
+    }
+
+    const reasonInput = window.prompt(
+      "Укажите причину отказа от приемки:",
+      "Полный брак, отказ от приемки"
+    );
+    if (reasonInput == null) return;
+
+    const reason = String(reasonInput || "").trim();
+    if (!reason) {
+      setState((prev) => ({
+        ...prev,
+        error: "Укажите причину отказа от приемки.",
+      }));
+      return;
+    }
+
+    const ok = window.confirm(
+      "Закрыть заказ без оприходования товара на склад?"
+    );
+    if (!ok) return;
+
+    try {
+      setState((prev) => ({ ...prev, loading: true, error: "" }));
+      const res = await fetch(
+        `${API_BASE}/warehouse/receiving/${selectedPo.id}/reject`,
+        {
+          method: "POST",
+          headers: authHeaders,
+          body: JSON.stringify({ reason }),
+        }
+      );
+      const data = await res.json().catch(() => null);
+      if (!res.ok) {
+        throw new Error(data?.message || "Не удалось отклонить приемку.");
+      }
+
+      setToast({
+        type: "success",
+        message: "Приемка отклонена. Заказ закрыт.",
+      });
+      confirmFlowRef.current = { poId: null, opId: null, saved: false };
+      setState((prev) => ({ ...prev, loading: false, done: true }));
+      onBack?.();
+    } catch (err) {
+      setState((prev) => ({
+        ...prev,
+        loading: false,
+        error: toUiError(err, "Не удалось отклонить приемку."),
+      }));
+    }
+  };
+
   const resetFlow = () => {
     confirmFlowRef.current = { poId: null, opId: null, saved: false };
     setSelectedPo(null);
@@ -880,6 +940,16 @@ export default function ReceivingByPo({
                 Осталось заполнить позиций: {unfilledRowsCount}
               </div>
             )}
+            <div className="tsd-action-inline" style={{ marginTop: 8 }}>
+              <button
+                type="button"
+                className="tsd-btn tsd-btn--danger tsd-btn--center"
+                onClick={handleRejectReceiving}
+                disabled={state.loading}
+              >
+                Отказ в приемке
+              </button>
+            </div>
           </>
         )}
       </div>

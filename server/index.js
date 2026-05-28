@@ -22763,6 +22763,114 @@ app.post("/api/warehouse/receiving/:poId/take", auth, async (req, res) => {
   }
 });
 
+app.post("/api/warehouse/receiving/:poId/reject", auth, async (req, res) => {
+  try {
+    if (!canUseReceivingByPo(req.user)) {
+      return res.status(403).json({ message: "NO_ACCESS" });
+    }
+
+    const poId = Number(req.params.poId);
+    if (!poId || Number.isNaN(poId)) {
+      return res.status(400).json({ message: "BAD_PO_ID" });
+    }
+
+    const reason = sanitizeOptionalText(req.body?.reason, 500);
+    if (!reason) {
+      return res.status(400).json({ message: "REJECT_REASON_REQUIRED" });
+    }
+
+    const order = await prisma.purchaseOrder.findUnique({
+      where: { id: poId },
+      include: {
+        supplier: true,
+        items: { include: { item: true } },
+      },
+    });
+
+    if (!order) {
+      return res.status(404).json({ message: "PO_NOT_FOUND" });
+    }
+    if (order.status === "RECEIVED" || order.status === "CLOSED") {
+      return res.status(409).json({ message: "PO_ALREADY_FINALIZED" });
+    }
+
+    assertStatusTransition(PURCHASE_ORDER_STATUS_TRANSITIONS, {
+      fromStatus: String(order.status || ""),
+      toStatus: "CLOSED",
+      errorCode: "PO_BAD_STATUS_TRANSITION",
+    });
+
+    const reasonLine = `[REJECTED_RECEIVING] ${reason}`;
+    const currentComment = String(order.comment || "").trim();
+    const nextComment = currentComment
+      ? `${currentComment}\n${reasonLine}`
+      : reasonLine;
+
+    const updatedOrder = await prisma.purchaseOrder.update({
+      where: { id: poId },
+      data: {
+        status: "CLOSED",
+        receivingStage: "FINALIZED",
+        comment: nextComment,
+      },
+      include: {
+        supplier: true,
+        items: { include: { item: true } },
+      },
+    });
+
+    try {
+      await appendPurchaseOrderHistory({
+        orgId: req.user.orgId || null,
+        actorUserId: req.user.id,
+        purchaseOrderId: poId,
+        event: "RECEIVING_REJECTED",
+        message: `Приёмка отклонена (${updatedOrder?.number || `#${poId}`}).`,
+        changes: [
+          `Статус: ${String(order.status || "-")} → CLOSED`,
+          `Причина отказа: ${reason}`,
+        ],
+      });
+    } catch (historyErr) {
+      console.error("purchase order history append (receiving reject) error:", historyErr);
+    }
+
+    const linkedTruck = await findActiveTruckForOrder(order.number, [
+      "IN_QUEUE",
+      "UNLOADING",
+      "DONE",
+    ]);
+    if (linkedTruck && linkedTruck.status !== "DONE") {
+      try {
+        await prisma.supplierTruck.update({
+          where: { id: linkedTruck.id },
+          data: {
+            status: "DONE",
+            unloadEndAt: linkedTruck.unloadEndAt || new Date(),
+          },
+        });
+      } catch (truckErr) {
+        console.error("po receiving reject truck close error:", truckErr);
+      }
+    }
+
+    res.json({ ok: true, order: updatedOrder, reason });
+  } catch (err) {
+    if (err?.code === "PO_BAD_STATUS_TRANSITION") {
+      return res.status(409).json({
+        message: "PO_BAD_STATUS_TRANSITION",
+        fromStatus: err.fromStatus || null,
+        toStatus: err.toStatus || null,
+      });
+    }
+    console.error("po receiving reject error:", err);
+    res.status(500).json({
+      message: "PO_RECEIVING_REJECT_ERROR",
+      detail: String(err?.message || ""),
+    });
+  }
+});
+
 
 // Получить один заказ
 app.get("/api/purchase-orders/:id", auth, async (req, res) => {
