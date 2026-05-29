@@ -1925,6 +1925,14 @@ input[type="number"] {
   display: none;
 }
 
+.suppliers-desktop {
+  display: block;
+}
+
+.suppliers-mobile {
+  display: none;
+}
+
 .portal-surface .warehouse-card {
   border-radius: 16px;
   border: 1px solid rgba(157, 196, 252, 0.72);
@@ -2873,6 +2881,56 @@ input[type="number"] {
   }
 
   .purchase-orders-mobile__action {
+    width: 100%;
+    justify-content: center;
+    white-space: nowrap;
+    margin-top: 6px;
+  }
+
+  .suppliers-desktop {
+    display: none;
+  }
+
+  .suppliers-mobile {
+    display: grid;
+    gap: 10px;
+  }
+
+  .suppliers-mobile__card {
+    display: grid;
+    gap: 6px;
+    border: 1px solid rgba(15, 23, 42, 0.12);
+    border-radius: 14px;
+    padding: 12px 14px;
+    background: #ffffff;
+    box-shadow: 0 8px 18px rgba(15, 23, 42, 0.06);
+  }
+
+  .suppliers-mobile__row {
+    display: grid;
+    grid-template-columns: 108px minmax(0, 1fr);
+    gap: 8px;
+    align-items: baseline;
+  }
+
+  .suppliers-mobile__label {
+    font-size: 12px;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+    color: #64748b;
+    font-weight: 700;
+  }
+
+  .suppliers-mobile__value {
+    min-width: 0;
+    font-weight: 600;
+  }
+
+  .suppliers-mobile__value--name {
+    overflow-wrap: anywhere;
+  }
+
+  .suppliers-mobile__action {
     width: 100%;
     justify-content: center;
     white-space: nowrap;
@@ -5762,7 +5820,8 @@ input[type="number"] {
       .discrepancies-table .discrepancies-row,
       .movements-history-table .movements-history-row,
       .transactions-table .transactions-row,
-      .purchase-orders-mobile__card
+      .purchase-orders-mobile__card,
+      .suppliers-mobile__card
     ) {
     border: 1px solid rgba(15, 23, 42, 0.12);
     border-radius: 14px;
@@ -5795,7 +5854,8 @@ input[type="number"] {
       .discrepancies-table .discrepancies-row td::before,
       .movements-history-table .movements-history-row td::before,
       .transactions-table .transactions-row td::before,
-      .purchase-orders-mobile__label
+      .purchase-orders-mobile__label,
+      .suppliers-mobile__label
     ) {
     font-size: 12px;
     font-weight: 700;
@@ -5822,7 +5882,8 @@ input[type="number"] {
       .discrepancies-table .discrepancies-row .btn,
       .movements-history-table .movements-history-row .btn,
       .transactions-table .transactions-row .btn,
-      .purchase-orders-mobile__action
+      .purchase-orders-mobile__action,
+      .suppliers-mobile__action
     ) {
     width: 100%;
     min-height: 40px;

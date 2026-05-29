@@ -5708,78 +5708,100 @@ export default function Warehouse({
                     <p className="text-muted">Поставщиков пока нет.</p>
 
                   ) : (
-
-                    <div className="table-wrapper">
-
-                      <table className="table">
-
-                        <thead>
-
-                          <tr>
-
-                            <th>ID</th>
-
-                            <th>Название</th>
-
-                            <th>ИНН</th>
-
-                            <th>Телефон</th>
-
-                            <th>Email</th>
-                            <th>Действия</th>
-
-                          </tr>
-
-                        </thead>
-
-                        <tbody>
-
-                          {suppliers.map((s) => (
-
-                            <tr key={s.id}>
-
-                              <td>{s.id}</td>
-
-                              <td>{s.name}</td>
-
-                              <td>{s.inn || "-"}</td>
-
-                              <td>{s.phone || "-"}</td>
-
-                              <td>{s.email || "-"}</td>
-                              <td>
-                                <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
-                                  <button
-                                    type="button"
-                                    className="btn btn--secondary btn--sm"
-                                    onClick={() => handleEditSupplier(s)}
-                                    disabled={supplierSaving || supplierDeletingId !== null}
-                                  >
-                                    Редактировать
-                                  </button>
-                                  <button
-                                    type="button"
-                                    className="btn btn--danger btn--sm"
-                                    onClick={() => handleDeleteSupplier(s)}
-                                    disabled={supplierSaving || supplierDeletingId !== null}
-                                  >
-                                    {supplierDeletingId === Number(s.id)
-                                      ? "Удаление..."
-                                      : "Удалить"}
-                                  </button>
-                                </div>
-                              </td>
-
+                    <>
+                      <div className="table-wrapper suppliers-desktop">
+                        <table className="table">
+                          <thead>
+                            <tr>
+                              <th>ID</th>
+                              <th>Название</th>
+                              <th>ИНН</th>
+                              <th>Телефон</th>
+                              <th>Email</th>
+                              <th>Действия</th>
                             </tr>
+                          </thead>
+                          <tbody>
+                            {suppliers.map((s) => (
+                              <tr key={s.id}>
+                                <td>{s.id}</td>
+                                <td>{s.name}</td>
+                                <td>{s.inn || "-"}</td>
+                                <td>{s.phone || "-"}</td>
+                                <td>{s.email || "-"}</td>
+                                <td>
+                                  <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+                                    <button
+                                      type="button"
+                                      className="btn btn--secondary btn--sm"
+                                      onClick={() => handleEditSupplier(s)}
+                                      disabled={supplierSaving || supplierDeletingId !== null}
+                                    >
+                                      Редактировать
+                                    </button>
+                                    <button
+                                      type="button"
+                                      className="btn btn--danger btn--sm"
+                                      onClick={() => handleDeleteSupplier(s)}
+                                      disabled={supplierSaving || supplierDeletingId !== null}
+                                    >
+                                      {supplierDeletingId === Number(s.id)
+                                        ? "Удаление..."
+                                        : "Удалить"}
+                                    </button>
+                                  </div>
+                                </td>
+                              </tr>
+                            ))}
+                          </tbody>
+                        </table>
+                      </div>
 
-                          ))}
-
-                        </tbody>
-
-                      </table>
-
-                    </div>
-
+                      <div className="suppliers-mobile">
+                        {suppliers.map((s) => (
+                          <div key={`supplier-mobile-${s.id}`} className="suppliers-mobile__card">
+                            <div className="suppliers-mobile__row">
+                              <span className="suppliers-mobile__label">ID</span>
+                              <span className="suppliers-mobile__value">{s.id}</span>
+                            </div>
+                            <div className="suppliers-mobile__row">
+                              <span className="suppliers-mobile__label">Название</span>
+                              <span className="suppliers-mobile__value suppliers-mobile__value--name">
+                                {s.name}
+                              </span>
+                            </div>
+                            <div className="suppliers-mobile__row">
+                              <span className="suppliers-mobile__label">ИНН</span>
+                              <span className="suppliers-mobile__value">{s.inn || "-"}</span>
+                            </div>
+                            <div className="suppliers-mobile__row">
+                              <span className="suppliers-mobile__label">Телефон</span>
+                              <span className="suppliers-mobile__value">{s.phone || "-"}</span>
+                            </div>
+                            <div className="suppliers-mobile__row">
+                              <span className="suppliers-mobile__label">Email</span>
+                              <span className="suppliers-mobile__value">{s.email || "-"}</span>
+                            </div>
+                            <button
+                              type="button"
+                              className="btn btn--secondary btn--sm suppliers-mobile__action"
+                              onClick={() => handleEditSupplier(s)}
+                              disabled={supplierSaving || supplierDeletingId !== null}
+                            >
+                              Редактировать
+                            </button>
+                            <button
+                              type="button"
+                              className="btn btn--danger btn--sm suppliers-mobile__action"
+                              onClick={() => handleDeleteSupplier(s)}
+                              disabled={supplierSaving || supplierDeletingId !== null}
+                            >
+                              {supplierDeletingId === Number(s.id) ? "Удаление..." : "Удалить"}
+                            </button>
+                          </div>
+                        ))}
+                      </div>
+                    </>
                   )}
 
                 </div>
