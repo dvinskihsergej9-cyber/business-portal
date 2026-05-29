@@ -5751,3 +5751,86 @@ input[type="number"] {
     width: 100%;
   }
 }
+
+/* ===== Mobile UX Unification (Phase 2): tables + actions ===== */
+@media (max-width: 720px) {
+  .portal-surface :is(
+      .requests-journal-table .requests-journal-row,
+      .tasks-journal-table .tasks-journal-row,
+      .stock-audit-table .stock-audit-row,
+      .queue-table .queue-row,
+      .discrepancies-table .discrepancies-row,
+      .movements-history-table .movements-history-row,
+      .transactions-table .transactions-row,
+      .purchase-orders-mobile__card
+    ) {
+    border: 1px solid rgba(15, 23, 42, 0.12);
+    border-radius: 14px;
+    padding: 12px;
+    background: #ffffff;
+    box-shadow: 0 8px 18px rgba(15, 23, 42, 0.06);
+    gap: 8px;
+  }
+
+  .portal-surface :is(
+      .requests-journal-table .requests-journal-row td,
+      .tasks-journal-table .tasks-journal-row td,
+      .stock-audit-table .stock-audit-row td,
+      .queue-table .queue-row td,
+      .discrepancies-table .discrepancies-row td,
+      .movements-history-table .movements-history-row td,
+      .transactions-table .transactions-row td
+    ) {
+    grid-template-columns: 112px minmax(0, 1fr);
+    gap: 8px;
+    line-height: 1.3;
+    font-weight: 600;
+  }
+
+  .portal-surface :is(
+      .requests-journal-table .requests-journal-row td::before,
+      .tasks-journal-table .tasks-journal-row td::before,
+      .stock-audit-table .stock-audit-row td::before,
+      .queue-table .queue-row td::before,
+      .discrepancies-table .discrepancies-row td::before,
+      .movements-history-table .movements-history-row td::before,
+      .transactions-table .transactions-row td::before,
+      .purchase-orders-mobile__label
+    ) {
+    font-size: 12px;
+    font-weight: 700;
+    color: #64748b;
+    letter-spacing: 0.04em;
+    text-transform: uppercase;
+  }
+
+  .portal-surface :is(
+      .requests-journal-table .requests-journal-row td[data-label="actions"],
+      .tasks-journal-table .tasks-journal-row td[data-label="РР·РјРµРЅРёС‚СЊ СЃС‚Р°С‚СѓСЃ"],
+      .discrepancies-table .discrepancies-row td[data-label="actions"]
+    ) {
+    grid-template-columns: 1fr;
+    justify-items: stretch;
+    gap: 8px;
+  }
+
+  .portal-surface :is(
+      .requests-journal-table .requests-journal-row .btn,
+      .tasks-journal-table .tasks-journal-row .btn,
+      .stock-audit-table .stock-audit-row .btn,
+      .queue-table .queue-row .btn,
+      .discrepancies-table .discrepancies-row .btn,
+      .movements-history-table .movements-history-row .btn,
+      .transactions-table .transactions-row .btn,
+      .purchase-orders-mobile__action
+    ) {
+    width: 100%;
+    min-height: 40px;
+    justify-content: center;
+    white-space: normal;
+  }
+
+  .portal-surface :is(.table-wrapper, .admin-table-wrapper) {
+    border-radius: 14px;
+  }
+}
